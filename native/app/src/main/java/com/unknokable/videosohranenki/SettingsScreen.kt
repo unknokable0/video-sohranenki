@@ -94,6 +94,14 @@ class SettingsScreen(
         ) { settings.animations = it })
 
         root.addView(settingRow(
+            icon = "AI",
+            iconColor = "#B89AFF",
+            title = "AI-анализ моментов",
+            description = "Подготовлено для игр, реакций, разговоров и глав",
+            checked = settings.aiAnalysis
+        ) { settings.aiAnalysis = it })
+
+        root.addView(settingRow(
             icon = "↻",
             iconColor = "#FF83BE",
             title = "Автоповорот fullscreen",
@@ -102,7 +110,7 @@ class SettingsScreen(
         ) { settings.autoRotateFullscreen = it })
 
         val logout = TextView(activity).apply {
-            text = "Выйти из Telegram"
+            text = "Выйти из аккаунта"
             textSize = 15f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
@@ -117,35 +125,6 @@ class SettingsScreen(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(4); bottomMargin = dp(12) }
-        )
-
-        val info = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(16), dp(16), dp(16), dp(16))
-            background = rounded(palette.surface, 18)
-        }
-        val infoTitle = TextView(activity).apply {
-            text = "ВИДЕО СОХРАНЕНКИ"
-            textSize = 15f
-            setTextColor(palette.text)
-            setTypeface(typeface, Typeface.BOLD)
-        }
-        val infoText = TextView(activity).apply {
-            text = "Нативный Android-плеер • Telegram TDLib"
-            textSize = 12f
-            setTextColor(palette.muted)
-            setPadding(0, dp(5), 0, 0)
-        }
-        info.addView(infoTitle)
-        info.addView(infoText)
-
-        root.addView(
-            info,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(18) }
         )
 
         return root
