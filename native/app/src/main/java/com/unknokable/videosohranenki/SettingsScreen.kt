@@ -17,10 +17,12 @@ class SettingsScreen(
     private val settings: AppSettings,
     private val onBack: (Boolean) -> Unit,
     private val onThemeChanged: () -> Unit,
+    private val onLanguageChanged: () -> Unit,
     private val onLogout: () -> Unit
 ) {
     private var needsReload = false
     private val palette get() = settings.palette()
+    private fun t(key: String): String = AppLanguages.t(settings.languageCode, key)
 
     fun build(): View {
         val root = LinearLayout(activity).apply {
@@ -42,7 +44,7 @@ class SettingsScreen(
         }
 
         val title = TextView(activity).apply {
-            text = "Настройки"
+            text = t("settings")
             textSize = 24f
             setTextColor(palette.text)
             gravity = Gravity.CENTER
@@ -56,7 +58,7 @@ class SettingsScreen(
         root.addView(header)
 
         val subtitle = TextView(activity).apply {
-            text = "Персонализация и воспроизведение"
+            text = t("personalization")
             textSize = 13f
             gravity = Gravity.CENTER_HORIZONTAL
             setTextColor(palette.muted)
@@ -65,20 +67,21 @@ class SettingsScreen(
         root.addView(subtitle)
 
         root.addView(themeSelector())
+        root.addView(languageSelector())
 
         root.addView(settingRow(
             icon = "▶",
             iconColor = "#B89AFF",
             title = "Автовоспроизведение",
-            description = "Начинать видео сразу после открытия",
+            description = t("autoplay_desc"),
             checked = settings.autoplay
         ) { settings.autoplay = it })
 
         root.addView(settingRow(
             icon = "▣",
             iconColor = "#58DFA0",
-            title = "Превью видео",
-            description = "Показывать изображения из Telegram",
+            title = t("previews"),
+            description = t("previews_desc"),
             checked = settings.previews
         ) {
             settings.previews = it
@@ -88,29 +91,29 @@ class SettingsScreen(
         root.addView(settingRow(
             icon = "✦",
             iconColor = "#76A9FF",
-            title = "Плавные анимации",
-            description = "Переходы, нажатия и появление карточек",
+            title = t("animations"),
+            description = t("animations_desc"),
             checked = settings.animations
         ) { settings.animations = it })
 
         root.addView(settingRow(
             icon = "AI",
             iconColor = "#B89AFF",
-            title = "AI-анализ моментов",
-            description = "Подготовлено для игр, реакций, разговоров и глав",
+            title = t("ai"),
+            description = t("ai_desc"),
             checked = settings.aiAnalysis
         ) { settings.aiAnalysis = it })
 
         root.addView(settingRow(
             icon = "↻",
             iconColor = "#FF83BE",
-            title = "Автоповорот fullscreen",
-            description = "Поворачивать плеер горизонтально",
+            title = t("rotate"),
+            description = t("rotate_desc"),
             checked = settings.autoRotateFullscreen
         ) { settings.autoRotateFullscreen = it })
 
         val logout = TextView(activity).apply {
-            text = "Выйти из аккаунта"
+            text = t("logout")
             textSize = 15f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
@@ -130,6 +133,70 @@ class SettingsScreen(
         return root
     }
 
+    private fun languageSelector(): View {
+        val box = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(13), dp(14), dp(13))
+            background = rounded(palette.surface, 18)
+        }
+
+        val labels = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        val title = TextView(activity).apply {
+            text = t("language")
+            textSize = 15f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(palette.text)
+        }
+
+        val subtitle = TextView(activity).apply {
+            text = t("choose_language")
+            textSize = 12f
+            setTextColor(palette.muted)
+            setPadding(0, dp(3), 0, 0)
+        }
+
+        labels.addView(title)
+        labels.addView(subtitle)
+
+        val current = AppLanguages.byCode(settings.languageCode)
+        val button = TextView(activity).apply {
+            text = current.shortLabel
+            gravity = Gravity.CENTER
+            textSize = 13f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            background = rounded(palette.accent, 13)
+            setOnClickListener {
+                ModernDialogs.showChoices(
+                    context = activity,
+                    palette = palette,
+                    title = t("choose_language"),
+                    options = AppLanguages.all.map { it.label },
+                    selected = AppLanguages.all.indexOfFirst { it.code == settings.languageCode }.coerceAtLeast(0)
+                ) { which ->
+                    settings.languageCode = AppLanguages.all[which].code
+                    onLanguageChanged()
+                }
+            }
+        }
+
+        box.addView(labels, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        box.addView(button, LinearLayout.LayoutParams(dp(58), dp(42)))
+
+        return LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(box)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(10) }
+        }
+    }
+
     private fun themeSelector(): View {
         val box = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
@@ -138,14 +205,14 @@ class SettingsScreen(
         }
 
         val title = TextView(activity).apply {
-            text = "Тема"
+            text = t("theme")
             textSize = 15f
             setTextColor(palette.text)
             setTypeface(typeface, Typeface.BOLD)
         }
 
         val subtitle = TextView(activity).apply {
-            text = "Выбери оформление приложения"
+            text = t("theme_desc")
             textSize = 12f
             setTextColor(palette.muted)
             setPadding(0, dp(3), 0, dp(12))
@@ -157,10 +224,10 @@ class SettingsScreen(
             setPadding(dp(4), dp(4), dp(4), dp(4))
         }
 
-        val dark = themeOption("Тёмная", !settings.lightTheme) {
+        val dark = themeOption(t("dark"), !settings.lightTheme) {
             if (settings.lightTheme) animateThemeChange(false)
         }
-        val light = themeOption("Светлая", settings.lightTheme) {
+        val light = themeOption(t("light"), settings.lightTheme) {
             if (!settings.lightTheme) animateThemeChange(true)
         }
 
