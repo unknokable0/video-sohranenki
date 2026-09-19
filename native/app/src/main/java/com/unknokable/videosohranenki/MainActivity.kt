@@ -200,7 +200,7 @@ class MainActivity : AppCompatActivity() {
             textSize = 34f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
-            setTextColor(text)
+            setTextColor(this@MainActivity.text)
             alpha = 0f
             scaleX = 0.92f
             scaleY = 0.92f
