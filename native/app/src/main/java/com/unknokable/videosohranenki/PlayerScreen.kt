@@ -6,7 +6,9 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
+import android.view.GestureDetector
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -14,11 +16,13 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
+import android.widget.Toast
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.Player
 import androidx.media3.common.TrackGroup
 import androidx.media3.common.TrackSelectionOverride
-import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -46,8 +50,13 @@ class PlayerScreen(
     private lateinit var currentTime: TextView
     private lateinit var totalTime: TextView
     private lateinit var qualityButton: TextView
+    private lateinit var speedBadge: TextView
+
     private var fullscreen = false
     private var dragging = false
+    private var loopEnabled = false
+    private var speed = 1f
+    private var sleepRunnable: Runnable? = null
     private val palette get() = settings.palette()
 
     init {
@@ -85,6 +94,25 @@ class PlayerScreen(
             )
         )
 
+        speedBadge = TextView(activity).apply {
+            text = "2×"
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            setPadding(dp(9), dp(5), dp(9), dp(5))
+            background = rounded("#B0000000", 10)
+            alpha = 0f
+        }
+        playerCard.addView(
+            speedBadge,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            ).apply { topMargin = dp(12) }
+        )
+
         val width = activity.resources.displayMetrics.widthPixels
         root.addView(
             playerCard,
@@ -92,13 +120,14 @@ class PlayerScreen(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 (width * 9f / 16f).toInt()
             ).apply {
-                marginStart = dp(10)
-                marginEnd = dp(10)
+                marginStart = dp(12)
+                marginEnd = dp(12)
             }
         )
 
         details = buildDetails()
         root.addView(details)
+        root.addView(buildActions())
 
         player = ExoPlayer.Builder(activity)
             .setSeekBackIncrementMs(10_000)
@@ -107,6 +136,7 @@ class PlayerScreen(
 
         playerView.player = player
         player.setMediaItem(MediaItem.fromUri(mediaUrl))
+        player.repeatMode = Player.REPEAT_MODE_OFF
         player.prepare()
         player.playWhenReady = settings.autoplay
 
@@ -124,7 +154,7 @@ class PlayerScreen(
             }
         })
 
-        playerCard.setOnClickListener { toggleOverlay() }
+        installGestures()
         scheduleProgress()
     }
 
@@ -132,7 +162,7 @@ class PlayerScreen(
         val row = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(10), dp(10), dp(10), dp(10))
+            setPadding(dp(12), dp(10), dp(12), dp(10))
             setBackgroundColor(palette.background)
         }
 
@@ -145,21 +175,25 @@ class PlayerScreen(
             textSize = 15f
             setTextColor(palette.text)
             setTypeface(typeface, Typeface.BOLD)
+            gravity = Gravity.CENTER
             maxLines = 1
-            setPadding(dp(12), 0, dp(8), 0)
+            setPadding(dp(10), 0, dp(10), 0)
         }
 
-        val spacer = View(activity)
+        val menu = textCircle("⋮", "#B89AFF").apply {
+            textSize = 22f
+            setOnClickListener { showPlayerMenu() }
+        }
 
         row.addView(back, LinearLayout.LayoutParams(dp(48), dp(48)))
         row.addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row.addView(spacer, LinearLayout.LayoutParams(dp(48), dp(48)))
+        row.addView(menu, LinearLayout.LayoutParams(dp(48), dp(48)))
         return row
     }
 
     private fun buildOverlay(): FrameLayout {
         val frame = FrameLayout(activity).apply {
-            setBackgroundColor(Color.parseColor("#38000000"))
+            setBackgroundColor(Color.parseColor("#30000000"))
         }
 
         val center = LinearLayout(activity).apply {
@@ -204,7 +238,7 @@ class PlayerScreen(
 
         val bottom = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(6), dp(14), dp(12))
+            setPadding(dp(14), dp(6), dp(14), dp(10))
         }
 
         seekBar = SeekBar(activity).apply {
@@ -228,11 +262,11 @@ class PlayerScreen(
             gravity = Gravity.CENTER_VERTICAL
         }
         currentTime = timeLabel("0:00")
-        totalTime = timeLabel("0:00").apply { gravity = Gravity.END }
+        totalTime = timeLabel("0:00")
         val spacer = View(activity)
 
         qualityButton = TextView(activity).apply {
-            text = "Качество"
+            text = "Авто"
             textSize = 11f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
@@ -266,20 +300,19 @@ class PlayerScreen(
                 Gravity.BOTTOM
             )
         )
-
         return frame
     }
 
     private fun buildDetails(): LinearLayout {
         val box = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(18), dp(18), dp(18))
+            setPadding(dp(16), dp(18), dp(16), dp(12))
         }
 
         val title = TextView(activity).apply {
             text = cleanTitle(item.title)
-            textSize = 20f
-            setTextColor(Color.parseColor("#F7F5FF"))
+            textSize = 21f
+            setTextColor(palette.text)
             setTypeface(typeface, Typeface.BOLD)
         }
 
@@ -293,6 +326,171 @@ class PlayerScreen(
         box.addView(title)
         box.addView(meta)
         return box
+    }
+
+    private fun buildActions(): LinearLayout {
+        val row = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), 0, dp(12), dp(14))
+        }
+
+        val speedBtn = actionPill("1× Скорость") { showSpeedPicker() }
+        val loopBtn = actionPill("↻ Цикл") {
+            loopEnabled = !loopEnabled
+            player.repeatMode = if (loopEnabled) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+            it.alpha = if (loopEnabled) 1f else 0.72f
+            Toast.makeText(activity, if (loopEnabled) "Цикл включён" else "Цикл выключен", Toast.LENGTH_SHORT).show()
+        }
+        val sleepBtn = actionPill("◷ Таймер") { showSleepPicker() }
+
+        row.addView(speedBtn, LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(6) })
+        row.addView(loopBtn, LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(6) })
+        row.addView(sleepBtn, LinearLayout.LayoutParams(0, dp(44), 1f))
+        return row
+    }
+
+    private fun actionPill(label: String, onClick: (View) -> Unit): TextView =
+        TextView(activity).apply {
+            text = label
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(palette.text)
+            background = roundedInt(palette.surfaceAlt, 14)
+            setOnClickListener {
+                pulse(this)
+                onClick(this)
+            }
+        }
+
+    private fun installGestures() {
+        val detector = GestureDetector(activity, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                toggleOverlay()
+                return true
+            }
+
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                val half = playerCard.width / 2f
+                if (e.x < half) {
+                    player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0))
+                    showGestureHint("−10 сек")
+                } else {
+                    val duration = player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+                    player.seekTo((player.currentPosition + 10_000).coerceAtMost(duration))
+                    showGestureHint("+10 сек")
+                }
+                return true
+            }
+
+            override fun onLongPress(e: MotionEvent) {
+                player.playbackParameters = PlaybackParameters(2f)
+                speedBadge.animate().alpha(1f).setDuration(120).start()
+            }
+
+            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+                val start = e1 ?: return false
+                val dy = e2.y - start.y
+                if (kotlin.math.abs(dy) > 120 && kotlin.math.abs(velocityY) > kotlin.math.abs(velocityX)) {
+                    if (dy < 0) onFullscreen(true) else onBack()
+                    return true
+                }
+                return false
+            }
+        })
+
+        playerCard.setOnTouchListener { _, event ->
+            detector.onTouchEvent(event)
+            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                if (speedBadge.alpha > 0f) {
+                    player.playbackParameters = PlaybackParameters(speed)
+                    speedBadge.animate().alpha(0f).setDuration(120).start()
+                }
+            }
+            true
+        }
+    }
+
+    private fun showGestureHint(text: String) {
+        Toast.makeText(activity, text, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun showPlayerMenu() {
+        val labels = listOf(
+            "Качество",
+            "Скорость воспроизведения",
+            if (loopEnabled) "Выключить цикл" else "Зациклить видео",
+            "Таймер сна",
+            "Статистика видео"
+        )
+        ModernDialogs.showChoices(activity, palette, "Настройки видео", labels, 0) { which ->
+            when (which) {
+                0 -> showQualityPicker()
+                1 -> showSpeedPicker()
+                2 -> {
+                    loopEnabled = !loopEnabled
+                    player.repeatMode = if (loopEnabled) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+                }
+                3 -> showSleepPicker()
+                4 -> showStats()
+            }
+        }
+    }
+
+    private fun showSpeedPicker() {
+        val speeds = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
+        val labels = speeds.map { if (it == 1f) "Обычная • 1×" else "$it×" }
+        val selected = speeds.indexOfFirst { it == speed }.coerceAtLeast(3)
+        ModernDialogs.showChoices(activity, palette, "Скорость воспроизведения", labels, selected) { which ->
+            speed = speeds[which]
+            player.playbackParameters = PlaybackParameters(speed)
+            Toast.makeText(activity, "Скорость ${labels[which]}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun showSleepPicker() {
+        val labels = listOf("Выкл", "10 минут", "20 минут", "30 минут", "45 минут", "1 час", "В конце видео")
+        ModernDialogs.showChoices(activity, palette, "Таймер сна", labels, 0) { which ->
+            sleepRunnable?.let { handler.removeCallbacks(it) }
+            sleepRunnable = null
+            when (which) {
+                1,2,3,4,5 -> {
+                    val minutes = listOf(0,10,20,30,45,60)[which]
+                    val r = Runnable {
+                        player.pause()
+                        Toast.makeText(activity, "Таймер сна завершён", Toast.LENGTH_SHORT).show()
+                    }
+                    sleepRunnable = r
+                    handler.postDelayed(r, minutes * 60_000L)
+                }
+                6 -> {
+                    player.addListener(object : Player.Listener {
+                        override fun onPlaybackStateChanged(playbackState: Int) {
+                            if (playbackState == Player.STATE_ENDED) player.pause()
+                        }
+                    })
+                }
+            }
+        }
+    }
+
+    private fun showStats() {
+        val format = player.videoFormat
+        val res = if (format?.height != null && format.height > 0) "${format.width}×${format.height}" else "Оригинал"
+        val bitrate = if (format?.bitrate != null && format.bitrate > 0) "%.1f Мбит/с".format(format.bitrate / 1_000_000.0) else "неизвестно"
+        ModernDialogs.showChoices(
+            activity,
+            palette,
+            "Статистика видео",
+            listOf(
+                "Разрешение: $res",
+                "Битрейт: $bitrate",
+                "Позиция: ${formatMs(player.currentPosition)} / ${formatMs(player.duration)}",
+                "Размер: ${buildSize()}"
+            ),
+            0
+        ) { }
     }
 
     fun setFullscreenMode(enabled: Boolean) {
@@ -310,8 +508,8 @@ class PlayerScreen(
             val width = activity.resources.displayMetrics.widthPixels
             params.height = (width * 9f / 16f).toInt()
             params.weight = 0f
-            params.marginStart = dp(10)
-            params.marginEnd = dp(10)
+            params.marginStart = dp(12)
+            params.marginEnd = dp(12)
         }
         playerCard.layoutParams = params
         playerCard.requestLayout()
@@ -319,6 +517,7 @@ class PlayerScreen(
     }
 
     fun destroy() {
+        sleepRunnable?.let { handler.removeCallbacks(it) }
         handler.removeCallbacksAndMessages(null)
         player.release()
     }
@@ -349,26 +548,14 @@ class PlayerScreen(
     private fun showQualityPicker() {
         val options = availableQualityOptions()
         if (options.isEmpty()) {
-            ModernDialogs.showChoices(
-                activity,
-                palette,
-                "Качество видео",
-                listOf("Оригинал • лучшее доступное"),
-                0
-            ) { }
+            ModernDialogs.showChoices(activity, palette, "Качество видео", listOf("Оригинал • лучшее доступное"), 0) { }
             return
         }
 
         val labels = mutableListOf("Авто • лучшее доступное")
         labels.addAll(options.map { it.label })
 
-        ModernDialogs.showChoices(
-            context = activity,
-            palette = palette,
-            title = "Качество видео",
-            options = labels,
-            selected = 0
-        ) { which ->
+        ModernDialogs.showChoices(activity, palette, "Качество видео", labels, 0) { which ->
             if (which == 0) {
                 player.trackSelectionParameters = player.trackSelectionParameters
                     .buildUpon()
@@ -378,9 +565,7 @@ class PlayerScreen(
                 val option = options[which - 1]
                 player.trackSelectionParameters = player.trackSelectionParameters
                     .buildUpon()
-                    .setOverrideForType(
-                        TrackSelectionOverride(option.group, option.trackIndex)
-                    )
+                    .setOverrideForType(TrackSelectionOverride(option.group, option.trackIndex))
                     .build()
             }
             updateQualityLabel()
@@ -472,10 +657,12 @@ class PlayerScreen(
         return if (fileName) "Запись стрима" else raw
     }
 
-    private fun buildMeta(): String {
+    private fun buildMeta(): String =
+        listOf(formatMs(item.durationSeconds * 1000L), buildSize(), "@t2x2_video").joinToString(" • ")
+
+    private fun buildSize(): String {
         val mb = item.fileSize / 1048576.0
-        val size = if (mb >= 1024) "%.1f ГБ".format(mb / 1024.0) else "%.0f МБ".format(mb)
-        return listOf(formatMs(item.durationSeconds * 1000L), size, "@t2x2_video").joinToString(" • ")
+        return if (mb >= 1024) "%.1f ГБ".format(mb / 1024.0) else "%.0f МБ".format(mb)
     }
 
     private fun formatMs(ms: Long): String {
@@ -490,6 +677,12 @@ class PlayerScreen(
     private fun rounded(color: String, radiusDp: Int): GradientDrawable =
         GradientDrawable().apply {
             setColor(Color.parseColor(color))
+            cornerRadius = dp(radiusDp).toFloat()
+        }
+
+    private fun roundedInt(color: Int, radiusDp: Int): GradientDrawable =
+        GradientDrawable().apply {
+            setColor(color)
             cornerRadius = dp(radiusDp).toFloat()
         }
 
