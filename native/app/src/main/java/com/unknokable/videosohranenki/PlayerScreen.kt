@@ -53,7 +53,8 @@ class PlayerScreen(
     private val settings: AppSettings,
     private val startPositionMs: Long = 0L,
     private val onBack: () -> Unit,
-    private val onFullscreen: (Boolean) -> Unit
+    private val onFullscreen: (Boolean) -> Unit,
+    private val onPlaybackStarted: () -> Unit
 ) {
     val root = LinearLayout(activity)
     val player: ExoPlayer
@@ -86,6 +87,7 @@ class PlayerScreen(
     private var dragging = false
     private var speed = 1f
     private var sleepRunnable: Runnable? = null
+    private var playbackCounted = false
     private val palette get() = settings.palette()
 
     init {
@@ -202,6 +204,10 @@ class PlayerScreen(
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 updatePlayIcon()
+                if (isPlaying && !playbackCounted) {
+                    playbackCounted = true
+                    onPlaybackStarted()
+                }
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
