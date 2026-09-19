@@ -44,10 +44,11 @@ class PlayerScreen(
     private lateinit var totalTime: TextView
     private var fullscreen = false
     private var dragging = false
+    private val palette get() = settings.palette()
 
     init {
         root.orientation = LinearLayout.VERTICAL
-        root.setBackgroundColor(Color.parseColor("#08070D"))
+        root.setBackgroundColor(palette.background)
 
         header = buildHeader()
         root.addView(header)
@@ -127,7 +128,7 @@ class PlayerScreen(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(10), dp(10), dp(10), dp(10))
-            setBackgroundColor(Color.parseColor("#08070D"))
+            setBackgroundColor(palette.background)
         }
 
         val back = iconButton(R.drawable.ic_back, "#181322").apply {
@@ -137,19 +138,17 @@ class PlayerScreen(
         val title = TextView(activity).apply {
             text = cleanTitle(item.title)
             textSize = 15f
-            setTextColor(Color.parseColor("#F7F5FF"))
+            setTextColor(palette.text)
             setTypeface(typeface, Typeface.BOLD)
             maxLines = 1
             setPadding(dp(12), 0, dp(8), 0)
         }
 
-        val full = iconButton(R.drawable.ic_fullscreen, "#181322").apply {
-            setOnClickListener { onFullscreen(!fullscreen) }
-        }
+        val spacer = View(activity)
 
         row.addView(back, LinearLayout.LayoutParams(dp(48), dp(48)))
         row.addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row.addView(full, LinearLayout.LayoutParams(dp(48), dp(48)))
+        row.addView(spacer, LinearLayout.LayoutParams(dp(48), dp(48)))
         return row
     }
 
@@ -227,9 +226,17 @@ class PlayerScreen(
         totalTime = timeLabel("0:00").apply { gravity = Gravity.END }
         val spacer = View(activity)
 
+        val fullscreenButton = iconButton(R.drawable.ic_fullscreen, "#66181322", 40).apply {
+            setOnClickListener {
+                onFullscreen(!fullscreen)
+                pulse(this)
+            }
+        }
+
         times.addView(currentTime)
         times.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
         times.addView(totalTime)
+        times.addView(fullscreenButton, LinearLayout.LayoutParams(dp(42), dp(42)).apply { marginStart = dp(8) })
 
         bottom.addView(seekBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(32)))
         bottom.addView(times)
@@ -262,7 +269,7 @@ class PlayerScreen(
         val meta = TextView(activity).apply {
             text = buildMeta()
             textSize = 13f
-            setTextColor(Color.parseColor("#9E96AD"))
+            setTextColor(palette.muted)
             setPadding(0, dp(7), 0, 0)
         }
 
