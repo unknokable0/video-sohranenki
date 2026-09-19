@@ -69,6 +69,7 @@ class PlayerScreen(
     private lateinit var totalTime: TextView
     private lateinit var qualityButton: TextView
     private lateinit var speedBadge: TextView
+    private lateinit var bufferingLoader: LoadingWaveView
     private lateinit var actionsRow: LinearLayout
     private lateinit var previewBubble: LinearLayout
     private lateinit var previewImage: ImageView
@@ -121,6 +122,15 @@ class PlayerScreen(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
+        )
+
+        bufferingLoader = LoadingWaveView(activity, Color.WHITE).apply {
+            visibility = View.GONE
+            alpha = 0.92f
+        }
+        playerCard.addView(
+            bufferingLoader,
+            FrameLayout.LayoutParams(dp(54), dp(54), Gravity.CENTER)
         )
 
         speedBadge = TextView(activity).apply {
@@ -197,6 +207,24 @@ class PlayerScreen(
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 updateProgress()
+
+                when (playbackState) {
+                    Player.STATE_BUFFERING -> {
+                        bufferingLoader.visibility = View.VISIBLE
+                        bufferingLoader.animate().alpha(0.92f).setDuration(100).start()
+                    }
+                    Player.STATE_READY, Player.STATE_ENDED, Player.STATE_IDLE -> {
+                        bufferingLoader.animate()
+                            .alpha(0f)
+                            .setDuration(120)
+                            .withEndAction {
+                                bufferingLoader.visibility = View.GONE
+                                bufferingLoader.alpha = 0.92f
+                            }
+                            .start()
+                    }
+                }
+
                 if (playbackState == Player.STATE_READY) {
                     totalTime.text = formatMs(player.duration)
                     updateQualityLabel()
