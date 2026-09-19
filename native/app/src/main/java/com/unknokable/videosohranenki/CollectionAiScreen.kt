@@ -275,7 +275,7 @@ class CollectionAiScreen(
             try {
                 status.text = "Анализируем ${cleanTitle(video.title)}…"
                 val result = analyzer.analyze(
-                    mediaUrl = server.url(video),
+                    mediaDataSource = server.mediaDataSource(video),
                     durationSeconds = video.durationSeconds
                 ) { progress ->
                     activity.runOnUiThread { status.text = "Анализ… $progress%" }
