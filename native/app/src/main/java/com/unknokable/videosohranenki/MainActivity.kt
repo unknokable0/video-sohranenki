@@ -1379,13 +1379,17 @@ class MainActivity : AppCompatActivity() {
 
         val settingsButton = ImageButton(this).apply {
             setImageResource(R.drawable.ic_settings)
+            imageTintList = ColorStateList.valueOf(purple)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
             background = roundedBg(palette.surfaceAlt, 16)
-            setPadding(dp(12), dp(12), dp(12), dp(12))
+            setPadding(dp(13), dp(13), dp(13), dp(13))
+            contentDescription = "Настройки"
             setOnClickListener {
                 if (!isEnabled) return@setOnClickListener
+                animatePress(this)
                 isEnabled = false
                 showSettings()
-                postDelayed({ isEnabled = true }, 500)
+                postDelayed({ isEnabled = true }, 420)
             }
         }
 
@@ -1638,7 +1642,37 @@ class MainActivity : AppCompatActivity() {
                 onLogout = { }
             )
 
-            val preview = withBottomNav(previewScreen.build(), SohrTab.SETTINGS)
+            val preview = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setBackgroundColor(bg)
+
+                addView(
+                    previewScreen.build(),
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        0,
+                        1f
+                    )
+                )
+
+                addView(
+                    SohrBottomNavView(
+                        this@MainActivity,
+                        palette,
+                        SohrTab.SETTINGS
+                    ) { },
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        dp(74)
+                    ).apply {
+                        marginStart = dp(14)
+                        marginEnd = dp(14)
+                        topMargin = dp(6)
+                        bottomMargin = dp(8)
+                    }
+                )
+            }
+
             preview.measure(
                 View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
@@ -1703,15 +1737,27 @@ class MainActivity : AppCompatActivity() {
                 addListener(object : android.animation.AnimatorListenerAdapter() {
                     override fun onAnimationEnd(animation: android.animation.Animator) {
                         settings.lightTheme = light
+                        primaryShell = null
+                        primaryContentHost = null
+                        primaryNav = null
                         primaryShellLightTheme = null
                         applySystemTheme()
                         suppressNextRootAnimation = true
                         showSettings()
 
-                        decor.post {
-                            decor.removeView(overlay)
-                            overlay.setImageDrawable(null)
-                            if (!snapshot.isRecycled) snapshot.recycle()
+                        root.postOnAnimation {
+                            root.postOnAnimation {
+                                overlay.animate()
+                                    .alpha(0f)
+                                    .setDuration(85L)
+                                    .setInterpolator(android.view.animation.PathInterpolator(0.4f, 0f, 1f, 1f))
+                                    .withEndAction {
+                                        decor.removeView(overlay)
+                                        overlay.setImageDrawable(null)
+                                        if (!snapshot.isRecycled) snapshot.recycle()
+                                    }
+                                    .start()
+                            }
                         }
                     }
                 })
@@ -1780,7 +1826,7 @@ class MainActivity : AppCompatActivity() {
             setTextColor(this@MainActivity.text)
         }
         val subtitle = TextView(this).apply {
-            text = "Telegram-профиль в SOHR"
+            text = "Профиль"
             textSize = 13f
             setTextColor(muted)
             setPadding(0, dp(4), 0, dp(18))
@@ -1795,20 +1841,35 @@ class MainActivity : AppCompatActivity() {
             background = roundedBg(panel, 24)
         }
 
+        val avatarFrame = FrameLayout(this).apply {
+            background = roundedBg(palette.accentSoft, 46)
+            setPadding(dp(3), dp(3), dp(3), dp(3))
+        }
+
         val avatar = ImageView(this).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
-            background = roundedBg(palette.accentSoft, 38)
-            clipToOutline = true
+            background = roundedBg(panel, 42)
         }
+
         if (!avatarPath.isNullOrBlank() && File(avatarPath).exists()) {
             avatar.load(File(avatarPath)) {
                 crossfade(settings.animations)
                 transformations(CircleCropTransformation())
             }
         } else {
-            avatar.setImageResource(R.drawable.ic_launcher)
+            avatar.load(R.drawable.ic_launcher) {
+                transformations(CircleCropTransformation())
+            }
         }
-        card.addView(avatar, LinearLayout.LayoutParams(dp(84), dp(84)))
+
+        avatarFrame.addView(
+            avatar,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+        card.addView(avatarFrame, LinearLayout.LayoutParams(dp(92), dp(92)))
 
         val fullName = listOf(user.firstName, user.lastName)
             .filter { it.isNotBlank() }
@@ -1861,8 +1922,8 @@ class MainActivity : AppCompatActivity() {
             setImageResource(R.drawable.ic_visibility_off)
             imageTintList = ColorStateList.valueOf(purple)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(11), dp(11), dp(11), dp(11))
-            background = roundedBg(palette.surface, 14)
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            background = roundedBg(palette.surface, 18)
             contentDescription = "Показать номер"
             setOnClickListener {
                 revealed = !revealed
@@ -1887,7 +1948,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         phoneRow.addView(phoneTexts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        phoneRow.addView(eye, LinearLayout.LayoutParams(dp(46), dp(46)))
+        phoneRow.addView(eye, LinearLayout.LayoutParams(dp(44), dp(44)))
 
         card.addView(phoneRow, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1896,13 +1957,13 @@ class MainActivity : AppCompatActivity() {
 
         page.addView(card)
 
-        val security = TextView(this).apply {
-            text = "Данные аккаунта получаются напрямую через TDLib и не выводятся наружу. Номер скрыт по умолчанию."
+        val privacy = TextView(this).apply {
+            text = "Номер телефона скрыт по умолчанию."
             textSize = 12f
             setTextColor(muted)
             setPadding(dp(4), dp(12), dp(4), 0)
         }
-        page.addView(security)
+        page.addView(privacy)
 
         if (settings.animations) {
             card.alpha = 0f
