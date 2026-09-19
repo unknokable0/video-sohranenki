@@ -61,11 +61,13 @@ class MainActivity : AppCompatActivity() {
     private var streamServer: TelegramStreamServer? = null
     private var playerScreen: PlayerScreen? = null
     private lateinit var settings: AppSettings
+    private lateinit var streakTracker: StreakTracker
     private var currentVideos: List<VideoItem> = emptyList()
     private var currentDay: DayCollection? = null
     private var isPlayerScreen = false
     private var isSettingsScreen = false
     private var isAccountScreen = false
+    private var isStreakScreen = false
     private var fullScreen = false
     private var channelChatId: Long = 0L
     private var pendingCodeState: TdApi.AuthorizationStateWaitCode? = null
@@ -95,6 +97,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         settings = AppSettings(this)
+        streakTracker = StreakTracker(this)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         root = FrameLayout(this).apply { setBackgroundColor(bg) }
         setContentView(root)
@@ -130,6 +133,11 @@ class MainActivity : AppCompatActivity() {
                 }
                 if (isAccountScreen) {
                     isAccountScreen = false
+                    showFeed(currentVideos)
+                    return
+                }
+                if (isStreakScreen) {
+                    isStreakScreen = false
                     showFeed(currentVideos)
                     return
                 }
@@ -1584,6 +1592,8 @@ class MainActivity : AppCompatActivity() {
 
         playerScreen?.destroy()
         isSettingsScreen = false
+        isAccountScreen = false
+        isStreakScreen = false
         isPlayerScreen = true
 
         playerScreen = PlayerScreen(
@@ -1594,7 +1604,8 @@ class MainActivity : AppCompatActivity() {
             settings = settings,
             startPositionMs = startSeconds * 1000L,
             onBack = { onBackPressedDispatcher.onBackPressed() },
-            onFullscreen = { setFullscreen(it) }
+            onFullscreen = { setFullscreen(it) },
+            onPlaybackStarted = { streakTracker.markWatched() }
         )
 
         replaceRoot(playerScreen!!.root)
@@ -1603,6 +1614,7 @@ class MainActivity : AppCompatActivity() {
     private fun showSettings() {
         isSettingsScreen = true
         isAccountScreen = false
+        isStreakScreen = false
         isPlayerScreen = false
         applySystemTheme()
         val screen = SettingsScreen(
@@ -1621,6 +1633,288 @@ class MainActivity : AppCompatActivity() {
             onLogout = { confirmLogout() }
         )
         replaceRoot(withBottomNav(screen.build(), SohrTab.SETTINGS))
+    }
+
+    private fun showStreak() {
+        isStreakScreen = true
+        isSettingsScreen = false
+        isAccountScreen = false
+        isPlayerScreen = false
+        currentDay = null
+        setFullscreen(false)
+        applySystemTheme()
+
+        val streak = streakTracker.currentStreak()
+        val totalDays = streakTracker.totalWatchedDays()
+        val watchedToday = streakTracker.watchedToday()
+        val flameColor = streakColor(streak)
+        val next = nextStreakMilestone(streak)
+
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            setBackgroundColor(bg)
+        }
+
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(18), dp(18), dp(24))
+            setBackgroundColor(bg)
+        }
+
+        val title = TextView(this).apply {
+            text = "Стрик"
+            textSize = 28f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+        }
+
+        val subtitle = TextView(this).apply {
+            text = "Дни подряд со стримером"
+            textSize = 13f
+            setTextColor(muted)
+            setPadding(0, dp(4), 0, dp(18))
+        }
+
+        val hero = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(18), dp(20), dp(18), dp(20))
+            background = roundedBg(panel, 26)
+        }
+
+        val fire = StreakFireView(this, flameColor)
+
+        val count = TextView(this).apply {
+            text = streak.toString()
+            textSize = 44f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(flameColor)
+            setPadding(0, dp(2), 0, 0)
+        }
+
+        val daysLabel = TextView(this).apply {
+            text = when {
+                streak == 1 -> "день подряд"
+                streak in 2..4 -> "дня подряд"
+                else -> "дней подряд"
+            }
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+        }
+
+        val status = TextView(this).apply {
+            text = if (watchedToday) "Сегодня уже засчитано" else "Посмотри видео сегодня, чтобы продолжить"
+            textSize = 12.5f
+            gravity = Gravity.CENTER
+            setTextColor(muted)
+            setPadding(dp(8), dp(10), dp(8), 0)
+        }
+
+        hero.addView(
+            fire,
+            LinearLayout.LayoutParams(dp(178), dp(178)).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+            }
+        )
+        hero.addView(count)
+        hero.addView(daysLabel)
+        hero.addView(status)
+
+        val progressCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(15), dp(16), dp(15))
+            background = roundedBg(panel, 20)
+        }
+
+        val progressTitle = TextView(this).apply {
+            text = if (next == null) {
+                "Максимальный уровень огня"
+            } else {
+                "До следующего огня • " + (next - streak) + " дн."
+            }
+            textSize = 14f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+        }
+
+        val progressSubtitle = TextView(this).apply {
+            text = "Всего дней просмотра: " + totalDays
+            textSize = 12f
+            setTextColor(muted)
+            setPadding(0, dp(4), 0, dp(10))
+        }
+
+        val track = FrameLayout(this).apply {
+            background = roundedBg(palette.surfaceAlt, 6)
+            clipToOutline = true
+        }
+
+        val fill = View(this).apply {
+            background = roundedBg(flameColor, 6)
+        }
+
+        track.addView(
+            fill,
+            FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT)
+        )
+
+        val progress = streakProgress(streak)
+        track.post {
+            val params = fill.layoutParams as FrameLayout.LayoutParams
+            params.width = (track.width * progress).toInt().coerceAtLeast(if (streak > 0) dp(8) else 0)
+            fill.layoutParams = params
+            if (settings.animations) {
+                fill.scaleX = 0f
+                fill.pivotX = 0f
+                fill.animate()
+                    .scaleX(1f)
+                    .setDuration(520L)
+                    .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                    .start()
+            }
+        }
+
+        progressCard.addView(progressTitle)
+        progressCard.addView(progressSubtitle)
+        progressCard.addView(
+            track,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(9)
+            )
+        )
+
+        val levelsTitle = TextView(this).apply {
+            text = "Уровни огня"
+            textSize = 15f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+            setPadding(dp(2), dp(18), 0, dp(10))
+        }
+
+        val levels = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(8), dp(14), dp(8))
+            background = roundedBg(panel, 20)
+        }
+
+        val levelData = listOf(
+            Triple("1–9 дней", Color.parseColor("#D7D7DE"), "Белый"),
+            Triple("10–19 дней", Color.parseColor("#9A68FF"), "Фиолетовый"),
+            Triple("20–49 дней", Color.parseColor("#4D98FF"), "Синий"),
+            Triple("50–99 дней", Color.parseColor("#FF4A5E"), "Красный"),
+            Triple("100+ дней", Color.parseColor("#B7FF28"), "Кислотный")
+        )
+
+        levelData.forEach { entry ->
+            val range = entry.first
+            val color = entry.second
+            val name = entry.third
+
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(4), dp(9), dp(4), dp(9))
+            }
+
+            val dot = View(this).apply {
+                background = roundedBg(color, 10)
+            }
+            val rangeView = TextView(this).apply {
+                text = range
+                textSize = 13f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(this@MainActivity.text)
+                setPadding(dp(12), 0, 0, 0)
+            }
+            val nameView = TextView(this).apply {
+                text = name
+                textSize = 12f
+                gravity = Gravity.END
+                setTextColor(muted)
+            }
+
+            row.addView(dot, LinearLayout.LayoutParams(dp(18), dp(18)))
+            row.addView(rangeView, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(nameView)
+            levels.addView(row)
+        }
+
+        page.addView(title)
+        page.addView(subtitle)
+        page.addView(hero)
+        page.addView(
+            progressCard,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(12) }
+        )
+        page.addView(levelsTitle)
+        page.addView(levels)
+
+        scroll.addView(
+            page,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        if (settings.animations) {
+            hero.alpha = 0f
+            hero.translationY = dp(14).toFloat()
+            progressCard.alpha = 0f
+            progressCard.translationY = dp(12).toFloat()
+            levels.alpha = 0f
+            levels.translationY = dp(10).toFloat()
+        }
+
+        replaceRoot(withBottomNav(scroll, SohrTab.STREAK))
+
+        if (settings.animations) {
+            hero.post {
+                val ease = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
+                hero.animate().alpha(1f).translationY(0f).setDuration(300L).setInterpolator(ease).start()
+                progressCard.animate().alpha(1f).translationY(0f).setStartDelay(70L).setDuration(300L).setInterpolator(ease).start()
+                levels.animate().alpha(1f).translationY(0f).setStartDelay(140L).setDuration(320L).setInterpolator(ease).start()
+            }
+        }
+    }
+
+    private fun streakColor(streak: Int): Int = when {
+        streak <= 0 -> Color.parseColor("#777782")
+        streak < 10 -> Color.parseColor("#D7D7DE")
+        streak < 20 -> Color.parseColor("#9A68FF")
+        streak < 50 -> Color.parseColor("#4D98FF")
+        streak < 100 -> Color.parseColor("#FF4A5E")
+        else -> Color.parseColor("#B7FF28")
+    }
+
+    private fun nextStreakMilestone(streak: Int): Int? = when {
+        streak < 10 -> 10
+        streak < 20 -> 20
+        streak < 50 -> 50
+        streak < 100 -> 100
+        streak < 200 -> 200
+        else -> null
+    }
+
+    private fun streakProgress(streak: Int): Float {
+        val start: Int
+        val end: Int
+        when {
+            streak < 10 -> { start = 0; end = 10 }
+            streak < 20 -> { start = 10; end = 20 }
+            streak < 50 -> { start = 20; end = 50 }
+            streak < 100 -> { start = 50; end = 100 }
+            streak < 200 -> { start = 100; end = 200 }
+            else -> return 1f
+        }
+        return ((streak - start).toFloat() / (end - start).toFloat()).coerceIn(0f, 1f)
     }
 
     private fun animateThemeReveal(light: Boolean, source: View) {
@@ -1675,6 +1969,7 @@ class MainActivity : AppCompatActivity() {
                 when (tab) {
                     SohrTab.VIDEOS -> showFeed(currentVideos)
                     SohrTab.SETTINGS -> showSettings()
+                    SohrTab.STREAK -> showStreak()
                     SohrTab.ACCOUNT -> showAccount()
                 }
             }
@@ -1762,6 +2057,7 @@ class MainActivity : AppCompatActivity() {
     private fun showAccount() {
         isAccountScreen = true
         isSettingsScreen = false
+        isStreakScreen = false
         isPlayerScreen = false
         currentDay = null
         setFullscreen(false)
