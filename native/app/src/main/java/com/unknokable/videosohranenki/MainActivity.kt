@@ -383,8 +383,24 @@ class MainActivity : AppCompatActivity() {
         }
         authErrorView = error
 
+        val telegramLogin = Button(this).apply {
+            text = "Войти через Telegram"
+            setTextColor(Color.WHITE)
+            background = roundedBg(purple, 16)
+            setOnClickListener {
+                animatePress(this)
+                isEnabled = false
+                alpha = 0.72f
+                launchRequest {
+                    settings.authPhone = null
+                    requestedPhoneNumber = null
+                    client.send(TdApi.RequestQrCodeAuthentication(longArrayOf()))
+                }
+            }
+        }
+
         val submit = Button(this).apply {
-            text = "Продолжить"
+            text = "Получить код по номеру"
             setTextColor(Color.WHITE)
             background = roundedBg(purple, 16)
             setOnClickListener {
@@ -432,25 +448,8 @@ class MainActivity : AppCompatActivity() {
         }
         authSubmitButton = submit
 
-        val qr = TextView(this).apply {
-            text = "Войти через Telegram"
-            textSize = 14f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(purple)
-            background = roundedBg(palette.surfaceAlt, 16)
-            setOnClickListener {
-                animatePress(this)
-                launchRequest {
-                    settings.authPhone = null
-                    requestedPhoneNumber = null
-                    client.send(TdApi.RequestQrCodeAuthentication(longArrayOf()))
-                }
-            }
-        }
-
         val help = TextView(this).apply {
-            text = "Код страны подставляется автоматически. Telegram сам выберет доступный способ подтверждения: приложение Telegram, SMS, email, звонок или другой разрешённый вариант."
+            text = "Лучший вариант на одном телефоне — «Войти через Telegram»: SOHR откроет установленный Telegram для подтверждения входа. Код по номеру оставлен как запасной вариант, потому что способ доставки выбирает сервер Telegram."
             textSize = 12f
             setTextColor(muted)
             setPadding(dp(2), dp(12), dp(2), 0)
@@ -470,15 +469,15 @@ class MainActivity : AppCompatActivity() {
         ).apply { topMargin = dp(10) })
         phoneRow.addView(prefix)
         phoneRow.addView(input, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
-        card.addView(submit, LinearLayout.LayoutParams(
+        card.addView(telegramLogin, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             dp(52)
         ).apply { topMargin = dp(12) })
-        card.addView(error)
-        card.addView(qr, LinearLayout.LayoutParams(
+        card.addView(submit, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(48)
+            dp(50)
         ).apply { topMargin = dp(10) })
+        card.addView(error)
         card.addView(help)
 
         container.addView(card, LinearLayout.LayoutParams(
@@ -743,7 +742,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val title = TextView(this).apply {
-            text = "Вход по QR"
+            text = "Подтверди вход в Telegram"
             textSize = 26f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
@@ -752,7 +751,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val subtitle = TextView(this).apply {
-            text = "Если Telegram открыт на этом же телефоне — нажми кнопку ниже. Если на другом устройстве — отсканируй QR через Настройки → Устройства → Подключить устройство."
+            text = "Нажми кнопку ниже. Откроется Telegram на этом же телефоне — подтверди новый вход и вернись в SOHR. QR нужен только если захочешь подтвердить с другого устройства."
             textSize = 13f
             gravity = Gravity.CENTER
             setTextColor(muted)
@@ -765,7 +764,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val openTelegram = TextView(this).apply {
-            text = "Открыть вход в Telegram"
+            text = "Подтвердить в Telegram"
             textSize = 14f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
@@ -787,7 +786,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val note = TextView(this).apply {
-            text = "После подтверждения в Telegram вернись сюда — вход продолжится автоматически. QR/ссылка обновляются самим Telegram."
+            text = "После подтверждения просто вернись в SOHR — авторизация продолжится автоматически. Если Telegram пишет, что ссылка устарела, вернись назад и нажми «Войти через Telegram» ещё раз."
             textSize = 12f
             gravity = Gravity.CENTER
             setTextColor(muted)
