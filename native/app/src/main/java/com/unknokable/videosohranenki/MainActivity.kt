@@ -43,6 +43,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var root: FrameLayout
     private var streamServer: TelegramStreamServer? = null
     private var playerScreen: PlayerScreen? = null
+    private var collectionAiScreen: CollectionAiScreen? = null
     private lateinit var settings: AppSettings
     private var currentVideos: List<VideoItem> = emptyList()
     private var currentDay: DayCollection? = null
@@ -87,6 +88,12 @@ class MainActivity : AppCompatActivity() {
             override fun handleOnBackPressed() {
                 if (fullScreen) {
                     setFullscreen(false)
+                    return
+                }
+                if (collectionAiScreen != null) {
+                    collectionAiScreen?.destroy()
+                    collectionAiScreen = null
+                    currentDay?.let { showDayCollection(it) } ?: showFeed(currentVideos)
                     return
                 }
                 if (isPlayerScreen) {
@@ -913,6 +920,30 @@ class MainActivity : AppCompatActivity() {
         sortRow.addView(sort)
         page.addView(sortRow)
 
+        if (settings.aiAnalysis) {
+            val aiMap = TextView(this).apply {
+                text = "AI  Карта всего сборника"
+                textSize = 13f
+                gravity = Gravity.CENTER
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(Color.WHITE)
+                background = roundedBg(purple, 16)
+                setPadding(dp(14), dp(11), dp(14), dp(11))
+                setOnClickListener {
+                    animatePress(this)
+                    showCollectionAi(collection)
+                }
+            }
+            page.addView(aiMap, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(46)
+            ).apply {
+                marginStart = dp(16)
+                marginEnd = dp(16)
+                bottomMargin = dp(10)
+            })
+        }
+
         val list = RecyclerView(this).apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = VideoAdapter(sortedVideos, palette, settings.animations) { openPlayer(it) }
@@ -935,7 +966,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun openPlayer(item: VideoItem) {
+    private fun openPlayer(item: VideoItem, startSeconds: Int = 0) {
         val server = streamServer
         if (server == null) {
             Toast.makeText(this, "Видеопоток ещё не готов", Toast.LENGTH_SHORT).show()
@@ -951,11 +982,39 @@ class MainActivity : AppCompatActivity() {
             item = item,
             mediaUrl = server.url(item),
             settings = settings,
+            startPositionMs = startSeconds * 1000L,
             onBack = { onBackPressedDispatcher.onBackPressed() },
             onFullscreen = { setFullscreen(it) }
         )
 
         replaceRoot(playerScreen!!.root)
+    }
+
+    private fun showCollectionAi(collection: DayCollection) {
+        val server = streamServer
+        if (server == null) {
+            Toast.makeText(this, "Видеопоток ещё не готов", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        collectionAiScreen?.destroy()
+        collectionAiScreen = CollectionAiScreen(
+            activity = this,
+            collection = collection,
+            server = server,
+            settings = settings,
+            onBack = {
+                collectionAiScreen?.destroy()
+                collectionAiScreen = null
+                showDayCollection(collection)
+            },
+            onOpenAt = { video, second ->
+                collectionAiScreen?.destroy()
+                collectionAiScreen = null
+                openPlayer(video, second)
+            }
+        )
+        replaceRoot(collectionAiScreen!!.root)
     }
 
     private fun showSettings() {
@@ -1149,6 +1208,8 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         playerScreen?.destroy()
         playerScreen = null
+        collectionAiScreen?.destroy()
+        collectionAiScreen = null
         streamServer?.stop()
         if (::client.isInitialized) client.close()
         super.onDestroy()
