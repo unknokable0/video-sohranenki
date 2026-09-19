@@ -8,9 +8,12 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
+import coil.load
+import java.io.File
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -28,100 +31,127 @@ class DayCollectionAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
         val context = parent.context
 
-        val outer = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(context, 16), dp(context, 7), dp(context, 16), dp(context, 7))
-        }
-
-        val card = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(context, 14), dp(context, 14), dp(context, 14), dp(context, 14))
-            background = rounded(palette.surface, dp(context, 20).toFloat())
-        }
-
-        val hero = FrameLayout(context).apply {
-            background = GradientDrawable(
-                GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(
-                    if (palette === AppThemes.Light) Color.parseColor("#EEE7FF") else Color.parseColor("#2D1B52"),
-                    if (palette === AppThemes.Light) Color.parseColor("#F8F5FF") else Color.parseColor("#171126")
-                )
-            ).apply { cornerRadius = dp(context, 17).toFloat() }
-            layoutParams = LinearLayout.LayoutParams(
+        val root = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(context, 10), dp(context, 10), dp(context, 10), dp(context, 10))
+            background = GradientDrawable().apply {
+                setColor(palette.surface)
+                cornerRadius = dp(context, 18).toFloat()
+            }
+            layoutParams = RecyclerView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(context, 128)
-            )
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(dp(context, 16), dp(context, 5), dp(context, 16), dp(context, 5))
+            }
         }
 
-        val bigDate = TextView(context).apply {
-            textSize = 34f
-            setTextColor(palette.text)
-            setTypeface(typeface, Typeface.BOLD)
-            gravity = Gravity.CENTER
+        val preview = FrameLayout(context).apply {
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(
+                    if (palette === AppThemes.Light) Color.parseColor("#EDE5FF") else Color.parseColor("#35205F"),
+                    if (palette === AppThemes.Light) Color.parseColor("#F8F5FF") else Color.parseColor("#171220")
+                )
+            ).apply { cornerRadius = dp(context, 14).toFloat() }
+            clipToOutline = true
+            layoutParams = LinearLayout.LayoutParams(dp(context, 144), dp(context, 82))
         }
 
-        val badge = TextView(context).apply {
-            textSize = 12f
-            setTextColor(if (palette === AppThemes.Light) palette.accent else Color.WHITE)
-            setTypeface(typeface, Typeface.BOLD)
-            setPadding(dp(context, 10), dp(context, 5), dp(context, 10), dp(context, 5))
-            background = rounded(
-                if (palette === AppThemes.Light) Color.parseColor("#F0E9FF") else Color.parseColor("#251A45"),
-                dp(context, 11).toFloat()
-            )
+        val image = ImageView(context).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            alpha = 0.72f
         }
-
-        hero.addView(bigDate, FrameLayout.LayoutParams(
+        preview.addView(image, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
         ))
-        hero.addView(badge, FrameLayout.LayoutParams(
+
+        val date = TextView(context).apply {
+            textSize = 27f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            setShadowLayer(10f, 0f, 2f, Color.BLACK)
+        }
+        preview.addView(date, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ))
+
+        val badge = TextView(context).apply {
+            textSize = 10.5f
+            setTextColor(Color.WHITE)
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(dp(context, 7), dp(context, 3), dp(context, 7), dp(context, 3))
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#D9000000"))
+                cornerRadius = dp(context, 7).toFloat()
+            }
+        }
+        preview.addView(badge, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
-            Gravity.END or Gravity.TOP
+            Gravity.END or Gravity.BOTTOM
         ).apply {
-            marginEnd = dp(context, 10)
-            topMargin = dp(context, 10)
+            marginEnd = dp(context, 6)
+            bottomMargin = dp(context, 6)
         })
 
+        val info = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(context, 12), 0, dp(context, 6), 0)
+        }
+
         val title = TextView(context).apply {
-            textSize = 18f
+            textSize = 16f
             setTextColor(palette.text)
             setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, dp(context, 12), 0, 0)
+            maxLines = 2
         }
 
         val meta = TextView(context).apply {
-            textSize = 13f
+            textSize = 12.5f
             setTextColor(palette.muted)
-            setPadding(0, dp(context, 5), 0, 0)
+            setPadding(0, dp(context, 6), 0, 0)
+            maxLines = 2
         }
 
-        val action = TextView(context).apply {
-            text = "Смотреть сборник  ›"
-            textSize = 14f
+        val arrow = TextView(context).apply {
+            text = "›"
+            textSize = 24f
+            gravity = Gravity.CENTER
             setTextColor(palette.accent)
-            setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, dp(context, 10), 0, 0)
         }
 
-        card.addView(hero)
-        card.addView(title)
-        card.addView(meta)
-        card.addView(action)
-        outer.addView(card)
+        info.addView(title)
+        info.addView(meta)
 
-        return Holder(outer, bigDate, badge, title, meta)
+        root.addView(preview)
+        root.addView(info, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        root.addView(arrow, LinearLayout.LayoutParams(dp(context, 28), dp(context, 44)))
+
+        return Holder(root, image, date, badge, title, meta)
     }
 
     override fun getItemCount(): Int = items.size
 
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val item = items[position]
-        holder.bigDate.text = item.date.format(DateTimeFormatter.ofPattern("dd.MM"))
+        holder.date.text = item.date.format(DateTimeFormatter.ofPattern("dd.MM"))
         holder.badge.text = "${item.videos.size} видео"
         holder.title.text = dayTitle(item.date)
         holder.meta.text = buildMeta(item)
+
+        val thumbPath = item.videos.firstOrNull { !it.thumbnailPath.isNullOrBlank() }?.thumbnailPath
+        if (!thumbPath.isNullOrBlank() && File(thumbPath).exists()) {
+            holder.image.load(File(thumbPath)) {
+                crossfade(animationsEnabled)
+            }
+        } else {
+            holder.image.setImageDrawable(null)
+        }
 
         if (animationsEnabled) {
             holder.itemView.alpha = 0f
@@ -129,10 +159,9 @@ class DayCollectionAdapter(
             holder.itemView.animate()
                 .alpha(1f)
                 .translationY(0f)
-                .setDuration(180)
-                .setStartDelay((position.coerceAtMost(7) * 18L))
+                .setDuration(190)
+                .setStartDelay((position.coerceAtMost(8) * 22L))
                 .start()
-
         }
 
         holder.itemView.setOnClickListener {
@@ -147,8 +176,8 @@ class DayCollectionAdapter(
         val today = LocalDate.now()
         val formatted = date.format(DateTimeFormatter.ofPattern("d MMMM", Locale("ru")))
         return when (date) {
-            today -> "Сегодня • $formatted"
-            today.minusDays(1) -> "Вчера • $formatted"
+            today -> "Сегодня · $formatted"
+            today.minusDays(1) -> "Вчера · $formatted"
             else -> formatted.replaceFirstChar { it.titlecase(Locale("ru")) }
         }
     }
@@ -160,20 +189,14 @@ class DayCollectionAdapter(
             val m = (duration % 3600) / 60
             if (h > 0) "$h ч ${m} мин" else "$m мин"
         } else null
-
         return listOfNotNull("${item.videos.size} видео", durationText, "@t2x2_video")
-            .joinToString(" • ")
+            .joinToString(" · ")
     }
-
-    private fun rounded(color: Int, radiusPx: Float): GradientDrawable =
-        GradientDrawable().apply {
-            setColor(color)
-            cornerRadius = radiusPx
-        }
 
     class Holder(
         view: View,
-        val bigDate: TextView,
+        val image: ImageView,
+        val date: TextView,
         val badge: TextView,
         val title: TextView,
         val meta: TextView
