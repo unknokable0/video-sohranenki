@@ -1,6 +1,7 @@
 package com.unknokable.videosohranenki
 
 import android.app.Activity
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -9,6 +10,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -242,10 +244,10 @@ class SettingsScreen(
             setPadding(dp(4), dp(4), dp(4), dp(4))
         }
 
-        val dark = themeOption("☾", !settings.lightTheme, "Тёмная") { source ->
+        val dark = themeOption(R.drawable.ic_theme_moon, !settings.lightTheme, "Тёмная") { source ->
             if (settings.lightTheme) onThemeChanged(false, source)
         }
-        val light = themeOption("☀", settings.lightTheme, "Светлая") { source ->
+        val light = themeOption(R.drawable.ic_theme_sun, settings.lightTheme, "Светлая") { source ->
             if (!settings.lightTheme) onThemeChanged(true, source)
         }
 
@@ -267,19 +269,23 @@ class SettingsScreen(
     }
 
     private fun themeOption(
-        symbol: String,
+        iconRes: Int,
         selected: Boolean,
         description: String,
         onClick: (View) -> Unit
-    ): TextView =
-        TextView(activity).apply {
-            text = symbol
+    ): ImageButton =
+        ImageButton(activity).apply {
+            setImageResource(iconRes)
             contentDescription = description
-            gravity = Gravity.CENTER
-            textSize = 25f
-            setTypeface(typeface, Typeface.NORMAL)
-            setTextColor(if (selected) Color.WHITE else palette.muted)
-            background = rounded(if (selected) palette.accent else Color.TRANSPARENT, 13)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            imageTintList = ColorStateList.valueOf(
+                if (selected) Color.WHITE else palette.muted
+            )
+            setPadding(dp(11), dp(11), dp(11), dp(11))
+            background = rounded(
+                if (selected) palette.accent else Color.TRANSPARENT,
+                13
+            )
             setOnClickListener {
                 animateTap(this)
                 onClick(this)
