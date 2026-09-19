@@ -14,8 +14,8 @@ android {
         applicationId = "com.unknokable.videosohranenki"
         minSdk = 26
         targetSdk = 35
-        versionCode = 100
-        versionName = "1.0"
+        versionCode = 200
+        versionName = "2.0-beta"
 
         buildConfigField("int", "TELEGRAM_API_ID", telegramApiId)
         buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")
@@ -49,9 +49,6 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.8.0")
     implementation("androidx.media3:media3-ui:1.8.0")
     implementation("io.coil-kt:coil:2.7.0")
-    implementation("com.google.mlkit:image-labeling:17.0.9")
-    implementation("com.google.mlkit:text-recognition:16.0.1")
-    implementation("com.google.zxing:core:3.5.3")
     implementation("com.googlecode.libphonenumber:libphonenumber:8.13.55")
     implementation("org.nanohttpd:nanohttpd:2.3.1")
     implementation("io.github.tdlib-android:core:0.1.1")
