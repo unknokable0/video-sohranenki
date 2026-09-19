@@ -19,6 +19,9 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -59,8 +62,18 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         settings = AppSettings(this)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         root = FrameLayout(this).apply { setBackgroundColor(bg) }
         setContentView(root)
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+            if (!fullScreen) {
+                val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+                view.setPadding(0, bars.top, 0, bars.bottom)
+            } else {
+                view.setPadding(0, 0, 0, 0)
+            }
+            insets
+        }
         applySystemTheme()
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -146,14 +159,21 @@ class MainActivity : AppCompatActivity() {
 
     private fun showPhoneLogin() {
         showAuthForm(
-            title = "Вход в Telegram",
-            subtitle = "Это нужно один раз. Введи номер аккаунта Telegram в международном формате.",
-            hint = "+48…",
+            title = "Вход",
+            subtitle = "Введи номер телефона, который привязан к Telegram.",
+            hint = "48 123 456 789",
             inputType = InputType.TYPE_CLASS_PHONE,
-            button = "Получить код"
+            button = "Продолжить",
+            footer = "Как войти:\n1. Введи номер телефона без знака +.\n2. Код придёт в приложение Telegram.\n3. Введи код здесь — и откроются сохранённые видео."
         ) { value ->
+            val digits = value.filter { it.isDigit() }
+            if (digits.length < 8) {
+                Toast.makeText(this, "Проверь номер телефона", Toast.LENGTH_SHORT).show()
+                showPhoneLogin()
+                return@showAuthForm
+            }
             launchRequest {
-                client.send(TdApi.SetAuthenticationPhoneNumber(value.trim(), null))
+                client.send(TdApi.SetAuthenticationPhoneNumber("+$digits", null))
             }
         }
     }
@@ -164,7 +184,8 @@ class MainActivity : AppCompatActivity() {
             subtitle = "Код придёт в приложение Telegram. Введи его здесь.",
             hint = "Код",
             inputType = InputType.TYPE_CLASS_NUMBER,
-            button = "Продолжить"
+            button = "Продолжить",
+            footer = "Код приходит именно в Telegram, а не обязательно по SMS."
         ) { value ->
             launchRequest {
                 client.send(TdApi.CheckAuthenticationCode(value.trim()))
@@ -178,7 +199,8 @@ class MainActivity : AppCompatActivity() {
             subtitle = if (hint.isBlank()) "На аккаунте включена двухэтапная проверка." else "Подсказка: $hint",
             hint = "Пароль",
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD,
-            button = "Войти"
+            button = "Войти",
+            footer = "Это пароль двухэтапной защиты Telegram. Он не сохраняется в приложении."
         ) { value ->
             launchRequest {
                 client.send(TdApi.CheckAuthenticationPassword(value))
@@ -192,26 +214,36 @@ class MainActivity : AppCompatActivity() {
         hint: String,
         inputType: Int,
         button: String,
+        footer: String? = null,
         onSubmit: (String) -> Unit
     ) {
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(56), dp(24), dp(24))
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(18), dp(24), dp(18), dp(24))
             setBackgroundColor(bg)
         }
 
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(20), dp(20), dp(20))
+            background = roundedBg(panel, 24)
+        }
+
         val brand = TextView(this).apply {
-            text = "ВИДЕО СОХРАНЕНКИ"
-            textSize = 14f
-            setTextColor(Color.parseColor("#A78BFA"))
+            text = "VS"
+            textSize = 18f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
             setTypeface(typeface, Typeface.BOLD)
+            background = roundedBg(purple, 16)
         }
         val titleView = TextView(this).apply {
             text = title
             textSize = 29f
             setTextColor(this@MainActivity.text)
             setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, dp(20), 0, 0)
+            setPadding(0, dp(16), 0, 0)
         }
         val subtitleView = TextView(this).apply {
             text = subtitle
@@ -225,13 +257,13 @@ class MainActivity : AppCompatActivity() {
             setTextColor(this@MainActivity.text)
             setHintTextColor(muted)
             setSingleLine(true)
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-            setBackgroundColor(panel)
+            setPadding(dp(15), dp(14), dp(15), dp(14))
+            background = roundedBg(palette.surfaceAlt, 16)
         }
         val submit = Button(this).apply {
             text = button
             setTextColor(Color.WHITE)
-            setBackgroundColor(purple)
+            background = roundedBg(purple, 16)
             setOnClickListener {
                 val value = input.text.toString()
                 if (value.isBlank()) {
@@ -243,18 +275,33 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        container.addView(brand)
-        container.addView(titleView)
-        container.addView(subtitleView)
-        container.addView(input, LinearLayout.LayoutParams(
+        card.addView(brand, LinearLayout.LayoutParams(dp(52), dp(52)))
+        card.addView(titleView)
+        card.addView(subtitleView)
+        card.addView(input, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(52)
+        ))
+        card.addView(submit, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(52)
+        ).apply { topMargin = dp(12) })
+
+        footer?.let { helpText ->
+            val help = TextView(this).apply {
+                text = helpText
+                textSize = 12.5f
+                setTextColor(muted)
+                setPadding(dp(2), dp(14), dp(2), 0)
+                setLineSpacing(0f, 1.15f)
+            }
+            card.addView(help)
+        }
+
+        container.addView(card, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
         ))
-        container.addView(submit, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(52)
-        ).apply { topMargin = dp(14) })
-
         replaceRoot(container)
         input.requestFocus()
     }
@@ -734,7 +781,7 @@ class MainActivity : AppCompatActivity() {
         ModernDialogs.showConfirm(
             context = this,
             palette = palette,
-            title = "Выйти из Telegram?",
+            title = "Выйти из аккаунта?",
             message = "Сессия будет удалена с этого телефона. При следующем входе снова понадобится номер и код.",
             confirm = "Выйти",
             destructive = true
@@ -754,6 +801,7 @@ class MainActivity : AppCompatActivity() {
     private fun setFullscreen(enabled: Boolean) {
         fullScreen = enabled
         playerScreen?.setFullscreenMode(enabled)
+        ViewCompat.requestApplyInsets(root)
         if (enabled) {
             if (settings.autoRotateFullscreen) {
                 requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
