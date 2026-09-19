@@ -1,11 +1,46 @@
 name: Build Android APK
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "native/**"
+      - ".github/workflows/build-apk.yml"
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+      TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+
     steps:
-      - run: echo "Native Android rebuild is being prepared"
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.11.1
+
+      - name: Build release APK
+        run: gradle -p native :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Collect APK
+        run: cp native/app/build/outputs/apk/release/app-release.apk VIDEO-SOHRANENKI.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: VIDEO-SOHRANENKI-NATIVE-APK
+          path: VIDEO-SOHRANENKI.apk
+          if-no-files-found: error
+          retention-days: 30
