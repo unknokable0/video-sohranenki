@@ -5,7 +5,6 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -44,7 +43,7 @@ class VideoAdapter(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
-                setMargins(dp(context, 12), dp(context, 6), dp(context, 12), dp(context, 6))
+                setMargins(dp(context, 16), dp(context, 6), dp(context, 16), dp(context, 6))
             }
         }
 
@@ -191,17 +190,12 @@ class VideoAdapter(
             holder.itemView.translationY = 0f
         }
 
-        holder.itemView.setOnTouchListener { v, event ->
-            if (!animationsEnabled) return@setOnTouchListener false
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> v.animate().scaleX(0.985f).scaleY(0.985f).setDuration(80).start()
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
-                    v.animate().scaleX(1f).scaleY(1f).setDuration(100).start()
-            }
-            false
+        holder.itemView.setOnClickListener {
+            if (!holder.itemView.isEnabled) return@setOnClickListener
+            holder.itemView.isEnabled = false
+            onClick(item)
+            holder.itemView.postDelayed({ holder.itemView.isEnabled = true }, 450)
         }
-
-        holder.itemView.setOnClickListener { onClick(item) }
     }
 
     private fun cleanTitle(raw: String, position: Int): String {
