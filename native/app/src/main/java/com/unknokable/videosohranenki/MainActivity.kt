@@ -78,6 +78,7 @@ class MainActivity : AppCompatActivity() {
     private val purple get() = palette.accent
     private val text get() = palette.text
     private val muted get() = palette.muted
+    private fun t(key: String): String = AppLanguages.t(settings.languageCode, key)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -194,9 +195,7 @@ class MainActivity : AppCompatActivity() {
             is TdApi.AuthorizationStateWaitEmailCode -> runOnUiThread { showEmailCodeLogin(state) }
             is TdApi.AuthorizationStateWaitPassword -> runOnUiThread { showPasswordLogin(state.passwordHint ?: "") }
             is TdApi.AuthorizationStateWaitOtherDeviceConfirmation -> runOnUiThread {
-                settings.authPhone = null
-                requestedPhoneNumber = null
-                showQrLogin(state.link)
+                resetTelegramAuthorization("Возврат к входу по номеру")
             }
             is TdApi.AuthorizationStateReady -> {
                 settings.authPhone = null
@@ -211,7 +210,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showPhoneLogin() {
-        showLoading("Загружаем страны Telegram…")
+        showLoading(t("loading_countries"))
         lifecycleScope.launch {
             val phoneUtil = PhoneNumberUtil.getInstance()
             val regions = runCatching {
@@ -271,6 +270,11 @@ class MainActivity : AppCompatActivity() {
             background = roundedBg(panel, 24)
         }
 
+        val topRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
         val brand = TextView(this).apply {
             text = "SOHR"
             textSize = 17f
@@ -280,8 +284,34 @@ class MainActivity : AppCompatActivity() {
             background = roundedBg(purple, 16)
         }
 
+        val languageButton = TextView(this).apply {
+            text = AppLanguages.byCode(settings.languageCode).shortLabel
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+            background = roundedBg(palette.surfaceAlt, 14)
+            setOnClickListener {
+                animatePress(this)
+                ModernDialogs.showChoices(
+                    context = this@MainActivity,
+                    palette = palette,
+                    title = t("choose_language"),
+                    options = AppLanguages.all.map { it.label },
+                    selected = AppLanguages.all.indexOfFirst { it.code == settings.languageCode }.coerceAtLeast(0)
+                ) { which ->
+                    settings.languageCode = AppLanguages.all[which].code
+                    renderPhoneLogin(regions)
+                }
+            }
+        }
+
+        topRow.addView(brand, LinearLayout.LayoutParams(dp(64), dp(52)))
+        topRow.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+        topRow.addView(languageButton, LinearLayout.LayoutParams(dp(58), dp(44)))
+
         val title = TextView(this).apply {
-            text = "Вход"
+            text = t("login")
             textSize = 29f
             setTextColor(this@MainActivity.text)
             setTypeface(typeface, Typeface.BOLD)
@@ -289,7 +319,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val subtitle = TextView(this).apply {
-            text = "Выбери страну и введи номер Telegram."
+            text = t("choose_country")
             textSize = 14f
             setTextColor(muted)
             setPadding(0, dp(7), 0, dp(16))
@@ -319,7 +349,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val input = EditText(this).apply {
-            hint = "Номер телефона"
+            hint = t("phone")
             inputType = InputType.TYPE_CLASS_PHONE
             setTextColor(this@MainActivity.text)
             setHintTextColor(muted)
@@ -383,31 +413,15 @@ class MainActivity : AppCompatActivity() {
         }
         authErrorView = error
 
-        val telegramLogin = Button(this).apply {
-            text = "Войти через Telegram"
-            setTextColor(Color.WHITE)
-            background = roundedBg(purple, 16)
-            setOnClickListener {
-                animatePress(this)
-                isEnabled = false
-                alpha = 0.72f
-                launchRequest {
-                    settings.authPhone = null
-                    requestedPhoneNumber = null
-                    client.send(TdApi.RequestQrCodeAuthentication(longArrayOf()))
-                }
-            }
-        }
-
         val submit = Button(this).apply {
-            text = "Получить код по номеру"
+            text = t("continue")
             setTextColor(Color.WHITE)
             background = roundedBg(purple, 16)
             setOnClickListener {
                 animatePress(this)
                 val national = input.text.toString().filter { it.isDigit() }
                 if (national.isBlank()) {
-                    error.text = "Введи номер телефона"
+                    error.text = t("phone_empty")
                     error.visibility = View.VISIBLE
                     return@setOnClickListener
                 }
@@ -421,7 +435,7 @@ class MainActivity : AppCompatActivity() {
                     try {
                         val parsed = phoneUtil.parse(normalized, selected.region)
                         if (!phoneUtil.isValidNumber(parsed)) {
-                            throw IllegalArgumentException("Проверь номер телефона")
+                            throw IllegalArgumentException(t("phone_check"))
                         }
 
                         requestedPhoneNumber = normalized
@@ -449,14 +463,18 @@ class MainActivity : AppCompatActivity() {
         authSubmitButton = submit
 
         val help = TextView(this).apply {
-            text = "Лучший вариант на одном телефоне — «Войти через Telegram»: SOHR откроет установленный Telegram для подтверждения входа. Код по номеру оставлен как запасной вариант, потому что способ доставки выбирает сервер Telegram."
+            text = if (settings.languageCode == "ru") {
+                "Выбери страну, введи номер и нажми «Продолжить». Telegram сам выберет доступный способ подтверждения для этого номера."
+            } else {
+                t("choose_country")
+            }
             textSize = 12f
             setTextColor(muted)
             setPadding(dp(2), dp(12), dp(2), 0)
             setLineSpacing(0f, 1.12f)
         }
 
-        card.addView(brand, LinearLayout.LayoutParams(dp(64), dp(52)))
+        card.addView(topRow)
         card.addView(title)
         card.addView(subtitle)
         card.addView(country, LinearLayout.LayoutParams(
@@ -469,10 +487,6 @@ class MainActivity : AppCompatActivity() {
         ).apply { topMargin = dp(10) })
         phoneRow.addView(prefix)
         phoneRow.addView(input, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
-        card.addView(telegramLogin, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(52)
-        ).apply { topMargin = dp(12) })
         card.addView(submit, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             dp(50)
@@ -511,7 +525,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val title = TextView(this).apply {
-            text = "Выбери страну"
+            text = t("choose_country_title")
             textSize = 20f
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(this@MainActivity.text)
@@ -519,7 +533,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val search = EditText(this).apply {
-            hint = "Поиск страны, кода или +48"
+            hint = t("country_search")
             setSingleLine(true)
             textSize = 15f
             setTextColor(this@MainActivity.text)
@@ -583,7 +597,7 @@ class MainActivity : AppCompatActivity() {
 
             if (filtered.isEmpty()) {
                 list.addView(TextView(this).apply {
-                    text = "Ничего не найдено"
+                    text = t("nothing_found")
                     textSize = 14f
                     gravity = Gravity.CENTER
                     setTextColor(muted)
@@ -710,118 +724,6 @@ class MainActivity : AppCompatActivity() {
             }
             client.send(TdApi.CheckAuthenticationCode(code))
         }
-    }
-
-    private fun showQrLogin(link: String) {
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(18), dp(24), dp(18), dp(24))
-            setBackgroundColor(bg)
-        }
-
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(20), dp(20), dp(20), dp(20))
-            background = roundedBg(panel, 24)
-        }
-
-        val back = TextView(this).apply {
-            text = "‹  Назад"
-            textSize = 14f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(this@MainActivity.text)
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            background = roundedBg(palette.surfaceAlt, 14)
-            setOnClickListener {
-                animatePress(this)
-                resetTelegramAuthorization("Выход из QR-входа")
-            }
-        }
-
-        val title = TextView(this).apply {
-            text = "Подтверди вход в Telegram"
-            textSize = 26f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(this@MainActivity.text)
-            setPadding(0, dp(16), 0, dp(6))
-        }
-
-        val subtitle = TextView(this).apply {
-            text = "Нажми кнопку ниже. Откроется Telegram на этом же телефоне — подтверди новый вход и вернись в SOHR. QR нужен только если захочешь подтвердить с другого устройства."
-            textSize = 13f
-            gravity = Gravity.CENTER
-            setTextColor(muted)
-        }
-
-        val qr = ImageView(this).apply {
-            setImageBitmap(makeQrBitmap(link, dp(250)))
-            setPadding(dp(10), dp(10), dp(10), dp(10))
-            background = roundedBg(Color.WHITE, 18)
-        }
-
-        val openTelegram = TextView(this).apply {
-            text = "Подтвердить в Telegram"
-            textSize = 14f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            background = roundedBg(purple, 16)
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-            setOnClickListener {
-                animatePress(this)
-                try {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link)))
-                } catch (_: ActivityNotFoundException) {
-                    Toast.makeText(
-                        this@MainActivity,
-                        "Не найдено приложение Telegram. Используй QR на другом устройстве.",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-            }
-        }
-
-        val note = TextView(this).apply {
-            text = "После подтверждения просто вернись в SOHR — авторизация продолжится автоматически. Если Telegram пишет, что ссылка устарела, вернись назад и нажми «Войти через Telegram» ещё раз."
-            textSize = 12f
-            gravity = Gravity.CENTER
-            setTextColor(muted)
-            setPadding(0, dp(12), 0, 0)
-        }
-
-        card.addView(back, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            dp(42)
-        ))
-        card.addView(title)
-        card.addView(subtitle)
-        card.addView(qr, LinearLayout.LayoutParams(dp(270), dp(270)).apply { topMargin = dp(16) })
-        card.addView(openTelegram, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(50)
-        ).apply { topMargin = dp(12) })
-        card.addView(note)
-
-        container.addView(card, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ))
-        replaceRoot(container)
-    }
-
-    private fun makeQrBitmap(value: String, size: Int): Bitmap {
-        val matrix = QRCodeWriter().encode(value, BarcodeFormat.QR_CODE, size, size)
-        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565)
-        for (y in 0 until size) {
-            for (x in 0 until size) {
-                bitmap.setPixel(x, y, if (matrix[x, y]) Color.BLACK else Color.WHITE)
-            }
-        }
-        return bitmap
     }
 
     private fun showEmailAddressLogin() {
@@ -1639,6 +1541,9 @@ class MainActivity : AppCompatActivity() {
             },
             onThemeChanged = {
                 applySystemTheme()
+                showSettings()
+            },
+            onLanguageChanged = {
                 showSettings()
             },
             onLogout = { confirmLogout() }
