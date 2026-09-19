@@ -54,6 +54,7 @@ class MainActivity : AppCompatActivity() {
     private var authSubmitButton: Button? = null
     private var authErrorView: TextView? = null
     private var requestedPhoneNumber: String? = null
+    private var authResetInProgress = false
 
     private val palette get() = settings.palette()
     private val bg get() = palette.background
@@ -122,8 +123,10 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        requestedPhoneNumber = settings.authPhone
+        val tdlibDir = filesDir.absolutePath + "/tdlib_session_" + settings.authGeneration
         client = TdClient(
-            filesDir = filesDir.absolutePath + "/tdlib",
+            filesDir = tdlibDir,
             verbosityLevel = 1,
             apiId = BuildConfig.TELEGRAM_API_ID,
             apiHash = BuildConfig.TELEGRAM_API_HASH
@@ -154,11 +157,22 @@ class MainActivity : AppCompatActivity() {
             }
             is TdApi.AuthorizationStateWaitCode -> runOnUiThread {
                 pendingCodeState = state
-                showCodeLogin(state)
+                val saved = settings.authPhone
+                val actual = normalizePhone(state.codeInfo.phoneNumber)
+                if (saved.isNullOrBlank()) {
+                    resetTelegramAuthorization("Незавершённый старый вход")
+                } else if (actual.isNotBlank() && normalizePhone(saved) != actual) {
+                    resetTelegramAuthorization("Номер старой сессии не совпал")
+                } else {
+                    requestedPhoneNumber = saved
+                    showCodeLogin(state)
+                }
             }
             is TdApi.AuthorizationStateWaitPassword -> runOnUiThread { showPasswordLogin(state.passwordHint ?: "") }
             is TdApi.AuthorizationStateReady -> {
+                settings.authPhone = null
                 ensureStreamServer()
+                cleanupStorage()
                 loadVideos()
             }
             is TdApi.AuthorizationStateLoggingOut -> runOnUiThread { showLoading("Выходим…") }
@@ -182,6 +196,7 @@ class MainActivity : AppCompatActivity() {
                 throw IllegalArgumentException("Введи номер в формате +48123456789")
             }
             requestedPhoneNumber = normalized
+            settings.authPhone = normalized
             client.send(TdApi.SetAuthenticationPhoneNumber(normalized, null))
         }
     }
@@ -257,18 +272,22 @@ class MainActivity : AppCompatActivity() {
         value.filter { it.isDigit() }
 
     private fun resetTelegramAuthorization(reason: String) {
+        if (authResetInProgress) return
+        authResetInProgress = true
         lifecycleScope.launch {
-            try {
-                showLoading("Сбрасываем вход…")
-                runCatching { client.send(TdApi.Close()) }
-                kotlinx.coroutines.delay(500)
-            } finally {
-                runCatching {
-                    java.io.File(filesDir, "tdlib").deleteRecursively()
-                }
-                requestedPhoneNumber = null
-                recreate()
+            showLoading("Сбрасываем старый вход…")
+            val oldGeneration = settings.authGeneration
+            settings.authGeneration = oldGeneration + 1
+            settings.authPhone = null
+            requestedPhoneNumber = null
+
+            runCatching { client.close() }
+            kotlinx.coroutines.delay(300)
+
+            runCatching {
+                java.io.File(filesDir, "tdlib_session_" + oldGeneration).deleteRecursively()
             }
+            recreate()
         }
     }
 
@@ -490,6 +509,37 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun cleanupStorage() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            runCatching {
+                val currentName = "tdlib_session_" + settings.authGeneration
+                filesDir.listFiles()
+                    ?.filter { it.isDirectory && it.name.startsWith("tdlib_session_") && it.name != currentName }
+                    ?.forEach { it.deleteRecursively() }
+            }
+
+            runCatching {
+                val cutoff = System.currentTimeMillis() - 7L * 24L * 60L * 60L * 1000L
+                cacheDir.walkTopDown()
+                    .filter { it.isFile && it.lastModified() < cutoff }
+                    .forEach { it.delete() }
+            }
+
+            runCatching {
+                val files = cacheDir.walkTopDown().filter { it.isFile }.toList()
+                var total = files.sumOf { it.length() }
+                val maxBytes = 256L * 1024L * 1024L
+                if (total > maxBytes) {
+                    files.sortedBy { it.lastModified() }.forEach { file ->
+                        if (total <= maxBytes) return@forEach
+                        val size = file.length()
+                        if (file.delete()) total -= size
+                    }
+                }
+            }
+        }
+    }
+
     private fun ensureStreamServer() {
         if (streamServer != null) return
         try {
@@ -683,15 +733,20 @@ class MainActivity : AppCompatActivity() {
             setTextColor(muted)
         }
 
-        val refresh = ImageButton(this).apply {
-            setImageResource(R.drawable.ic_refresh)
+        val refresh = TextView(this).apply {
+            text = "↻  Проверить новые"
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(purple)
             background = roundedBg(palette.surfaceAlt, 16)
-            setPadding(dp(12), dp(12), dp(12), dp(12))
+            setPadding(dp(12), dp(10), dp(12), dp(10))
             setOnClickListener {
                 if (!isEnabled) return@setOnClickListener
+                animatePress(this)
                 isEnabled = false
                 loadVideos()
-                postDelayed({ isEnabled = true }, 800)
+                postDelayed({ isEnabled = true }, 1200)
             }
         }
 
@@ -708,7 +763,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         controlRow.addView(sectionTitle, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        controlRow.addView(refresh, LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginEnd = dp(8) })
+        controlRow.addView(refresh, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)).apply { marginEnd = dp(8) })
         controlRow.addView(settingsButton, LinearLayout.LayoutParams(dp(48), dp(48)))
 
         header.addView(titleView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -956,6 +1011,7 @@ class MainActivity : AppCompatActivity() {
             lifecycleScope.launch {
                 try {
                     showLoading("Выходим из аккаунта…")
+                    settings.authPhone = null
                     client.send(TdApi.LogOut())
                 } catch (e: Exception) {
                     Toast.makeText(this@MainActivity, e.message ?: "Не удалось выйти", Toast.LENGTH_LONG).show()
