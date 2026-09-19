@@ -7,5 +7,7 @@ data class VideoItem(
     val durationSeconds: Int,
     val fileId: Int,
     val fileSize: Long,
-    val mimeType: String
+    val mimeType: String,
+    val thumbnailFileId: Int? = null,
+    val thumbnailPath: String? = null
 )
