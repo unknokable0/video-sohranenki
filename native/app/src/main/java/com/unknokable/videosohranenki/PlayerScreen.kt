@@ -84,7 +84,6 @@ class PlayerScreen(
 
     private var fullscreen = false
     private var dragging = false
-    private var loopEnabled = false
     private var speed = 1f
     private var sleepRunnable: Runnable? = null
     private val palette get() = settings.palette()
@@ -244,8 +243,8 @@ class PlayerScreen(
             setBackgroundColor(palette.background)
         }
 
-        val back = iconButton(R.drawable.ic_back, "#181322").apply {
-            setOnClickListener { onBack() }
+        val back = iconButton(R.drawable.ic_back, "#181322", 42).apply {
+            setOnClickListener { pulse(this); onBack() }
         }
 
         val title = TextView(activity).apply {
@@ -255,7 +254,7 @@ class PlayerScreen(
             setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
             maxLines = 1
-            setPadding(dp(10), 0, dp(10), 0)
+            setPadding(dp(9), 0, dp(9), 0)
         }
 
         val menu = textCircle("⋮", "#B89AFF").apply {
@@ -263,15 +262,15 @@ class PlayerScreen(
             setOnClickListener { showPlayerMenu() }
         }
 
-        row.addView(back, LinearLayout.LayoutParams(dp(48), dp(48)))
+        row.addView(back, LinearLayout.LayoutParams(dp(42), dp(42)))
         row.addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row.addView(menu, LinearLayout.LayoutParams(dp(48), dp(48)))
+        row.addView(menu, LinearLayout.LayoutParams(dp(42), dp(42)))
         return row
     }
 
     private fun buildOverlay(): FrameLayout {
         val frame = FrameLayout(activity).apply {
-            setBackgroundColor(Color.parseColor("#30000000"))
+            setBackgroundColor(Color.parseColor("#24000000"))
         }
 
         val center = LinearLayout(activity).apply {
@@ -286,7 +285,7 @@ class PlayerScreen(
             }
         }
 
-        playPause = iconButton(R.drawable.ic_play, "#8B5CF6", 64).apply {
+        playPause = iconButton(R.drawable.ic_play, "#8B5CF6", 54).apply {
             setOnClickListener {
                 if (player.playWhenReady) player.pause() else player.play()
                 pulse(this)
@@ -301,9 +300,9 @@ class PlayerScreen(
             }
         }
 
-        center.addView(rewind, LinearLayout.LayoutParams(dp(56), dp(56)).apply { marginEnd = dp(24) })
-        center.addView(playPause, LinearLayout.LayoutParams(dp(68), dp(68)))
-        center.addView(forward, LinearLayout.LayoutParams(dp(56), dp(56)).apply { marginStart = dp(24) })
+        center.addView(rewind, LinearLayout.LayoutParams(dp(46), dp(46)).apply { marginEnd = dp(16) })
+        center.addView(playPause, LinearLayout.LayoutParams(dp(56), dp(56)))
+        center.addView(forward, LinearLayout.LayoutParams(dp(46), dp(46)).apply { marginStart = dp(16) })
 
         frame.addView(
             center,
@@ -364,7 +363,7 @@ class PlayerScreen(
 
         qualityButton = TextView(activity).apply {
             text = "Авто"
-            textSize = 11f
+            textSize = 10.5f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
@@ -383,8 +382,8 @@ class PlayerScreen(
         times.addView(currentTime)
         times.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
         times.addView(totalTime)
-        times.addView(qualityButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(36)).apply { marginStart = dp(8) })
-        times.addView(fullscreenButton, LinearLayout.LayoutParams(dp(42), dp(42)).apply { marginStart = dp(6) })
+        times.addView(qualityButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)).apply { marginStart = dp(7) })
+        times.addView(fullscreenButton, LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginStart = dp(5) })
 
         bottom.addView(seekBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(32)))
         bottom.addView(times)
@@ -548,18 +547,17 @@ class PlayerScreen(
             setPadding(dp(12), 0, dp(12), dp(14))
         }
 
-        val speedBtn = actionPill("1× Скорость") { showSpeedPicker() }
-        val loopBtn = actionPill("↻ Цикл") {
-            loopEnabled = !loopEnabled
-            player.repeatMode = if (loopEnabled) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
-            it.alpha = if (loopEnabled) 1f else 0.72f
-            Toast.makeText(activity, if (loopEnabled) "Цикл включён" else "Цикл выключен", Toast.LENGTH_SHORT).show()
-        }
-        val sleepBtn = actionPill("◷ Таймер") { showSleepPicker() }
+        val speedBtn = actionPill("1×  Скорость") { showSpeedPicker() }
+        val sleepBtn = actionPill("◷  Таймер") { showSleepPicker() }
 
-        row.addView(speedBtn, LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(6) })
-        row.addView(loopBtn, LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(6) })
-        row.addView(sleepBtn, LinearLayout.LayoutParams(0, dp(44), 1f))
+        row.addView(
+            speedBtn,
+            LinearLayout.LayoutParams(0, dp(42), 1f).apply { marginEnd = dp(6) }
+        )
+        row.addView(
+            sleepBtn,
+            LinearLayout.LayoutParams(0, dp(42), 1f)
+        )
         return row
     }
 
@@ -636,22 +634,17 @@ class PlayerScreen(
 
     private fun showPlayerMenu() {
         val labels = listOf(
-            "Качество",
+            "Качество видео",
             "Скорость воспроизведения",
-            if (loopEnabled) "Выключить цикл" else "Зациклить видео",
             "Таймер сна",
             "Статистика видео"
         )
-        ModernDialogs.showChoices(activity, palette, "Настройки видео", labels, 0) { which ->
+        ModernDialogs.showChoices(activity, palette, "Видео", labels, -1) { which ->
             when (which) {
                 0 -> showQualityPicker()
                 1 -> showSpeedPicker()
-                2 -> {
-                    loopEnabled = !loopEnabled
-                    player.repeatMode = if (loopEnabled) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
-                }
-                3 -> showSleepPicker()
-                4 -> showStats()
+                2 -> showSleepPicker()
+                3 -> showStats()
             }
         }
     }
@@ -837,22 +830,35 @@ class PlayerScreen(
 
     private fun showOverlay() {
         overlay.visibility = View.VISIBLE
-        overlay.animate().alpha(1f).setDuration(if (settings.animations) 160 else 0).start()
+        overlay.animate().alpha(1f).setDuration(if (settings.animations) 135 else 0).start()
     }
 
     private fun hideOverlay() {
         overlay.animate()
             .alpha(0f)
-            .setDuration(if (settings.animations) 160 else 0)
+            .setDuration(if (settings.animations) 135 else 0)
             .withEndAction { overlay.visibility = View.GONE }
             .start()
     }
 
     private fun pulse(view: View) {
         if (!settings.animations) return
-        view.animate().scaleX(0.9f).scaleY(0.9f).setDuration(70).withEndAction {
-            view.animate().scaleX(1f).scaleY(1f).setDuration(90).start()
-        }.start()
+        val ease = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
+        view.animate().cancel()
+        view.animate()
+            .scaleX(0.94f)
+            .scaleY(0.94f)
+            .setDuration(55L)
+            .setInterpolator(ease)
+            .withEndAction {
+                view.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(120L)
+                    .setInterpolator(ease)
+                    .start()
+            }
+            .start()
     }
 
     private fun iconButton(resId: Int, backgroundColor: String, size: Int = 48): ImageButton =
