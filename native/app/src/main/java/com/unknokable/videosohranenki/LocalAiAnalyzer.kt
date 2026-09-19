@@ -1,6 +1,7 @@
 package com.unknokable.videosohranenki
 
 import android.graphics.Bitmap
+import android.media.MediaDataSource
 import android.media.MediaMetadataRetriever
 import com.google.android.gms.tasks.Task
 import com.google.mlkit.vision.common.InputImage
@@ -30,7 +31,7 @@ data class AiAnalysisResult(
 class LocalAiAnalyzer {
 
     suspend fun analyze(
-        mediaUrl: String,
+        mediaDataSource: MediaDataSource,
         durationSeconds: Int,
         onProgress: (Int) -> Unit = {}
     ): AiAnalysisResult = withContext(Dispatchers.IO) {
@@ -43,7 +44,7 @@ class LocalAiAnalyzer {
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
 
         try {
-            retriever.setDataSource(mediaUrl, emptyMap())
+            retriever.setDataSource(mediaDataSource)
 
             val duration = if (durationSeconds > 0) {
                 durationSeconds
@@ -62,9 +63,9 @@ class LocalAiAnalyzer {
             // Первый проход: достаточно частый, но не убивает телефон.
             // Для 25-минутного ролика это примерно 1 кадр каждые 12 секунд.
             val coarseStep = when {
-                duration <= 10 * 60 -> 8
-                duration <= 40 * 60 -> 12
-                else -> 15
+                duration <= 10 * 60 -> 10
+                duration <= 40 * 60 -> 15
+                else -> 20
             }
 
             val timestamps = buildList {
@@ -130,6 +131,7 @@ class LocalAiAnalyzer {
             )
         } finally {
             runCatching { retriever.release() }
+            runCatching { mediaDataSource.close() }
             runCatching { labeler.close() }
             runCatching { recognizer.close() }
         }
@@ -197,7 +199,7 @@ class LocalAiAnalyzer {
     }
 
     private fun scaleForMl(bitmap: Bitmap): Bitmap {
-        val maxWidth = 640
+        val maxWidth = 512
         if (bitmap.width <= maxWidth) return bitmap
         val ratio = maxWidth.toFloat() / bitmap.width.toFloat()
         val height = (bitmap.height * ratio).toInt().coerceAtLeast(1)
