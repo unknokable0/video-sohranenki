@@ -50,6 +50,9 @@ class MainActivity : AppCompatActivity() {
     private var isSettingsScreen = false
     private var fullScreen = false
     private var channelChatId: Long = 0L
+    private var pendingCodeState: TdApi.AuthorizationStateWaitCode? = null
+    private var authSubmitButton: Button? = null
+    private var authErrorView: TextView? = null
 
     private val palette get() = settings.palette()
     private val bg get() = palette.background
@@ -144,8 +147,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun handleAuthState(state: TdApi.AuthorizationState) {
         when (state) {
-            is TdApi.AuthorizationStateWaitPhoneNumber -> runOnUiThread { showPhoneLogin() }
-            is TdApi.AuthorizationStateWaitCode -> runOnUiThread { showCodeLogin() }
+            is TdApi.AuthorizationStateWaitPhoneNumber -> runOnUiThread {
+                pendingCodeState = null
+                showPhoneLogin()
+            }
+            is TdApi.AuthorizationStateWaitCode -> runOnUiThread {
+                pendingCodeState = state
+                showCodeLogin(state)
+            }
             is TdApi.AuthorizationStateWaitPassword -> runOnUiThread { showPasswordLogin(state.passwordHint ?: "") }
             is TdApi.AuthorizationStateReady -> {
                 ensureStreamServer()
@@ -161,35 +170,58 @@ class MainActivity : AppCompatActivity() {
         showAuthForm(
             title = "Вход",
             subtitle = "Введи номер телефона, который привязан к Telegram.",
-            hint = "48 123 456 789",
+            hint = "+48 123 456 789",
             inputType = InputType.TYPE_CLASS_PHONE,
             button = "Продолжить",
-            footer = "Как войти:\n1. Введи номер телефона без знака +.\n2. Код придёт в приложение Telegram.\n3. Введи код здесь — и откроются сохранённые видео."
+            footer = "Как войти:\n1. Введи номер обязательно с + и кодом страны.\n2. Нажми «Продолжить».\n3. Telegram отправит код — обычно в приложение Telegram, иногда по SMS или другим доступным способом.\n4. Введи полученный код на следующем экране.",
+            showBack = false
         ) { value ->
-            val digits = value.filter { it.isDigit() }
-            if (digits.length < 8) {
-                Toast.makeText(this, "Проверь номер телефона", Toast.LENGTH_SHORT).show()
-                showPhoneLogin()
-                return@showAuthForm
+            val normalized = value.trim().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+            if (!normalized.startsWith("+") || normalized.drop(1).any { !it.isDigit() } || normalized.length < 9) {
+                throw IllegalArgumentException("Введи номер в формате +48123456789")
             }
-            launchRequest {
-                client.send(TdApi.SetAuthenticationPhoneNumber("+$digits", null))
-            }
+            client.send(TdApi.SetAuthenticationPhoneNumber(normalized, null))
         }
     }
 
-    private fun showCodeLogin() {
+    private fun showCodeLogin(state: TdApi.AuthorizationStateWaitCode) {
+        val info = state.codeInfo
+        val delivery = authCodeDeliveryLabel(info.type?.javaClass?.simpleName.orEmpty())
+        val nextDelivery = authCodeDeliveryLabel(info.nextType?.javaClass?.simpleName.orEmpty())
+        val timeout = info.timeout.coerceAtLeast(0)
+
+        val extra = buildString {
+            append("Код отправлен: ")
+            append(delivery)
+            if (info.phoneNumber.isNotBlank()) append("\nНомер: ${info.phoneNumber}")
+            if (timeout > 0 && nextDelivery.isNotBlank()) {
+                append("\nПовторная отправка через $timeout сек. Следующий способ: $nextDelivery.")
+            } else if (nextDelivery.isNotBlank()) {
+                append("\nМожно запросить код ещё раз: $nextDelivery.")
+            }
+        }
+
         showAuthForm(
-            title = "Код из Telegram",
-            subtitle = "Код придёт в приложение Telegram. Введи его здесь.",
+            title = "Код подтверждения",
+            subtitle = extra,
             hint = "Код",
             inputType = InputType.TYPE_CLASS_NUMBER,
             button = "Продолжить",
-            footer = "Код приходит именно в Telegram, а не обязательно по SMS."
-        ) { value ->
-            launchRequest {
-                client.send(TdApi.CheckAuthenticationCode(value.trim()))
+            footer = "Если код не появился, сначала проверь официальный Telegram на других устройствах. Затем попробуй «Отправить код ещё раз».",
+            showBack = true,
+            secondaryButton = "Отправить код ещё раз",
+            onBack = { showPhoneLogin() },
+            onSecondary = {
+                launchRequest {
+                    client.send(TdApi.ResendAuthenticationCode(null))
+                }
             }
+        ) { value ->
+            val code = value.trim()
+            if (code.length < 3 || code.any { !it.isDigit() }) {
+                throw IllegalArgumentException("Проверь код подтверждения")
+            }
+            client.send(TdApi.CheckAuthenticationCode(code))
         }
     }
 
@@ -200,11 +232,25 @@ class MainActivity : AppCompatActivity() {
             hint = "Пароль",
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD,
             button = "Войти",
-            footer = "Это пароль двухэтапной защиты Telegram. Он не сохраняется в приложении."
+            footer = "Это пароль двухэтапной защиты Telegram. Он не сохраняется в приложении.",
+            showBack = true,
+            onBack = { showPhoneLogin() }
         ) { value ->
-            launchRequest {
-                client.send(TdApi.CheckAuthenticationPassword(value))
-            }
+            if (value.isBlank()) throw IllegalArgumentException("Введи пароль")
+            client.send(TdApi.CheckAuthenticationPassword(value))
+        }
+    }
+
+    private fun authCodeDeliveryLabel(className: String): String {
+        val name = className.lowercase()
+        return when {
+            "telegrammessage" in name -> "в Telegram"
+            "sms" in name -> "по SMS"
+            "call" in name -> "телефонным звонком"
+            "fragment" in name -> "через Fragment"
+            "email" in name -> "на email"
+            name.isBlank() -> "Telegram"
+            else -> "Telegram ($className)"
         }
     }
 
@@ -215,7 +261,11 @@ class MainActivity : AppCompatActivity() {
         inputType: Int,
         button: String,
         footer: String? = null,
-        onSubmit: (String) -> Unit
+        showBack: Boolean = false,
+        secondaryButton: String? = null,
+        onBack: (() -> Unit)? = null,
+        onSecondary: (() -> Unit)? = null,
+        onSubmit: suspend (String) -> Unit
     ) {
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -238,6 +288,26 @@ class MainActivity : AppCompatActivity() {
             setTypeface(typeface, Typeface.BOLD)
             background = roundedBg(purple, 16)
         }
+        if (showBack) {
+            val back = TextView(this).apply {
+                text = "‹  Назад"
+                textSize = 14f
+                gravity = Gravity.CENTER
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(this@MainActivity.text)
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                background = roundedBg(palette.surfaceAlt, 14)
+                setOnClickListener {
+                    animatePress(this)
+                    onBack?.invoke()
+                }
+            }
+            card.addView(back, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                dp(42)
+            ).apply { bottomMargin = dp(4) })
+        }
+
         val titleView = TextView(this).apply {
             text = title
             textSize = 29f
@@ -260,20 +330,44 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(15), dp(14), dp(15), dp(14))
             background = roundedBg(palette.surfaceAlt, 16)
         }
+        val errorView = TextView(this).apply {
+            textSize = 12.5f
+            setTextColor(Color.parseColor("#FF6B81"))
+            visibility = View.GONE
+            setPadding(dp(2), dp(10), dp(2), 0)
+        }
+        authErrorView = errorView
+
         val submit = Button(this).apply {
             text = button
             setTextColor(Color.WHITE)
             background = roundedBg(purple, 16)
             setOnClickListener {
+                animatePress(this)
                 val value = input.text.toString()
                 if (value.isBlank()) {
-                    Toast.makeText(this@MainActivity, "Заполни поле", Toast.LENGTH_SHORT).show()
-                } else {
-                    isEnabled = false
-                    onSubmit(value)
+                    errorView.text = "Заполни поле"
+                    errorView.visibility = View.VISIBLE
+                    return@setOnClickListener
+                }
+
+                errorView.visibility = View.GONE
+                isEnabled = false
+                alpha = 0.72f
+                lifecycleScope.launch {
+                    try {
+                        onSubmit(value)
+                    } catch (e: Exception) {
+                        val message = friendlyAuthError(e.message)
+                        errorView.text = message
+                        errorView.visibility = View.VISIBLE
+                        this@apply.isEnabled = true
+                        this@apply.alpha = 1f
+                    }
                 }
             }
         }
+        authSubmitButton = submit
 
         card.addView(brand, LinearLayout.LayoutParams(dp(52), dp(52)))
         card.addView(titleView)
@@ -286,6 +380,26 @@ class MainActivity : AppCompatActivity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             dp(52)
         ).apply { topMargin = dp(12) })
+        card.addView(errorView)
+
+        secondaryButton?.let { secondaryLabel ->
+            val secondary = TextView(this).apply {
+                text = secondaryLabel
+                textSize = 14f
+                gravity = Gravity.CENTER
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(purple)
+                background = roundedBg(palette.surfaceAlt, 16)
+                setOnClickListener {
+                    animatePress(this)
+                    onSecondary?.invoke()
+                }
+            }
+            card.addView(secondary, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(48)
+            ).apply { topMargin = dp(10) })
+        }
 
         footer?.let { helpText ->
             val help = TextView(this).apply {
@@ -306,18 +420,40 @@ class MainActivity : AppCompatActivity() {
         input.requestFocus()
     }
 
+    private fun animatePress(view: View) {
+        if (!settings.animations) return
+        view.animate().scaleX(0.96f).scaleY(0.96f).setDuration(65).withEndAction {
+            view.animate().scaleX(1f).scaleY(1f).setDuration(105).start()
+        }.start()
+    }
+
+    private fun friendlyAuthError(raw: String?): String {
+        val text = raw.orEmpty()
+        return when {
+            "PHONE_NUMBER_INVALID" in text -> "Номер телефона неверный. Введи его с + и кодом страны."
+            "PHONE_NUMBER_FLOOD" in text -> "Слишком много попыток. Telegram временно ограничил отправку кода."
+            "PHONE_CODE_INVALID" in text -> "Код неверный. Проверь цифры и попробуй ещё раз."
+            "PHONE_CODE_EXPIRED" in text -> "Код уже истёк. Нажми «Отправить код ещё раз»."
+            "PASSWORD_HASH_INVALID" in text -> "Неверный облачный пароль."
+            "API_ID" in text -> "Ошибка Telegram API. Нужно проверить API ID/API Hash приложения."
+            text.isBlank() -> "Telegram не принял запрос. Попробуй ещё раз."
+            else -> text
+        }
+    }
+
     private fun launchRequest(block: suspend () -> Unit) {
         lifecycleScope.launch {
             try {
                 block()
             } catch (e: Exception) {
-                Toast.makeText(
-                    this@MainActivity,
-                    e.message ?: "Ошибка Telegram",
-                    Toast.LENGTH_LONG
-                ).show()
-                when {
-                    root.childCount == 0 -> showPhoneLogin()
+                val message = friendlyAuthError(e.message)
+                authErrorView?.let {
+                    it.text = message
+                    it.visibility = View.VISIBLE
+                } ?: Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
+                authSubmitButton?.apply {
+                    isEnabled = true
+                    alpha = 1f
                 }
             }
         }
