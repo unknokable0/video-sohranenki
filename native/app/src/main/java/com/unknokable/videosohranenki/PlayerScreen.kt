@@ -24,6 +24,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackGroup
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
@@ -39,6 +40,7 @@ class PlayerScreen(
     private val item: VideoItem,
     private val mediaUrl: String,
     private val settings: AppSettings,
+    private val startPositionMs: Long = 0L,
     private val onBack: () -> Unit,
     private val onFullscreen: (Boolean) -> Unit
 ) {
@@ -145,13 +147,24 @@ class PlayerScreen(
         aiPanel = buildAiPanel()
         root.addView(aiPanel)
 
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                10_000,
+                30_000,
+                1_000,
+                2_000
+            )
+            .build()
+
         player = ExoPlayer.Builder(activity)
+            .setLoadControl(loadControl)
             .setSeekBackIncrementMs(10_000)
             .setSeekForwardIncrementMs(10_000)
             .build()
 
         playerView.player = player
         player.setMediaItem(MediaItem.fromUri(mediaUrl))
+        if (startPositionMs > 0) player.seekTo(startPositionMs)
         player.repeatMode = Player.REPEAT_MODE_OFF
         player.prepare()
         player.playWhenReady = settings.autoplay
@@ -226,7 +239,7 @@ class PlayerScreen(
 
         playPause = iconButton(R.drawable.ic_play, "#8B5CF6", 64).apply {
             setOnClickListener {
-                if (player.isPlaying) player.pause() else player.play()
+                if (player.playWhenReady) player.pause() else player.play()
                 pulse(this)
             }
         }
@@ -814,7 +827,7 @@ class PlayerScreen(
     }
 
     private fun updatePlayIcon() {
-        playPause.setImageResource(if (player.isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
+        playPause.setImageResource(if (player.playWhenReady) R.drawable.ic_pause else R.drawable.ic_play)
     }
 
     private fun scheduleProgress() {
