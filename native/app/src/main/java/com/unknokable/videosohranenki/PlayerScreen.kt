@@ -27,6 +27,11 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 @OptIn(UnstableApi::class)
 class PlayerScreen(
@@ -53,6 +58,12 @@ class PlayerScreen(
     private lateinit var speedBadge: TextView
     private lateinit var actionsRow: LinearLayout
     private lateinit var aiPanel: LinearLayout
+    private val aiScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val aiAnalyzer = LocalAiAnalyzer()
+    private val aiCache = AiResultCache(activity)
+    private var aiStatusView: TextView? = null
+    private var aiChaptersView: LinearLayout? = null
+    private var aiAnalyzeButton: TextView? = null
 
     private var fullscreen = false
     private var dragging = false
@@ -334,6 +345,11 @@ class PlayerScreen(
     }
 
     private fun buildAiPanel(): LinearLayout {
+        val outer = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), 0, dp(12), dp(14))
+        }
+
         val box = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(14), dp(14), dp(14), dp(14))
@@ -356,7 +372,7 @@ class PlayerScreen(
 
         val labels = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), 0, 0, 0)
+            setPadding(dp(10), 0, dp(8), 0)
         }
 
         val title = TextView(activity).apply {
@@ -368,7 +384,7 @@ class PlayerScreen(
 
         val subtitle = TextView(activity).apply {
             text = if (settings.aiAnalysis)
-                "Интерфейс готов. Для реального распознавания игр, реакций и глав нужен AI-сервер."
+                "Локальный анализ на телефоне • видео никуда не отправляется"
             else
                 "AI-анализ выключен в настройках"
             textSize = 12f
@@ -381,29 +397,165 @@ class PlayerScreen(
 
         head.addView(icon, LinearLayout.LayoutParams(dp(42), dp(42)))
         head.addView(labels, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        box.addView(head)
 
         if (settings.aiAnalysis) {
-            val state = TextView(activity).apply {
-                text = "AI-бэкенд не подключён"
+            val analyze = TextView(activity).apply {
+                text = "Анализировать"
+                textSize = 12f
                 gravity = Gravity.CENTER
-                textSize = 12.5f
                 setTypeface(typeface, Typeface.BOLD)
-                setTextColor(palette.accent)
-                setPadding(dp(12), dp(10), dp(12), dp(10))
-                background = roundedInt(palette.surfaceAlt, 14)
+                setTextColor(Color.WHITE)
+                setPadding(dp(12), dp(9), dp(12), dp(9))
+                background = roundedInt(palette.accent, 13)
+                setOnClickListener { startAiAnalysis() }
             }
-            box.addView(state, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(12) })
+            aiAnalyzeButton = analyze
+            head.addView(analyze)
         }
 
-        return LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), 0, dp(12), dp(14))
-            addView(box)
+        box.addView(head)
+
+        val status = TextView(activity).apply {
+            textSize = 12.5f
+            setTextColor(palette.muted)
+            setPadding(dp(2), dp(12), dp(2), dp(4))
         }
+        aiStatusView = status
+        box.addView(status)
+
+        val chapters = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        aiChaptersView = chapters
+        box.addView(chapters)
+
+        outer.addView(box)
+
+        val cached = if (settings.aiAnalysis) aiCache.load(item.messageId) else null
+        if (cached != null) {
+            status.text = "Готово • ${cached.sampledFrames} кадров проанализировано"
+            renderAiResult(cached)
+            aiAnalyzeButton?.text = "Обновить"
+        } else {
+            status.text = if (settings.aiAnalysis)
+                "Нажми «Анализировать». Первый анализ займёт время, дальше результат будет из кэша."
+            else
+                "Включи AI-анализ в настройках."
+        }
+
+        return outer
+    }
+
+    private fun startAiAnalysis() {
+        if (!settings.aiAnalysis) {
+            Toast.makeText(activity, "Включи AI-анализ в настройках", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        aiAnalyzeButton?.apply {
+            isEnabled = false
+            alpha = 0.6f
+            text = "Анализ…"
+        }
+        aiStatusView?.text = "Подготавливаем анализ…"
+        aiChaptersView?.removeAllViews()
+
+        val wasPlaying = ::player.isInitialized && player.isPlaying
+        if (::player.isInitialized) player.pause()
+
+        aiScope.launch {
+            try {
+                val result = aiAnalyzer.analyze(
+                    mediaUrl = mediaUrl,
+                    durationSeconds = item.durationSeconds
+                ) { progress ->
+                    activity.runOnUiThread {
+                        aiStatusView?.text = "Анализируем видео… $progress%"
+                    }
+                }
+
+                if (result.chapters.isEmpty()) {
+                    aiStatusView?.text = "Не удалось уверенно определить сцены в этом ролике."
+                } else {
+                    aiCache.save(item.messageId, result)
+                    aiStatusView?.text = "Готово • ${result.sampledFrames} кадров проанализировано"
+                    renderAiResult(result)
+                }
+            } catch (e: Exception) {
+                aiStatusView?.text = "AI-анализ не удался: ${e.message ?: "неизвестная ошибка"}"
+            } finally {
+                aiAnalyzeButton?.apply {
+                    isEnabled = true
+                    alpha = 1f
+                    text = "Обновить"
+                }
+                if (wasPlaying && ::player.isInitialized) player.play()
+            }
+        }
+    }
+
+    private fun renderAiResult(result: AiAnalysisResult) {
+        val container = aiChaptersView ?: return
+        container.removeAllViews()
+
+        result.chapters.forEach { chapter ->
+            val row = LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(10), dp(10), dp(10), dp(10))
+                background = roundedInt(palette.surfaceAlt, 15)
+                setOnClickListener {
+                    if (::player.isInitialized) {
+                        player.seekTo(chapter.startSeconds * 1000L)
+                        Toast.makeText(activity, chapter.title, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+
+            val time = TextView(activity).apply {
+                text = formatSeconds(chapter.startSeconds)
+                textSize = 12f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(palette.accent)
+                gravity = Gravity.CENTER
+            }
+
+            val texts = LinearLayout(activity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(10), 0, 0, 0)
+            }
+
+            val title = TextView(activity).apply {
+                text = chapter.title
+                textSize = 13.5f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(palette.text)
+            }
+
+            val detail = TextView(activity).apply {
+                text = chapter.detail
+                textSize = 11.5f
+                maxLines = 2
+                setTextColor(palette.muted)
+                setPadding(0, dp(2), 0, 0)
+            }
+
+            texts.addView(title)
+            texts.addView(detail)
+            row.addView(time, LinearLayout.LayoutParams(dp(54), ViewGroup.LayoutParams.WRAP_CONTENT))
+            row.addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+            container.addView(row, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(7) })
+        }
+    }
+
+    private fun formatSeconds(seconds: Int): String {
+        val m = seconds / 60
+        val s = seconds % 60
+        return "%d:%02d".format(m, s)
     }
 
     private fun buildActions(): LinearLayout {
@@ -513,7 +665,7 @@ class PlayerScreen(
                 }
                 3 -> showSleepPicker()
                 4 -> showStats()
-                5 -> Toast.makeText(activity, "Для реального AI-анализа нужно подключить AI-бэкенд", Toast.LENGTH_LONG).show()
+                5 -> startAiAnalysis()
             }
         }
     }
@@ -603,6 +755,7 @@ class PlayerScreen(
     fun destroy() {
         sleepRunnable?.let { handler.removeCallbacks(it) }
         handler.removeCallbacksAndMessages(null)
+        aiScope.cancel()
         player.release()
     }
 
