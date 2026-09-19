@@ -42,10 +42,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var client: TdClient
     private lateinit var root: FrameLayout
     private var streamServer: TelegramStreamServer? = null
-    private var player: ExoPlayer? = null
+    private var playerScreen: PlayerScreen? = null
+    private lateinit var settings: AppSettings
     private var currentVideos: List<VideoItem> = emptyList()
     private var currentDay: DayCollection? = null
     private var isPlayerScreen = false
+    private var isSettingsScreen = false
     private var fullScreen = false
     private var channelChatId: Long = 0L
 
@@ -58,6 +60,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        settings = AppSettings(this)
         root = FrameLayout(this).apply { setBackgroundColor(bg) }
         setContentView(root)
 
@@ -68,10 +71,15 @@ class MainActivity : AppCompatActivity() {
                     return
                 }
                 if (isPlayerScreen) {
-                    player?.release()
-                    player = null
+                    playerScreen?.destroy()
+                    playerScreen = null
                     isPlayerScreen = false
                     currentDay?.let { showDayCollection(it) } ?: showFeed(currentVideos)
+                    return
+                }
+                if (isSettingsScreen) {
+                    isSettingsScreen = false
+                    showFeed(currentVideos)
                     return
                 }
                 if (currentDay != null) {
@@ -322,10 +330,16 @@ class MainActivity : AppCompatActivity() {
                     .filter { it.date.toLong() >= cutoffEpoch }
                     .sortedByDescending { it.date }
 
+                val preparedVideos = if (settings.previews) {
+                    videos.map { item -> attachThumbnail(item) }
+                } else {
+                    videos.map { it.copy(thumbnailPath = null) }
+                }
+
                 withContext(Dispatchers.Main) {
-                    currentVideos = videos
+                    currentVideos = preparedVideos
                     currentDay = null
-                    showFeed(videos)
+                    showFeed(preparedVideos)
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -351,7 +365,8 @@ class MainActivity : AppCompatActivity() {
                     durationSeconds = content.video.duration,
                     fileId = file.id,
                     fileSize = if (file.size > 0) file.size else file.expectedSize,
-                    mimeType = content.video.mimeType.ifBlank { "video/mp4" }
+                    mimeType = content.video.mimeType.ifBlank { "video/mp4" },
+                    thumbnailFileId = content.video.thumbnail?.file?.id
                 )
             }
             is TdApi.MessageDocument -> {
@@ -374,10 +389,22 @@ class MainActivity : AppCompatActivity() {
                     durationSeconds = 0,
                     fileId = file.id,
                     fileSize = if (file.size > 0) file.size else file.expectedSize,
-                    mimeType = mime
+                    mimeType = mime,
+                    thumbnailFileId = doc.thumbnail?.file?.id
                 )
             }
             else -> null
+        }
+    }
+
+    private suspend fun attachThumbnail(item: VideoItem): VideoItem {
+        val thumbId = item.thumbnailFileId ?: return item
+        return try {
+            val file = client.send(TdApi.DownloadFile(thumbId, 1, 0, 0, true))
+            val path = file.local.path.takeIf { it.isNotBlank() && file.local.isDownloadingCompleted }
+            item.copy(thumbnailPath = path)
+        } catch (_: Exception) {
+            item
         }
     }
 
@@ -427,16 +454,23 @@ class MainActivity : AppCompatActivity() {
         titles.addView(titleView)
         titles.addView(subtitle)
 
-        val refresh = Button(this).apply {
-            text = "↻"
-            textSize = 22f
-            setTextColor(Color.WHITE)
-            setBackgroundColor(panel)
+        val refresh = ImageButton(this).apply {
+            setImageResource(R.drawable.ic_refresh)
+            background = roundedBg("#171321", 16)
+            setPadding(dp(12), dp(12), dp(12), dp(12))
             setOnClickListener { loadVideos() }
         }
 
+        val settingsButton = ImageButton(this).apply {
+            setImageResource(R.drawable.ic_settings)
+            background = roundedBg("#171321", 16)
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            setOnClickListener { showSettings() }
+        }
+
         header.addView(titles, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        header.addView(refresh, LinearLayout.LayoutParams(dp(52), dp(46)))
+        header.addView(refresh, LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginEnd = dp(8) })
+        header.addView(settingsButton, LinearLayout.LayoutParams(dp(48), dp(48)))
         page.addView(header)
 
         val weekHint = TextView(this).apply {
@@ -567,74 +601,39 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        playerScreen?.destroy()
+        isSettingsScreen = false
         isPlayerScreen = true
-        val page = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.BLACK)
+
+        playerScreen = PlayerScreen(
+            activity = this,
+            item = item,
+            mediaUrl = server.url(item),
+            settings = settings,
+            onBack = { onBackPressedDispatcher.onBackPressed() },
+            onFullscreen = { setFullscreen(it) }
+        )
+
+        replaceRoot(playerScreen!!.root)
+    }
+
+    private fun showSettings() {
+        isSettingsScreen = true
+        isPlayerScreen = false
+        val screen = SettingsScreen(this, settings) { needsReload ->
+            isSettingsScreen = false
+            if (needsReload) loadVideos() else showFeed(currentVideos)
         }
-
-        val controls = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(8), dp(8), dp(8), dp(8))
-            setBackgroundColor(bg)
-        }
-
-        val back = Button(this).apply {
-            text = "←"
-            textSize = 21f
-            setTextColor(Color.WHITE)
-            setBackgroundColor(panel)
-            setOnClickListener { onBackPressedDispatcher.onBackPressed() }
-        }
-
-        val titleView = TextView(this).apply {
-            text = item.title
-            setTextColor(this@MainActivity.text)
-            textSize = 14f
-            maxLines = 2
-            setPadding(dp(10), 0, dp(10), 0)
-        }
-
-        val fullscreen = Button(this).apply {
-            text = "⛶"
-            textSize = 20f
-            setTextColor(Color.WHITE)
-            setBackgroundColor(panel)
-            setOnClickListener { setFullscreen(!fullScreen) }
-        }
-
-        controls.addView(back, LinearLayout.LayoutParams(dp(50), dp(46)))
-        controls.addView(titleView, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        controls.addView(fullscreen, LinearLayout.LayoutParams(dp(50), dp(46)))
-
-        val playerView = PlayerView(this).apply {
-            useController = true
-            setBackgroundColor(Color.BLACK)
-        }
-
-        page.addView(controls)
-        page.addView(playerView, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            0,
-            1f
-        ))
-
-        replaceRoot(page)
-
-        player?.release()
-        player = ExoPlayer.Builder(this).build().also { exo ->
-            playerView.player = exo
-            exo.setMediaItem(MediaItem.fromUri(server.url(item)))
-            exo.prepare()
-            exo.playWhenReady = true
-        }
+        replaceRoot(screen.build())
     }
 
     private fun setFullscreen(enabled: Boolean) {
         fullScreen = enabled
+        playerScreen?.setFullscreenMode(enabled)
         if (enabled) {
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            if (settings.autoRotateFullscreen) {
+                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            }
             if (android.os.Build.VERSION.SDK_INT >= 30) {
                 window.insetsController?.let {
                     it.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
@@ -704,18 +703,31 @@ class MainActivity : AppCompatActivity() {
 
     private fun replaceRoot(view: View) {
         root.removeAllViews()
+        if (settings.animations) {
+            view.alpha = 0f
+            view.translationY = dp(6).toFloat()
+        }
         root.addView(view, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
         ))
+        if (settings.animations) {
+            view.animate().alpha(1f).translationY(0f).setDuration(180).start()
+        }
     }
+
+    private fun roundedBg(color: String, radiusDp: Int): android.graphics.drawable.GradientDrawable =
+        android.graphics.drawable.GradientDrawable().apply {
+            setColor(Color.parseColor(color))
+            cornerRadius = dp(radiusDp).toFloat()
+        }
 
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()
 
     override fun onDestroy() {
-        player?.release()
-        player = null
+        playerScreen?.destroy()
+        playerScreen = null
         streamServer?.stop()
         if (::client.isInitialized) client.close()
         super.onDestroy()
