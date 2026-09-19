@@ -20,4 +20,22 @@ class AppSettings(context: Context) {
     var autoRotateFullscreen: Boolean
         get() = prefs.getBoolean("auto_rotate_fullscreen", true)
         set(value) = prefs.edit().putBoolean("auto_rotate_fullscreen", value).apply()
+
+    var lightTheme: Boolean
+        get() = prefs.getBoolean("light_theme", false)
+        set(value) = prefs.edit().putBoolean("light_theme", value).apply()
+
+    var collectionSort: CollectionSort
+        get() = runCatching {
+            CollectionSort.valueOf(prefs.getString("collection_sort", CollectionSort.NEWEST.name)!!)
+        }.getOrDefault(CollectionSort.NEWEST)
+        set(value) = prefs.edit().putString("collection_sort", value.name).apply()
+
+    var videoSort: VideoSort
+        get() = runCatching {
+            VideoSort.valueOf(prefs.getString("video_sort", VideoSort.NEWEST.name)!!)
+        }.getOrDefault(VideoSort.NEWEST)
+        set(value) = prefs.edit().putString("video_sort", value.name).apply()
+
+    fun palette(): ThemePalette = if (lightTheme) AppThemes.Light else AppThemes.Dark
 }
