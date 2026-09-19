@@ -2,8 +2,12 @@ package com.unknokable.videosohranenki
 
 import android.app.Dialog
 import android.content.pm.ActivityInfo
+import android.content.res.ColorStateList
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.telephony.TelephonyManager
 import android.text.Editable
@@ -14,6 +18,7 @@ import android.text.method.PasswordTransformationMethod
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewAnimationUtils
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.widget.Button
@@ -911,11 +916,13 @@ class MainActivity : AppCompatActivity() {
 
         if (isPassword) {
             var visiblePassword = false
-            val eye = TextView(this).apply {
-                text = "👁"
-                textSize = 18f
-                gravity = Gravity.CENTER
-                setTextColor(purple)
+            val eye = ImageButton(this).apply {
+                setImageResource(R.drawable.ic_visibility_off)
+                imageTintList = ColorStateList.valueOf(purple)
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+                setPadding(dp(12), dp(12), dp(12), dp(12))
+                background = ColorDrawable(Color.TRANSPARENT)
+                contentDescription = "Показать пароль"
                 setOnClickListener {
                     visiblePassword = !visiblePassword
                     input.transformationMethod = if (visiblePassword) {
@@ -923,6 +930,11 @@ class MainActivity : AppCompatActivity() {
                     } else {
                         PasswordTransformationMethod.getInstance()
                     }
+                    setImageResource(
+                        if (visiblePassword) R.drawable.ic_visibility
+                        else R.drawable.ic_visibility_off
+                    )
+                    contentDescription = if (visiblePassword) "Скрыть пароль" else "Показать пароль"
                     input.setSelection(input.text.length)
                     animatePress(this)
                 }
@@ -1526,9 +1538,8 @@ class MainActivity : AppCompatActivity() {
                 isSettingsScreen = false
                 if (needsReload) loadVideos() else showFeed(currentVideos)
             },
-            onThemeChanged = {
-                applySystemTheme()
-                showSettings()
+            onThemeChanged = { light, source ->
+                animateThemeReveal(light, source)
             },
             onLanguageChanged = {
                 showSettings()
@@ -1536,6 +1547,115 @@ class MainActivity : AppCompatActivity() {
             onLogout = { confirmLogout() }
         )
         replaceRoot(withBottomNav(screen.build(), SohrTab.SETTINGS))
+    }
+
+    private fun animateThemeReveal(light: Boolean, source: View) {
+        if (settings.lightTheme == light) return
+
+        if (!settings.animations || root.childCount == 0) {
+            settings.lightTheme = light
+            applySystemTheme()
+            showSettings()
+            return
+        }
+
+        val currentContent = root.getChildAt(0)
+        val width = currentContent.width
+        val height = currentContent.height
+        if (width <= 0 || height <= 0) {
+            settings.lightTheme = light
+            applySystemTheme()
+            showSettings()
+            return
+        }
+
+        val oldTheme = settings.lightTheme
+        val snapshot = try {
+            settings.lightTheme = light
+
+            val previewScreen = SettingsScreen(
+                this,
+                settings,
+                onBack = { },
+                onThemeChanged = { _, _ -> },
+                onLanguageChanged = { },
+                onLogout = { }
+            )
+
+            val preview = withBottomNav(previewScreen.build(), SohrTab.SETTINGS)
+            preview.measure(
+                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
+            )
+            preview.layout(0, 0, width, height)
+
+            Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bitmap ->
+                preview.draw(Canvas(bitmap))
+            }
+        } catch (_: Throwable) {
+            null
+        } finally {
+            settings.lightTheme = oldTheme
+        }
+
+        if (snapshot == null) {
+            settings.lightTheme = light
+            applySystemTheme()
+            showSettings()
+            return
+        }
+
+        val overlay = ImageView(this).apply {
+            setImageBitmap(snapshot)
+            scaleType = ImageView.ScaleType.FIT_XY
+            visibility = View.INVISIBLE
+            isClickable = true
+        }
+
+        root.addView(
+            overlay,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        val sourceLocation = IntArray(2)
+        val contentLocation = IntArray(2)
+        source.getLocationOnScreen(sourceLocation)
+        currentContent.getLocationOnScreen(contentLocation)
+
+        val cx = sourceLocation[0] - contentLocation[0] + source.width / 2
+        val cy = sourceLocation[1] - contentLocation[1] + source.height / 2
+
+        overlay.post {
+            overlay.visibility = View.VISIBLE
+
+            val maxX = maxOf(cx, overlay.width - cx).toDouble()
+            val maxY = maxOf(cy, overlay.height - cy).toDouble()
+            val finalRadius = kotlin.math.hypot(maxX, maxY).toFloat()
+
+            ViewAnimationUtils.createCircularReveal(
+                overlay,
+                cx.coerceIn(0, overlay.width),
+                cy.coerceIn(0, overlay.height),
+                0f,
+                finalRadius
+            ).apply {
+                duration = 460L
+                interpolator = android.view.animation.DecelerateInterpolator(1.6f)
+                addListener(object : android.animation.AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: android.animation.Animator) {
+                        settings.lightTheme = light
+                        applySystemTheme()
+                        showSettings()
+                        overlay.setImageDrawable(null)
+                        if (!snapshot.isRecycled) snapshot.recycle()
+                    }
+                })
+                start()
+            }
+        }
     }
 
     private fun showAccount() {
@@ -1659,15 +1779,32 @@ class MainActivity : AppCompatActivity() {
             addView(phoneLabel)
             addView(phoneValue)
         }
-        val eye = TextView(this).apply {
-            text = "👁"
-            textSize = 19f
-            gravity = Gravity.CENTER
-            setTextColor(purple)
+        val eye = ImageButton(this).apply {
+            setImageResource(R.drawable.ic_visibility_off)
+            imageTintList = ColorStateList.valueOf(purple)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(11), dp(11), dp(11), dp(11))
             background = roundedBg(palette.surface, 14)
+            contentDescription = "Показать номер"
             setOnClickListener {
                 revealed = !revealed
-                phoneValue.text = if (revealed) phoneRaw else maskPhone(phoneRaw)
+                phoneValue.animate()
+                    .alpha(0f)
+                    .setDuration(if (settings.animations) 70L else 0L)
+                    .withEndAction {
+                        phoneValue.text = if (revealed) phoneRaw else maskPhone(phoneRaw)
+                        phoneValue.alpha = 0f
+                        phoneValue.animate()
+                            .alpha(1f)
+                            .setDuration(if (settings.animations) 120L else 0L)
+                            .start()
+                    }
+                    .start()
+                setImageResource(
+                    if (revealed) R.drawable.ic_visibility
+                    else R.drawable.ic_visibility_off
+                )
+                contentDescription = if (revealed) "Скрыть номер" else "Показать номер"
                 animatePress(this)
             }
         }
@@ -1689,7 +1826,33 @@ class MainActivity : AppCompatActivity() {
         }
         page.addView(security)
 
+        if (settings.animations) {
+            card.alpha = 0f
+            card.translationY = dp(12).toFloat()
+            avatar.scaleX = 0.88f
+            avatar.scaleY = 0.88f
+        }
+
         replaceRoot(withBottomNav(page, SohrTab.ACCOUNT))
+
+        if (settings.animations) {
+            card.post {
+                card.animate()
+                    .alpha(1f)
+                    .translationY(0f)
+                    .setDuration(260)
+                    .setInterpolator(android.view.animation.DecelerateInterpolator(1.6f))
+                    .start()
+
+                avatar.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setStartDelay(60)
+                    .setDuration(280)
+                    .setInterpolator(android.view.animation.DecelerateInterpolator(1.8f))
+                    .start()
+            }
+        }
     }
 
     private fun maskPhone(phone: String): String {
