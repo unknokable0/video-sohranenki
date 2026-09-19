@@ -3,6 +3,7 @@ package com.unknokable.videosohranenki
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -26,60 +27,93 @@ class VideoAdapter(
         val context = parent.context
 
         val root = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(context, 12), dp(context, 8), dp(context, 12), dp(context, 14))
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(context, 12), dp(context, 8), dp(context, 12), dp(context, 8))
             setBackgroundColor(Color.parseColor("#0B0911"))
         }
 
         val preview = FrameLayout(context).apply {
-            setBackgroundColor(Color.parseColor("#1B1528"))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(
+                    Color.parseColor("#2B1D47"),
+                    Color.parseColor("#171120")
+                )
+            ).apply { cornerRadius = dp(context, 12).toFloat() }
             layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(context, 205)
+                dp(context, 148),
+                dp(context, 84)
             )
         }
 
         val play = TextView(context).apply {
             text = "▶"
-            textSize = 34f
+            textSize = 22f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#553B82F6"))
         }
-        preview.addView(play, FrameLayout.LayoutParams(dp(context, 72), dp(context, 72), Gravity.CENTER))
+        preview.addView(
+            play,
+            FrameLayout.LayoutParams(
+                dp(context, 48),
+                dp(context, 48),
+                Gravity.CENTER
+            )
+        )
 
         val duration = TextView(context).apply {
-            textSize = 12f
+            textSize = 11f
             setTextColor(Color.WHITE)
-            setPadding(dp(context, 8), dp(context, 4), dp(context, 8), dp(context, 4))
-            setBackgroundColor(Color.parseColor("#CC000000"))
+            setPadding(dp(context, 6), dp(context, 3), dp(context, 6), dp(context, 3))
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#CC000000"))
+                cornerRadius = dp(context, 6).toFloat()
+            }
         }
-        preview.addView(duration, FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            Gravity.END or Gravity.BOTTOM
-        ).apply {
-            marginEnd = dp(context, 8)
-            bottomMargin = dp(context, 8)
-        })
+        preview.addView(
+            duration,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.END or Gravity.BOTTOM
+            ).apply {
+                marginEnd = dp(context, 6)
+                bottomMargin = dp(context, 6)
+            }
+        )
+
+        val info = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(context, 12), 0, 0, 0)
+        }
 
         val title = TextView(context).apply {
-            textSize = 16f
+            textSize = 15f
             setTextColor(Color.parseColor("#F7F5FF"))
             setTypeface(typeface, Typeface.BOLD)
             maxLines = 2
-            setPadding(0, dp(context, 10), 0, 0)
         }
 
         val meta = TextView(context).apply {
-            textSize = 13f
+            textSize = 12f
             setTextColor(Color.parseColor("#9E96AD"))
-            setPadding(0, dp(context, 5), 0, 0)
+            setPadding(0, dp(context, 6), 0, 0)
+            maxLines = 2
         }
 
+        info.addView(title)
+        info.addView(meta)
+
         root.addView(preview)
-        root.addView(title)
-        root.addView(meta)
+        root.addView(
+            info,
+            LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                1f
+            )
+        )
 
         return Holder(root, title, meta, duration)
     }
@@ -103,14 +137,16 @@ class VideoAdapter(
     }
 
     private fun formatMeta(item: VideoItem): String {
-        val date = SimpleDateFormat("dd.MM.yyyy • HH:mm", Locale.getDefault())
+        val time = SimpleDateFormat("HH:mm", Locale.getDefault())
             .format(Date(item.date.toLong() * 1000L))
         val size = when {
             item.fileSize >= 1024L * 1024L * 1024L -> "%.1f ГБ".format(item.fileSize / 1073741824.0)
             item.fileSize >= 1024L * 1024L -> "%.0f МБ".format(item.fileSize / 1048576.0)
             else -> ""
         }
-        return listOf(date, size).filter { it.isNotBlank() }.joinToString(" • ")
+        return listOf(time, size, "@t2x2_video")
+            .filter { it.isNotBlank() }
+            .joinToString(" • ")
     }
 
     class Holder(
