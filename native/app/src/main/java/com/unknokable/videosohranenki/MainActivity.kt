@@ -1918,13 +1918,14 @@ class MainActivity : AppCompatActivity() {
 
         currentPrimaryTab = selected
         val nav = SohrBottomNavView(this, palette, selected) { tab ->
-            if (tab == currentPrimaryTab) return@SohrBottomNavView
-            pendingRootSlide = if (tab.ordinal > currentPrimaryTab.ordinal) 1 else -1
-            currentPrimaryTab = tab
-            when (tab) {
-                SohrTab.VIDEOS -> showFeed(currentVideos)
-                SohrTab.SETTINGS -> showSettings()
-                SohrTab.ACCOUNT -> showAccount()
+            if (tab != currentPrimaryTab) {
+                pendingRootSlide = if (tab.ordinal > currentPrimaryTab.ordinal) 1 else -1
+                currentPrimaryTab = tab
+                when (tab) {
+                    SohrTab.VIDEOS -> showFeed(currentVideos)
+                    SohrTab.SETTINGS -> showSettings()
+                    SohrTab.ACCOUNT -> showAccount()
+                }
             }
         }
 
