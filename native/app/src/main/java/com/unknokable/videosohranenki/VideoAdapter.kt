@@ -21,6 +21,7 @@ import java.util.Locale
 
 class VideoAdapter(
     private val items: List<VideoItem>,
+    private val palette: ThemePalette,
     private val animationsEnabled: Boolean,
     private val onClick: (VideoItem) -> Unit
 ) : RecyclerView.Adapter<VideoAdapter.Holder>() {
@@ -36,7 +37,7 @@ class VideoAdapter(
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(context, 12), dp(context, 8), dp(context, 12), dp(context, 8))
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#11101A"))
+                setColor(palette.surface)
                 cornerRadius = dp(context, 16).toFloat()
             }
             layoutParams = RecyclerView.LayoutParams(
@@ -51,8 +52,8 @@ class VideoAdapter(
             background = GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
                 intArrayOf(
-                    Color.parseColor("#2B1D47"),
-                    Color.parseColor("#171120")
+                    if (palette === AppThemes.Light) Color.parseColor("#E9E0FF") else Color.parseColor("#2B1D47"),
+                    if (palette === AppThemes.Light) Color.parseColor("#F7F3FF") else Color.parseColor("#171120")
                 )
             ).apply { cornerRadius = dp(context, 13).toFloat() }
             clipToOutline = true
@@ -121,14 +122,14 @@ class VideoAdapter(
 
         val title = TextView(context).apply {
             textSize = 15f
-            setTextColor(Color.parseColor("#F7F5FF"))
+            setTextColor(palette.text)
             setTypeface(typeface, Typeface.BOLD)
             maxLines = 2
         }
 
         val meta = TextView(context).apply {
             textSize = 12f
-            setTextColor(Color.parseColor("#9E96AD"))
+            setTextColor(palette.muted)
             setPadding(0, dp(context, 6), 0, 0)
             maxLines = 2
         }
