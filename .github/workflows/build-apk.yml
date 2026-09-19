@@ -9,6 +9,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,6 +33,10 @@ jobs:
       - name: Install dependencies
         working-directory: app
         run: npm ci
+
+      - name: Install Expo asset package
+        working-directory: app
+        run: npx expo install expo-asset
 
       - name: Generate Android project
         working-directory: app
