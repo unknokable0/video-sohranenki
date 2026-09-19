@@ -1040,9 +1040,43 @@ class MainActivity : AppCompatActivity() {
 
     private fun animatePress(view: View) {
         if (!settings.animations) return
-        view.animate().scaleX(0.96f).scaleY(0.96f).setDuration(65).withEndAction {
-            view.animate().scaleX(1f).scaleY(1f).setDuration(105).start()
-        }.start()
+
+        view.animate().cancel()
+
+        val scaleUp = android.animation.ObjectAnimator.ofPropertyValuesHolder(
+            view,
+            android.animation.PropertyValuesHolder.ofFloat(View.SCALE_X, view.scaleX, 1.11f),
+            android.animation.PropertyValuesHolder.ofFloat(View.SCALE_Y, view.scaleY, 1.11f)
+        ).apply {
+            duration = 180L
+            interpolator = android.view.animation.DecelerateInterpolator(1.9f)
+        }
+
+        val settle = android.animation.ObjectAnimator.ofPropertyValuesHolder(
+            view,
+            android.animation.PropertyValuesHolder.ofFloat(View.SCALE_X, 1.11f, 1f),
+            android.animation.PropertyValuesHolder.ofFloat(View.SCALE_Y, 1.11f, 1f)
+        ).apply {
+            duration = 220L
+            interpolator = android.view.animation.DecelerateInterpolator(1.5f)
+        }
+
+        android.animation.AnimatorSet().apply {
+            playSequentially(scaleUp, settle)
+            start()
+        }
+
+        if (view is ImageButton || view is ImageView) {
+            android.animation.ObjectAnimator.ofFloat(
+                view,
+                View.ROTATION,
+                0f, -11f, 5f, -3f, 0f
+            ).apply {
+                duration = 620L
+                interpolator = android.view.animation.DecelerateInterpolator(1.25f)
+                start()
+            }
+        }
     }
 
     private fun friendlyAuthError(raw: String?): String {
