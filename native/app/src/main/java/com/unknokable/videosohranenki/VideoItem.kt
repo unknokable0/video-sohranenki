@@ -1,0 +1,11 @@
+package com.unknokable.videosohranenki
+
+data class VideoItem(
+    val messageId: Long,
+    val title: String,
+    val date: Int,
+    val durationSeconds: Int,
+    val fileId: Int,
+    val fileSize: Long,
+    val mimeType: String
+)
