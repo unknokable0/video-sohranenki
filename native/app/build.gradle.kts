@@ -14,8 +14,8 @@ android {
         applicationId = "com.unknokable.videosohranenki"
         minSdk = 26
         targetSdk = 35
-        versionCode = 200
-        versionName = "2.0-beta"
+        versionCode = 210
+        versionName = "2.1-beta"
 
         buildConfigField("int", "TELEGRAM_API_ID", telegramApiId)
         buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")
