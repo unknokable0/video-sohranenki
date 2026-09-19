@@ -5,18 +5,23 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
+import coil.load
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 class VideoAdapter(
     private val items: List<VideoItem>,
+    private val animationsEnabled: Boolean,
     private val onClick: (VideoItem) -> Unit
 ) : RecyclerView.Adapter<VideoAdapter.Holder>() {
 
@@ -30,7 +35,16 @@ class VideoAdapter(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(context, 12), dp(context, 8), dp(context, 12), dp(context, 8))
-            setBackgroundColor(Color.parseColor("#0B0911"))
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#11101A"))
+                cornerRadius = dp(context, 16).toFloat()
+            }
+            layoutParams = RecyclerView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(dp(context, 12), dp(context, 6), dp(context, 12), dp(context, 6))
+            }
         }
 
         val preview = FrameLayout(context).apply {
@@ -40,24 +54,41 @@ class VideoAdapter(
                     Color.parseColor("#2B1D47"),
                     Color.parseColor("#171120")
                 )
-            ).apply { cornerRadius = dp(context, 12).toFloat() }
+            ).apply { cornerRadius = dp(context, 13).toFloat() }
+            clipToOutline = true
             layoutParams = LinearLayout.LayoutParams(
                 dp(context, 148),
                 dp(context, 84)
             )
         }
 
+        val thumbnail = ImageView(context).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            alpha = 0f
+        }
+        preview.addView(
+            thumbnail,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+
         val play = TextView(context).apply {
             text = "▶"
             textSize = 22f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#8A000000"))
+                shape = GradientDrawable.OVAL
+            }
         }
         preview.addView(
             play,
             FrameLayout.LayoutParams(
-                dp(context, 48),
-                dp(context, 48),
+                dp(context, 44),
+                dp(context, 44),
                 Gravity.CENTER
             )
         )
@@ -67,7 +98,7 @@ class VideoAdapter(
             setTextColor(Color.WHITE)
             setPadding(dp(context, 6), dp(context, 3), dp(context, 6), dp(context, 3))
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#CC000000"))
+                setColor(Color.parseColor("#D9000000"))
                 cornerRadius = dp(context, 6).toFloat()
             }
         }
@@ -115,17 +146,66 @@ class VideoAdapter(
             )
         )
 
-        return Holder(root, title, meta, duration)
+        return Holder(root, thumbnail, title, meta, duration)
     }
 
     override fun getItemCount(): Int = items.size
 
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val item = items[position]
-        holder.title.text = item.title
+        holder.title.text = cleanTitle(item.title, position)
         holder.duration.text = formatDuration(item.durationSeconds)
         holder.meta.text = formatMeta(item)
+
+        val thumb = item.thumbnailPath
+        if (!thumb.isNullOrBlank() && File(thumb).exists()) {
+            holder.thumbnail.alpha = 0f
+            holder.thumbnail.load(File(thumb)) {
+                crossfade(animationsEnabled)
+                listener(
+                    onSuccess = { _, _ ->
+                        holder.thumbnail.animate()
+                            .alpha(1f)
+                            .setDuration(if (animationsEnabled) 180 else 0)
+                            .start()
+                    }
+                )
+            }
+        } else {
+            holder.thumbnail.setImageDrawable(null)
+            holder.thumbnail.alpha = 0f
+        }
+
+        if (animationsEnabled) {
+            holder.itemView.alpha = 0f
+            holder.itemView.translationY = dp(holder.itemView.context, 10).toFloat()
+            holder.itemView.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setDuration(180)
+                .setStartDelay((position.coerceAtMost(8) * 18).toLong())
+                .start()
+        } else {
+            holder.itemView.alpha = 1f
+            holder.itemView.translationY = 0f
+        }
+
+        holder.itemView.setOnTouchListener { v, event ->
+            if (!animationsEnabled) return@setOnTouchListener false
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> v.animate().scaleX(0.985f).scaleY(0.985f).setDuration(80).start()
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+                    v.animate().scaleX(1f).scaleY(1f).setDuration(100).start()
+            }
+            false
+        }
+
         holder.itemView.setOnClickListener { onClick(item) }
+    }
+
+    private fun cleanTitle(raw: String, position: Int): String {
+        val looksLikeFileName = raw.matches(Regex("""\d{4}-\d{2}-\d{2}[_-].*\.(mp4|mkv|mov|webm)""", RegexOption.IGNORE_CASE))
+        return if (looksLikeFileName) "Запись стрима • часть ${position + 1}" else raw
     }
 
     private fun formatDuration(seconds: Int): String {
@@ -144,13 +224,14 @@ class VideoAdapter(
             item.fileSize >= 1024L * 1024L -> "%.0f МБ".format(item.fileSize / 1048576.0)
             else -> ""
         }
-        return listOf(time, size, "@t2x2_video")
+        return listOf(time, size)
             .filter { it.isNotBlank() }
             .joinToString(" • ")
     }
 
     class Holder(
         view: View,
+        val thumbnail: ImageView,
         val title: TextView,
         val meta: TextView,
         val duration: TextView
