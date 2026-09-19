@@ -35,6 +35,10 @@ class AppSettings(context: Context) {
         get() = prefs.getInt("auth_generation", 1)
         set(value) = prefs.edit().putInt("auth_generation", value).apply()
 
+    var languageCode: String
+        get() = prefs.getString("language_code", "ru") ?: "ru"
+        set(value) = prefs.edit().putString("language_code", value).apply()
+
     var lightTheme: Boolean
         get() = prefs.getBoolean("light_theme", false)
         set(value) = prefs.edit().putBoolean("light_theme", value).apply()
