@@ -71,7 +71,9 @@ private class TelegramFileInputStream(
     private var position = start
     private var filePath: String? = null
     private var raf: RandomAccessFile? = null
-    private val chunkSize = 2L * 1024L * 1024L
+    private var bufferedStart = -1L
+    private var bufferedEndExclusive = -1L
+    private val chunkSize = 8L * 1024L * 1024L
 
     override fun read(): Int {
         val one = ByteArray(1)
@@ -93,10 +95,16 @@ private class TelegramFileInputStream(
     }
 
     private fun ensureRange(offset: Long, requested: Long) {
-        val limit = min(requested, endInclusive - offset + 1)
+        val wantedEnd = min(endInclusive + 1, offset + requested)
+        if (bufferedStart >= 0 && offset >= bufferedStart && wantedEnd <= bufferedEndExclusive) {
+            return
+        }
+
+        val limit = min(maxOf(requested, chunkSize), endInclusive - offset + 1)
         val result = runBlocking {
             client.send(TdApi.DownloadFile(fileId, 32, offset, limit, true))
         }
+
         val path = result.local.path
         if (path.isBlank()) throw IllegalStateException("TDLib returned no local path")
         if (path != filePath) {
@@ -104,6 +112,9 @@ private class TelegramFileInputStream(
             filePath = path
             raf = RandomAccessFile(path, "r")
         }
+
+        bufferedStart = offset
+        bufferedEndExclusive = min(endInclusive + 1, offset + limit)
     }
 
     override fun close() {
