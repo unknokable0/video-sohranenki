@@ -7,10 +7,13 @@ import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewAnimationUtils
+import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.google.android.material.switchmaterial.SwitchMaterial
+import kotlin.math.hypot
 
 class SettingsScreen(
     private val activity: Activity,
@@ -216,11 +219,11 @@ class SettingsScreen(
             setPadding(dp(4), dp(4), dp(4), dp(4))
         }
 
-        val dark = themeOption(t("dark"), !settings.lightTheme) {
-            if (settings.lightTheme) animateThemeChange(false)
+        val dark = themeOption(t("dark"), !settings.lightTheme) { source ->
+            if (settings.lightTheme) animateThemeChange(false, source)
         }
-        val light = themeOption(t("light"), settings.lightTheme) {
-            if (!settings.lightTheme) animateThemeChange(true)
+        val light = themeOption(t("light"), settings.lightTheme) { source ->
+            if (!settings.lightTheme) animateThemeChange(true, source)
         }
 
         row.addView(dark, LinearLayout.LayoutParams(0, dp(46), 1f))
@@ -240,7 +243,7 @@ class SettingsScreen(
         }
     }
 
-    private fun themeOption(label: String, selected: Boolean, onClick: () -> Unit): TextView =
+    private fun themeOption(label: String, selected: Boolean, onClick: (View) -> Unit): TextView =
         TextView(activity).apply {
             text = label
             gravity = Gravity.CENTER
@@ -248,31 +251,70 @@ class SettingsScreen(
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(if (selected) Color.WHITE else palette.muted)
             background = rounded(if (selected) palette.accent else Color.TRANSPARENT, 13)
-            setOnClickListener { onClick() }
+            setOnClickListener { onClick(this) }
         }
 
-    private fun animateThemeChange(light: Boolean) {
-        val decor = activity.window.decorView
-        val duration = if (settings.animations) 150L else 0L
-        decor.animate()
-            .alpha(0.45f)
-            .scaleX(0.992f)
-            .scaleY(0.992f)
-            .setDuration(duration)
-            .withEndAction {
-                settings.lightTheme = light
-                onThemeChanged()
-                decor.alpha = 0.45f
-                decor.scaleX = 0.992f
-                decor.scaleY = 0.992f
-                decor.animate()
-                    .alpha(1f)
-                    .scaleX(1f)
-                    .scaleY(1f)
-                    .setDuration(duration + 60L)
-                    .start()
+    private fun animateThemeChange(light: Boolean, source: View) {
+        if (!settings.animations) {
+            settings.lightTheme = light
+            onThemeChanged()
+            return
+        }
+
+        val decor = activity.window.decorView as? ViewGroup ?: run {
+            settings.lightTheme = light
+            onThemeChanged()
+            return
+        }
+
+        val target = if (light) AppThemes.Light else AppThemes.Dark
+        val overlay = View(activity).apply {
+            setBackgroundColor(target.background)
+            isClickable = false
+        }
+
+        decor.addView(
+            overlay,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        val sourceLocation = IntArray(2)
+        val decorLocation = IntArray(2)
+        source.getLocationOnScreen(sourceLocation)
+        decor.getLocationOnScreen(decorLocation)
+
+        val cx = sourceLocation[0] - decorLocation[0] + source.width / 2
+        val cy = sourceLocation[1] - decorLocation[1] + source.height / 2
+
+        overlay.post {
+            val maxX = maxOf(cx, overlay.width - cx).toDouble()
+            val maxY = maxOf(cy, overlay.height - cy).toDouble()
+            val finalRadius = hypot(maxX, maxY).toFloat()
+
+            val reveal = ViewAnimationUtils.createCircularReveal(
+                overlay,
+                cx.coerceIn(0, overlay.width),
+                cy.coerceIn(0, overlay.height),
+                0f,
+                finalRadius
+            ).apply {
+                duration = 420L
+                interpolator = android.view.animation.AccelerateDecelerateInterpolator()
             }
-            .start()
+
+            reveal.addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    settings.lightTheme = light
+                    onThemeChanged()
+                    decor.removeView(overlay)
+                }
+            })
+
+            reveal.start()
+        }
     }
 
     private fun settingRow(
