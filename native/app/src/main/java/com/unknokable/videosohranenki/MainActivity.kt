@@ -31,6 +31,11 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.drinkless.tdlib.TdApi
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
@@ -39,6 +44,7 @@ class MainActivity : AppCompatActivity() {
     private var streamServer: TelegramStreamServer? = null
     private var player: ExoPlayer? = null
     private var currentVideos: List<VideoItem> = emptyList()
+    private var currentDay: DayCollection? = null
     private var isPlayerScreen = false
     private var fullScreen = false
     private var channelChatId: Long = 0L
@@ -65,10 +71,15 @@ class MainActivity : AppCompatActivity() {
                     player?.release()
                     player = null
                     isPlayerScreen = false
-                    showFeed(currentVideos)
-                } else {
-                    finish()
+                    currentDay?.let { showDayCollection(it) } ?: showFeed(currentVideos)
+                    return
                 }
+                if (currentDay != null) {
+                    currentDay = null
+                    showFeed(currentVideos)
+                    return
+                }
+                finish()
             }
         })
 
@@ -273,15 +284,47 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadVideos() {
         lifecycleScope.launch {
-            withContext(Dispatchers.Main) { showLoading("Загружаем записи…") }
+            withContext(Dispatchers.Main) { showLoading("Собираем записи за неделю…") }
             try {
                 val chat = client.send(TdApi.SearchPublicChat("t2x2_video"))
                 channelChatId = chat.id
-                val history = client.send(TdApi.GetChatHistory(chat.id, 0, 0, 100, false))
-                val videos = history.messages.mapNotNull { messageToVideo(it) }
+
+                val zone = ZoneId.systemDefault()
+                val cutoffDate = LocalDate.now(zone).minusDays(6)
+                val cutoffEpoch = cutoffDate.atStartOfDay(zone).toEpochSecond()
+
+                val collected = linkedMapOf<Long, VideoItem>()
+                var fromMessageId = 0L
+                var page = 0
+                var reachedOldMessages = false
+
+                while (page < 20 && !reachedOldMessages) {
+                    val history = client.send(
+                        TdApi.GetChatHistory(chat.id, fromMessageId, 0, 100, false)
+                    )
+                    if (history.messages.isEmpty()) break
+
+                    for (message in history.messages) {
+                        if (message.date.toLong() < cutoffEpoch) {
+                            reachedOldMessages = true
+                            continue
+                        }
+                        messageToVideo(message)?.let { collected[it.messageId] = it }
+                    }
+
+                    val last = history.messages.lastOrNull() ?: break
+                    if (last.id == fromMessageId) break
+                    fromMessageId = last.id
+                    page++
+                }
+
+                val videos = collected.values
+                    .filter { it.date.toLong() >= cutoffEpoch }
+                    .sortedByDescending { it.date }
 
                 withContext(Dispatchers.Main) {
                     currentVideos = videos
+                    currentDay = null
                     showFeed(videos)
                 }
             } catch (e: Exception) {
@@ -340,7 +383,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun showFeed(videos: List<VideoItem>) {
         isPlayerScreen = false
+        currentDay = null
         setFullscreen(false)
+
+        val zone = ZoneId.systemDefault()
+        val groups = videos
+            .groupBy { Instant.ofEpochSecond(it.date.toLong()).atZone(zone).toLocalDate() }
+            .map { (date, dayVideos) ->
+                DayCollection(date, dayVideos.sortedByDescending { it.date })
+            }
+            .sortedByDescending { it.date }
 
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -350,24 +402,28 @@ class MainActivity : AppCompatActivity() {
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), dp(14), dp(10), dp(12))
+            setPadding(dp(18), dp(16), dp(10), dp(12))
             setBackgroundColor(bg)
         }
 
         val titles = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
+
         val titleView = TextView(this).apply {
             text = "ВИДЕО СОХРАНЕНКИ"
-            textSize = 20f
+            textSize = 22f
             setTextColor(this@MainActivity.text)
             setTypeface(typeface, Typeface.BOLD)
         }
+
         val subtitle = TextView(this).apply {
-            text = "@t2x2_video • ${videos.size} видео"
+            text = "Последние 7 дней • ${groups.size} сборников • ${videos.size} видео"
             textSize = 12f
             setTextColor(muted)
+            setPadding(0, dp(4), 0, 0)
         }
+
         titles.addView(titleView)
         titles.addView(subtitle)
 
@@ -381,35 +437,127 @@ class MainActivity : AppCompatActivity() {
 
         header.addView(titles, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         header.addView(refresh, LinearLayout.LayoutParams(dp(52), dp(46)))
-
         page.addView(header)
 
-        if (videos.isEmpty()) {
+        val weekHint = TextView(this).apply {
+            text = "Записи автоматически собраны по дням"
+            textSize = 13f
+            setTextColor(muted)
+            setPadding(dp(18), dp(2), dp(18), dp(6))
+        }
+        page.addView(weekHint)
+
+        if (groups.isEmpty()) {
             val empty = TextView(this).apply {
-                text = "В канале пока не удалось найти видео."
+                text = "За последние 7 дней видео не найдено."
                 setTextColor(muted)
                 textSize = 16f
                 gravity = Gravity.CENTER
             }
-            page.addView(empty, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            ))
+            page.addView(
+                empty,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    0,
+                    1f
+                )
+            )
         } else {
             val list = RecyclerView(this).apply {
                 layoutManager = LinearLayoutManager(this@MainActivity)
-                adapter = VideoAdapter(videos) { openPlayer(it) }
+                adapter = DayCollectionAdapter(groups) { showDayCollection(it) }
                 setBackgroundColor(bg)
             }
-            page.addView(list, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            ))
+            page.addView(
+                list,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    0,
+                    1f
+                )
+            )
         }
 
         replaceRoot(page)
+    }
+
+    private fun showDayCollection(collection: DayCollection) {
+        currentDay = collection
+        isPlayerScreen = false
+        setFullscreen(false)
+
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(bg)
+        }
+
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(10), dp(12), dp(12), dp(10))
+            setBackgroundColor(bg)
+        }
+
+        val back = Button(this).apply {
+            text = "←"
+            textSize = 21f
+            setTextColor(Color.WHITE)
+            setBackgroundColor(panel)
+            setOnClickListener { onBackPressedDispatcher.onBackPressed() }
+        }
+
+        val titles = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(10), 0, 0, 0)
+        }
+
+        val titleView = TextView(this).apply {
+            text = dayTitle(collection.date)
+            textSize = 20f
+            setTextColor(this@MainActivity.text)
+            setTypeface(typeface, Typeface.BOLD)
+        }
+
+        val subtitle = TextView(this).apply {
+            text = "${collection.videos.size} видео • @t2x2_video"
+            textSize = 12f
+            setTextColor(muted)
+            setPadding(0, dp(3), 0, 0)
+        }
+
+        titles.addView(titleView)
+        titles.addView(subtitle)
+
+        header.addView(back, LinearLayout.LayoutParams(dp(50), dp(46)))
+        header.addView(titles, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        page.addView(header)
+
+        val list = RecyclerView(this).apply {
+            layoutManager = LinearLayoutManager(this@MainActivity)
+            adapter = VideoAdapter(collection.videos) { openPlayer(it) }
+            setBackgroundColor(bg)
+        }
+
+        page.addView(
+            list,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
+
+        replaceRoot(page)
+    }
+
+    private fun dayTitle(date: LocalDate): String {
+        val today = LocalDate.now()
+        val formatted = date.format(DateTimeFormatter.ofPattern("d MMMM", Locale("ru")))
+        return when (date) {
+            today -> "Сегодня • $formatted"
+            today.minusDays(1) -> "Вчера • $formatted"
+            else -> formatted.replaceFirstChar { it.titlecase(Locale("ru")) }
+        }
     }
 
     private fun openPlayer(item: VideoItem) {
