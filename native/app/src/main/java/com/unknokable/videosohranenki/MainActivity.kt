@@ -53,6 +53,7 @@ class MainActivity : AppCompatActivity() {
     private var pendingCodeState: TdApi.AuthorizationStateWaitCode? = null
     private var authSubmitButton: Button? = null
     private var authErrorView: TextView? = null
+    private var requestedPhoneNumber: String? = null
 
     private val palette get() = settings.palette()
     private val bg get() = palette.background
@@ -180,12 +181,23 @@ class MainActivity : AppCompatActivity() {
             if (!normalized.startsWith("+") || normalized.drop(1).any { !it.isDigit() } || normalized.length < 9) {
                 throw IllegalArgumentException("Введи номер в формате +48123456789")
             }
+            requestedPhoneNumber = normalized
             client.send(TdApi.SetAuthenticationPhoneNumber(normalized, null))
         }
     }
 
     private fun showCodeLogin(state: TdApi.AuthorizationStateWaitCode) {
         val info = state.codeInfo
+        val expected = requestedPhoneNumber
+        val actual = normalizePhone(info.phoneNumber)
+        if (!expected.isNullOrBlank() && actual.isNotBlank() && normalizePhone(expected) != actual) {
+            authErrorView?.apply {
+                text = "Telegram ждёт код для другого номера. Авторизация будет сброшена."
+                visibility = View.VISIBLE
+            }
+            resetTelegramAuthorization("Номер авторизации не совпал с введённым")
+            return
+        }
         val delivery = authCodeDeliveryLabel(info.type?.javaClass?.simpleName.orEmpty())
         val nextDelivery = authCodeDeliveryLabel(info.nextType?.javaClass?.simpleName.orEmpty())
         val timeout = info.timeout.coerceAtLeast(0)
@@ -210,7 +222,7 @@ class MainActivity : AppCompatActivity() {
             footer = "Если код не появился, сначала проверь официальный Telegram на других устройствах. Затем попробуй «Отправить код ещё раз».",
             showBack = true,
             secondaryButton = "Отправить код ещё раз",
-            onBack = { showPhoneLogin() },
+            onBack = { resetTelegramAuthorization("Смена номера") },
             onSecondary = {
                 launchRequest {
                     client.send(TdApi.ResendAuthenticationCode(null))
@@ -234,10 +246,29 @@ class MainActivity : AppCompatActivity() {
             button = "Войти",
             footer = "Это пароль двухэтапной защиты Telegram. Он не сохраняется в приложении.",
             showBack = true,
-            onBack = { showPhoneLogin() }
+            onBack = { resetTelegramAuthorization("Смена номера") }
         ) { value ->
             if (value.isBlank()) throw IllegalArgumentException("Введи пароль")
             client.send(TdApi.CheckAuthenticationPassword(value))
+        }
+    }
+
+    private fun normalizePhone(value: String): String =
+        value.filter { it.isDigit() }
+
+    private fun resetTelegramAuthorization(reason: String) {
+        lifecycleScope.launch {
+            try {
+                showLoading("Сбрасываем вход…")
+                runCatching { client.send(TdApi.Close()) }
+                kotlinx.coroutines.delay(500)
+            } finally {
+                runCatching {
+                    java.io.File(filesDir, "tdlib").deleteRecursively()
+                }
+                requestedPhoneNumber = null
+                recreate()
+            }
         }
     }
 
