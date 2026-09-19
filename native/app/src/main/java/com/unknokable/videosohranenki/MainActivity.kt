@@ -1,9 +1,12 @@
 package com.unknokable.videosohranenki
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Typeface
+import android.net.Uri
 import android.os.Bundle
 import android.text.InputType
 import android.view.Gravity
@@ -181,6 +184,8 @@ class MainActivity : AppCompatActivity() {
                     showCodeLogin(state)
                 }
             }
+            is TdApi.AuthorizationStateWaitEmailAddress -> runOnUiThread { showEmailAddressLogin() }
+            is TdApi.AuthorizationStateWaitEmailCode -> runOnUiThread { showEmailCodeLogin(state) }
             is TdApi.AuthorizationStateWaitPassword -> runOnUiThread { showPasswordLogin(state.passwordHint ?: "") }
             is TdApi.AuthorizationStateWaitOtherDeviceConfirmation -> runOnUiThread {
                 settings.authPhone = null
@@ -223,7 +228,16 @@ class MainActivity : AppCompatActivity() {
             }
             requestedPhoneNumber = normalized
             settings.authPhone = normalized
-            client.send(TdApi.SetAuthenticationPhoneNumber(normalized, null))
+            val authSettings = TdApi.PhoneNumberAuthenticationSettings(
+                false,
+                true,
+                false,
+                true,
+                false,
+                null,
+                emptyArray()
+            )
+            client.send(TdApi.SetAuthenticationPhoneNumber(normalized, authSettings))
         }
     }
 
@@ -317,7 +331,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val subtitle = TextView(this).apply {
-            text = "Открой Telegram на другом устройстве → Настройки → Устройства → Подключить устройство и отсканируй этот код."
+            text = "Если Telegram открыт на этом же телефоне — нажми кнопку ниже. Если на другом устройстве — отсканируй QR через Настройки → Устройства → Подключить устройство."
             textSize = 13f
             gravity = Gravity.CENTER
             setTextColor(muted)
@@ -329,8 +343,30 @@ class MainActivity : AppCompatActivity() {
             background = roundedBg(Color.WHITE, 18)
         }
 
+        val openTelegram = TextView(this).apply {
+            text = "Открыть вход в Telegram"
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            background = roundedBg(purple, 16)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            setOnClickListener {
+                animatePress(this)
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link)))
+                } catch (_: ActivityNotFoundException) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Не найдено приложение Telegram. Используй QR на другом устройстве.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+
         val note = TextView(this).apply {
-            text = "QR обновляется автоматически. Если он перестал работать, просто подожди — Telegram пришлёт новый."
+            text = "После подтверждения в Telegram вернись сюда — вход продолжится автоматически. QR/ссылка обновляются самим Telegram."
             textSize = 12f
             gravity = Gravity.CENTER
             setTextColor(muted)
@@ -344,6 +380,10 @@ class MainActivity : AppCompatActivity() {
         card.addView(title)
         card.addView(subtitle)
         card.addView(qr, LinearLayout.LayoutParams(dp(270), dp(270)).apply { topMargin = dp(16) })
+        card.addView(openTelegram, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(50)
+        ).apply { topMargin = dp(12) })
         card.addView(note)
 
         container.addView(card, LinearLayout.LayoutParams(
@@ -362,6 +402,51 @@ class MainActivity : AppCompatActivity() {
             }
         }
         return bitmap
+    }
+
+    private fun showEmailAddressLogin() {
+        showAuthForm(
+            title = "Email для входа",
+            subtitle = "Telegram просит подтвердить вход через email.",
+            hint = "name@example.com",
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
+            button = "Отправить код",
+            footer = "Введи email, который Telegram просит для этой авторизации. Код придёт на него.",
+            showBack = true,
+            onBack = { resetTelegramAuthorization("Смена способа входа") }
+        ) { value ->
+            val email = value.trim()
+            if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+                throw IllegalArgumentException("Проверь адрес email")
+            }
+            client.send(TdApi.SetAuthenticationEmailAddress(email))
+        }
+    }
+
+    private fun showEmailCodeLogin(state: TdApi.AuthorizationStateWaitEmailCode) {
+        val pattern = state.codeInfo?.emailAddressPattern.orEmpty()
+        showAuthForm(
+            title = "Код из email",
+            subtitle = if (pattern.isBlank()) {
+                "Telegram отправил код на email."
+            } else {
+                "Telegram отправил код на $pattern"
+            },
+            hint = "Код",
+            inputType = InputType.TYPE_CLASS_NUMBER,
+            button = "Продолжить",
+            footer = "Если письма нет, проверь Спам/Промоакции и подожди немного.",
+            showBack = true,
+            onBack = { resetTelegramAuthorization("Смена способа входа") }
+        ) { value ->
+            val code = value.trim()
+            if (code.length < 3) throw IllegalArgumentException("Проверь код из email")
+            client.send(
+                TdApi.CheckAuthenticationEmailCode(
+                    TdApi.EmailAddressAuthenticationCode(code)
+                )
+            )
+        }
     }
 
     private fun showPasswordLogin(hint: String) {
