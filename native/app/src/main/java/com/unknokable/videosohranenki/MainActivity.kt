@@ -78,6 +78,10 @@ class MainActivity : AppCompatActivity() {
     private var suppressNextRootAnimation = false
     private var currentPrimaryTab = SohrTab.VIDEOS
     private var pendingRootSlide = 0
+    private var primaryShell: LinearLayout? = null
+    private var primaryContentHost: FrameLayout? = null
+    private var primaryNav: SohrBottomNavView? = null
+    private var primaryShellLightTheme: Boolean? = null
 
     private val palette get() = settings.palette()
     private val bg get() = palette.background
@@ -1042,40 +1046,55 @@ class MainActivity : AppCompatActivity() {
         if (!settings.animations) return
 
         view.animate().cancel()
+        view.scaleX = 1f
+        view.scaleY = 1f
 
-        val scaleUp = android.animation.ObjectAnimator.ofPropertyValuesHolder(
-            view,
-            android.animation.PropertyValuesHolder.ofFloat(View.SCALE_X, view.scaleX, 1.11f),
-            android.animation.PropertyValuesHolder.ofFloat(View.SCALE_Y, view.scaleY, 1.11f)
-        ).apply {
-            duration = 180L
-            interpolator = android.view.animation.DecelerateInterpolator(1.9f)
-        }
+        val ease = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
 
-        val settle = android.animation.ObjectAnimator.ofPropertyValuesHolder(
-            view,
-            android.animation.PropertyValuesHolder.ofFloat(View.SCALE_X, 1.11f, 1f),
-            android.animation.PropertyValuesHolder.ofFloat(View.SCALE_Y, 1.11f, 1f)
-        ).apply {
-            duration = 220L
-            interpolator = android.view.animation.DecelerateInterpolator(1.5f)
-        }
-
-        android.animation.AnimatorSet().apply {
-            playSequentially(scaleUp, settle)
-            start()
-        }
+        view.animate()
+            .scaleX(0.965f)
+            .scaleY(0.965f)
+            .setDuration(65L)
+            .setInterpolator(ease)
+            .withEndAction {
+                view.animate()
+                    .scaleX(1.025f)
+                    .scaleY(1.025f)
+                    .setDuration(95L)
+                    .setInterpolator(ease)
+                    .withEndAction {
+                        view.animate()
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .setDuration(105L)
+                            .setInterpolator(ease)
+                            .start()
+                    }
+                    .start()
+            }
+            .start()
 
         if (view is ImageButton || view is ImageView) {
-            android.animation.ObjectAnimator.ofFloat(
-                view,
-                View.ROTATION,
-                0f, -11f, 5f, -3f, 0f
-            ).apply {
-                duration = 620L
-                interpolator = android.view.animation.DecelerateInterpolator(1.25f)
-                start()
-            }
+            view.rotation = 0f
+            view.animate()
+                .rotation(-3f)
+                .setDuration(70L)
+                .setInterpolator(ease)
+                .withEndAction {
+                    view.animate()
+                        .rotation(1.5f)
+                        .setDuration(85L)
+                        .setInterpolator(ease)
+                        .withEndAction {
+                            view.animate()
+                                .rotation(0f)
+                                .setDuration(100L)
+                                .setInterpolator(ease)
+                                .start()
+                        }
+                        .start()
+                }
+                .start()
         }
     }
 
@@ -1684,6 +1703,7 @@ class MainActivity : AppCompatActivity() {
                 addListener(object : android.animation.AnimatorListenerAdapter() {
                     override fun onAnimationEnd(animation: android.animation.Animator) {
                         settings.lightTheme = light
+                        primaryShellLightTheme = null
                         applySystemTheme()
                         suppressNextRootAnimation = true
                         showSettings()
@@ -1707,7 +1727,23 @@ class MainActivity : AppCompatActivity() {
         currentDay = null
         setFullscreen(false)
         applySystemTheme()
-        showLoading("Загружаем профиль…")
+
+        val loadingPage = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(bg)
+            val spinner = LoadingWaveView(this@MainActivity, purple)
+            val label = TextView(this@MainActivity).apply {
+                text = "Загружаем профиль…"
+                textSize = 14f
+                gravity = Gravity.CENTER
+                setTextColor(muted)
+                setPadding(0, dp(14), 0, 0)
+            }
+            addView(spinner, LinearLayout.LayoutParams(dp(58), dp(58)))
+            addView(label)
+        }
+        replaceRoot(withBottomNav(loadingPage, SohrTab.ACCOUNT))
 
         lifecycleScope.launch {
             try {
@@ -1905,39 +1941,120 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun withBottomNav(content: View, selected: SohrTab): View {
-        val shell = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(bg)
-        }
+        val rebuild = primaryShell == null ||
+            primaryContentHost == null ||
+            primaryNav == null ||
+            primaryShellLightTheme != settings.lightTheme
 
-        shell.addView(content, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            0,
-            1f
-        ))
+        if (rebuild) {
+            val shell = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setBackgroundColor(bg)
+            }
 
-        currentPrimaryTab = selected
-        val nav = SohrBottomNavView(this, palette, selected) { tab ->
-            if (tab != currentPrimaryTab) {
-                pendingRootSlide = if (tab.ordinal > currentPrimaryTab.ordinal) 1 else -1
-                currentPrimaryTab = tab
-                when (tab) {
-                    SohrTab.VIDEOS -> showFeed(currentVideos)
-                    SohrTab.SETTINGS -> showSettings()
-                    SohrTab.ACCOUNT -> showAccount()
+            val host = FrameLayout(this).apply {
+                clipChildren = true
+                clipToPadding = true
+            }
+
+            val nav = SohrBottomNavView(this, palette, selected) { tab ->
+                if (tab != currentPrimaryTab) {
+                    pendingRootSlide = if (tab.ordinal > currentPrimaryTab.ordinal) 1 else -1
+                    currentPrimaryTab = tab
+                    when (tab) {
+                        SohrTab.VIDEOS -> showFeed(currentVideos)
+                        SohrTab.SETTINGS -> showSettings()
+                        SohrTab.ACCOUNT -> showAccount()
+                    }
                 }
             }
+
+            host.addView(
+                content,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
+
+            shell.addView(
+                host,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    0,
+                    1f
+                )
+            )
+
+            shell.addView(
+                nav,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dp(74)
+                ).apply {
+                    marginStart = dp(14)
+                    marginEnd = dp(14)
+                    topMargin = dp(6)
+                    bottomMargin = dp(8)
+                }
+            )
+
+            primaryShell = shell
+            primaryContentHost = host
+            primaryNav = nav
+            primaryShellLightTheme = settings.lightTheme
+            currentPrimaryTab = selected
+            pendingRootSlide = 0
+            return shell
         }
 
-        shell.addView(nav, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(74)
-        ).apply {
-            marginStart = dp(14)
-            marginEnd = dp(14)
-            topMargin = dp(6)
-            bottomMargin = dp(8)
-        })
+        val shell = primaryShell!!
+        val host = primaryContentHost!!
+        val nav = primaryNav!!
+
+        val slide = pendingRootSlide
+        pendingRootSlide = 0
+        currentPrimaryTab = selected
+        nav.syncSelected(selected, animate = false)
+
+        val old = if (host.childCount > 0) host.getChildAt(host.childCount - 1) else null
+
+        content.alpha = if (settings.animations && slide != 0) 0.88f else 1f
+        content.translationX = if (settings.animations && slide != 0) dp(16).toFloat() * slide else 0f
+
+        host.addView(
+            content,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        if (old != null && old !== content) {
+            if (settings.animations && slide != 0) {
+                old.animate().cancel()
+                content.animate().cancel()
+
+                old.animate()
+                    .alpha(0.72f)
+                    .translationX(-dp(8).toFloat() * slide)
+                    .setDuration(120L)
+                    .setInterpolator(android.view.animation.PathInterpolator(0.4f, 0f, 1f, 1f))
+                    .start()
+
+                content.animate()
+                    .alpha(1f)
+                    .translationX(0f)
+                    .setDuration(220L)
+                    .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                    .withEndAction {
+                        if (old.parent === host) host.removeView(old)
+                    }
+                    .start()
+            } else {
+                host.removeView(old)
+            }
+        }
 
         return shell
     }
@@ -2072,6 +2189,29 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun replaceRoot(view: View) {
+        if (view === primaryShell) {
+            suppressNextRootAnimation = false
+            pendingRootSlide = 0
+
+            if (root.childCount == 1 && root.getChildAt(0) === view) {
+                return
+            }
+
+            (view.parent as? ViewGroup)?.removeView(view)
+            root.removeAllViews()
+            view.alpha = 1f
+            view.translationX = 0f
+            view.translationY = 0f
+            root.addView(
+                view,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
+            return
+        }
+
         val animate = settings.animations && !suppressNextRootAnimation
         suppressNextRootAnimation = false
 
@@ -2080,9 +2220,9 @@ class MainActivity : AppCompatActivity() {
 
         root.removeAllViews()
         if (animate) {
-            view.alpha = if (slide != 0) 0.72f else 0f
-            view.translationX = if (slide != 0) dp(22).toFloat() * slide else 0f
-            view.translationY = if (slide == 0) dp(6).toFloat() else 0f
+            view.alpha = if (slide != 0) 0.84f else 0f
+            view.translationX = if (slide != 0) dp(14).toFloat() * slide else 0f
+            view.translationY = if (slide == 0) dp(5).toFloat() else 0f
         }
 
         root.addView(view, FrameLayout.LayoutParams(
@@ -2095,8 +2235,8 @@ class MainActivity : AppCompatActivity() {
                 .alpha(1f)
                 .translationX(0f)
                 .translationY(0f)
-                .setDuration(if (slide != 0) 210L else 180L)
-                .setInterpolator(android.view.animation.DecelerateInterpolator(1.7f))
+                .setDuration(if (slide != 0) 210L else 175L)
+                .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
                 .start()
         }
     }
