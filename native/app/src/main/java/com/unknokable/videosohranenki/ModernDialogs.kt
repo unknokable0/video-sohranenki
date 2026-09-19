@@ -52,9 +52,18 @@ object ModernDialogs {
                     dp(context, 16).toFloat()
                 )
                 setOnClickListener {
+                    if (!isEnabled) return@setOnClickListener
                     isEnabled = false
-                    dialog.dismiss()
-                    onSelect(index)
+                    animate()
+                        .scaleX(0.97f)
+                        .scaleY(0.97f)
+                        .alpha(0.82f)
+                        .setDuration(65L)
+                        .withEndAction {
+                            dialog.dismiss()
+                            onSelect(index)
+                        }
+                        .start()
                 }
             }
             box.addView(row, LinearLayout.LayoutParams(
@@ -72,6 +81,18 @@ object ModernDialogs {
         }
         dialog.show()
         dialog.window?.setLayout((context.resources.displayMetrics.widthPixels * 0.88f).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
+        box.alpha = 0f
+        box.scaleX = 0.96f
+        box.scaleY = 0.96f
+        box.translationY = dp(context, 10).toFloat()
+        box.animate()
+            .alpha(1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .translationY(0f)
+            .setDuration(190L)
+            .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+            .start()
     }
 
     fun showConfirm(
@@ -109,7 +130,11 @@ object ModernDialogs {
             textSize = 15f
             setTextColor(palette.text)
             background = rounded(palette.surfaceAlt, dp(context, 15).toFloat())
-            setOnClickListener { dialog.dismiss() }
+            setOnClickListener {
+                animate().scaleX(0.97f).scaleY(0.97f).setDuration(60L).withEndAction {
+                    dialog.dismiss()
+                }.start()
+            }
         }
         val ok = TextView(context).apply {
             text = confirm
@@ -119,9 +144,12 @@ object ModernDialogs {
             setTextColor(Color.WHITE)
             background = rounded(if (destructive) Color.parseColor("#D9435F") else palette.accent, dp(context, 15).toFloat())
             setOnClickListener {
+                if (!isEnabled) return@setOnClickListener
                 isEnabled = false
-                dialog.dismiss()
-                onConfirm()
+                animate().scaleX(0.97f).scaleY(0.97f).setDuration(60L).withEndAction {
+                    dialog.dismiss()
+                    onConfirm()
+                }.start()
             }
         }
         actions.addView(cancel, LinearLayout.LayoutParams(0, dp(context, 48), 1f))
@@ -131,6 +159,18 @@ object ModernDialogs {
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         dialog.show()
         dialog.window?.setLayout((context.resources.displayMetrics.widthPixels * 0.88f).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
+        box.alpha = 0f
+        box.scaleX = 0.96f
+        box.scaleY = 0.96f
+        box.translationY = dp(context, 10).toFloat()
+        box.animate()
+            .alpha(1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .translationY(0f)
+            .setDuration(190L)
+            .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+            .start()
     }
 
     private fun rounded(color: Int, radius: Float) = GradientDrawable().apply {
