@@ -108,6 +108,7 @@ class MainActivity : AppCompatActivity() {
             insets
         }
         applySystemTheme()
+        showStartupSplash()
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -178,8 +179,82 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        showLoading("Подключаем Telegram…")
-        client.init()
+        root.postDelayed({
+            showLoading("Подключаем Telegram…")
+            client.init()
+        }, 620L)
+    }
+
+    private fun showStartupSplash() {
+        val page = FrameLayout(this).apply {
+            setBackgroundColor(bg)
+        }
+
+        val center = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+        }
+
+        val logo = TextView(this).apply {
+            text = "SOHR"
+            textSize = 34f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(text)
+            alpha = 0f
+            scaleX = 0.92f
+            scaleY = 0.92f
+        }
+
+        val loader = LoadingWaveView(this, purple).apply {
+            alpha = 0f
+        }
+
+        center.addView(
+            logo,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+        center.addView(
+            loader,
+            LinearLayout.LayoutParams(dp(56), dp(56)).apply {
+                topMargin = dp(18)
+                gravity = Gravity.CENTER_HORIZONTAL
+            }
+        )
+
+        page.addView(
+            center,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        root.removeAllViews()
+        root.addView(
+            page,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        logo.animate()
+            .alpha(1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(320L)
+            .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+            .start()
+
+        loader.animate()
+            .alpha(1f)
+            .setStartDelay(120L)
+            .setDuration(220L)
+            .start()
     }
 
     private fun handleAuthState(state: TdApi.AuthorizationState) {
@@ -1612,153 +1687,132 @@ class MainActivity : AppCompatActivity() {
     private fun animateThemeReveal(light: Boolean, source: View) {
         if (settings.lightTheme == light) return
 
-        if (!settings.animations || root.childCount == 0) {
+        if (!settings.animations || root.width <= 0 || root.height <= 0) {
             settings.lightTheme = light
+            primaryShell = null
+            primaryContentHost = null
+            primaryNav = null
+            primaryShellLightTheme = null
             applySystemTheme()
             showSettings()
             return
         }
 
-        val currentContent = root.getChildAt(0)
-        val width = currentContent.width
-        val height = currentContent.height
-        if (width <= 0 || height <= 0) {
-            settings.lightTheme = light
-            applySystemTheme()
-            showSettings()
-            return
-        }
+        val oldShell = primaryShell
 
-        val oldTheme = settings.lightTheme
-        val snapshot = try {
-            settings.lightTheme = light
+        settings.lightTheme = light
 
-            val previewScreen = SettingsScreen(
-                this,
-                settings,
-                onBack = { },
-                onThemeChanged = { _, _ -> },
-                onLanguageChanged = { },
-                onLogout = { }
-            )
+        val nextContent = SettingsScreen(
+            this,
+            settings,
+            onBack = { needsReload ->
+                isSettingsScreen = false
+                if (needsReload) loadVideos() else showFeed(currentVideos)
+            },
+            onThemeChanged = { nextLight, nextSource ->
+                animateThemeReveal(nextLight, nextSource)
+            },
+            onLanguageChanged = { showSettings() },
+            onLogout = { confirmLogout() }
+        ).build()
 
-            val preview = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setBackgroundColor(bg)
-
-                addView(
-                    previewScreen.build(),
-                    LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        0,
-                        1f
-                    )
+        val nextHost = FrameLayout(this).apply {
+            clipChildren = true
+            clipToPadding = true
+            addView(
+                nextContent,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
                 )
-
-                addView(
-                    SohrBottomNavView(
-                        this@MainActivity,
-                        palette,
-                        SohrTab.SETTINGS
-                    ) { },
-                    LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        dp(74)
-                    ).apply {
-                        marginStart = dp(14)
-                        marginEnd = dp(14)
-                        topMargin = dp(6)
-                        bottomMargin = dp(8)
-                    }
-                )
-            }
-
-            preview.measure(
-                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
-                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
             )
-            preview.layout(0, 0, width, height)
+        }
 
-            Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bitmap ->
-                preview.draw(Canvas(bitmap))
+        lateinit var nextNav: SohrBottomNavView
+        nextNav = SohrBottomNavView(this, palette, SohrTab.SETTINGS) { tab ->
+            if (tab != currentPrimaryTab) {
+                pendingRootSlide = if (tab.ordinal > currentPrimaryTab.ordinal) 1 else -1
+                currentPrimaryTab = tab
+                when (tab) {
+                    SohrTab.VIDEOS -> showFeed(currentVideos)
+                    SohrTab.SETTINGS -> showSettings()
+                    SohrTab.ACCOUNT -> showAccount()
+                }
             }
-        } catch (_: Throwable) {
-            null
-        } finally {
-            settings.lightTheme = oldTheme
         }
 
-        if (snapshot == null) {
-            settings.lightTheme = light
-            applySystemTheme()
-            showSettings()
-            return
+        val nextShell = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(bg)
+            addView(
+                nextHost,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    0,
+                    1f
+                )
+            )
+            addView(
+                nextNav,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dp(74)
+                ).apply {
+                    marginStart = dp(14)
+                    marginEnd = dp(14)
+                    topMargin = dp(6)
+                    bottomMargin = dp(8)
+                }
+            )
         }
 
-        val overlay = ImageView(this).apply {
-            setImageBitmap(snapshot)
-            scaleType = ImageView.ScaleType.FIT_XY
-            visibility = View.INVISIBLE
-            isClickable = true
-        }
-
-        val decor = window.decorView as ViewGroup
-        val rootLocation = IntArray(2)
-        root.getLocationOnScreen(rootLocation)
-        decor.addView(
-            overlay,
-            ViewGroup.LayoutParams(root.width, root.height)
+        nextShell.visibility = View.INVISIBLE
+        root.addView(
+            nextShell,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
         )
-        overlay.x = rootLocation[0].toFloat()
-        overlay.y = rootLocation[1].toFloat()
 
         val sourceLocation = IntArray(2)
+        val rootLocation = IntArray(2)
         source.getLocationOnScreen(sourceLocation)
+        root.getLocationOnScreen(rootLocation)
 
         val cx = sourceLocation[0] - rootLocation[0] + source.width / 2
         val cy = sourceLocation[1] - rootLocation[1] + source.height / 2
 
-        overlay.post {
-            overlay.visibility = View.VISIBLE
+        nextShell.post {
+            nextShell.visibility = View.VISIBLE
 
-            val maxX = maxOf(cx, overlay.width - cx).toDouble()
-            val maxY = maxOf(cy, overlay.height - cy).toDouble()
+            val maxX = maxOf(cx, nextShell.width - cx).toDouble()
+            val maxY = maxOf(cy, nextShell.height - cy).toDouble()
             val finalRadius = kotlin.math.hypot(maxX, maxY).toFloat()
 
             ViewAnimationUtils.createCircularReveal(
-                overlay,
-                cx.coerceIn(0, overlay.width),
-                cy.coerceIn(0, overlay.height),
+                nextShell,
+                cx.coerceIn(0, nextShell.width),
+                cy.coerceIn(0, nextShell.height),
                 0f,
                 finalRadius
             ).apply {
-                duration = 460L
-                interpolator = android.view.animation.DecelerateInterpolator(1.6f)
+                duration = 430L
+                interpolator = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
                 addListener(object : android.animation.AnimatorListenerAdapter() {
                     override fun onAnimationEnd(animation: android.animation.Animator) {
-                        settings.lightTheme = light
-                        primaryShell = null
-                        primaryContentHost = null
-                        primaryNav = null
-                        primaryShellLightTheme = null
-                        applySystemTheme()
-                        suppressNextRootAnimation = true
-                        showSettings()
-
-                        root.postOnAnimation {
-                            root.postOnAnimation {
-                                overlay.animate()
-                                    .alpha(0f)
-                                    .setDuration(85L)
-                                    .setInterpolator(android.view.animation.PathInterpolator(0.4f, 0f, 1f, 1f))
-                                    .withEndAction {
-                                        decor.removeView(overlay)
-                                        overlay.setImageDrawable(null)
-                                        if (!snapshot.isRecycled) snapshot.recycle()
-                                    }
-                                    .start()
-                            }
+                        if (oldShell != null && oldShell.parent === root) {
+                            root.removeView(oldShell)
                         }
+
+                        primaryShell = nextShell
+                        primaryContentHost = nextHost
+                        primaryNav = nextNav
+                        primaryShellLightTheme = light
+                        currentPrimaryTab = SohrTab.SETTINGS
+
+                        root.setBackgroundColor(bg)
+                        applySystemTheme()
                     }
                 })
                 start()
