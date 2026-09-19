@@ -4,9 +4,7 @@ plugins {
 }
 
 val telegramApiId = System.getenv("TELEGRAM_API_ID") ?: "0"
-val telegramApiHash = (System.getenv("TELEGRAM_API_HASH") ?: "")
-    .replace("\\", "\\\\")
-    .replace(""", "\\"")
+val telegramApiHash = System.getenv("TELEGRAM_API_HASH") ?: ""
 
 android {
     namespace = "com.unknokable.videosohranenki"
