@@ -97,14 +97,6 @@ class SettingsScreen(
         ) { settings.animations = it })
 
         root.addView(settingRow(
-            icon = "AI",
-            iconColor = "#B89AFF",
-            title = t("ai"),
-            description = t("ai_desc"),
-            checked = settings.aiAnalysis
-        ) { settings.aiAnalysis = it })
-
-        root.addView(settingRow(
             icon = "↻",
             iconColor = "#FF83BE",
             title = t("rotate"),
