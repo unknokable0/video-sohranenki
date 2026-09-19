@@ -1,10 +1,12 @@
 package com.unknokable.videosohranenki
 
 import android.app.Activity
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.media.MediaDataSource
+import android.media.MediaMetadataRetriever
 import android.os.Handler
 import android.os.Looper
 import android.view.GestureDetector
@@ -14,6 +16,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
@@ -31,16 +34,21 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 @OptIn(UnstableApi::class)
 class PlayerScreen(
     private val activity: Activity,
     private val item: VideoItem,
     private val mediaUrl: String,
-    private val aiDataSourceFactory: () -> MediaDataSource,
+    private val previewDataSourceFactory: () -> MediaDataSource,
     private val settings: AppSettings,
     private val startPositionMs: Long = 0L,
     private val onBack: () -> Unit,
@@ -61,13 +69,16 @@ class PlayerScreen(
     private lateinit var qualityButton: TextView
     private lateinit var speedBadge: TextView
     private lateinit var actionsRow: LinearLayout
-    private lateinit var aiPanel: LinearLayout
-    private val aiScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private val aiAnalyzer = LocalAiAnalyzer()
-    private val aiCache = AiResultCache(activity)
-    private var aiStatusView: TextView? = null
-    private var aiChaptersView: LinearLayout? = null
-    private var aiAnalyzeButton: TextView? = null
+    private lateinit var previewBubble: LinearLayout
+    private lateinit var previewImage: ImageView
+    private lateinit var previewTime: TextView
+    private val previewScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val previewMutex = Mutex()
+    private var previewRetriever: MediaMetadataRetriever? = null
+    private var previewDataSource: MediaDataSource? = null
+    private var previewJob: Job? = null
+    private var previewBitmap: Bitmap? = null
+    private var lastPreviewMs = -1L
 
     private var fullscreen = false
     private var dragging = false
@@ -146,8 +157,14 @@ class PlayerScreen(
         root.addView(details)
         actionsRow = buildActions()
         root.addView(actionsRow)
-        aiPanel = buildAiPanel()
-        root.addView(aiPanel)
+
+        previewBubble = buildSeekPreview()
+        playerCard.addView(
+            previewBubble,
+            FrameLayout.LayoutParams(dp(174), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
+                bottomMargin = dp(58)
+            }
+        )
 
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
@@ -359,218 +376,6 @@ class PlayerScreen(
         return box
     }
 
-    private fun buildAiPanel(): LinearLayout {
-        val outer = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), 0, dp(12), dp(14))
-        }
-
-        val box = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(14), dp(14), dp(14))
-            background = roundedInt(palette.surface, 20)
-        }
-
-        val head = LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-
-        val icon = TextView(activity).apply {
-            text = "AI"
-            gravity = Gravity.CENTER
-            textSize = 14f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            background = roundedInt(palette.accent, 14)
-        }
-
-        val labels = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), 0, dp(8), 0)
-        }
-
-        val title = TextView(activity).apply {
-            text = "Умные моменты стрима"
-            textSize = 15f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(palette.text)
-        }
-
-        val subtitle = TextView(activity).apply {
-            text = if (settings.aiAnalysis)
-                "Локальный анализ на телефоне • видео никуда не отправляется"
-            else
-                "AI-анализ выключен в настройках"
-            textSize = 12f
-            setTextColor(palette.muted)
-            setPadding(0, dp(3), 0, 0)
-        }
-
-        labels.addView(title)
-        labels.addView(subtitle)
-
-        head.addView(icon, LinearLayout.LayoutParams(dp(42), dp(42)))
-        head.addView(labels, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-
-        if (settings.aiAnalysis) {
-            val analyze = TextView(activity).apply {
-                text = "Анализировать"
-                textSize = 12f
-                gravity = Gravity.CENTER
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(Color.WHITE)
-                setPadding(dp(12), dp(9), dp(12), dp(9))
-                background = roundedInt(palette.accent, 13)
-                setOnClickListener { startAiAnalysis() }
-            }
-            aiAnalyzeButton = analyze
-            head.addView(analyze)
-        }
-
-        box.addView(head)
-
-        val status = TextView(activity).apply {
-            textSize = 12.5f
-            setTextColor(palette.muted)
-            setPadding(dp(2), dp(12), dp(2), dp(4))
-        }
-        aiStatusView = status
-        box.addView(status)
-
-        val chapters = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-        aiChaptersView = chapters
-        box.addView(chapters)
-
-        outer.addView(box)
-
-        val cached = if (settings.aiAnalysis) aiCache.load(item.messageId) else null
-        if (cached != null) {
-            status.text = "Готово • ${cached.sampledFrames} кадров проанализировано"
-            renderAiResult(cached)
-            aiAnalyzeButton?.text = "Обновить"
-        } else {
-            status.text = if (settings.aiAnalysis)
-                "Нажми «Анализировать». Первый анализ займёт время, дальше результат будет из кэша."
-            else
-                "Включи AI-анализ в настройках."
-        }
-
-        return outer
-    }
-
-    private fun startAiAnalysis() {
-        if (!settings.aiAnalysis) {
-            Toast.makeText(activity, "Включи AI-анализ в настройках", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        aiAnalyzeButton?.apply {
-            isEnabled = false
-            alpha = 0.6f
-            text = "Анализ…"
-        }
-        aiStatusView?.text = "Подготавливаем анализ…"
-        aiChaptersView?.removeAllViews()
-
-        val wasPlaying = player.isPlaying
-        player.pause()
-
-        aiScope.launch {
-            try {
-                val result = aiAnalyzer.analyze(
-                    mediaDataSource = aiDataSourceFactory(),
-                    durationSeconds = item.durationSeconds
-                ) { progress ->
-                    activity.runOnUiThread {
-                        aiStatusView?.text = "Анализируем видео… $progress%"
-                    }
-                }
-
-                if (result.chapters.isEmpty()) {
-                    aiStatusView?.text = "Не удалось уверенно определить сцены в этом ролике."
-                } else {
-                    aiCache.save(item.messageId, result)
-                    aiStatusView?.text = "Готово • ${result.sampledFrames} кадров проанализировано"
-                    renderAiResult(result)
-                }
-            } catch (e: Exception) {
-                aiStatusView?.text = "AI-анализ не удался: ${e.message ?: "неизвестная ошибка"}"
-            } finally {
-                aiAnalyzeButton?.apply {
-                    isEnabled = true
-                    alpha = 1f
-                    text = "Обновить"
-                }
-                if (wasPlaying) player.play()
-            }
-        }
-    }
-
-    private fun renderAiResult(result: AiAnalysisResult) {
-        val container = aiChaptersView ?: return
-        container.removeAllViews()
-
-        result.chapters.forEach { chapter ->
-            val row = LinearLayout(activity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(10), dp(10), dp(10), dp(10))
-                background = roundedInt(palette.surfaceAlt, 15)
-                setOnClickListener {
-                    player.seekTo(chapter.startSeconds * 1000L)
-                    Toast.makeText(activity, chapter.title, Toast.LENGTH_SHORT).show()
-                }
-            }
-
-            val time = TextView(activity).apply {
-                text = formatSeconds(chapter.startSeconds)
-                textSize = 12f
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(palette.accent)
-                gravity = Gravity.CENTER
-            }
-
-            val texts = LinearLayout(activity).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(10), 0, 0, 0)
-            }
-
-            val title = TextView(activity).apply {
-                text = chapter.title
-                textSize = 13.5f
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(palette.text)
-            }
-
-            val detail = TextView(activity).apply {
-                text = chapter.detail
-                textSize = 11.5f
-                maxLines = 2
-                setTextColor(palette.muted)
-                setPadding(0, dp(2), 0, 0)
-            }
-
-            texts.addView(title)
-            texts.addView(detail)
-            row.addView(time, LinearLayout.LayoutParams(dp(54), ViewGroup.LayoutParams.WRAP_CONTENT))
-            row.addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-
-            container.addView(row, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(7) })
-        }
-    }
-
-    private fun formatSeconds(seconds: Int): String {
-        val m = seconds / 60
-        val s = seconds % 60
-        return "%d:%02d".format(m, s)
-    }
-
     private fun buildActions(): LinearLayout {
         val row = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -665,8 +470,7 @@ class PlayerScreen(
             "Скорость воспроизведения",
             if (loopEnabled) "Выключить цикл" else "Зациклить видео",
             "Таймер сна",
-            "Статистика видео",
-            "AI-моменты"
+            "Статистика видео"
         )
         ModernDialogs.showChoices(activity, palette, "Настройки видео", labels, 0) { which ->
             when (which) {
@@ -678,7 +482,6 @@ class PlayerScreen(
                 }
                 3 -> showSleepPicker()
                 4 -> showStats()
-                5 -> startAiAnalysis()
             }
         }
     }
@@ -743,7 +546,6 @@ class PlayerScreen(
         header.visibility = if (enabled) View.GONE else View.VISIBLE
         details.visibility = if (enabled) View.GONE else View.VISIBLE
         actionsRow.visibility = if (enabled) View.GONE else View.VISIBLE
-        aiPanel.visibility = if (enabled) View.GONE else View.VISIBLE
 
         val params = playerCard.layoutParams as LinearLayout.LayoutParams
         if (enabled) {
@@ -768,7 +570,15 @@ class PlayerScreen(
     fun destroy() {
         sleepRunnable?.let { handler.removeCallbacks(it) }
         handler.removeCallbacksAndMessages(null)
-        aiScope.cancel()
+        previewJob?.cancel()
+        previewScope.cancel()
+        previewImage.setImageDrawable(null)
+        previewBitmap?.recycle()
+        previewBitmap = null
+        runCatching { previewRetriever?.release() }
+        runCatching { previewDataSource?.close() }
+        previewRetriever = null
+        previewDataSource = null
         player.release()
     }
 
