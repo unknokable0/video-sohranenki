@@ -21,10 +21,6 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean("auto_rotate_fullscreen", true)
         set(value) = prefs.edit().putBoolean("auto_rotate_fullscreen", value).apply()
 
-    var aiAnalysis: Boolean
-        get() = prefs.getBoolean("ai_analysis", true)
-        set(value) = prefs.edit().putBoolean("ai_analysis", value).apply()
-
     var authPhone: String?
         get() = prefs.getString("auth_phone", null)
         set(value) = prefs.edit().apply {
