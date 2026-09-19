@@ -1,5 +1,6 @@
 package com.unknokable.videosohranenki
 
+import android.app.Dialog
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.ActivityInfo
@@ -23,6 +24,7 @@ import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
@@ -209,18 +211,51 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showPhoneLogin() {
-        val phoneUtil = PhoneNumberUtil.getInstance()
-        val regions = phoneUtil.supportedRegions
-            .map { region ->
-                PhoneCountry(
-                    region = region,
-                    name = Locale("", region).getDisplayCountry(Locale("ru")).ifBlank { region },
-                    dialCode = phoneUtil.getCountryCodeForRegion(region),
-                    flag = countryFlag(region)
-                )
+        showLoading("Загружаем страны Telegram…")
+        lifecycleScope.launch {
+            val phoneUtil = PhoneNumberUtil.getInstance()
+            val regions = runCatching {
+                client.send(TdApi.GetCountries()).countries
+                    .asSequence()
+                    .filter { !it.isHidden && it.callingCodes.isNotEmpty() }
+                    .mapNotNull { info ->
+                        val code = info.callingCodes.firstOrNull()
+                            ?.filter { ch -> ch.isDigit() }
+                            ?.toIntOrNull()
+                            ?: return@mapNotNull null
+                        PhoneCountry(
+                            region = info.countryCode.uppercase(Locale.ROOT),
+                            name = info.name.ifBlank {
+                                Locale("", info.countryCode).getDisplayCountry(Locale("ru"))
+                            },
+                            dialCode = code,
+                            flag = countryFlag(info.countryCode)
+                        )
+                    }
+                    .distinctBy { pair -> pair.region to pair.dialCode }
+                    .sortedBy { country -> country.name.lowercase(Locale("ru")) }
+                    .toList()
+            }.getOrElse {
+                phoneUtil.supportedRegions
+                    .map { region ->
+                        PhoneCountry(
+                            region = region,
+                            name = Locale("", region).getDisplayCountry(Locale("ru")).ifBlank { region },
+                            dialCode = phoneUtil.getCountryCodeForRegion(region),
+                            flag = countryFlag(region)
+                        )
+                    }
+                    .sortedBy { country -> country.name }
             }
-            .sortedBy { it.name }
 
+            withContext(Dispatchers.Main) {
+                renderPhoneLogin(regions)
+            }
+        }
+    }
+
+    private fun renderPhoneLogin(regions: List<PhoneCountry>) {
+        val phoneUtil = PhoneNumberUtil.getInstance()
         var selected = detectCountry(regions)
 
         val container = LinearLayout(this).apply {
@@ -313,14 +348,11 @@ class MainActivity : AppCompatActivity() {
 
         country.setOnClickListener {
             animatePress(country)
-            ModernDialogs.showChoices(
-                context = this,
-                palette = palette,
-                title = "Выбери страну",
-                options = regions.map { "${it.flag}  ${it.name}  +${it.dialCode}" },
-                selected = regions.indexOfFirst { it.region == selected.region }.coerceAtLeast(0)
-            ) { which ->
-                selected = regions[which]
+            showCountryPicker(
+                regions = regions,
+                selected = selected
+            ) { picked ->
+                selected = picked
                 applyCountry()
             }
         }
@@ -465,6 +497,148 @@ class MainActivity : AppCompatActivity() {
         val dialCode: Int,
         val flag: String
     )
+
+
+    private fun showCountryPicker(
+        regions: List<PhoneCountry>,
+        selected: PhoneCountry,
+        onSelected: (PhoneCountry) -> Unit
+    ) {
+        val dialog = Dialog(this)
+        val wrapper = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(16), dp(16), dp(18))
+            background = roundedBg(panel, 24)
+        }
+
+        val title = TextView(this).apply {
+            text = "Выбери страну"
+            textSize = 20f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+            setPadding(dp(2), 0, dp(2), dp(10))
+        }
+
+        val search = EditText(this).apply {
+            hint = "Поиск страны, кода или +48"
+            setSingleLine(true)
+            textSize = 15f
+            setTextColor(this@MainActivity.text)
+            setHintTextColor(muted)
+            setPadding(dp(14), 0, dp(14), 0)
+            background = roundedBg(palette.surfaceAlt, 15)
+        }
+
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            addView(list)
+        }
+
+        fun render(query: String) {
+            list.removeAllViews()
+            val q = query.trim().lowercase(Locale.getDefault())
+            val filtered = if (q.isBlank()) {
+                regions
+            } else {
+                regions.filter { region ->
+                    region.name.lowercase(Locale.getDefault()).contains(q) ||
+                        region.region.lowercase(Locale.ROOT).contains(q) ||
+                        ("+" + region.dialCode).contains(q) ||
+                        region.dialCode.toString().contains(q)
+                }
+            }
+
+            filtered.forEach { region ->
+                val row = TextView(this).apply {
+                    text = "${region.flag}   ${region.name}   +${region.dialCode}"
+                    textSize = 15f
+                    gravity = Gravity.CENTER_VERTICAL
+                    setTextColor(this@MainActivity.text)
+                    setTypeface(
+                        typeface,
+                        if (region.region == selected.region) Typeface.BOLD else Typeface.NORMAL
+                    )
+                    setPadding(dp(12), dp(11), dp(12), dp(11))
+                    background = roundedBg(
+                        if (region.region == selected.region) palette.surfaceAlt else Color.TRANSPARENT,
+                        13
+                    )
+                    setOnClickListener {
+                        animatePress(this)
+                        onSelected(region)
+                        dialog.dismiss()
+                    }
+                }
+                list.addView(
+                    row,
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { bottomMargin = dp(4) }
+                )
+            }
+
+            if (filtered.isEmpty()) {
+                list.addView(TextView(this).apply {
+                    text = "Ничего не найдено"
+                    textSize = 14f
+                    gravity = Gravity.CENTER
+                    setTextColor(muted)
+                    setPadding(0, dp(24), 0, dp(24))
+                })
+            }
+        }
+
+        search.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(
+                s: CharSequence?,
+                start: Int,
+                count: Int,
+                after: Int
+            ) = Unit
+
+            override fun onTextChanged(
+                s: CharSequence?,
+                start: Int,
+                before: Int,
+                count: Int
+            ) {
+                render(s?.toString().orEmpty())
+            }
+
+            override fun afterTextChanged(s: Editable?) = Unit
+        })
+
+        wrapper.addView(title)
+        wrapper.addView(
+            search,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(50)
+            )
+        )
+        wrapper.addView(
+            scroll,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(520)
+            ).apply { topMargin = dp(10) }
+        )
+
+        dialog.setContentView(wrapper)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        render("")
+        dialog.show()
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.92f).toInt(),
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+        search.requestFocus()
+    }
 
     private fun detectCountry(countries: List<PhoneCountry>): PhoneCountry {
         val telephony = getSystemService(TELEPHONY_SERVICE) as? TelephonyManager
