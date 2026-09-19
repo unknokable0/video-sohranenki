@@ -13,6 +13,7 @@ import android.view.WindowInsetsController
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -20,9 +21,6 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import androidx.media3.common.MediaItem
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.PlayerView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import io.github.tdlibandroid.ktx.TdClient
@@ -568,7 +566,7 @@ class MainActivity : AppCompatActivity() {
 
         val list = RecyclerView(this).apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
-            adapter = VideoAdapter(collection.videos) { openPlayer(it) }
+            adapter = VideoAdapter(collection.videos, settings.animations) { openPlayer(it) }
             setBackgroundColor(bg)
         }
 
