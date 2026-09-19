@@ -25,6 +25,16 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean("ai_analysis", true)
         set(value) = prefs.edit().putBoolean("ai_analysis", value).apply()
 
+    var authPhone: String?
+        get() = prefs.getString("auth_phone", null)
+        set(value) = prefs.edit().apply {
+            if (value == null) remove("auth_phone") else putString("auth_phone", value)
+        }.apply()
+
+    var authGeneration: Int
+        get() = prefs.getInt("auth_generation", 1)
+        set(value) = prefs.edit().putInt("auth_generation", value).apply()
+
     var lightTheme: Boolean
         get() = prefs.getBoolean("light_theme", false)
         set(value) = prefs.edit().putBoolean("light_theme", value).apply()
