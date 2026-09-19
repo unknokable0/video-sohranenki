@@ -55,6 +55,8 @@ class MainActivity : AppCompatActivity() {
     private var authErrorView: TextView? = null
     private var requestedPhoneNumber: String? = null
     private var authResetInProgress = false
+    private var loadJob: kotlinx.coroutines.Job? = null
+    private var reloadRequested = false
 
     private val palette get() = settings.palette()
     private val bg get() = palette.background
@@ -554,7 +556,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadVideos() {
-        lifecycleScope.launch {
+        if (loadJob?.isActive == true) {
+            reloadRequested = true
+            return
+        }
+
+        loadJob = lifecycleScope.launch {
             withContext(Dispatchers.Main) { showLoading("Собираем записи за неделю…") }
             try {
                 val chat = client.send(TdApi.SearchPublicChat("t2x2_video"))
