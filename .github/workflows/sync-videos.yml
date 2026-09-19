@@ -1,0 +1,31 @@
+name: Sync Telegram Videos
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/30 * * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Fetch Telegram videos
+        run: node scripts/sync-videos.js
+      - name: Commit catalog
+        run: |
+          git config user.name "video-sohranenki-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/videos.json data/telegram-debug.html 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No changes"
+          else
+            git commit -m "Auto-sync Telegram videos"
+            git push
+          fi
