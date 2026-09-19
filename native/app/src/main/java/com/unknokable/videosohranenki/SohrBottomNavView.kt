@@ -20,6 +20,7 @@ import kotlin.math.abs
 enum class SohrTab {
     VIDEOS,
     SETTINGS,
+    STREAK,
     ACCOUNT
 }
 
@@ -30,9 +31,14 @@ class SohrBottomNavView(
     private val onSelect: (SohrTab) -> Unit
 ) : FrameLayout(context) {
 
-    private val tabs = listOf(SohrTab.VIDEOS, SohrTab.SETTINGS, SohrTab.ACCOUNT)
-    private val icons = listOf(R.drawable.ic_nav_video, R.drawable.ic_nav_settings, R.drawable.ic_nav_account)
-    private val labels = listOf("Видео", "Настройки", "Аккаунт")
+    private val tabs = listOf(SohrTab.VIDEOS, SohrTab.SETTINGS, SohrTab.STREAK, SohrTab.ACCOUNT)
+    private val icons = listOf(
+        R.drawable.ic_nav_video,
+        R.drawable.ic_nav_settings,
+        R.drawable.ic_nav_streak,
+        R.drawable.ic_nav_account
+    )
+    private val labels = listOf("Видео", "Настройки", "Стрик", "Аккаунт")
     private val columns = mutableListOf<LinearLayout>()
     private val iconViews = mutableListOf<ImageView>()
     private val labelViews = mutableListOf<TextView>()
@@ -283,7 +289,7 @@ class SohrBottomNavView(
     }
 
     private fun slotWidth(): Float =
-        ((width - paddingLeft - paddingRight).coerceAtLeast(0) / 3f)
+        ((width - paddingLeft - paddingRight).coerceAtLeast(0) / tabs.size.toFloat())
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
