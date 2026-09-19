@@ -35,12 +35,12 @@ jobs:
         run: gradle -p native :app:assembleDebug --no-daemon --stacktrace
 
       - name: Collect APK
-        run: cp native/app/build/outputs/apk/debug/app-debug.apk SOHR-BETA-2.0.apk
+        run: cp native/app/build/outputs/apk/debug/app-debug.apk SOHR-BETA-2.1.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: SOHR-BETA-2.0
-          path: SOHR-BETA-2.0.apk
+          name: SOHR-BETA-2.1
+          path: SOHR-BETA-2.1.apk
           if-no-files-found: error
           retention-days: 30
