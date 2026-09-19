@@ -434,21 +434,16 @@ class MainActivity : AppCompatActivity() {
         }
 
         val header = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+            orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(16), dp(16), dp(10))
             setBackgroundColor(bg)
         }
 
-        val titles = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.START
-        }
-
         val titleView = TextView(this).apply {
             text = "ВИДЕО СОХРАНЕНКИ"
-            textSize = 22f
+            textSize = 24f
             gravity = Gravity.START
+            maxLines = 1
             setTextColor(this@MainActivity.text)
             setTypeface(typeface, Typeface.BOLD)
         }
@@ -457,16 +452,21 @@ class MainActivity : AppCompatActivity() {
             text = "Последние 7 дней • ${groups.size} сборников • ${videos.size} видео"
             textSize = 12f
             gravity = Gravity.START
+            maxLines = 1
             setTextColor(muted)
-            setPadding(0, dp(4), 0, 0)
+            setPadding(0, dp(5), 0, dp(12))
         }
 
-        titles.addView(titleView)
-        titles.addView(subtitle)
-
-        val actions = LinearLayout(this).apply {
+        val controlRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+        }
+
+        val sectionTitle = TextView(this).apply {
+            text = "Сборники по дням"
+            textSize = 14f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(muted)
         }
 
         val refresh = ImageButton(this).apply {
@@ -474,6 +474,7 @@ class MainActivity : AppCompatActivity() {
             background = roundedBg(palette.surfaceAlt, 16)
             setPadding(dp(12), dp(12), dp(12), dp(12))
             setOnClickListener {
+                if (!isEnabled) return@setOnClickListener
                 isEnabled = false
                 loadVideos()
                 postDelayed({ isEnabled = true }, 800)
@@ -485,29 +486,26 @@ class MainActivity : AppCompatActivity() {
             background = roundedBg(palette.surfaceAlt, 16)
             setPadding(dp(12), dp(12), dp(12), dp(12))
             setOnClickListener {
+                if (!isEnabled) return@setOnClickListener
                 isEnabled = false
                 showSettings()
                 postDelayed({ isEnabled = true }, 500)
             }
         }
 
-        actions.addView(refresh, LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginEnd = dp(8) })
-        actions.addView(settingsButton, LinearLayout.LayoutParams(dp(48), dp(48)))
+        controlRow.addView(sectionTitle, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        controlRow.addView(refresh, LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginEnd = dp(8) })
+        controlRow.addView(settingsButton, LinearLayout.LayoutParams(dp(48), dp(48)))
 
-        header.addView(titles, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        header.addView(actions)
+        header.addView(titleView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        header.addView(subtitle, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        header.addView(controlRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         page.addView(header)
 
         val tools = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), dp(6), dp(16), dp(8))
-        }
-
-        val hint = TextView(this).apply {
-            text = "Сборники по дням"
-            textSize = 13f
-            setTextColor(muted)
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            setPadding(dp(16), 0, dp(16), dp(10))
         }
 
         val sort = TextView(this).apply {
@@ -516,12 +514,11 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(purple)
-            setPadding(dp(12), dp(9), dp(12), dp(9))
-            background = roundedBg(palette.surface, 14)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            background = roundedBg(palette.surface, 16)
             setOnClickListener { showCollectionSortDialog() }
         }
 
-        tools.addView(hint, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         tools.addView(sort)
         page.addView(tools)
 
