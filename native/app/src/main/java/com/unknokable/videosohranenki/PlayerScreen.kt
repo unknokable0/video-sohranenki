@@ -30,6 +30,7 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.CoroutineScope
@@ -168,10 +169,10 @@ class PlayerScreen(
 
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                10_000,
-                30_000,
-                1_000,
-                2_000
+                15_000,
+                45_000,
+                750,
+                1_500
             )
             .build()
 
@@ -181,6 +182,7 @@ class PlayerScreen(
             .setSeekForwardIncrementMs(10_000)
             .build()
 
+        player.setSeekParameters(SeekParameters.CLOSEST_SYNC)
         playerView.player = player
         player.setMediaItem(MediaItem.fromUri(mediaUrl))
         if (startPositionMs > 0) player.seekTo(startPositionMs)
@@ -295,12 +297,31 @@ class PlayerScreen(
             thumbTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
             progressBackgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#66FFFFFF"))
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) = Unit
-                override fun onStartTrackingTouch(seekBar: SeekBar?) { dragging = true }
+                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                    if (!fromUser) return
+                    val duration = player.duration
+                    if (duration <= 0) return
+                    val target = duration * progress / 1000L
+                    previewTime.text = formatMs(target)
+                    currentTime.text = formatMs(target)
+                    showPreview()
+                    requestPreview(target)
+                }
+
+                override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                    dragging = true
+                    showPreview()
+                }
+
                 override fun onStopTrackingTouch(seekBar: SeekBar?) {
                     val duration = player.duration
-                    if (duration > 0) player.seekTo(duration * (seekBar?.progress ?: 0) / 1000L)
+                    if (duration > 0) {
+                        val target = duration * (seekBar?.progress ?: 0) / 1000L
+                        player.seekTo(target)
+                        currentTime.text = formatMs(target)
+                    }
                     dragging = false
+                    handler.postDelayed({ hidePreview() }, 120)
                 }
             })
         }
@@ -349,6 +370,122 @@ class PlayerScreen(
             )
         )
         return frame
+    }
+
+    private fun buildSeekPreview(): LinearLayout {
+        val box = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(7), dp(7), dp(7), dp(6))
+            background = rounded("#E6110E19", 13)
+            visibility = View.GONE
+            elevation = dp(8).toFloat()
+        }
+
+        previewImage = ImageView(activity).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setBackgroundColor(Color.BLACK)
+        }
+
+        previewTime = TextView(activity).apply {
+            text = "0:00"
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            setPadding(0, dp(5), 0, 0)
+        }
+
+        box.addView(previewImage, LinearLayout.LayoutParams(dp(160), dp(90)))
+        box.addView(previewTime, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
+        return box
+    }
+
+    private fun requestPreview(positionMs: Long) {
+        if (positionMs < 0) return
+        if (lastPreviewMs >= 0 && kotlin.math.abs(positionMs - lastPreviewMs) < 750) return
+        lastPreviewMs = positionMs
+
+        previewJob?.cancel()
+        previewJob = previewScope.launch {
+            delay(70)
+            val bitmap = runCatching {
+                previewMutex.withLock {
+                    ensurePreviewRetriever()
+                    val raw = previewRetriever?.getFrameAtTime(
+                        positionMs * 1000L,
+                        MediaMetadataRetriever.OPTION_CLOSEST_SYNC
+                    ) ?: return@withLock null
+
+                    val width = 320
+                    val height = (raw.height * (width.toFloat() / raw.width.toFloat()))
+                        .toInt()
+                        .coerceAtLeast(1)
+                    val scaled = if (raw.width > width) {
+                        Bitmap.createScaledBitmap(raw, width, height, true)
+                    } else {
+                        raw
+                    }
+                    if (scaled !== raw) raw.recycle()
+                    scaled
+                }
+            }.getOrNull()
+
+            if (bitmap != null) {
+                withContext(Dispatchers.Main) {
+                    if (!dragging) {
+                        bitmap.recycle()
+                        return@withContext
+                    }
+                    previewImage.setImageBitmap(bitmap)
+                    previewBitmap?.takeIf { it !== bitmap }?.recycle()
+                    previewBitmap = bitmap
+                }
+            }
+        }
+    }
+
+    private fun ensurePreviewRetriever() {
+        if (previewRetriever != null) return
+        val dataSource = previewDataSourceFactory()
+        val retriever = MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(dataSource)
+            previewDataSource = dataSource
+            previewRetriever = retriever
+        } catch (e: Exception) {
+            runCatching { retriever.release() }
+            runCatching { dataSource.close() }
+            throw e
+        }
+    }
+
+    private fun showPreview() {
+        if (previewBubble.visibility == View.VISIBLE) return
+        previewBubble.alpha = 0f
+        previewBubble.scaleX = 0.96f
+        previewBubble.scaleY = 0.96f
+        previewBubble.visibility = View.VISIBLE
+        previewBubble.animate()
+            .alpha(1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(if (settings.animations) 110 else 0)
+            .start()
+    }
+
+    private fun hidePreview() {
+        if (previewBubble.visibility != View.VISIBLE) return
+        previewBubble.animate()
+            .alpha(0f)
+            .scaleX(0.97f)
+            .scaleY(0.97f)
+            .setDuration(if (settings.animations) 100 else 0)
+            .withEndAction { previewBubble.visibility = View.GONE }
+            .start()
     }
 
     private fun buildDetails(): LinearLayout {
