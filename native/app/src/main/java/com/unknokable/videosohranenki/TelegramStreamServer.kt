@@ -1,5 +1,6 @@
 package com.unknokable.videosohranenki
 
+import android.media.MediaDataSource
 import fi.iki.elonen.NanoHTTPD
 import io.github.tdlibandroid.ktx.TdClient
 import kotlinx.coroutines.runBlocking
@@ -15,6 +16,13 @@ class TelegramStreamServer(
 
     fun url(item: VideoItem): String =
         "http://127.0.0.1:$listeningPort/video/${item.fileId}?size=${item.fileSize}&mime=${item.mimeType}"
+
+    fun mediaDataSource(item: VideoItem): MediaDataSource =
+        TelegramMediaDataSource(
+            client = client,
+            fileId = item.fileId,
+            fileSize = item.fileSize
+        )
 
     override fun serve(session: IHTTPSession): Response {
         if (!session.uri.startsWith("/video/")) {
@@ -121,5 +129,66 @@ private class TelegramFileInputStream(
         raf?.close()
         raf = null
         super.close()
+    }
+}
+
+
+private class TelegramMediaDataSource(
+    private val client: TdClient,
+    private val fileId: Int,
+    private val fileSize: Long
+) : MediaDataSource() {
+
+    private var raf: RandomAccessFile? = null
+    private var filePath: String? = null
+    private var cachedStart = -1L
+    private var cachedEndExclusive = -1L
+    private val chunkSize = 4L * 1024L * 1024L
+
+    @Synchronized
+    override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {
+        if (position < 0 || position >= fileSize) return -1
+        if (size <= 0) return 0
+
+        val wanted = minOf(size.toLong(), fileSize - position).toInt()
+        ensureRange(position, maxOf(wanted.toLong(), chunkSize))
+
+        val file = raf ?: return -1
+        file.seek(position)
+        return file.read(buffer, offset, wanted)
+    }
+
+    @Synchronized
+    private fun ensureRange(position: Long, requested: Long) {
+        val wantedEnd = minOf(fileSize, position + requested)
+        if (cachedStart >= 0 && position >= cachedStart && wantedEnd <= cachedEndExclusive) {
+            return
+        }
+
+        val limit = minOf(maxOf(requested, chunkSize), fileSize - position)
+        val result = runBlocking {
+            client.send(TdApi.DownloadFile(fileId, 24, position, limit, true))
+        }
+
+        val path = result.local.path
+        if (path.isBlank()) {
+            throw IllegalStateException("Telegram file is not ready for AI analysis")
+        }
+
+        if (path != filePath) {
+            raf?.close()
+            filePath = path
+            raf = RandomAccessFile(path, "r")
+        }
+
+        cachedStart = position
+        cachedEndExclusive = minOf(fileSize, position + limit)
+    }
+
+    override fun getSize(): Long = fileSize
+
+    override fun close() {
+        raf?.close()
+        raf = null
     }
 }
