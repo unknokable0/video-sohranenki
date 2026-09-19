@@ -157,8 +157,8 @@ class SohrBottomNavView(
         val icon = ImageView(context).apply {
             setImageResource(icons[index])
             scaleType = ImageView.ScaleType.CENTER_INSIDE
-            pivotX = dp(11.5f)
-            pivotY = dp(11.5f)
+            pivotX = dp(11.5f).toFloat()
+            pivotY = dp(11.5f).toFloat()
         }
 
         val label = TextView(context).apply {
