@@ -5,7 +5,7 @@
     <application
         android:allowBackup="true"
         android:usesCleartextTraffic="true"
-        android:label="ВИДЕО СОХРАНЕНКИ"
+        android:label="SOHR"
         android:theme="@style/AppTheme">
         <activity
             android:name=".MainActivity"
