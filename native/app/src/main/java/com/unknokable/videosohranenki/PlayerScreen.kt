@@ -51,6 +51,8 @@ class PlayerScreen(
     private lateinit var totalTime: TextView
     private lateinit var qualityButton: TextView
     private lateinit var speedBadge: TextView
+    private lateinit var actionsRow: LinearLayout
+    private lateinit var aiPanel: LinearLayout
 
     private var fullscreen = false
     private var dragging = false
@@ -127,7 +129,10 @@ class PlayerScreen(
 
         details = buildDetails()
         root.addView(details)
-        root.addView(buildActions())
+        actionsRow = buildActions()
+        root.addView(actionsRow)
+        aiPanel = buildAiPanel()
+        root.addView(aiPanel)
 
         player = ExoPlayer.Builder(activity)
             .setSeekBackIncrementMs(10_000)
@@ -328,6 +333,79 @@ class PlayerScreen(
         return box
     }
 
+    private fun buildAiPanel(): LinearLayout {
+        val box = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            background = roundedInt(palette.surface, 20)
+        }
+
+        val head = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        val icon = TextView(activity).apply {
+            text = "AI"
+            gravity = Gravity.CENTER
+            textSize = 14f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            background = roundedInt(palette.accent, 14)
+        }
+
+        val labels = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(10), 0, 0, 0)
+        }
+
+        val title = TextView(activity).apply {
+            text = "Умные моменты стрима"
+            textSize = 15f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(palette.text)
+        }
+
+        val subtitle = TextView(activity).apply {
+            text = if (settings.aiAnalysis)
+                "Интерфейс готов. Для реального распознавания игр, реакций и глав нужен AI-сервер."
+            else
+                "AI-анализ выключен в настройках"
+            textSize = 12f
+            setTextColor(palette.muted)
+            setPadding(0, dp(3), 0, 0)
+        }
+
+        labels.addView(title)
+        labels.addView(subtitle)
+
+        head.addView(icon, LinearLayout.LayoutParams(dp(42), dp(42)))
+        head.addView(labels, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        box.addView(head)
+
+        if (settings.aiAnalysis) {
+            val state = TextView(activity).apply {
+                text = "AI-бэкенд не подключён"
+                gravity = Gravity.CENTER
+                textSize = 12.5f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(palette.accent)
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                background = roundedInt(palette.surfaceAlt, 14)
+            }
+            box.addView(state, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(12) })
+        }
+
+        return LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), 0, dp(12), dp(14))
+            addView(box)
+        }
+    }
+
     private fun buildActions(): LinearLayout {
         val row = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -422,7 +500,8 @@ class PlayerScreen(
             "Скорость воспроизведения",
             if (loopEnabled) "Выключить цикл" else "Зациклить видео",
             "Таймер сна",
-            "Статистика видео"
+            "Статистика видео",
+            "AI-моменты"
         )
         ModernDialogs.showChoices(activity, palette, "Настройки видео", labels, 0) { which ->
             when (which) {
@@ -434,6 +513,7 @@ class PlayerScreen(
                 }
                 3 -> showSleepPicker()
                 4 -> showStats()
+                5 -> Toast.makeText(activity, "Для реального AI-анализа нужно подключить AI-бэкенд", Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -497,6 +577,8 @@ class PlayerScreen(
         fullscreen = enabled
         header.visibility = if (enabled) View.GONE else View.VISIBLE
         details.visibility = if (enabled) View.GONE else View.VISIBLE
+        actionsRow.visibility = if (enabled) View.GONE else View.VISIBLE
+        aiPanel.visibility = if (enabled) View.GONE else View.VISIBLE
 
         val params = playerCard.layoutParams as LinearLayout.LayoutParams
         if (enabled) {
@@ -504,12 +586,14 @@ class PlayerScreen(
             params.weight = 1f
             params.marginStart = 0
             params.marginEnd = 0
+            playerCard.background = rounded("#000000", 0)
         } else {
             val width = activity.resources.displayMetrics.widthPixels
             params.height = (width * 9f / 16f).toInt()
             params.weight = 0f
             params.marginStart = dp(12)
             params.marginEnd = dp(12)
+            playerCard.background = rounded("#000000", 18)
         }
         playerCard.layoutParams = params
         playerCard.requestLayout()
