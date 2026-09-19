@@ -11,6 +11,7 @@ import android.view.ViewAnimationUtils
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import com.google.android.material.switchmaterial.SwitchMaterial
 import kotlin.math.hypot
@@ -24,14 +25,31 @@ class SettingsScreen(
     private val onLogout: () -> Unit
 ) {
     private var needsReload = false
+    private lateinit var frameRoot: FrameLayout
+    private lateinit var themeRevealLayer: View
     private val palette get() = settings.palette()
     private fun t(key: String): String = AppLanguages.t(settings.languageCode, key)
 
     fun build(): View {
+        frameRoot = FrameLayout(activity).apply {
+            setBackgroundColor(palette.background)
+        }
+
+        themeRevealLayer = View(activity).apply {
+            visibility = View.GONE
+        }
+        frameRoot.addView(
+            themeRevealLayer,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+
         val root = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(palette.background)
             setPadding(dp(16), dp(10), dp(16), dp(20))
+            setBackgroundColor(Color.TRANSPARENT)
         }
 
         val header = LinearLayout(activity).apply {
@@ -113,7 +131,7 @@ class SettingsScreen(
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
-            setPadding(dp(16), dp(15), dp(16), dp(15))
+            setPadding(dp(16), dp(14), dp(16), dp(14))
             background = rounded(Color.parseColor("#D9435F"), 16)
             setOnClickListener { onLogout() }
         }
@@ -121,11 +139,29 @@ class SettingsScreen(
             logout,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(4); bottomMargin = dp(12) }
+                dp(52)
+            ).apply { topMargin = dp(4); bottomMargin = dp(16) }
         )
 
-        return root
+        val scroll = ScrollView(activity).apply {
+            isFillViewport = true
+            clipToPadding = false
+            setBackgroundColor(Color.TRANSPARENT)
+            addView(root, ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ))
+        }
+
+        frameRoot.addView(
+            scroll,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        return frameRoot
     }
 
     private fun languageSelector(): View {
@@ -261,43 +297,27 @@ class SettingsScreen(
             return
         }
 
-        val decor = activity.window.decorView as? ViewGroup ?: run {
-            settings.lightTheme = light
-            onThemeChanged()
-            return
-        }
-
         val target = if (light) AppThemes.Light else AppThemes.Dark
-        val overlay = View(activity).apply {
-            setBackgroundColor(target.background)
-            isClickable = false
-        }
-
-        decor.addView(
-            overlay,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        )
+        themeRevealLayer.setBackgroundColor(target.background)
+        themeRevealLayer.visibility = View.VISIBLE
 
         val sourceLocation = IntArray(2)
-        val decorLocation = IntArray(2)
+        val rootLocation = IntArray(2)
         source.getLocationOnScreen(sourceLocation)
-        decor.getLocationOnScreen(decorLocation)
+        frameRoot.getLocationOnScreen(rootLocation)
 
-        val cx = sourceLocation[0] - decorLocation[0] + source.width / 2
-        val cy = sourceLocation[1] - decorLocation[1] + source.height / 2
+        val cx = sourceLocation[0] - rootLocation[0] + source.width / 2
+        val cy = sourceLocation[1] - rootLocation[1] + source.height / 2
 
-        overlay.post {
-            val maxX = maxOf(cx, overlay.width - cx).toDouble()
-            val maxY = maxOf(cy, overlay.height - cy).toDouble()
+        themeRevealLayer.post {
+            val maxX = maxOf(cx, themeRevealLayer.width - cx).toDouble()
+            val maxY = maxOf(cy, themeRevealLayer.height - cy).toDouble()
             val finalRadius = hypot(maxX, maxY).toFloat()
 
             val reveal = ViewAnimationUtils.createCircularReveal(
-                overlay,
-                cx.coerceIn(0, overlay.width),
-                cy.coerceIn(0, overlay.height),
+                themeRevealLayer,
+                cx.coerceIn(0, themeRevealLayer.width),
+                cy.coerceIn(0, themeRevealLayer.height),
                 0f,
                 finalRadius
             ).apply {
@@ -309,7 +329,6 @@ class SettingsScreen(
                 override fun onAnimationEnd(animation: android.animation.Animator) {
                     settings.lightTheme = light
                     onThemeChanged()
-                    decor.removeView(overlay)
                 }
             })
 
