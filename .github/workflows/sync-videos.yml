@@ -2,6 +2,10 @@ name: Sync Telegram Videos
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - "scripts/sync-videos.js"
+      - ".github/workflows/sync-videos.yml"
   schedule:
     - cron: "*/30 * * * *"
 
