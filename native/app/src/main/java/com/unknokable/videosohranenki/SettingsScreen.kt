@@ -16,7 +16,8 @@ class SettingsScreen(
     private val activity: Activity,
     private val settings: AppSettings,
     private val onBack: (Boolean) -> Unit,
-    private val onThemeChanged: () -> Unit
+    private val onThemeChanged: () -> Unit,
+    private val onLogout: () -> Unit
 ) {
     private var needsReload = false
     private val palette get() = settings.palette()
@@ -99,6 +100,24 @@ class SettingsScreen(
             description = "Поворачивать плеер горизонтально",
             checked = settings.autoRotateFullscreen
         ) { settings.autoRotateFullscreen = it })
+
+        val logout = TextView(activity).apply {
+            text = "Выйти из Telegram"
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            setPadding(dp(16), dp(15), dp(16), dp(15))
+            background = rounded(Color.parseColor("#D9435F"), 16)
+            setOnClickListener { onLogout() }
+        }
+        root.addView(
+            logout,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(4); bottomMargin = dp(12) }
+        )
 
         val info = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
