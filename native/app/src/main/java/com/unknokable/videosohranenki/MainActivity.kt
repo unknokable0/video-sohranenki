@@ -1,6 +1,7 @@
 package com.unknokable.videosohranenki
 
 import android.content.pm.ActivityInfo
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
@@ -14,6 +15,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -25,6 +27,8 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.qrcode.QRCodeWriter
 import io.github.tdlibandroid.ktx.TdClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
@@ -178,6 +182,11 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             is TdApi.AuthorizationStateWaitPassword -> runOnUiThread { showPasswordLogin(state.passwordHint ?: "") }
+            is TdApi.AuthorizationStateWaitOtherDeviceConfirmation -> runOnUiThread {
+                settings.authPhone = null
+                requestedPhoneNumber = null
+                showQrLogin(state.link)
+            }
             is TdApi.AuthorizationStateReady -> {
                 settings.authPhone = null
                 ensureStreamServer()
@@ -197,8 +206,16 @@ class MainActivity : AppCompatActivity() {
             hint = "+48 123 456 789",
             inputType = InputType.TYPE_CLASS_PHONE,
             button = "Продолжить",
-            footer = "Как войти:\n1. Введи номер обязательно с + и кодом страны.\n2. Нажми «Продолжить».\n3. Telegram отправит код — обычно в приложение Telegram, иногда по SMS или другим доступным способом.\n4. Введи полученный код на следующем экране.",
-            showBack = false
+            footer = "Как войти:\n1. Введи номер обязательно с + и кодом страны.\n2. Нажми «Продолжить».\n3. Telegram отправит код доступным способом.\n4. Если код не приходит — используй вход по QR ниже.",
+            showBack = false,
+            secondaryButton = "Войти по QR",
+            onSecondary = {
+                launchRequest {
+                    settings.authPhone = null
+                    requestedPhoneNumber = null
+                    client.send(TdApi.RequestQrCodeAuthentication(longArrayOf()))
+                }
+            }
         ) { value ->
             val normalized = value.trim().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
             if (!normalized.startsWith("+") || normalized.drop(1).any { !it.isDigit() } || normalized.length < 9) {
@@ -259,6 +276,92 @@ class MainActivity : AppCompatActivity() {
             }
             client.send(TdApi.CheckAuthenticationCode(code))
         }
+    }
+
+    private fun showQrLogin(link: String) {
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(18), dp(24), dp(18), dp(24))
+            setBackgroundColor(bg)
+        }
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(20), dp(20), dp(20), dp(20))
+            background = roundedBg(panel, 24)
+        }
+
+        val back = TextView(this).apply {
+            text = "‹  Назад"
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = roundedBg(palette.surfaceAlt, 14)
+            setOnClickListener {
+                animatePress(this)
+                resetTelegramAuthorization("Выход из QR-входа")
+            }
+        }
+
+        val title = TextView(this).apply {
+            text = "Вход по QR"
+            textSize = 26f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+            setPadding(0, dp(16), 0, dp(6))
+        }
+
+        val subtitle = TextView(this).apply {
+            text = "Открой Telegram на другом устройстве → Настройки → Устройства → Подключить устройство и отсканируй этот код."
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTextColor(muted)
+        }
+
+        val qr = ImageView(this).apply {
+            setImageBitmap(makeQrBitmap(link, dp(250)))
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+            background = roundedBg(Color.WHITE, 18)
+        }
+
+        val note = TextView(this).apply {
+            text = "QR обновляется автоматически. Если он перестал работать, просто подожди — Telegram пришлёт новый."
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setTextColor(muted)
+            setPadding(0, dp(12), 0, 0)
+        }
+
+        card.addView(back, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            dp(42)
+        ))
+        card.addView(title)
+        card.addView(subtitle)
+        card.addView(qr, LinearLayout.LayoutParams(dp(270), dp(270)).apply { topMargin = dp(16) })
+        card.addView(note)
+
+        container.addView(card, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
+        replaceRoot(container)
+    }
+
+    private fun makeQrBitmap(value: String, size: Int): Bitmap {
+        val matrix = QRCodeWriter().encode(value, BarcodeFormat.QR_CODE, size, size)
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565)
+        for (y in 0 until size) {
+            for (x in 0 until size) {
+                bitmap.setPixel(x, y, if (matrix[x, y]) Color.BLACK else Color.WHITE)
+            }
+        }
+        return bitmap
     }
 
     private fun showPasswordLogin(hint: String) {
