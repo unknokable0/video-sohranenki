@@ -138,7 +138,7 @@ class CollectionAiScreen(
                     if (cached == null) {
                         status.text = "Видео ${index + 1}/${videos.size}: ${cleanTitle(video.title)}"
                         val result = analyzer.analyze(
-                            mediaUrl = server.url(video),
+                            mediaDataSource = server.mediaDataSource(video),
                             durationSeconds = video.durationSeconds
                         ) { progress ->
                             activity.runOnUiThread {
