@@ -460,8 +460,8 @@ class PlayerScreen(
         aiStatusView?.text = "Подготавливаем анализ…"
         aiChaptersView?.removeAllViews()
 
-        val wasPlaying = ::player.isInitialized && player.isPlaying
-        if (::player.isInitialized) player.pause()
+        val wasPlaying = player.isPlaying
+        player.pause()
 
         aiScope.launch {
             try {
@@ -489,7 +489,7 @@ class PlayerScreen(
                     alpha = 1f
                     text = "Обновить"
                 }
-                if (wasPlaying && ::player.isInitialized) player.play()
+                if (wasPlaying) player.play()
             }
         }
     }
@@ -505,10 +505,8 @@ class PlayerScreen(
                 setPadding(dp(10), dp(10), dp(10), dp(10))
                 background = roundedInt(palette.surfaceAlt, 15)
                 setOnClickListener {
-                    if (::player.isInitialized) {
-                        player.seekTo(chapter.startSeconds * 1000L)
-                        Toast.makeText(activity, chapter.title, Toast.LENGTH_SHORT).show()
-                    }
+                    player.seekTo(chapter.startSeconds * 1000L)
+                    Toast.makeText(activity, chapter.title, Toast.LENGTH_SHORT).show()
                 }
             }
 
