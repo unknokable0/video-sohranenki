@@ -2314,6 +2314,7 @@ class MainActivity : AppCompatActivity() {
                     when (tab) {
                         SohrTab.VIDEOS -> showFeed(currentVideos)
                         SohrTab.SETTINGS -> showSettings()
+                        SohrTab.STREAK -> showStreak()
                         SohrTab.ACCOUNT -> showAccount()
                     }
                 }
