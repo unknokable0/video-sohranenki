@@ -119,7 +119,7 @@ class PlayerScreen(
         })
 
         playerCard.setOnClickListener { toggleOverlay() }
-        handler.post(progressTick)
+        scheduleProgress()
     }
 
     private fun buildHeader(): LinearLayout {
@@ -303,11 +303,11 @@ class PlayerScreen(
         playPause.setImageResource(if (player.isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
     }
 
-    private val progressTick = object : Runnable {
-        override fun run() {
+    private fun scheduleProgress() {
+        handler.postDelayed({
             updateProgress()
-            handler.postDelayed(this, 350)
-        }
+            scheduleProgress()
+        }, 350)
     }
 
     private fun updateProgress() {
@@ -352,7 +352,7 @@ class PlayerScreen(
             setBackgroundColor(Color.TRANSPARENT)
             background = rounded(backgroundColor, size / 2)
             setPadding(dp(12), dp(12), dp(12), dp(12))
-            scaleType = ImageButton.ScaleType.CENTER_INSIDE
+            scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
         }
 
     private fun textCircle(label: String, color: String): TextView =
