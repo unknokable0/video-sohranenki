@@ -7,26 +7,23 @@ import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.view.ViewAnimationUtils
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import com.google.android.material.switchmaterial.SwitchMaterial
-import kotlin.math.hypot
 
 class SettingsScreen(
     private val activity: Activity,
     private val settings: AppSettings,
     private val onBack: (Boolean) -> Unit,
-    private val onThemeChanged: () -> Unit,
+    private val onThemeChanged: (Boolean, View) -> Unit,
     private val onLanguageChanged: () -> Unit,
     private val onLogout: () -> Unit
 ) {
     private var needsReload = false
     private lateinit var frameRoot: FrameLayout
-    private lateinit var themeRevealLayer: View
     private val palette get() = settings.palette()
     private fun t(key: String): String = AppLanguages.t(settings.languageCode, key)
 
@@ -34,17 +31,6 @@ class SettingsScreen(
         frameRoot = FrameLayout(activity).apply {
             setBackgroundColor(palette.background)
         }
-
-        themeRevealLayer = View(activity).apply {
-            visibility = View.GONE
-        }
-        frameRoot.addView(
-            themeRevealLayer,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        )
 
         val root = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
@@ -256,10 +242,10 @@ class SettingsScreen(
         }
 
         val dark = themeOption(t("dark"), !settings.lightTheme) { source ->
-            if (settings.lightTheme) animateThemeChange(false, source)
+            if (settings.lightTheme) onThemeChanged(false, source)
         }
         val light = themeOption(t("light"), settings.lightTheme) { source ->
-            if (!settings.lightTheme) animateThemeChange(true, source)
+            if (!settings.lightTheme) onThemeChanged(true, source)
         }
 
         row.addView(dark, LinearLayout.LayoutParams(0, dp(46), 1f))
@@ -289,52 +275,6 @@ class SettingsScreen(
             background = rounded(if (selected) palette.accent else Color.TRANSPARENT, 13)
             setOnClickListener { onClick(this) }
         }
-
-    private fun animateThemeChange(light: Boolean, source: View) {
-        if (!settings.animations) {
-            settings.lightTheme = light
-            onThemeChanged()
-            return
-        }
-
-        val target = if (light) AppThemes.Light else AppThemes.Dark
-        themeRevealLayer.setBackgroundColor(target.background)
-        themeRevealLayer.visibility = View.VISIBLE
-
-        val sourceLocation = IntArray(2)
-        val rootLocation = IntArray(2)
-        source.getLocationOnScreen(sourceLocation)
-        frameRoot.getLocationOnScreen(rootLocation)
-
-        val cx = sourceLocation[0] - rootLocation[0] + source.width / 2
-        val cy = sourceLocation[1] - rootLocation[1] + source.height / 2
-
-        themeRevealLayer.post {
-            val maxX = maxOf(cx, themeRevealLayer.width - cx).toDouble()
-            val maxY = maxOf(cy, themeRevealLayer.height - cy).toDouble()
-            val finalRadius = hypot(maxX, maxY).toFloat()
-
-            val reveal = ViewAnimationUtils.createCircularReveal(
-                themeRevealLayer,
-                cx.coerceIn(0, themeRevealLayer.width),
-                cy.coerceIn(0, themeRevealLayer.height),
-                0f,
-                finalRadius
-            ).apply {
-                duration = 420L
-                interpolator = android.view.animation.AccelerateDecelerateInterpolator()
-            }
-
-            reveal.addListener(object : android.animation.AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: android.animation.Animator) {
-                    settings.lightTheme = light
-                    onThemeChanged()
-                }
-            })
-
-            reveal.start()
-        }
-    }
 
     private fun settingRow(
         icon: String,
