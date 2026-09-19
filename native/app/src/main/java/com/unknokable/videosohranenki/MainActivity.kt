@@ -19,6 +19,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -49,11 +50,12 @@ class MainActivity : AppCompatActivity() {
     private var fullScreen = false
     private var channelChatId: Long = 0L
 
-    private val bg = Color.parseColor("#0B0911")
-    private val panel = Color.parseColor("#151120")
-    private val purple = Color.parseColor("#8B5CF6")
-    private val text = Color.parseColor("#F7F5FF")
-    private val muted = Color.parseColor("#9E96AD")
+    private val palette get() = settings.palette()
+    private val bg get() = palette.background
+    private val panel get() = palette.surface
+    private val purple get() = palette.accent
+    private val text get() = palette.text
+    private val muted get() = palette.muted
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -61,6 +63,7 @@ class MainActivity : AppCompatActivity() {
         settings = AppSettings(this)
         root = FrameLayout(this).apply { setBackgroundColor(bg) }
         setContentView(root)
+        applySystemTheme()
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -408,16 +411,24 @@ class MainActivity : AppCompatActivity() {
 
     private fun showFeed(videos: List<VideoItem>) {
         isPlayerScreen = false
+        isSettingsScreen = false
         currentDay = null
         setFullscreen(false)
+        applySystemTheme()
 
         val zone = ZoneId.systemDefault()
-        val groups = videos
+        val baseGroups = videos
             .groupBy { Instant.ofEpochSecond(it.date.toLong()).atZone(zone).toLocalDate() }
             .map { (date, dayVideos) ->
                 DayCollection(date, dayVideos.sortedByDescending { it.date })
             }
-            .sortedByDescending { it.date }
+
+        val groups = when (settings.collectionSort) {
+            CollectionSort.NEWEST -> baseGroups.sortedByDescending { it.date }
+            CollectionSort.OLDEST -> baseGroups.sortedBy { it.date }
+            CollectionSort.MOST_VIDEOS -> baseGroups.sortedByDescending { it.videos.size }
+            CollectionSort.LONGEST -> baseGroups.sortedByDescending { it.totalDurationSeconds }
+        }
 
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -427,17 +438,21 @@ class MainActivity : AppCompatActivity() {
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(18), dp(16), dp(10), dp(12))
+            setPadding(dp(16), dp(16), dp(16), dp(10))
             setBackgroundColor(bg)
         }
 
+        val leftSpacer = View(this)
+
         val titles = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
         }
 
         val titleView = TextView(this).apply {
             text = "ВИДЕО СОХРАНЕНКИ"
-            textSize = 22f
+            textSize = 21f
+            gravity = Gravity.CENTER
             setTextColor(this@MainActivity.text)
             setTypeface(typeface, Typeface.BOLD)
         }
@@ -445,6 +460,7 @@ class MainActivity : AppCompatActivity() {
         val subtitle = TextView(this).apply {
             text = "Последние 7 дней • ${groups.size} сборников • ${videos.size} видео"
             textSize = 12f
+            gravity = Gravity.CENTER
             setTextColor(muted)
             setPadding(0, dp(4), 0, 0)
         }
@@ -452,32 +468,59 @@ class MainActivity : AppCompatActivity() {
         titles.addView(titleView)
         titles.addView(subtitle)
 
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
         val refresh = ImageButton(this).apply {
             setImageResource(R.drawable.ic_refresh)
-            background = roundedBg("#171321", 16)
+            background = roundedBg(palette.surfaceAlt, 16)
             setPadding(dp(12), dp(12), dp(12), dp(12))
             setOnClickListener { loadVideos() }
         }
 
         val settingsButton = ImageButton(this).apply {
             setImageResource(R.drawable.ic_settings)
-            background = roundedBg("#171321", 16)
+            background = roundedBg(palette.surfaceAlt, 16)
             setPadding(dp(12), dp(12), dp(12), dp(12))
             setOnClickListener { showSettings() }
         }
 
+        actions.addView(refresh, LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginEnd = dp(8) })
+        actions.addView(settingsButton, LinearLayout.LayoutParams(dp(48), dp(48)))
+
+        header.addView(leftSpacer, LinearLayout.LayoutParams(dp(104), dp(48)))
         header.addView(titles, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        header.addView(refresh, LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginEnd = dp(8) })
-        header.addView(settingsButton, LinearLayout.LayoutParams(dp(48), dp(48)))
+        header.addView(actions, LinearLayout.LayoutParams(dp(104), ViewGroup.LayoutParams.WRAP_CONTENT))
         page.addView(header)
 
-        val weekHint = TextView(this).apply {
-            text = "Записи автоматически собраны по дням"
+        val tools = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(6), dp(16), dp(8))
+        }
+
+        val hint = TextView(this).apply {
+            text = "Сборники по дням"
             textSize = 13f
             setTextColor(muted)
-            setPadding(dp(18), dp(2), dp(18), dp(6))
         }
-        page.addView(weekHint)
+
+        val sort = TextView(this).apply {
+            text = "⇅  ${settings.collectionSort.label}"
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(purple)
+            setPadding(dp(12), dp(9), dp(12), dp(9))
+            background = roundedBg(palette.surface, 14)
+            setOnClickListener { showCollectionSortDialog() }
+        }
+
+        tools.addView(hint, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        tools.addView(sort)
+        page.addView(tools)
 
         if (groups.isEmpty()) {
             val empty = TextView(this).apply {
@@ -486,28 +529,16 @@ class MainActivity : AppCompatActivity() {
                 textSize = 16f
                 gravity = Gravity.CENTER
             }
-            page.addView(
-                empty,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    0,
-                    1f
-                )
-            )
+            page.addView(empty, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         } else {
             val list = RecyclerView(this).apply {
                 layoutManager = LinearLayoutManager(this@MainActivity)
-                adapter = DayCollectionAdapter(groups) { showDayCollection(it) }
+                adapter = DayCollectionAdapter(groups, palette, settings.animations) { showDayCollection(it) }
                 setBackgroundColor(bg)
+                setHasFixedSize(true)
+                itemAnimator = if (settings.animations) itemAnimator else null
             }
-            page.addView(
-                list,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    0,
-                    1f
-                )
-            )
+            page.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         }
 
         replaceRoot(page)
@@ -516,7 +547,19 @@ class MainActivity : AppCompatActivity() {
     private fun showDayCollection(collection: DayCollection) {
         currentDay = collection
         isPlayerScreen = false
+        isSettingsScreen = false
         setFullscreen(false)
+        applySystemTheme()
+
+        val sortedVideos = when (settings.videoSort) {
+            VideoSort.NEWEST -> collection.videos.sortedByDescending { it.date }
+            VideoSort.OLDEST -> collection.videos.sortedBy { it.date }
+            VideoSort.LONGEST -> collection.videos.sortedByDescending { it.durationSeconds }
+            VideoSort.SHORTEST -> collection.videos.sortedBy { it.durationSeconds }
+            VideoSort.LARGEST -> collection.videos.sortedByDescending { it.fileSize }
+            VideoSort.SMALLEST -> collection.videos.sortedBy { it.fileSize }
+            VideoSort.TITLE -> collection.videos.sortedBy { it.title.lowercase(Locale("ru")) }
+        }
 
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -526,26 +569,26 @@ class MainActivity : AppCompatActivity() {
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(10), dp(12), dp(12), dp(10))
+            setPadding(dp(16), dp(12), dp(16), dp(8))
             setBackgroundColor(bg)
         }
 
-        val back = Button(this).apply {
-            text = "←"
-            textSize = 21f
-            setTextColor(Color.WHITE)
-            setBackgroundColor(panel)
+        val back = ImageButton(this).apply {
+            setImageResource(R.drawable.ic_back)
+            background = roundedBg(palette.surfaceAlt, 24)
+            setPadding(dp(12), dp(12), dp(12), dp(12))
             setOnClickListener { onBackPressedDispatcher.onBackPressed() }
         }
 
         val titles = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), 0, 0, 0)
+            gravity = Gravity.CENTER_HORIZONTAL
         }
 
         val titleView = TextView(this).apply {
             text = dayTitle(collection.date)
             textSize = 20f
+            gravity = Gravity.CENTER
             setTextColor(this@MainActivity.text)
             setTypeface(typeface, Typeface.BOLD)
         }
@@ -553,6 +596,7 @@ class MainActivity : AppCompatActivity() {
         val subtitle = TextView(this).apply {
             text = "${collection.videos.size} видео • @t2x2_video"
             textSize = 12f
+            gravity = Gravity.CENTER
             setTextColor(muted)
             setPadding(0, dp(3), 0, 0)
         }
@@ -560,25 +604,48 @@ class MainActivity : AppCompatActivity() {
         titles.addView(titleView)
         titles.addView(subtitle)
 
-        header.addView(back, LinearLayout.LayoutParams(dp(50), dp(46)))
+        val spacer = View(this)
+        header.addView(back, LinearLayout.LayoutParams(dp(48), dp(48)))
         header.addView(titles, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        header.addView(spacer, LinearLayout.LayoutParams(dp(48), dp(48)))
         page.addView(header)
+
+        val sortRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(2), dp(16), dp(8))
+        }
+
+        val countLabel = TextView(this).apply {
+            text = "Видео в сборнике"
+            textSize = 13f
+            setTextColor(muted)
+        }
+
+        val sort = TextView(this).apply {
+            text = "⇅  ${settings.videoSort.label}"
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(purple)
+            setPadding(dp(12), dp(9), dp(12), dp(9))
+            background = roundedBg(palette.surface, 14)
+            setOnClickListener { showVideoSortDialog(collection) }
+        }
+
+        sortRow.addView(countLabel, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        sortRow.addView(sort)
+        page.addView(sortRow)
 
         val list = RecyclerView(this).apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
-            adapter = VideoAdapter(collection.videos, settings.animations) { openPlayer(it) }
+            adapter = VideoAdapter(sortedVideos, palette, settings.animations) { openPlayer(it) }
             setBackgroundColor(bg)
+            setHasFixedSize(true)
+            itemAnimator = if (settings.animations) itemAnimator else null
         }
 
-        page.addView(
-            list,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            )
-        )
-
+        page.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         replaceRoot(page)
     }
 
@@ -618,11 +685,46 @@ class MainActivity : AppCompatActivity() {
     private fun showSettings() {
         isSettingsScreen = true
         isPlayerScreen = false
-        val screen = SettingsScreen(this, settings) { needsReload ->
-            isSettingsScreen = false
-            if (needsReload) loadVideos() else showFeed(currentVideos)
-        }
+        applySystemTheme()
+        val screen = SettingsScreen(
+            this,
+            settings,
+            onBack = { needsReload ->
+                isSettingsScreen = false
+                if (needsReload) loadVideos() else showFeed(currentVideos)
+            },
+            onThemeChanged = {
+                applySystemTheme()
+                showSettings()
+            }
+        )
         replaceRoot(screen.build())
+    }
+
+    private fun showCollectionSortDialog() {
+        val values = CollectionSort.values()
+        AlertDialog.Builder(this)
+            .setTitle("Сортировка сборников")
+            .setSingleChoiceItems(values.map { it.label }.toTypedArray(), settings.collectionSort.ordinal) { dialog, which ->
+                settings.collectionSort = values[which]
+                dialog.dismiss()
+                showFeed(currentVideos)
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
+    private fun showVideoSortDialog(collection: DayCollection) {
+        val values = VideoSort.values()
+        AlertDialog.Builder(this)
+            .setTitle("Сортировка видео")
+            .setSingleChoiceItems(values.map { it.label }.toTypedArray(), settings.videoSort.ordinal) { dialog, which ->
+                settings.videoSort = values[which]
+                dialog.dismiss()
+                showDayCollection(collection)
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
     }
 
     private fun setFullscreen(enabled: Boolean) {
@@ -659,6 +761,7 @@ class MainActivity : AppCompatActivity() {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
+            setPadding(dp(24), dp(24), dp(24), dp(24))
             setBackgroundColor(bg)
         }
         val progress = ProgressBar(this)
@@ -666,10 +769,11 @@ class MainActivity : AppCompatActivity() {
             text = message
             setTextColor(muted)
             textSize = 15f
+            gravity = Gravity.CENTER
             setPadding(0, dp(14), 0, 0)
         }
         box.addView(progress)
-        box.addView(label)
+        box.addView(label, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         replaceRoot(box)
     }
 
@@ -714,11 +818,24 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun roundedBg(color: String, radiusDp: Int): android.graphics.drawable.GradientDrawable =
+    private fun roundedBg(color: Int, radiusDp: Int): android.graphics.drawable.GradientDrawable =
         android.graphics.drawable.GradientDrawable().apply {
-            setColor(Color.parseColor(color))
+            setColor(color)
             cornerRadius = dp(radiusDp).toFloat()
         }
+
+    private fun applySystemTheme() {
+        root.setBackgroundColor(bg)
+        window.statusBarColor = bg
+        window.navigationBarColor = bg
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            window.insetsController?.isAppearanceLightStatusBars = settings.lightTheme
+            window.insetsController?.isAppearanceLightNavigationBars = settings.lightTheme
+        } else {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = if (settings.lightTheme) View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR else View.SYSTEM_UI_FLAG_VISIBLE
+        }
+    }
 
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()
