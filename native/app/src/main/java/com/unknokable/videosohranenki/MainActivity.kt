@@ -829,8 +829,10 @@ class MainActivity : AppCompatActivity() {
         window.statusBarColor = bg
         window.navigationBarColor = bg
         if (android.os.Build.VERSION.SDK_INT >= 30) {
-            window.insetsController?.isAppearanceLightStatusBars = settings.lightTheme
-            window.insetsController?.isAppearanceLightNavigationBars = settings.lightTheme
+            val mask = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
+                WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+            val appearance = if (settings.lightTheme) mask else 0
+            window.insetsController?.setSystemBarsAppearance(appearance, mask)
         } else {
             @Suppress("DEPRECATION")
             window.decorView.systemUiVisibility = if (settings.lightTheme) View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR else View.SYSTEM_UI_FLAG_VISIBLE
