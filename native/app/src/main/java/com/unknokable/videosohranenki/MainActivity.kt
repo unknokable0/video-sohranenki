@@ -8,7 +8,10 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
+import android.telephony.TelephonyManager
+import android.text.Editable
 import android.text.InputType
+import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -32,6 +35,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
+import com.google.i18n.phonenumbers.PhoneNumberUtil
 import io.github.tdlibandroid.ktx.TdClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
@@ -205,40 +209,283 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showPhoneLogin() {
-        showAuthForm(
-            title = "Вход",
-            subtitle = "Введи номер телефона, который привязан к Telegram.",
-            hint = "+48 123 456 789",
-            inputType = InputType.TYPE_CLASS_PHONE,
-            button = "Продолжить",
-            footer = "Как войти:\n1. Введи номер обязательно с + и кодом страны.\n2. Нажми «Продолжить».\n3. Telegram отправит код доступным способом.\n4. Если код не приходит — используй вход по QR ниже.",
-            showBack = false,
-            secondaryButton = "Войти по QR",
-            onSecondary = {
+        val phoneUtil = PhoneNumberUtil.getInstance()
+        val regions = phoneUtil.supportedRegions
+            .map { region ->
+                PhoneCountry(
+                    region = region,
+                    name = Locale("", region).getDisplayCountry(Locale("ru")).ifBlank { region },
+                    dialCode = phoneUtil.getCountryCodeForRegion(region),
+                    flag = countryFlag(region)
+                )
+            }
+            .sortedBy { it.name }
+
+        var selected = detectCountry(regions)
+
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(18), dp(24), dp(18), dp(24))
+            setBackgroundColor(bg)
+        }
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(20), dp(20), dp(20))
+            background = roundedBg(panel, 24)
+        }
+
+        val brand = TextView(this).apply {
+            text = "SOHR"
+            textSize = 17f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            setTypeface(typeface, Typeface.BOLD)
+            background = roundedBg(purple, 16)
+        }
+
+        val title = TextView(this).apply {
+            text = "Вход"
+            textSize = 29f
+            setTextColor(this@MainActivity.text)
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(0, dp(16), 0, 0)
+        }
+
+        val subtitle = TextView(this).apply {
+            text = "Выбери страну и введи номер Telegram."
+            textSize = 14f
+            setTextColor(muted)
+            setPadding(0, dp(7), 0, dp(16))
+        }
+
+        val country = TextView(this).apply {
+            textSize = 15f
+            gravity = Gravity.CENTER_VERTICAL
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+            setPadding(dp(14), 0, dp(14), 0)
+            background = roundedBg(palette.surfaceAlt, 16)
+        }
+
+        val phoneRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), 0, dp(8), 0)
+            background = roundedBg(palette.surfaceAlt, 16)
+        }
+
+        val prefix = TextView(this).apply {
+            textSize = 16f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+            setPadding(dp(4), 0, dp(10), 0)
+        }
+
+        val input = EditText(this).apply {
+            hint = "Номер телефона"
+            inputType = InputType.TYPE_CLASS_PHONE
+            setTextColor(this@MainActivity.text)
+            setHintTextColor(muted)
+            setSingleLine(true)
+            background = null
+        }
+
+        var formatter = phoneUtil.getAsYouTypeFormatter(selected.region)
+        var formatting = false
+
+        fun applyCountry() {
+            country.text = "${selected.flag}  ${selected.name}   +${selected.dialCode}"
+            prefix.text = "+${selected.dialCode}"
+            formatter = phoneUtil.getAsYouTypeFormatter(selected.region)
+            val digits = input.text.toString().filter { it.isDigit() }
+            if (digits.isNotEmpty()) {
+                formatting = true
+                formatter.clear()
+                var formatted = ""
+                digits.forEach { ch -> formatted = formatter.inputDigit(ch) }
+                input.setText(formatted)
+                input.setSelection(formatted.length)
+                formatting = false
+            }
+        }
+
+        country.setOnClickListener {
+            animatePress(country)
+            ModernDialogs.showChoices(
+                context = this,
+                palette = palette,
+                title = "Выбери страну",
+                options = regions.map { "${it.flag}  ${it.name}  +${it.dialCode}" },
+                selected = regions.indexOfFirst { it.region == selected.region }.coerceAtLeast(0)
+            ) { which ->
+                selected = regions[which]
+                applyCountry()
+            }
+        }
+
+        input.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+            override fun afterTextChanged(s: Editable?) {
+                if (formatting) return
+                val digits = s?.toString().orEmpty().filter { it.isDigit() }
+                formatter.clear()
+                var formatted = ""
+                digits.take(18).forEach { ch -> formatted = formatter.inputDigit(ch) }
+                if (formatted != s?.toString().orEmpty()) {
+                    formatting = true
+                    input.setText(formatted)
+                    input.setSelection(formatted.length)
+                    formatting = false
+                }
+            }
+        })
+
+        val error = TextView(this).apply {
+            textSize = 12.5f
+            setTextColor(Color.parseColor("#FF6B81"))
+            visibility = View.GONE
+            setPadding(dp(2), dp(8), dp(2), 0)
+        }
+        authErrorView = error
+
+        val submit = Button(this).apply {
+            text = "Продолжить"
+            setTextColor(Color.WHITE)
+            background = roundedBg(purple, 16)
+            setOnClickListener {
+                animatePress(this)
+                val national = input.text.toString().filter { it.isDigit() }
+                if (national.isBlank()) {
+                    error.text = "Введи номер телефона"
+                    error.visibility = View.VISIBLE
+                    return@setOnClickListener
+                }
+
+                val normalized = "+${selected.dialCode}$national"
+                error.visibility = View.GONE
+                isEnabled = false
+                alpha = 0.72f
+
+                lifecycleScope.launch {
+                    try {
+                        val parsed = phoneUtil.parse(normalized, selected.region)
+                        if (!phoneUtil.isValidNumber(parsed)) {
+                            throw IllegalArgumentException("Проверь номер телефона")
+                        }
+
+                        requestedPhoneNumber = normalized
+                        settings.authPhone = normalized
+
+                        val authSettings = TdApi.PhoneNumberAuthenticationSettings(
+                            false,
+                            true,
+                            false,
+                            true,
+                            false,
+                            null,
+                            emptyArray()
+                        )
+                        client.send(TdApi.SetAuthenticationPhoneNumber(normalized, authSettings))
+                    } catch (e: Exception) {
+                        error.text = friendlyAuthError(e.message)
+                        error.visibility = View.VISIBLE
+                        isEnabled = true
+                        alpha = 1f
+                    }
+                }
+            }
+        }
+        authSubmitButton = submit
+
+        val qr = TextView(this).apply {
+            text = "Войти через Telegram"
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(purple)
+            background = roundedBg(palette.surfaceAlt, 16)
+            setOnClickListener {
+                animatePress(this)
                 launchRequest {
                     settings.authPhone = null
                     requestedPhoneNumber = null
                     client.send(TdApi.RequestQrCodeAuthentication(longArrayOf()))
                 }
             }
-        ) { value ->
-            val normalized = value.trim().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
-            if (!normalized.startsWith("+") || normalized.drop(1).any { !it.isDigit() } || normalized.length < 9) {
-                throw IllegalArgumentException("Введи номер в формате +48123456789")
-            }
-            requestedPhoneNumber = normalized
-            settings.authPhone = normalized
-            val authSettings = TdApi.PhoneNumberAuthenticationSettings(
-                false,
-                true,
-                false,
-                true,
-                false,
-                null,
-                emptyArray()
-            )
-            client.send(TdApi.SetAuthenticationPhoneNumber(normalized, authSettings))
         }
+
+        val help = TextView(this).apply {
+            text = "Код страны подставляется автоматически. Telegram сам выберет доступный способ подтверждения: приложение Telegram, SMS, email, звонок или другой разрешённый вариант."
+            textSize = 12f
+            setTextColor(muted)
+            setPadding(dp(2), dp(12), dp(2), 0)
+            setLineSpacing(0f, 1.12f)
+        }
+
+        card.addView(brand, LinearLayout.LayoutParams(dp(64), dp(52)))
+        card.addView(title)
+        card.addView(subtitle)
+        card.addView(country, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(52)
+        ))
+        card.addView(phoneRow, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(54)
+        ).apply { topMargin = dp(10) })
+        phoneRow.addView(prefix)
+        phoneRow.addView(input, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+        card.addView(submit, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(52)
+        ).apply { topMargin = dp(12) })
+        card.addView(error)
+        card.addView(qr, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(48)
+        ).apply { topMargin = dp(10) })
+        card.addView(help)
+
+        container.addView(card, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
+
+        applyCountry()
+        replaceRoot(container)
+        input.requestFocus()
+    }
+
+    private data class PhoneCountry(
+        val region: String,
+        val name: String,
+        val dialCode: Int,
+        val flag: String
+    )
+
+    private fun detectCountry(countries: List<PhoneCountry>): PhoneCountry {
+        val telephony = getSystemService(TELEPHONY_SERVICE) as? TelephonyManager
+        val candidates = listOf(
+            telephony?.simCountryIso,
+            telephony?.networkCountryIso,
+            Locale.getDefault().country
+        ).mapNotNull { it?.uppercase(Locale.ROOT)?.takeIf { value -> value.length == 2 } }
+
+        val region = candidates.firstOrNull { code -> countries.any { it.region == code } }
+            ?: "PL"
+        return countries.firstOrNull { it.region == region }
+            ?: countries.first()
+    }
+
+    private fun countryFlag(region: String): String {
+        if (region.length != 2) return ""
+        val upper = region.uppercase(Locale.ROOT)
+        val first = upper[0].code - 'A'.code + 0x1F1E6
+        val second = upper[1].code - 'A'.code + 0x1F1E6
+        return String(Character.toChars(first)) + String(Character.toChars(second))
     }
 
     private fun showCodeLogin(state: TdApi.AuthorizationStateWaitCode) {
@@ -906,7 +1153,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val titleView = TextView(this).apply {
-            text = "ВИДЕО СОХРАНЕНКИ"
+            text = "SOHR"
             textSize = 24f
             gravity = Gravity.START
             maxLines = 1
@@ -1169,6 +1416,7 @@ class MainActivity : AppCompatActivity() {
             activity = this,
             item = item,
             mediaUrl = server.url(item),
+            aiDataSourceFactory = { server.mediaDataSource(item) },
             settings = settings,
             startPositionMs = startSeconds * 1000L,
             onBack = { onBackPressedDispatcher.onBackPressed() },
