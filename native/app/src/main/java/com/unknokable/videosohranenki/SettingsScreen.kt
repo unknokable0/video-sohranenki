@@ -47,7 +47,7 @@ class SettingsScreen(
             setImageResource(R.drawable.ic_back)
             background = rounded(palette.surfaceAlt, 24)
             setPadding(dp(12), dp(12), dp(12), dp(12))
-            setOnClickListener { onBack(needsReload) }
+            setOnClickListener { animateTap(this); onBack(needsReload) }
         }
 
         val title = TextView(activity).apply {
@@ -119,7 +119,7 @@ class SettingsScreen(
             setTextColor(Color.WHITE)
             setPadding(dp(16), dp(14), dp(16), dp(14))
             background = rounded(Color.parseColor("#D9435F"), 16)
-            setOnClickListener { onLogout() }
+            setOnClickListener { animateTap(this); onLogout() }
         }
         root.addView(
             logout,
@@ -188,6 +188,7 @@ class SettingsScreen(
             setTextColor(Color.WHITE)
             background = rounded(palette.accent, 13)
             setOnClickListener {
+                animateTap(this)
                 ModernDialogs.showChoices(
                     context = activity,
                     palette = palette,
@@ -241,10 +242,10 @@ class SettingsScreen(
             setPadding(dp(4), dp(4), dp(4), dp(4))
         }
 
-        val dark = themeOption(t("dark"), !settings.lightTheme) { source ->
+        val dark = themeOption("☾", !settings.lightTheme, "Тёмная") { source ->
             if (settings.lightTheme) onThemeChanged(false, source)
         }
-        val light = themeOption(t("light"), settings.lightTheme) { source ->
+        val light = themeOption("☀", settings.lightTheme, "Светлая") { source ->
             if (!settings.lightTheme) onThemeChanged(true, source)
         }
 
@@ -265,16 +266,45 @@ class SettingsScreen(
         }
     }
 
-    private fun themeOption(label: String, selected: Boolean, onClick: (View) -> Unit): TextView =
+    private fun themeOption(
+        symbol: String,
+        selected: Boolean,
+        description: String,
+        onClick: (View) -> Unit
+    ): TextView =
         TextView(activity).apply {
-            text = label
+            text = symbol
+            contentDescription = description
             gravity = Gravity.CENTER
-            textSize = 14f
-            setTypeface(typeface, Typeface.BOLD)
+            textSize = 25f
+            setTypeface(typeface, Typeface.NORMAL)
             setTextColor(if (selected) Color.WHITE else palette.muted)
             background = rounded(if (selected) palette.accent else Color.TRANSPARENT, 13)
-            setOnClickListener { onClick(this) }
+            setOnClickListener {
+                animateTap(this)
+                onClick(this)
+            }
         }
+
+    private fun animateTap(view: View) {
+        if (!settings.animations) return
+        val ease = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
+        view.animate().cancel()
+        view.animate()
+            .scaleX(0.96f)
+            .scaleY(0.96f)
+            .setDuration(60L)
+            .setInterpolator(ease)
+            .withEndAction {
+                view.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(130L)
+                    .setInterpolator(ease)
+                    .start()
+            }
+            .start()
+    }
 
     private fun settingRow(
         icon: String,
