@@ -1,49 +1,11 @@
 name: Build Android APK
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Generate Android project
-        run: npx expo prebuild --platform android --non-interactive
-
-      - name: Build release APK
-        run: |
-          chmod +x android/gradlew
-          cd android
-          ./gradlew assembleRelease --no-daemon
-
-      - name: Collect APK
-        run: cp android/app/build/outputs/apk/release/app-release.apk VIDEO-SOHRANENKI.apk
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: VIDEO-SOHRANENKI-APK
-          path: VIDEO-SOHRANENKI.apk
-          if-no-files-found: error
-          retention-days: 30
+      - run: echo "Native Android rebuild is being prepared"
