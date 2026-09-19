@@ -1,12 +1,13 @@
 package com.unknokable.videosohranenki
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
-import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 
@@ -26,41 +27,41 @@ class SohrBottomNavView(
     init {
         orientation = HORIZONTAL
         gravity = Gravity.CENTER
-        setPadding(dp(8), dp(8), dp(8), dp(8))
+        setPadding(dp(6), dp(6), dp(6), dp(6))
+        clipChildren = false
+        clipToPadding = false
         background = GradientDrawable().apply {
-            setColor(palette.surface)
-            cornerRadius = dp(28).toFloat()
-            setStroke(dp(1), palette.stroke)
+            setColor(withAlpha(palette.surface, 218))
+            cornerRadius = dp(26).toFloat()
+            setStroke(dp(1), withAlpha(palette.stroke, 190))
         }
-        elevation = dp(10).toFloat()
+        elevation = dp(5).toFloat()
 
-        addTab(SohrTab.VIDEOS, "▶", "Видео", selected == SohrTab.VIDEOS)
-        addTab(SohrTab.SETTINGS, "⚙", "Настройки", selected == SohrTab.SETTINGS)
-        addTab(SohrTab.ACCOUNT, "●", "Аккаунт", selected == SohrTab.ACCOUNT)
+        addTab(SohrTab.VIDEOS, R.drawable.ic_nav_video, "Видео", selected == SohrTab.VIDEOS)
+        addTab(SohrTab.SETTINGS, R.drawable.ic_nav_settings, "Настройки", selected == SohrTab.SETTINGS)
+        addTab(SohrTab.ACCOUNT, R.drawable.ic_nav_account, "Аккаунт", selected == SohrTab.ACCOUNT)
     }
 
-    private fun addTab(tab: SohrTab, icon: String, label: String, active: Boolean) {
+    private fun addTab(tab: SohrTab, iconRes: Int, label: String, active: Boolean) {
         val item = LinearLayout(context).apply {
             orientation = VERTICAL
             gravity = Gravity.CENTER
             setPadding(dp(8), dp(5), dp(8), dp(5))
             background = GradientDrawable().apply {
-                setColor(if (active) palette.accentSoft else Color.TRANSPARENT)
+                setColor(
+                    if (active) withAlpha(palette.accentSoft, 210)
+                    else Color.TRANSPARENT
+                )
                 cornerRadius = dp(20).toFloat()
-            }
-            if (active) {
-                translationY = -dp(4).toFloat()
-                scaleX = 1.04f
-                scaleY = 1.04f
             }
         }
 
-        val iconView = TextView(context).apply {
-            text = icon
-            textSize = if (tab == SohrTab.ACCOUNT) 15f else 17f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(if (active) palette.accent else palette.muted)
+        val iconView = ImageView(context).apply {
+            setImageResource(iconRes)
+            imageTintList = ColorStateList.valueOf(
+                if (active) palette.accent else withAlpha(palette.muted, 220)
+            )
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
         }
 
         val labelView = TextView(context).apply {
@@ -70,24 +71,26 @@ class SohrBottomNavView(
             setTypeface(typeface, if (active) Typeface.BOLD else Typeface.NORMAL)
             setTextColor(if (active) palette.text else palette.muted)
             setPadding(0, dp(2), 0, 0)
+            maxLines = 1
         }
 
-        item.addView(iconView)
-        item.addView(labelView)
+        item.addView(iconView, LayoutParams(dp(23), dp(23)))
+        item.addView(
+            labelView,
+            LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        )
 
         item.setOnClickListener {
             if (active) return@setOnClickListener
             item.animate()
-                .translationY(-dp(7).toFloat())
-                .scaleX(1.08f)
-                .scaleY(1.08f)
-                .setDuration(95)
+                .scaleX(0.94f)
+                .scaleY(0.94f)
+                .setDuration(70)
                 .withEndAction {
                     item.animate()
-                        .translationY(-dp(4).toFloat())
-                        .scaleX(1.04f)
-                        .scaleY(1.04f)
-                        .setDuration(120)
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setDuration(110)
                         .withEndAction { onSelect(tab) }
                         .start()
                 }
@@ -96,12 +99,20 @@ class SohrBottomNavView(
 
         addView(
             item,
-            LayoutParams(0, dp(58), 1f).apply {
+            LayoutParams(0, dp(56), 1f).apply {
                 marginStart = dp(3)
                 marginEnd = dp(3)
             }
         )
     }
+
+    private fun withAlpha(color: Int, alpha: Int): Int =
+        Color.argb(
+            alpha.coerceIn(0, 255),
+            Color.red(color),
+            Color.green(color),
+            Color.blue(color)
+        )
 
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()
