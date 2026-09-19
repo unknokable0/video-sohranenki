@@ -9,6 +9,8 @@ import android.telephony.TelephonyManager
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
+import android.text.method.HideReturnsTransformationMethod
+import android.text.method.PasswordTransformationMethod
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -18,6 +20,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -31,12 +34,15 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.i18n.phonenumbers.PhoneNumberUtil
+import coil.load
+import coil.transform.CircleCropTransformation
 import io.github.tdlibandroid.ktx.TdClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.drinkless.tdlib.TdApi
+import java.io.File
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -54,6 +60,7 @@ class MainActivity : AppCompatActivity() {
     private var currentDay: DayCollection? = null
     private var isPlayerScreen = false
     private var isSettingsScreen = false
+    private var isAccountScreen = false
     private var fullScreen = false
     private var channelChatId: Long = 0L
     private var pendingCodeState: TdApi.AuthorizationStateWaitCode? = null
@@ -105,6 +112,11 @@ class MainActivity : AppCompatActivity() {
                 }
                 if (isSettingsScreen) {
                     isSettingsScreen = false
+                    showFeed(currentVideos)
+                    return
+                }
+                if (isAccountScreen) {
+                    isAccountScreen = false
                     showFeed(currentVideos)
                     return
                 }
@@ -836,7 +848,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val brand = TextView(this).apply {
-            text = "VS"
+            text = "SOHR"
             textSize = 18f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
@@ -876,14 +888,50 @@ class MainActivity : AppCompatActivity() {
             setTextColor(muted)
             setPadding(0, dp(8), 0, dp(24))
         }
+        val isPassword = (inputType and InputType.TYPE_TEXT_VARIATION_PASSWORD) == InputType.TYPE_TEXT_VARIATION_PASSWORD
         val input = EditText(this).apply {
             this.hint = hint
             this.inputType = inputType
             setTextColor(this@MainActivity.text)
             setHintTextColor(muted)
             setSingleLine(true)
-            setPadding(dp(15), dp(14), dp(15), dp(14))
+            setPadding(dp(15), dp(14), if (isPassword) dp(52) else dp(15), dp(14))
             background = roundedBg(palette.surfaceAlt, 16)
+            if (isPassword) transformationMethod = PasswordTransformationMethod.getInstance()
+        }
+
+        val inputContainer = FrameLayout(this).apply {
+            background = roundedBg(palette.surfaceAlt, 16)
+        }
+        input.background = null
+        inputContainer.addView(input, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ))
+
+        if (isPassword) {
+            var visiblePassword = false
+            val eye = TextView(this).apply {
+                text = "👁"
+                textSize = 18f
+                gravity = Gravity.CENTER
+                setTextColor(purple)
+                setOnClickListener {
+                    visiblePassword = !visiblePassword
+                    input.transformationMethod = if (visiblePassword) {
+                        HideReturnsTransformationMethod.getInstance()
+                    } else {
+                        PasswordTransformationMethod.getInstance()
+                    }
+                    input.setSelection(input.text.length)
+                    animatePress(this)
+                }
+            }
+            inputContainer.addView(eye, FrameLayout.LayoutParams(
+                dp(48),
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                Gravity.END or Gravity.CENTER_VERTICAL
+            ))
         }
         val errorView = TextView(this).apply {
             textSize = 12.5f
@@ -927,7 +975,7 @@ class MainActivity : AppCompatActivity() {
         card.addView(brand, LinearLayout.LayoutParams(dp(52), dp(52)))
         card.addView(titleView)
         card.addView(subtitleView)
-        card.addView(input, LinearLayout.LayoutParams(
+        card.addView(inputContainer, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             dp(52)
         ))
@@ -1184,6 +1232,7 @@ class MainActivity : AppCompatActivity() {
     private fun showFeed(videos: List<VideoItem>) {
         isPlayerScreen = false
         isSettingsScreen = false
+        isAccountScreen = false
         currentDay = null
         setFullscreen(false)
         applySystemTheme()
@@ -1320,13 +1369,14 @@ class MainActivity : AppCompatActivity() {
             page.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         }
 
-        replaceRoot(page)
+        replaceRoot(withBottomNav(page, SohrTab.VIDEOS))
     }
 
     private fun showDayCollection(collection: DayCollection) {
         currentDay = collection
         isPlayerScreen = false
         isSettingsScreen = false
+        isAccountScreen = false
         setFullscreen(false)
         applySystemTheme()
 
@@ -1426,7 +1476,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         page.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-        replaceRoot(page)
+        replaceRoot(withBottomNav(page, SohrTab.VIDEOS))
     }
 
     private fun dayTitle(date: LocalDate): String {
@@ -1466,6 +1516,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showSettings() {
         isSettingsScreen = true
+        isAccountScreen = false
         isPlayerScreen = false
         applySystemTheme()
         val screen = SettingsScreen(
@@ -1484,7 +1535,201 @@ class MainActivity : AppCompatActivity() {
             },
             onLogout = { confirmLogout() }
         )
-        replaceRoot(screen.build())
+        replaceRoot(withBottomNav(screen.build(), SohrTab.SETTINGS))
+    }
+
+    private fun showAccount() {
+        isAccountScreen = true
+        isSettingsScreen = false
+        isPlayerScreen = false
+        currentDay = null
+        setFullscreen(false)
+        applySystemTheme()
+        showLoading("Загружаем профиль…")
+
+        lifecycleScope.launch {
+            try {
+                val user = client.send(TdApi.GetMe())
+                val avatarPath = withContext(Dispatchers.IO) {
+                    val photoId = user.profilePhoto?.small?.id ?: return@withContext null
+                    runCatching {
+                        val file = client.send(TdApi.DownloadFile(photoId, 2, 0, 0, true))
+                        file.local.path.takeIf { it.isNotBlank() && file.local.isDownloadingCompleted }
+                    }.getOrNull()
+                }
+                withContext(Dispatchers.Main) {
+                    renderAccount(user, avatarPath)
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    showMessage("Не удалось открыть аккаунт", e.message ?: "Ошибка Telegram")
+                }
+            }
+        }
+    }
+
+    private fun renderAccount(user: TdApi.User, avatarPath: String?) {
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(bg)
+            setPadding(dp(16), dp(18), dp(16), dp(12))
+        }
+
+        val title = TextView(this).apply {
+            text = "Аккаунт"
+            textSize = 26f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+        }
+        val subtitle = TextView(this).apply {
+            text = "Telegram-профиль в SOHR"
+            textSize = 13f
+            setTextColor(muted)
+            setPadding(0, dp(4), 0, dp(18))
+        }
+        page.addView(title)
+        page.addView(subtitle)
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(18), dp(20), dp(18), dp(20))
+            background = roundedBg(panel, 24)
+        }
+
+        val avatar = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            background = roundedBg(palette.accentSoft, 38)
+            clipToOutline = true
+        }
+        if (!avatarPath.isNullOrBlank() && File(avatarPath).exists()) {
+            avatar.load(File(avatarPath)) {
+                crossfade(settings.animations)
+                transformations(CircleCropTransformation())
+            }
+        } else {
+            avatar.setImageResource(R.drawable.ic_launcher)
+        }
+        card.addView(avatar, LinearLayout.LayoutParams(dp(84), dp(84)))
+
+        val fullName = listOf(user.firstName, user.lastName)
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
+            .ifBlank { "Telegram" }
+
+        card.addView(TextView(this).apply {
+            text = fullName
+            textSize = 21f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+            setPadding(0, dp(12), 0, dp(3))
+        })
+
+        card.addView(TextView(this).apply {
+            text = "SOHR • Telegram"
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setTextColor(muted)
+        })
+
+        val phoneRaw = user.phoneNumber.orEmpty().let { if (it.startsWith("+")) it else "+$it" }
+        var revealed = false
+        val phoneRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(12), dp(10), dp(12))
+            background = roundedBg(palette.surfaceAlt, 16)
+        }
+
+        val phoneLabel = TextView(this).apply {
+            text = "Номер телефона"
+            textSize = 12f
+            setTextColor(muted)
+        }
+        val phoneValue = TextView(this).apply {
+            text = maskPhone(phoneRaw)
+            textSize = 16f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+            setPadding(0, dp(3), 0, 0)
+        }
+        val phoneTexts = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(phoneLabel)
+            addView(phoneValue)
+        }
+        val eye = TextView(this).apply {
+            text = "👁"
+            textSize = 19f
+            gravity = Gravity.CENTER
+            setTextColor(purple)
+            background = roundedBg(palette.surface, 14)
+            setOnClickListener {
+                revealed = !revealed
+                phoneValue.text = if (revealed) phoneRaw else maskPhone(phoneRaw)
+                animatePress(this)
+            }
+        }
+        phoneRow.addView(phoneTexts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        phoneRow.addView(eye, LinearLayout.LayoutParams(dp(46), dp(46)))
+
+        card.addView(phoneRow, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(18) })
+
+        page.addView(card)
+
+        val security = TextView(this).apply {
+            text = "Данные аккаунта получаются напрямую через TDLib и не выводятся наружу. Номер скрыт по умолчанию."
+            textSize = 12f
+            setTextColor(muted)
+            setPadding(dp(4), dp(12), dp(4), 0)
+        }
+        page.addView(security)
+
+        replaceRoot(withBottomNav(page, SohrTab.ACCOUNT))
+    }
+
+    private fun maskPhone(phone: String): String {
+        if (phone.length <= 5) return "••••"
+        val visibleStart = phone.take(3)
+        val visibleEnd = phone.takeLast(2)
+        return visibleStart + " ••• ••• ••" + visibleEnd
+    }
+
+    private fun withBottomNav(content: View, selected: SohrTab): View {
+        val shell = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(bg)
+        }
+
+        shell.addView(content, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            0,
+            1f
+        ))
+
+        val nav = SohrBottomNavView(this, palette, selected) { tab ->
+            when (tab) {
+                SohrTab.VIDEOS -> showFeed(currentVideos)
+                SohrTab.SETTINGS -> showSettings()
+                SohrTab.ACCOUNT -> showAccount()
+            }
+        }
+
+        shell.addView(nav, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(74)
+        ).apply {
+            marginStart = dp(14)
+            marginEnd = dp(14)
+            topMargin = dp(6)
+            bottomMargin = dp(8)
+        })
+
+        return shell
     }
 
     private fun showCollectionSortDialog() {
