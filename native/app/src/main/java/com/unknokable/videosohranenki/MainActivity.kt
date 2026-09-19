@@ -191,7 +191,7 @@ class MainActivity : AppCompatActivity() {
         val titleView = TextView(this).apply {
             text = title
             textSize = 29f
-            setTextColor(text)
+            setTextColor(this@MainActivity.text)
             setTypeface(typeface, Typeface.BOLD)
             setPadding(0, dp(20), 0, 0)
         }
@@ -204,7 +204,7 @@ class MainActivity : AppCompatActivity() {
         val input = EditText(this).apply {
             this.hint = hint
             this.inputType = inputType
-            setTextColor(text)
+            setTextColor(this@MainActivity.text)
             setHintTextColor(muted)
             setSingleLine(true)
             setPadding(dp(14), dp(12), dp(14), dp(12))
@@ -360,7 +360,7 @@ class MainActivity : AppCompatActivity() {
         val titleView = TextView(this).apply {
             text = "ВИДЕО СОХРАНЕНКИ"
             textSize = 20f
-            setTextColor(text)
+            setTextColor(this@MainActivity.text)
             setTypeface(typeface, Typeface.BOLD)
         }
         val subtitle = TextView(this).apply {
@@ -442,7 +442,7 @@ class MainActivity : AppCompatActivity() {
 
         val titleView = TextView(this).apply {
             text = item.title
-            setTextColor(text)
+            setTextColor(this@MainActivity.text)
             textSize = 14f
             maxLines = 2
             setPadding(dp(10), 0, dp(10), 0)
@@ -538,7 +538,7 @@ class MainActivity : AppCompatActivity() {
         val titleView = TextView(this).apply {
             text = title
             textSize = 23f
-            setTextColor(text)
+            setTextColor(this@MainActivity.text)
             setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
         }
