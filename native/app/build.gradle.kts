@@ -51,6 +51,7 @@ dependencies {
     implementation("io.coil-kt:coil:2.7.0")
     implementation("com.google.mlkit:image-labeling:17.0.9")
     implementation("com.google.mlkit:text-recognition:16.0.1")
+    implementation("com.google.zxing:core:3.5.3")
     implementation("org.nanohttpd:nanohttpd:2.3.1")
     implementation("io.github.tdlib-android:core:0.1.1")
     implementation("io.github.tdlib-android:ktx:0.1.1")
