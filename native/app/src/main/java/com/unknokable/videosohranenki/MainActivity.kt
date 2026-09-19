@@ -1,13 +1,9 @@
 package com.unknokable.videosohranenki
 
 import android.app.Dialog
-import android.content.ActivityNotFoundException
-import android.content.Intent
 import android.content.pm.ActivityInfo
-import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Typeface
-import android.net.Uri
 import android.os.Bundle
 import android.telephony.TelephonyManager
 import android.text.Editable
@@ -22,7 +18,6 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -35,8 +30,6 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.qrcode.QRCodeWriter
 import com.google.i18n.phonenumbers.PhoneNumberUtil
 import io.github.tdlibandroid.ktx.TdClient
 import kotlinx.coroutines.Dispatchers
@@ -56,7 +49,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var root: FrameLayout
     private var streamServer: TelegramStreamServer? = null
     private var playerScreen: PlayerScreen? = null
-    private var collectionAiScreen: CollectionAiScreen? = null
     private lateinit var settings: AppSettings
     private var currentVideos: List<VideoItem> = emptyList()
     private var currentDay: DayCollection? = null
@@ -102,12 +94,6 @@ class MainActivity : AppCompatActivity() {
             override fun handleOnBackPressed() {
                 if (fullScreen) {
                     setFullscreen(false)
-                    return
-                }
-                if (collectionAiScreen != null) {
-                    collectionAiScreen?.destroy()
-                    collectionAiScreen = null
-                    currentDay?.let { showDayCollection(it) } ?: showFeed(currentVideos)
                     return
                 }
                 if (isPlayerScreen) {
@@ -1430,29 +1416,6 @@ class MainActivity : AppCompatActivity() {
         sortRow.addView(sort)
         page.addView(sortRow)
 
-        if (settings.aiAnalysis) {
-            val aiMap = TextView(this).apply {
-                text = "AI  Карта всего сборника"
-                textSize = 13f
-                gravity = Gravity.CENTER
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(Color.WHITE)
-                background = roundedBg(purple, 16)
-                setPadding(dp(14), dp(11), dp(14), dp(11))
-                setOnClickListener {
-                    animatePress(this)
-                    showCollectionAi(collection)
-                }
-            }
-            page.addView(aiMap, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(46)
-            ).apply {
-                marginStart = dp(16)
-                marginEnd = dp(16)
-                bottomMargin = dp(10)
-            })
-        }
 
         val list = RecyclerView(this).apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
@@ -1491,7 +1454,7 @@ class MainActivity : AppCompatActivity() {
             activity = this,
             item = item,
             mediaUrl = server.url(item),
-            aiDataSourceFactory = { server.mediaDataSource(item) },
+            previewDataSourceFactory = { server.mediaDataSource(item) },
             settings = settings,
             startPositionMs = startSeconds * 1000L,
             onBack = { onBackPressedDispatcher.onBackPressed() },
@@ -1499,33 +1462,6 @@ class MainActivity : AppCompatActivity() {
         )
 
         replaceRoot(playerScreen!!.root)
-    }
-
-    private fun showCollectionAi(collection: DayCollection) {
-        val server = streamServer
-        if (server == null) {
-            Toast.makeText(this, "Видеопоток ещё не готов", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        collectionAiScreen?.destroy()
-        collectionAiScreen = CollectionAiScreen(
-            activity = this,
-            collection = collection,
-            server = server,
-            settings = settings,
-            onBack = {
-                collectionAiScreen?.destroy()
-                collectionAiScreen = null
-                showDayCollection(collection)
-            },
-            onOpenAt = { video, second ->
-                collectionAiScreen?.destroy()
-                collectionAiScreen = null
-                openPlayer(video, second)
-            }
-        )
-        replaceRoot(collectionAiScreen!!.root)
     }
 
     private fun showSettings() {
@@ -1722,8 +1658,6 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         playerScreen?.destroy()
         playerScreen = null
-        collectionAiScreen?.destroy()
-        collectionAiScreen = null
         streamServer?.stop()
         if (::client.isInitialized) client.close()
         super.onDestroy()
