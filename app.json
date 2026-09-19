@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "ВИДЕО СОХРАНЕНКИ",
+    "slug": "video-sohranenki",
+    "version": "1.0.0",
+    "orientation": "default",
+    "userInterfaceStyle": "dark",
+    "android": {
+      "package": "com.unknokable.videosohranenki",
+      "versionCode": 2,
+      "permissions": ["INTERNET"]
+    }
+  }
+}
