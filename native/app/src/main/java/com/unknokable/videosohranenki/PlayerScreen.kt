@@ -551,6 +551,8 @@ class PlayerScreen(
 
     private fun installGestures() {
         val detector = GestureDetector(activity, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent): Boolean = true
+
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
                 toggleOverlay()
                 return true
@@ -585,15 +587,18 @@ class PlayerScreen(
             }
         })
 
-        playerCard.setOnTouchListener { _, event ->
-            detector.onTouchEvent(event)
+        playerCard.setOnTouchListener { view, event ->
+            val handled = detector.onTouchEvent(event)
             if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
                 if (speedBadge.alpha > 0f) {
                     player.playbackParameters = PlaybackParameters(speed)
                     speedBadge.animate().alpha(0f).setDuration(120).start()
                 }
             }
-            true
+            if (!handled && event.actionMasked == MotionEvent.ACTION_UP) {
+                view.performClick()
+            }
+            handled
         }
     }
 
