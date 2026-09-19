@@ -5,7 +5,6 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -134,17 +133,14 @@ class DayCollectionAdapter(
                 .setStartDelay((position.coerceAtMost(7) * 18L))
                 .start()
 
-            holder.itemView.setOnTouchListener { v, event ->
-                when (event.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> v.animate().scaleX(0.988f).scaleY(0.988f).setDuration(70).start()
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
-                        v.animate().scaleX(1f).scaleY(1f).setDuration(90).start()
-                }
-                false
-            }
         }
 
-        holder.itemView.setOnClickListener { onClick(item) }
+        holder.itemView.setOnClickListener {
+            if (!holder.itemView.isEnabled) return@setOnClickListener
+            holder.itemView.isEnabled = false
+            onClick(item)
+            holder.itemView.postDelayed({ holder.itemView.isEnabled = true }, 450)
+        }
     }
 
     private fun dayTitle(date: LocalDate): String {
