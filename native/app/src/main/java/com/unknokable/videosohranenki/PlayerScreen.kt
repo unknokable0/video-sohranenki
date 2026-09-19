@@ -14,7 +14,10 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.TrackGroup
+import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
@@ -42,6 +45,7 @@ class PlayerScreen(
     private lateinit var seekBar: SeekBar
     private lateinit var currentTime: TextView
     private lateinit var totalTime: TextView
+    private lateinit var qualityButton: TextView
     private var fullscreen = false
     private var dragging = false
     private val palette get() = settings.palette()
@@ -115,6 +119,7 @@ class PlayerScreen(
                 updateProgress()
                 if (playbackState == Player.STATE_READY) {
                     totalTime.text = formatMs(player.duration)
+                    updateQualityLabel()
                 }
             }
         })
@@ -226,6 +231,17 @@ class PlayerScreen(
         totalTime = timeLabel("0:00").apply { gravity = Gravity.END }
         val spacer = View(activity)
 
+        qualityButton = TextView(activity).apply {
+            text = "Качество"
+            textSize = 11f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            setPadding(dp(10), 0, dp(10), 0)
+            background = rounded("#66181322", 14)
+            setOnClickListener { showQualityPicker() }
+        }
+
         val fullscreenButton = iconButton(R.drawable.ic_fullscreen, "#66181322", 40).apply {
             setOnClickListener {
                 onFullscreen(!fullscreen)
@@ -236,7 +252,8 @@ class PlayerScreen(
         times.addView(currentTime)
         times.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
         times.addView(totalTime)
-        times.addView(fullscreenButton, LinearLayout.LayoutParams(dp(42), dp(42)).apply { marginStart = dp(8) })
+        times.addView(qualityButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(36)).apply { marginStart = dp(8) })
+        times.addView(fullscreenButton, LinearLayout.LayoutParams(dp(42), dp(42)).apply { marginStart = dp(6) })
 
         bottom.addView(seekBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(32)))
         bottom.addView(times)
@@ -304,6 +321,76 @@ class PlayerScreen(
     fun destroy() {
         handler.removeCallbacksAndMessages(null)
         player.release()
+    }
+
+    private data class QualityOption(
+        val label: String,
+        val group: TrackGroup,
+        val trackIndex: Int
+    )
+
+    private fun availableQualityOptions(): List<QualityOption> {
+        val result = mutableListOf<QualityOption>()
+        for (group in player.currentTracks.groups) {
+            if (group.type != C.TRACK_TYPE_VIDEO || !group.isSupported) continue
+            for (index in 0 until group.length) {
+                if (!group.isTrackSupported(index)) continue
+                val format = group.getTrackFormat(index)
+                val height = format.height
+                val bitrate = format.bitrate
+                val resolution = if (height > 0) "${height}p" else "Оригинал"
+                val bitrateText = if (bitrate > 0) " • %.1f Мбит/с".format(bitrate / 1_000_000.0) else ""
+                result.add(QualityOption(resolution + bitrateText, group.mediaTrackGroup, index))
+            }
+        }
+        return result.distinctBy { it.label }
+    }
+
+    private fun showQualityPicker() {
+        val options = availableQualityOptions()
+        if (options.isEmpty()) {
+            ModernDialogs.showChoices(
+                activity,
+                palette,
+                "Качество видео",
+                listOf("Оригинал • лучшее доступное"),
+                0
+            ) { }
+            return
+        }
+
+        val labels = mutableListOf("Авто • лучшее доступное")
+        labels.addAll(options.map { it.label })
+
+        ModernDialogs.showChoices(
+            context = activity,
+            palette = palette,
+            title = "Качество видео",
+            options = labels,
+            selected = 0
+        ) { which ->
+            if (which == 0) {
+                player.trackSelectionParameters = player.trackSelectionParameters
+                    .buildUpon()
+                    .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+                    .build()
+            } else {
+                val option = options[which - 1]
+                player.trackSelectionParameters = player.trackSelectionParameters
+                    .buildUpon()
+                    .setOverrideForType(
+                        TrackSelectionOverride(option.group, option.trackIndex)
+                    )
+                    .build()
+            }
+            updateQualityLabel()
+        }
+    }
+
+    private fun updateQualityLabel() {
+        if (!::qualityButton.isInitialized) return
+        val height = player.videoFormat?.height ?: 0
+        qualityButton.text = if (height > 0) "${height}p" else "Оригинал"
     }
 
     private fun updatePlayIcon() {
