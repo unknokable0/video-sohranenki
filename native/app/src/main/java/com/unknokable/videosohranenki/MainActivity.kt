@@ -15,11 +15,9 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
-import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -442,17 +440,15 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(bg)
         }
 
-        val leftSpacer = View(this)
-
         val titles = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
+            gravity = Gravity.START
         }
 
         val titleView = TextView(this).apply {
             text = "ВИДЕО СОХРАНЕНКИ"
-            textSize = 21f
-            gravity = Gravity.CENTER
+            textSize = 22f
+            gravity = Gravity.START
             setTextColor(this@MainActivity.text)
             setTypeface(typeface, Typeface.BOLD)
         }
@@ -460,7 +456,7 @@ class MainActivity : AppCompatActivity() {
         val subtitle = TextView(this).apply {
             text = "Последние 7 дней • ${groups.size} сборников • ${videos.size} видео"
             textSize = 12f
-            gravity = Gravity.CENTER
+            gravity = Gravity.START
             setTextColor(muted)
             setPadding(0, dp(4), 0, 0)
         }
@@ -477,22 +473,29 @@ class MainActivity : AppCompatActivity() {
             setImageResource(R.drawable.ic_refresh)
             background = roundedBg(palette.surfaceAlt, 16)
             setPadding(dp(12), dp(12), dp(12), dp(12))
-            setOnClickListener { loadVideos() }
+            setOnClickListener {
+                isEnabled = false
+                loadVideos()
+                postDelayed({ isEnabled = true }, 800)
+            }
         }
 
         val settingsButton = ImageButton(this).apply {
             setImageResource(R.drawable.ic_settings)
             background = roundedBg(palette.surfaceAlt, 16)
             setPadding(dp(12), dp(12), dp(12), dp(12))
-            setOnClickListener { showSettings() }
+            setOnClickListener {
+                isEnabled = false
+                showSettings()
+                postDelayed({ isEnabled = true }, 500)
+            }
         }
 
         actions.addView(refresh, LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginEnd = dp(8) })
         actions.addView(settingsButton, LinearLayout.LayoutParams(dp(48), dp(48)))
 
-        header.addView(leftSpacer, LinearLayout.LayoutParams(dp(104), dp(48)))
         header.addView(titles, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        header.addView(actions, LinearLayout.LayoutParams(dp(104), ViewGroup.LayoutParams.WRAP_CONTENT))
+        header.addView(actions)
         page.addView(header)
 
         val tools = LinearLayout(this).apply {
@@ -696,35 +699,59 @@ class MainActivity : AppCompatActivity() {
             onThemeChanged = {
                 applySystemTheme()
                 showSettings()
-            }
+            },
+            onLogout = { confirmLogout() }
         )
         replaceRoot(screen.build())
     }
 
     private fun showCollectionSortDialog() {
         val values = CollectionSort.values()
-        AlertDialog.Builder(this)
-            .setTitle("Сортировка сборников")
-            .setSingleChoiceItems(values.map { it.label }.toTypedArray(), settings.collectionSort.ordinal) { dialog, which ->
-                settings.collectionSort = values[which]
-                dialog.dismiss()
-                showFeed(currentVideos)
-            }
-            .setNegativeButton("Отмена", null)
-            .show()
+        ModernDialogs.showChoices(
+            context = this,
+            palette = palette,
+            title = "Сортировка сборников",
+            options = values.map { it.label },
+            selected = settings.collectionSort.ordinal
+        ) { which ->
+            settings.collectionSort = values[which]
+            showFeed(currentVideos)
+        }
     }
 
     private fun showVideoSortDialog(collection: DayCollection) {
         val values = VideoSort.values()
-        AlertDialog.Builder(this)
-            .setTitle("Сортировка видео")
-            .setSingleChoiceItems(values.map { it.label }.toTypedArray(), settings.videoSort.ordinal) { dialog, which ->
-                settings.videoSort = values[which]
-                dialog.dismiss()
-                showDayCollection(collection)
+        ModernDialogs.showChoices(
+            context = this,
+            palette = palette,
+            title = "Сортировка видео",
+            options = values.map { it.label },
+            selected = settings.videoSort.ordinal
+        ) { which ->
+            settings.videoSort = values[which]
+            showDayCollection(collection)
+        }
+    }
+
+    private fun confirmLogout() {
+        ModernDialogs.showConfirm(
+            context = this,
+            palette = palette,
+            title = "Выйти из Telegram?",
+            message = "Сессия будет удалена с этого телефона. При следующем входе снова понадобится номер и код.",
+            confirm = "Выйти",
+            destructive = true
+        ) {
+            lifecycleScope.launch {
+                try {
+                    showLoading("Выходим из аккаунта…")
+                    client.send(TdApi.LogOut())
+                } catch (e: Exception) {
+                    Toast.makeText(this@MainActivity, e.message ?: "Не удалось выйти", Toast.LENGTH_LONG).show()
+                    showSettings()
+                }
             }
-            .setNegativeButton("Отмена", null)
-            .show()
+        }
     }
 
     private fun setFullscreen(enabled: Boolean) {
@@ -764,15 +791,17 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(24), dp(24), dp(24), dp(24))
             setBackgroundColor(bg)
         }
-        val progress = ProgressBar(this)
+
+        val spinner = LoadingWaveView(this, purple)
         val label = TextView(this).apply {
             text = message
             setTextColor(muted)
             textSize = 15f
             gravity = Gravity.CENTER
-            setPadding(0, dp(14), 0, 0)
+            setPadding(0, dp(18), 0, 0)
         }
-        box.addView(progress)
+
+        box.addView(spinner, LinearLayout.LayoutParams(dp(72), dp(72)))
         box.addView(label, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         replaceRoot(box)
     }
