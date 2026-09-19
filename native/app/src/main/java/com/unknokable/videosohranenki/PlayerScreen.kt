@@ -4,6 +4,7 @@ import android.app.Activity
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.media.MediaDataSource
 import android.os.Handler
 import android.os.Looper
 import android.view.GestureDetector
@@ -39,6 +40,7 @@ class PlayerScreen(
     private val activity: Activity,
     private val item: VideoItem,
     private val mediaUrl: String,
+    private val aiDataSourceFactory: () -> MediaDataSource,
     private val settings: AppSettings,
     private val startPositionMs: Long = 0L,
     private val onBack: () -> Unit,
@@ -479,7 +481,7 @@ class PlayerScreen(
         aiScope.launch {
             try {
                 val result = aiAnalyzer.analyze(
-                    mediaUrl = mediaUrl,
+                    mediaDataSource = aiDataSourceFactory(),
                     durationSeconds = item.durationSeconds
                 ) { progress ->
                     activity.runOnUiThread {
