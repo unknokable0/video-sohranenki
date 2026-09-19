@@ -75,6 +75,9 @@ class MainActivity : AppCompatActivity() {
     private var authResetInProgress = false
     private var loadJob: kotlinx.coroutines.Job? = null
     private var reloadRequested = false
+    private var suppressNextRootAnimation = false
+    private var currentPrimaryTab = SohrTab.VIDEOS
+    private var pendingRootSlide = 0
 
     private val palette get() = settings.palette()
     private val bg get() = palette.background
@@ -1612,21 +1615,21 @@ class MainActivity : AppCompatActivity() {
             isClickable = true
         }
 
-        root.addView(
+        val decor = window.decorView as ViewGroup
+        val rootLocation = IntArray(2)
+        root.getLocationOnScreen(rootLocation)
+        decor.addView(
             overlay,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
+            ViewGroup.LayoutParams(root.width, root.height)
         )
+        overlay.x = rootLocation[0].toFloat()
+        overlay.y = rootLocation[1].toFloat()
 
         val sourceLocation = IntArray(2)
-        val contentLocation = IntArray(2)
         source.getLocationOnScreen(sourceLocation)
-        currentContent.getLocationOnScreen(contentLocation)
 
-        val cx = sourceLocation[0] - contentLocation[0] + source.width / 2
-        val cy = sourceLocation[1] - contentLocation[1] + source.height / 2
+        val cx = sourceLocation[0] - rootLocation[0] + source.width / 2
+        val cy = sourceLocation[1] - rootLocation[1] + source.height / 2
 
         overlay.post {
             overlay.visibility = View.VISIBLE
@@ -1648,9 +1651,14 @@ class MainActivity : AppCompatActivity() {
                     override fun onAnimationEnd(animation: android.animation.Animator) {
                         settings.lightTheme = light
                         applySystemTheme()
+                        suppressNextRootAnimation = true
                         showSettings()
-                        overlay.setImageDrawable(null)
-                        if (!snapshot.isRecycled) snapshot.recycle()
+
+                        decor.post {
+                            decor.removeView(overlay)
+                            overlay.setImageDrawable(null)
+                            if (!snapshot.isRecycled) snapshot.recycle()
+                        }
                     }
                 })
                 start()
@@ -1874,7 +1882,11 @@ class MainActivity : AppCompatActivity() {
             1f
         ))
 
+        currentPrimaryTab = selected
         val nav = SohrBottomNavView(this, palette, selected) { tab ->
+            if (tab == currentPrimaryTab) return@SohrBottomNavView
+            pendingRootSlide = if (tab.ordinal > currentPrimaryTab.ordinal) 1 else -1
+            currentPrimaryTab = tab
             when (tab) {
                 SohrTab.VIDEOS -> showFeed(currentVideos)
                 SohrTab.SETTINGS -> showSettings()
@@ -2025,17 +2037,32 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun replaceRoot(view: View) {
+        val animate = settings.animations && !suppressNextRootAnimation
+        suppressNextRootAnimation = false
+
+        val slide = pendingRootSlide
+        pendingRootSlide = 0
+
         root.removeAllViews()
-        if (settings.animations) {
-            view.alpha = 0f
-            view.translationY = dp(6).toFloat()
+        if (animate) {
+            view.alpha = if (slide != 0) 0.72f else 0f
+            view.translationX = if (slide != 0) dp(22).toFloat() * slide else 0f
+            view.translationY = if (slide == 0) dp(6).toFloat() else 0f
         }
+
         root.addView(view, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
         ))
-        if (settings.animations) {
-            view.animate().alpha(1f).translationY(0f).setDuration(180).start()
+
+        if (animate) {
+            view.animate()
+                .alpha(1f)
+                .translationX(0f)
+                .translationY(0f)
+                .setDuration(if (slide != 0) 210L else 180L)
+                .setInterpolator(android.view.animation.DecelerateInterpolator(1.7f))
+                .start()
         }
     }
 
