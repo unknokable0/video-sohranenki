@@ -1387,12 +1387,7 @@ class MainActivity : AppCompatActivity() {
                 DayCollection(date, dayVideos.sortedByDescending { it.date })
             }
 
-        val groups = when (settings.collectionSort) {
-            CollectionSort.NEWEST -> baseGroups.sortedByDescending { it.date }
-            CollectionSort.OLDEST -> baseGroups.sortedBy { it.date }
-            CollectionSort.MOST_VIDEOS -> baseGroups.sortedByDescending { it.videos.size }
-            CollectionSort.LONGEST -> baseGroups.sortedByDescending { it.totalDurationSeconds }
-        }
+        val groups = baseGroups.sortedByDescending { it.date }
 
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1477,26 +1472,6 @@ class MainActivity : AppCompatActivity() {
         header.addView(controlRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         page.addView(header)
 
-        val tools = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.END or Gravity.CENTER_VERTICAL
-            setPadding(dp(16), 0, dp(16), dp(10))
-        }
-
-        val sort = TextView(this).apply {
-            text = "⇅  ${settings.collectionSort.label}"
-            textSize = 12f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(purple)
-            setPadding(dp(14), dp(10), dp(14), dp(10))
-            background = roundedBg(palette.surface, 16)
-            setOnClickListener { showCollectionSortDialog() }
-        }
-
-        tools.addView(sort)
-        page.addView(tools)
-
         if (groups.isEmpty()) {
             val empty = TextView(this).apply {
                 text = "За последние 7 дней видео не найдено."
@@ -1527,15 +1502,7 @@ class MainActivity : AppCompatActivity() {
         setFullscreen(false)
         applySystemTheme()
 
-        val sortedVideos = when (settings.videoSort) {
-            VideoSort.NEWEST -> collection.videos.sortedByDescending { it.date }
-            VideoSort.OLDEST -> collection.videos.sortedBy { it.date }
-            VideoSort.LONGEST -> collection.videos.sortedByDescending { it.durationSeconds }
-            VideoSort.SHORTEST -> collection.videos.sortedBy { it.durationSeconds }
-            VideoSort.LARGEST -> collection.videos.sortedByDescending { it.fileSize }
-            VideoSort.SMALLEST -> collection.videos.sortedBy { it.fileSize }
-            VideoSort.TITLE -> collection.videos.sortedBy { it.title.lowercase(Locale("ru")) }
-        }
+        val sortedVideos = collection.videos.sortedByDescending { it.date }
 
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1585,34 +1552,6 @@ class MainActivity : AppCompatActivity() {
         header.addView(titles, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         header.addView(spacer, LinearLayout.LayoutParams(dp(48), dp(48)))
         page.addView(header)
-
-        val sortRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), dp(2), dp(16), dp(8))
-        }
-
-        val countLabel = TextView(this).apply {
-            text = "Видео в сборнике"
-            textSize = 13f
-            setTextColor(muted)
-        }
-
-        val sort = TextView(this).apply {
-            text = "⇅  ${settings.videoSort.label}"
-            textSize = 12f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(purple)
-            setPadding(dp(12), dp(9), dp(12), dp(9))
-            background = roundedBg(palette.surface, 14)
-            setOnClickListener { showVideoSortDialog(collection) }
-        }
-
-        sortRow.addView(countLabel, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        sortRow.addView(sort)
-        page.addView(sortRow)
-
 
         val list = RecyclerView(this).apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
@@ -2174,33 +2113,7 @@ class MainActivity : AppCompatActivity() {
         return shell
     }
 
-    private fun showCollectionSortDialog() {
-        val values = CollectionSort.values()
-        ModernDialogs.showChoices(
-            context = this,
-            palette = palette,
-            title = "Сортировка сборников",
-            options = values.map { it.label },
-            selected = settings.collectionSort.ordinal
-        ) { which ->
-            settings.collectionSort = values[which]
-            showFeed(currentVideos)
-        }
-    }
 
-    private fun showVideoSortDialog(collection: DayCollection) {
-        val values = VideoSort.values()
-        ModernDialogs.showChoices(
-            context = this,
-            palette = palette,
-            title = "Сортировка видео",
-            options = values.map { it.label },
-            selected = settings.videoSort.ordinal
-        ) { which ->
-            settings.videoSort = values[which]
-            showDayCollection(collection)
-        }
-    }
 
     private fun confirmLogout() {
         ModernDialogs.showConfirm(
