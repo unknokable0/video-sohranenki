@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -17,6 +18,8 @@ import java.util.Locale
 
 class DayCollectionAdapter(
     private val items: List<DayCollection>,
+    private val palette: ThemePalette,
+    private val animationsEnabled: Boolean,
     private val onClick: (DayCollection) -> Unit
 ) : RecyclerView.Adapter<DayCollectionAdapter.Holder>() {
 
@@ -28,47 +31,51 @@ class DayCollectionAdapter(
 
         val outer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(context, 14), dp(context, 8), dp(context, 14), dp(context, 8))
+            setPadding(dp(context, 16), dp(context, 7), dp(context, 16), dp(context, 7))
         }
 
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(context, 14), dp(context, 14), dp(context, 14), dp(context, 14))
-            background = rounded("#151120", 18f)
+            background = rounded(palette.surface, dp(context, 20).toFloat())
         }
 
         val hero = FrameLayout(context).apply {
             background = GradientDrawable(
                 GradientDrawable.Orientation.LEFT_RIGHT,
                 intArrayOf(
-                    Color.parseColor("#2D1B52"),
-                    Color.parseColor("#171126"),
-                    Color.parseColor("#0F0C18")
+                    if (palette === AppThemes.Light) Color.parseColor("#EEE7FF") else Color.parseColor("#2D1B52"),
+                    if (palette === AppThemes.Light) Color.parseColor("#F8F5FF") else Color.parseColor("#171126")
                 )
-            ).apply { cornerRadius = dp(context, 16).toFloat() }
+            ).apply { cornerRadius = dp(context, 17).toFloat() }
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(context, 132)
+                dp(context, 128)
             )
         }
 
         val bigDate = TextView(context).apply {
             textSize = 34f
-            setTextColor(Color.WHITE)
+            setTextColor(palette.text)
             setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
         }
+
+        val badge = TextView(context).apply {
+            textSize = 12f
+            setTextColor(if (palette === AppThemes.Light) palette.accent else Color.WHITE)
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(dp(context, 10), dp(context, 5), dp(context, 10), dp(context, 5))
+            background = rounded(
+                if (palette === AppThemes.Light) Color.parseColor("#F0E9FF") else Color.parseColor("#251A45"),
+                dp(context, 11).toFloat()
+            )
+        }
+
         hero.addView(bigDate, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
         ))
-
-        val badge = TextView(context).apply {
-            textSize = 12f
-            setTextColor(Color.WHITE)
-            setPadding(dp(context, 9), dp(context, 5), dp(context, 9), dp(context, 5))
-            background = rounded("#251A45", 10f)
-        }
         hero.addView(badge, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -80,21 +87,21 @@ class DayCollectionAdapter(
 
         val title = TextView(context).apply {
             textSize = 18f
-            setTextColor(Color.parseColor("#F7F5FF"))
+            setTextColor(palette.text)
             setTypeface(typeface, Typeface.BOLD)
             setPadding(0, dp(context, 12), 0, 0)
         }
 
         val meta = TextView(context).apply {
             textSize = 13f
-            setTextColor(Color.parseColor("#9E96AD"))
+            setTextColor(palette.muted)
             setPadding(0, dp(context, 5), 0, 0)
         }
 
         val action = TextView(context).apply {
             text = "Смотреть сборник  ›"
             textSize = 14f
-            setTextColor(Color.parseColor("#B89AFF"))
+            setTextColor(palette.accent)
             setTypeface(typeface, Typeface.BOLD)
             setPadding(0, dp(context, 10), 0, 0)
         }
@@ -116,6 +123,27 @@ class DayCollectionAdapter(
         holder.badge.text = "${item.videos.size} видео"
         holder.title.text = dayTitle(item.date)
         holder.meta.text = buildMeta(item)
+
+        if (animationsEnabled) {
+            holder.itemView.alpha = 0f
+            holder.itemView.translationY = dp(holder.itemView.context, 10).toFloat()
+            holder.itemView.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setDuration(180)
+                .setStartDelay((position.coerceAtMost(7) * 18L))
+                .start()
+
+            holder.itemView.setOnTouchListener { v, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> v.animate().scaleX(0.988f).scaleY(0.988f).setDuration(70).start()
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+                        v.animate().scaleX(1f).scaleY(1f).setDuration(90).start()
+                }
+                false
+            }
+        }
+
         holder.itemView.setOnClickListener { onClick(item) }
     }
 
@@ -137,17 +165,14 @@ class DayCollectionAdapter(
             if (h > 0) "$h ч ${m} мин" else "$m мин"
         } else null
 
-        return listOfNotNull(
-            "${item.videos.size} видео",
-            durationText,
-            "@t2x2_video"
-        ).joinToString(" • ")
+        return listOfNotNull("${item.videos.size} видео", durationText, "@t2x2_video")
+            .joinToString(" • ")
     }
 
-    private fun rounded(color: String, radiusDp: Float): GradientDrawable =
+    private fun rounded(color: Int, radiusPx: Float): GradientDrawable =
         GradientDrawable().apply {
-            setColor(Color.parseColor(color))
-            cornerRadius = radiusDp * 2.5f
+            setColor(color)
+            cornerRadius = radiusPx
         }
 
     class Holder(
