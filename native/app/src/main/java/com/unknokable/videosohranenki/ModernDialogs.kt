@@ -7,9 +7,12 @@ import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.view.Window
+import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 
 object ModernDialogs {
@@ -26,7 +29,7 @@ object ModernDialogs {
 
         val box = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(context, 14), dp(context, 14), dp(context, 14), dp(context, 12))
+            setPadding(dp(context, 16), dp(context, 16), dp(context, 16), dp(context, 12))
             background = rounded(palette.surface, dp(context, 22).toFloat())
         }
 
@@ -35,12 +38,15 @@ object ModernDialogs {
             textSize = 18f
             setTextColor(palette.text)
             setTypeface(typeface, Typeface.BOLD)
-            setPadding(dp(context, 4), dp(context, 2), dp(context, 4), dp(context, 10))
+            setPadding(dp(context, 2), 0, dp(context, 2), dp(context, 10))
         })
+
+        val list = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+        }
 
         options.forEachIndexed { index, label ->
             val selectedNow = index == selected
-
             val row = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -53,27 +59,25 @@ object ModernDialogs {
                 isFocusable = true
             }
 
-            val dot = TextView(context).apply {
-                text = if (selectedNow) "●" else "○"
-                textSize = if (selectedNow) 17f else 18f
-                gravity = Gravity.CENTER
-                setTextColor(if (selectedNow) palette.accent else palette.muted)
+            val dot = View(context).apply {
+                background = rounded(
+                    if (selectedNow) palette.accent else Color.TRANSPARENT,
+                    dp(context, 7).toFloat()
+                )
             }
 
-            val labelView = TextView(context).apply {
-                text = label
+            val text = TextView(context).apply {
+                this.text = label
                 textSize = 14.5f
                 gravity = Gravity.CENTER_VERTICAL
                 setTextColor(if (selectedNow) palette.accent else palette.text)
                 setTypeface(typeface, if (selectedNow) Typeface.BOLD else Typeface.NORMAL)
-                setPadding(dp(context, 10), 0, 0, 0)
+                setPadding(dp(context, 11), 0, 0, 0)
+                maxLines = 2
             }
 
-            row.addView(dot, LinearLayout.LayoutParams(dp(context, 22), dp(context, 46)))
-            row.addView(
-                labelView,
-                LinearLayout.LayoutParams(0, dp(context, 46), 1f)
-            )
+            row.addView(dot, LinearLayout.LayoutParams(dp(context, 14), dp(context, 14)))
+            row.addView(text, LinearLayout.LayoutParams(0, dp(context, 48), 1f))
 
             row.setOnClickListener {
                 if (!row.isEnabled) return@setOnClickListener
@@ -82,56 +86,56 @@ object ModernDialogs {
                 row.animate()
                     .scaleX(0.975f)
                     .scaleY(0.975f)
-                    .alpha(0.84f)
+                    .alpha(0.88f)
                     .setDuration(55L)
                     .withEndAction {
-                        row.animate()
-                            .scaleX(1f)
-                            .scaleY(1f)
-                            .alpha(1f)
-                            .setDuration(90L)
-                            .withEndAction {
-                                dialog.dismiss()
-                                onSelect(index)
-                            }
-                            .start()
+                        dialog.dismiss()
+                        onSelect(index)
                     }
                     .start()
             }
 
-            box.addView(
-                row,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(context, 46)
-                ).apply {
-                    if (index < options.lastIndex) bottomMargin = dp(context, 6)
-                }
-            )
+            list.addView(row, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(context, 48)
+            ).apply { bottomMargin = dp(context, 6) })
         }
 
+        val scroll = ScrollView(context).apply {
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            addView(list)
+        }
+        box.addView(scroll)
+
         dialog.setContentView(box)
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        dialog.window?.apply {
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            setDimAmount(0.52f)
+            addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        }
         dialog.setCanceledOnTouchOutside(true)
         dialog.show()
 
         val width = (context.resources.displayMetrics.widthPixels * 0.82f).toInt()
-        dialog.window?.apply {
-            setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT)
-            setDimAmount(0.52f)
-            addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-        }
+        val maxHeight = (context.resources.displayMetrics.heightPixels * 0.72f).toInt()
+        dialog.window?.setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT)
+        scroll.layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { height = ViewGroup.LayoutParams.WRAP_CONTENT }
+        scroll.maximumHeightCompat(maxHeight)
 
         box.alpha = 0f
-        box.scaleX = 0.94f
-        box.scaleY = 0.94f
-        box.translationY = dp(context, 12).toFloat()
+        box.scaleX = 0.975f
+        box.scaleY = 0.975f
+        box.translationY = dp(context, 8).toFloat()
         box.animate()
             .alpha(1f)
             .scaleX(1f)
             .scaleY(1f)
             .translationY(0f)
-            .setDuration(175L)
+            .setDuration(170L)
             .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
             .start()
     }
@@ -144,82 +148,7 @@ object ModernDialogs {
         button: String = "Готово",
         onClose: () -> Unit = {}
     ) {
-        val dialog = Dialog(context)
-        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
-
-        val box = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(context, 20), dp(context, 20), dp(context, 20), dp(context, 18))
-            background = rounded(palette.surface, dp(context, 24).toFloat())
-        }
-
-        box.addView(TextView(context).apply {
-            text = title
-            textSize = 20f
-            setTextColor(palette.text)
-            setTypeface(typeface, Typeface.BOLD)
-        })
-
-        box.addView(TextView(context).apply {
-            text = message
-            textSize = 14f
-            setTextColor(palette.muted)
-            setLineSpacing(0f, 1.08f)
-            setPadding(0, dp(context, 9), 0, dp(context, 18))
-        })
-
-        val ok = TextView(context).apply {
-            text = button
-            gravity = Gravity.CENTER
-            textSize = 15f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            background = rounded(palette.accent, dp(context, 15).toFloat())
-            setOnClickListener {
-                if (!isEnabled) return@setOnClickListener
-                isEnabled = false
-                animate().cancel()
-                animate()
-                    .scaleX(0.97f)
-                    .scaleY(0.97f)
-                    .setDuration(60L)
-                    .withEndAction {
-                        dialog.dismiss()
-                        onClose()
-                    }
-                    .start()
-            }
-        }
-
-        box.addView(
-            ok,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(context, 50)
-            )
-        )
-
-        dialog.setContentView(box)
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        dialog.setCanceledOnTouchOutside(true)
-        dialog.show()
-        dialog.window?.setLayout(
-            (context.resources.displayMetrics.widthPixels * 0.86f).toInt(),
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        )
-
-        box.alpha = 0f
-        box.scaleX = 0.965f
-        box.scaleY = 0.965f
-        box.translationY = dp(context, 10).toFloat()
-        box.animate()
-            .alpha(1f)
-            .scaleX(1f)
-            .scaleY(1f)
-            .translationY(0f)
-            .setDuration(190L)
-            .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
-            .start()
+        showSingleAction(context, palette, title, message, button, false, onClose)
     }
 
     fun showConfirm(
@@ -236,107 +165,162 @@ object ModernDialogs {
 
         val box = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(context, 20), dp(context, 20), dp(context, 20), dp(context, 18))
-            background = rounded(palette.surface, dp(context, 24).toFloat())
+            setPadding(dp(context, 18), dp(context, 18), dp(context, 18), dp(context, 16))
+            background = rounded(palette.surface, dp(context, 22).toFloat())
         }
 
         box.addView(TextView(context).apply {
             text = title
-            textSize = 20f
+            textSize = 18f
             setTextColor(palette.text)
             setTypeface(typeface, Typeface.BOLD)
-            setPadding(dp(context, 2), 0, dp(context, 2), 0)
         })
 
         box.addView(TextView(context).apply {
             text = message
-            textSize = 14f
+            textSize = 13.5f
             setTextColor(palette.muted)
             setLineSpacing(0f, 1.08f)
-            setPadding(dp(context, 2), dp(context, 9), dp(context, 2), dp(context, 18))
+            setPadding(0, dp(context, 8), 0, dp(context, 14))
         })
 
-        val cancel = TextView(context).apply {
-            text = "Отмена"
-            gravity = Gravity.CENTER
-            textSize = 15f
-            setTypeface(typeface, Typeface.BOLD)
+        val actions = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+
+        val cancel = compactButton(context, palette.surfaceAlt, palette.text, "Отмена")
+        val ok = compactButton(
+            context,
+            if (destructive) Color.parseColor("#D9435F") else palette.accent,
+            Color.WHITE,
+            confirm
+        )
+
+        cancel.setOnClickListener { animateClose(cancel, dialog) {} }
+        ok.setOnClickListener {
+            if (!ok.isEnabled) return@setOnClickListener
+            ok.isEnabled = false
+            animateClose(ok, dialog, onConfirm)
+        }
+
+        actions.addView(cancel, LinearLayout.LayoutParams(0, dp(context, 46), 1f).apply {
+            marginEnd = dp(context, 7)
+        })
+        actions.addView(ok, LinearLayout.LayoutParams(0, dp(context, 46), 1f))
+        box.addView(actions)
+
+        showDialog(context, dialog, box, 0.84f)
+    }
+
+    private fun showSingleAction(
+        context: Context,
+        palette: ThemePalette,
+        title: String,
+        message: String,
+        button: String,
+        destructive: Boolean,
+        onClose: () -> Unit
+    ) {
+        val dialog = Dialog(context)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+
+        val box = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(context, 18), dp(context, 18), dp(context, 18), dp(context, 16))
+            background = rounded(palette.surface, dp(context, 22).toFloat())
+        }
+
+        box.addView(TextView(context).apply {
+            text = title
+            textSize = 18f
             setTextColor(palette.text)
-            background = rounded(palette.surfaceAlt, dp(context, 15).toFloat())
-            setOnClickListener {
-                animate().cancel()
-                animate()
-                    .scaleX(0.97f)
-                    .scaleY(0.97f)
-                    .setDuration(60L)
-                    .withEndAction { dialog.dismiss() }
-                    .start()
-            }
-        }
-
-        val ok = TextView(context).apply {
-            text = confirm
-            gravity = Gravity.CENTER
-            textSize = 14.5f
-            maxLines = 1
             setTypeface(typeface, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            background = rounded(
-                if (destructive) Color.parseColor("#D9435F") else palette.accent,
-                dp(context, 15).toFloat()
-            )
-            setPadding(dp(context, 14), 0, dp(context, 14), 0)
-            setOnClickListener {
-                if (!isEnabled) return@setOnClickListener
-                isEnabled = false
-                animate().cancel()
-                animate()
-                    .scaleX(0.97f)
-                    .scaleY(0.97f)
-                    .setDuration(60L)
-                    .withEndAction {
-                        dialog.dismiss()
-                        onConfirm()
-                    }
-                    .start()
-            }
-        }
+        })
 
-        box.addView(
-            ok,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(context, 50)
-            )
-        )
-        box.addView(
-            cancel,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(context, 48)
-            ).apply { topMargin = dp(context, 10) }
-        )
+        box.addView(TextView(context).apply {
+            text = message
+            textSize = 13.5f
+            setTextColor(palette.muted)
+            setLineSpacing(0f, 1.08f)
+            setPadding(0, dp(context, 8), 0, dp(context, 14))
+        })
 
+        val ok = compactButton(
+            context,
+            if (destructive) Color.parseColor("#D9435F") else palette.accent,
+            Color.WHITE,
+            button
+        )
+        ok.setOnClickListener { animateClose(ok, dialog, onClose) }
+        box.addView(ok, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(context, 46)
+        ))
+
+        showDialog(context, dialog, box, 0.84f)
+    }
+
+    private fun showDialog(
+        context: Context,
+        dialog: Dialog,
+        box: View,
+        widthRatio: Float
+    ) {
         dialog.setContentView(box)
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         dialog.setCanceledOnTouchOutside(true)
         dialog.show()
-
-        val width = (context.resources.displayMetrics.widthPixels * 0.86f).toInt()
-        dialog.window?.setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT)
+        dialog.window?.apply {
+            setDimAmount(0.52f)
+            addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            setLayout((context.resources.displayMetrics.widthPixels * widthRatio).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
 
         box.alpha = 0f
-        box.scaleX = 0.965f
-        box.scaleY = 0.965f
-        box.translationY = dp(context, 10).toFloat()
+        box.scaleX = 0.975f
+        box.scaleY = 0.975f
+        box.translationY = dp(context, 8).toFloat()
         box.animate()
             .alpha(1f)
             .scaleX(1f)
             .scaleY(1f)
             .translationY(0f)
-            .setDuration(190L)
+            .setDuration(170L)
             .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
             .start()
+    }
+
+    private fun compactButton(context: Context, bg: Int, fg: Int, label: String): TextView =
+        TextView(context).apply {
+            text = label
+            gravity = Gravity.CENTER
+            textSize = 14f
+            maxLines = 1
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(fg)
+            background = rounded(bg, dp(context, 14).toFloat())
+            setPadding(dp(context, 10), 0, dp(context, 10), 0)
+        }
+
+    private fun animateClose(view: View, dialog: Dialog, end: () -> Unit) {
+        view.animate().cancel()
+        view.animate()
+            .scaleX(0.975f)
+            .scaleY(0.975f)
+            .setDuration(55L)
+            .withEndAction {
+                dialog.dismiss()
+                end()
+            }
+            .start()
+    }
+
+    private fun ScrollView.maximumHeightCompat(maxHeight: Int) {
+        viewTreeObserver.addOnGlobalLayoutListener {
+            if (height > maxHeight) {
+                layoutParams = layoutParams.apply { this.height = maxHeight }
+            }
+        }
     }
 
     private fun rounded(color: Int, radius: Float) = GradientDrawable().apply {
@@ -344,5 +328,6 @@ object ModernDialogs {
         cornerRadius = radius
     }
 
-    private fun dp(context: Context, v: Int) = (v * context.resources.displayMetrics.density).toInt()
+    private fun dp(context: Context, v: Int) =
+        (v * context.resources.displayMetrics.density).toInt()
 }
