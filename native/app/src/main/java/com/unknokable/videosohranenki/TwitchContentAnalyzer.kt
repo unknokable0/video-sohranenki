@@ -516,7 +516,7 @@ object TwitchContentAnalyzer {
         durationSeconds: Int,
         onProgress: suspend (Int, Int) -> Unit
     ): List<TimelinePoint> {
-        val targetPoints = 2400
+        val targetPoints = 1600
         val step = max(1, ceil(storyboard.count / targetPoints.toDouble()).toInt())
         val indexes = mutableListOf<Int>()
 
@@ -691,7 +691,7 @@ object TwitchContentAnalyzer {
         // Safety pass across the *entire* chat-like timeline. It prevents a
         // quiet/static fullscreen video from being missed just because motion
         // detection had no strong edge.
-        val stride = max(1, timeline.size / 820)
+        val stride = max(1, timeline.size / 420)
         var i = 0
         while (i < timeline.size) {
             if (isChatLike(markerAt(markers, timeline[i].timeSec))) {
@@ -709,7 +709,7 @@ object TwitchContentAnalyzer {
             .filter { it in timeline.indices }
             .distinct()
             .sorted()
-            .take(900)
+            .take(480)
     }
 
     private suspend fun analyzeProbes(
@@ -729,12 +729,24 @@ object TwitchContentAnalyzer {
                     storyboard,
                     point.storyboardIndex,
                     cache,
-                    targetWidth = 640
+                    targetWidth = 512
                 ) ?: continue
 
                 val analysisFrame = mainAnalysisCrop(frame)
                 val ocr = recognize(analysisFrame)
-                val labels = recognizeLabels(analysisFrame)
+
+                // OCR/player chrome is cheaper than the image labeler. Most
+                // obvious video frames do not need both ML models.
+                val ocrOnlyScore = videoEvidenceScore(ocr, emptyList(), point.diff)
+                val labels = if (
+                    ocr.youtubeLike ||
+                    ocr.playerLike ||
+                    ocrOnlyScore >= 5
+                ) {
+                    emptyList()
+                } else {
+                    recognizeLabels(analysisFrame)
+                }
                 val score = videoEvidenceScore(ocr, labels, point.diff)
 
                 out += Probe(timelineIndex, point.timeSec, ocr, labels, score)
