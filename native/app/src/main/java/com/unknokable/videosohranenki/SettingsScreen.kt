@@ -14,7 +14,6 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import com.google.android.material.switchmaterial.SwitchMaterial
 
 class SettingsScreen(
     private val activity: Activity,
@@ -513,43 +512,92 @@ class SettingsScreen(
         labels.addView(titleView)
         labels.addView(descriptionView)
 
-        val toggle = SwitchMaterial(activity).apply {
-            isChecked = checked
-            showText = false
-            minWidth = dp(52)
-            thumbTintList = ColorStateList(
-                arrayOf(
-                    intArrayOf(android.R.attr.state_checked),
-                    intArrayOf()
-                ),
-                intArrayOf(Color.WHITE, palette.muted)
+        val toggle = FrameLayout(activity).apply {
+            isClickable = true
+            isFocusable = true
+            contentDescription = title
+        }
+
+        val track = View(activity).apply {
+            background = rounded(
+                if (checked) palette.accent else palette.surfaceAlt,
+                15
             )
-            trackTintList = ColorStateList(
-                arrayOf(
-                    intArrayOf(android.R.attr.state_checked),
-                    intArrayOf()
-                ),
-                intArrayOf(palette.accent, palette.surfaceAlt)
+        }
+
+        val thumb = View(activity).apply {
+            background = rounded(
+                if (checked) Color.WHITE else palette.muted,
+                11
             )
-            setOnCheckedChangeListener { button, value ->
-                button.animate().cancel()
-                if (settings.animations) {
-                    button.scaleX = 0.94f
-                    button.scaleY = 0.94f
-                    button.animate()
-                        .scaleX(1f)
-                        .scaleY(1f)
-                        .setDuration(150L)
-                        .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
-                        .start()
-                }
-                onChange(value)
+            elevation = dp(2).toFloat()
+        }
+
+        toggle.addView(
+            track,
+            FrameLayout.LayoutParams(dp(48), dp(28), Gravity.CENTER)
+        )
+        toggle.addView(
+            thumb,
+            FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER_VERTICAL or Gravity.START).apply {
+                leftMargin = if (checked) dp(23) else dp(3)
             }
+        )
+
+        var value = checked
+
+        fun render(next: Boolean, animate: Boolean) {
+            value = next
+            val target = if (next) dp(23).toFloat() else dp(3).toFloat()
+
+            track.background = rounded(
+                if (next) palette.accent else palette.surfaceAlt,
+                15
+            )
+            thumb.background = rounded(
+                if (next) Color.WHITE else palette.muted,
+                11
+            )
+
+            thumb.animate().cancel()
+            if (animate && settings.animations) {
+                thumb.animate()
+                    .translationX(target - (thumb.layoutParams as FrameLayout.LayoutParams).leftMargin)
+                    .setDuration(190L)
+                    .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                    .withEndAction {
+                        val lp = thumb.layoutParams as FrameLayout.LayoutParams
+                        lp.leftMargin = target.toInt()
+                        thumb.translationX = 0f
+                        thumb.layoutParams = lp
+                    }
+                    .start()
+
+                toggle.animate().cancel()
+                toggle.scaleX = 0.97f
+                toggle.scaleY = 0.97f
+                toggle.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(170L)
+                    .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                    .start()
+            } else {
+                val lp = thumb.layoutParams as FrameLayout.LayoutParams
+                lp.leftMargin = target.toInt()
+                thumb.layoutParams = lp
+            }
+        }
+
+        toggle.setOnClickListener {
+            val next = !value
+            render(next, true)
+            onChange(next)
         }
 
         row.addView(iconView, LinearLayout.LayoutParams(dp(46), dp(46)))
         row.addView(labels, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row.addView(toggle)
+        row.addView(toggle, LinearLayout.LayoutParams(dp(54), dp(36)))
 
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
