@@ -25,6 +25,14 @@ class AppSettings(context: Context) {
         get() = prefs.getFloat("playback_speed", 1f).coerceIn(0.25f, 2f)
         set(value) = prefs.edit().putFloat("playback_speed", value.coerceIn(0.25f, 2f)).apply()
 
+    var stableVolume: Boolean
+        get() = prefs.getBoolean("stable_volume", false)
+        set(value) = prefs.edit().putBoolean("stable_volume", value).apply()
+
+    var preferredQuality: Int
+        get() = prefs.getInt("preferred_quality", 0)
+        set(value) = prefs.edit().putInt("preferred_quality", value).apply()
+
     var authPhone: String?
         get() = prefs.getString("auth_phone", null)
         set(value) = prefs.edit().apply {
@@ -62,11 +70,8 @@ class AppSettings(context: Context) {
         val shouldClear = positionMs < 5_000L ||
             (durationMs > 0L && durationMs - positionMs <= 10_000L)
         prefs.edit().apply {
-            if (shouldClear) {
-                remove("playback_position_" + messageId)
-            } else {
-                putLong("playback_position_" + messageId, positionMs)
-            }
+            if (shouldClear) remove("playback_position_" + messageId)
+            else putLong("playback_position_" + messageId, positionMs)
         }.apply()
     }
 
