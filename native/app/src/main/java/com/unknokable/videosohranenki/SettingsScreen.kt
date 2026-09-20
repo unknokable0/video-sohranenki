@@ -305,14 +305,13 @@ class SettingsScreen(
             indicator.animate().cancel()
             indicator.animate()
                 .translationX(target)
-                .setDuration(if (settings.animations) 220L else 0L)
+                .setDuration(if (settings.animations) 150L else 0L)
                 .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
-                .withEndAction {
-                    if (notify && settings.lightTheme != toLight) {
-                        onThemeChanged(toLight, source)
-                    }
-                }
                 .start()
+
+            if (notify && settings.lightTheme != toLight) {
+                onThemeChanged(toLight, source)
+            }
         }
 
         dark.setOnClickListener {
@@ -547,24 +546,36 @@ class SettingsScreen(
         var value = checked
 
         fun render(next: Boolean, animate: Boolean) {
+            val previous = value
             value = next
             val target = if (next) dp(23).toFloat() else dp(3).toFloat()
-
-            track.background = rounded(
-                if (next) palette.accent else palette.surfaceAlt,
-                15
-            )
-            thumb.background = rounded(
-                if (next) Color.WHITE else palette.muted,
-                11
-            )
+            val startTrack = if (previous) palette.accent else palette.surfaceAlt
+            val endTrack = if (next) palette.accent else palette.surfaceAlt
+            val startThumb = if (previous) Color.WHITE else palette.muted
+            val endThumb = if (next) Color.WHITE else palette.muted
 
             thumb.animate().cancel()
             if (animate && settings.animations) {
+                val ease = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
+
+                android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+                    duration = 150L
+                    interpolator = ease
+                    val evaluator = android.animation.ArgbEvaluator()
+                    addUpdateListener { animator ->
+                        val fraction = animator.animatedFraction
+                        val trackColor = evaluator.evaluate(fraction, startTrack, endTrack) as Int
+                        val thumbColor = evaluator.evaluate(fraction, startThumb, endThumb) as Int
+                        track.background = rounded(trackColor, 15)
+                        thumb.background = rounded(thumbColor, 11)
+                    }
+                    start()
+                }
+
                 thumb.animate()
                     .translationX(target - (thumb.layoutParams as FrameLayout.LayoutParams).leftMargin)
-                    .setDuration(190L)
-                    .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                    .setDuration(155L)
+                    .setInterpolator(ease)
                     .withEndAction {
                         val lp = thumb.layoutParams as FrameLayout.LayoutParams
                         lp.leftMargin = target.toInt()
@@ -574,15 +585,23 @@ class SettingsScreen(
                     .start()
 
                 toggle.animate().cancel()
-                toggle.scaleX = 0.97f
-                toggle.scaleY = 0.97f
                 toggle.animate()
-                    .scaleX(1f)
-                    .scaleY(1f)
-                    .setDuration(170L)
-                    .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                    .scaleX(0.97f)
+                    .scaleY(0.97f)
+                    .setDuration(55L)
+                    .setInterpolator(ease)
+                    .withEndAction {
+                        toggle.animate()
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .setDuration(95L)
+                            .setInterpolator(ease)
+                            .start()
+                    }
                     .start()
             } else {
+                track.background = rounded(endTrack, 15)
+                thumb.background = rounded(endThumb, 11)
                 val lp = thumb.layoutParams as FrameLayout.LayoutParams
                 lp.leftMargin = target.toInt()
                 thumb.layoutParams = lp
