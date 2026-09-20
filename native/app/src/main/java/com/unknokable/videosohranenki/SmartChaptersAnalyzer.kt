@@ -769,19 +769,17 @@ object SmartChaptersAnalyzer {
         val root = JSONObject(json)
         if (root.optInt("version", 0) != 2) return@runCatching null
         val array = root.getJSONArray("chapters")
-        buildList {
-            for (i in 0 until array.length()) {
-                val obj = array.getJSONObject(i)
-                add(
-                    SmartChapter(
-                        startSeconds = obj.getInt("start"),
-                        endSeconds = obj.getInt("end"),
-                        title = obj.getString("title"),
-                        detail = obj.getString("detail"),
-                        confidence = obj.optInt("confidence", 60)
-                    )
-                )
-            }
+        val chapters = mutableListOf<SmartChapter>()
+        for (i in 0 until array.length()) {
+            val obj = array.getJSONObject(i)
+            chapters += SmartChapter(
+                startSeconds = obj.getInt("start"),
+                endSeconds = obj.getInt("end"),
+                title = obj.getString("title"),
+                detail = obj.getString("detail"),
+                confidence = obj.optInt("confidence", 60)
+            )
         }
+        chapters
     }.getOrNull()
 }
