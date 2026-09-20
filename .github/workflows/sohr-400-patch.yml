@@ -15,11 +15,12 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
           p = Path('native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt')
           s = p.read_text()
 
-          # 1) Exact bug visible in screenshots: section content was given translationX
-          # but the animator only changed alpha, leaving the entire page permanently shifted.
+          # Fix the screenshot bug: translationX was applied to the new section
+          # but never animated back to zero, permanently shifting/clipping the page.
           old = '''                if (sectionCrossfade) {
                               val travel = dp(18).toFloat() * if (sectionDirection == 0) 1 else sectionDirection
                               content.alpha = 0f
@@ -79,7 +80,7 @@ jobs:
               raise SystemExit('section transition block not found')
           s = s.replace(old, new, 1)
 
-          # 2) Rapid tab changes could leave an interrupted old page in the host.
+          # If the user taps/swipes rapidly, never keep half-animated stale pages.
           marker = '''        val old = if (host.childCount > 0) host.getChildAt(host.childCount - 1) else null
 
                   val animateContent = settings.animations && old != null && old !== content
@@ -87,6 +88,9 @@ jobs:
           replacement = '''        while (host.childCount > 1) {
                       val stale = host.getChildAt(0)
                       stale.animate().cancel()
+                      stale.alpha = 1f
+                      stale.translationX = 0f
+                      stale.translationY = 0f
                       stale.setLayerType(View.LAYER_TYPE_NONE, null)
                       host.removeViewAt(0)
                   }
@@ -104,91 +108,31 @@ jobs:
               raise SystemExit('host cleanup marker not found')
           s = s.replace(marker, replacement, 1)
 
-          # 3) The global press-animation installer was overwriting the custom swipe listener
-          # on the video tabs. Mark those tabs and keep their gesture listener intact.
-          tab_marker = '''                isClickable=true; isFocusable=true
-                              var swipeStartX = 0f
-          '''
-          tab_replacement = '''                isClickable=true; isFocusable=true
-                              tag = "sohr_video_section_tab"
-                              var swipeStartX = 0f
-          '''
-          if tab_marker not in s:
-              raise SystemExit('video tab marker not found')
-          s = s.replace(tab_marker, tab_replacement, 1)
+          # Keep the section tabs' own swipe listener: the generic press installer
+          # must not replace it later when the page is attached.
+          s, count = re.subn(
+              r'(isClickable=true; isFocusable=true\s*\n\s*)(var swipeStartX = 0f)',
+              r'\1tag = "sohr_video_section_tab"\n                \2',
+              s,
+              count=1
+          )
+          if count != 1:
+              raise SystemExit('video tab gesture marker not found')
 
-          press_marker = '''            if (buttonLike && target !is SohrBottomNavView) {
-                          target.setOnTouchListener { v, event ->
-          '''
-          press_replacement = '''            if (buttonLike && target !is SohrBottomNavView && target.tag != "sohr_video_section_tab") {
-                          target.setOnTouchListener { v, event ->
-          '''
-          if press_marker not in s:
+          old_press = 'if (buttonLike && target !is SohrBottomNavView) {'
+          new_press = 'if (buttonLike && target !is SohrBottomNavView && target.tag != "sohr_video_section_tab") {'
+          if old_press not in s:
               raise SystemExit('press animation marker not found')
-          s = s.replace(press_marker, press_replacement, 1)
+          s = s.replace(old_press, new_press, 1)
 
-          # 4) Give the section gesture its own press feedback without stealing the swipe.
-          touch_down = '''                        MotionEvent.ACTION_DOWN -> { swipeStartX = event.x; swipeStartY = event.y; false }
-          '''
-          touch_down_new = '''                        MotionEvent.ACTION_DOWN -> {
-                                      swipeStartX = event.x
-                                      swipeStartY = event.y
-                                      if (settings.animations) {
-                                          animate().cancel()
-                                          animate().scaleX(0.985f).scaleY(0.985f).alpha(0.94f).setDuration(55L).start()
-                                      }
-                                      false
-                                  }
-          '''
-          if touch_down not in s:
-              raise SystemExit('tab ACTION_DOWN marker not found')
-          s = s.replace(touch_down, touch_down_new, 1)
-
-          touch_up = '''                        MotionEvent.ACTION_UP -> {
-                                      val dx = event.x - swipeStartX
-                                      val dy = event.y - swipeStartY
-          '''
-          touch_up_new = '''                        MotionEvent.ACTION_UP -> {
-                                      if (settings.animations) {
-                                          animate().cancel()
-                                          animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(120L).start()
-                                      }
-                                      val dx = event.x - swipeStartX
-                                      val dy = event.y - swipeStartY
-          '''
-          if touch_up not in s:
-              raise SystemExit('tab ACTION_UP marker not found')
-          s = s.replace(touch_up, touch_up_new, 1)
-
-          # Restore state on cancelled gestures too.
-          touch_else = '''                        else -> false
-                                  }
-                              }
-                              setOnClickListener {
-          '''
-          touch_else_new = '''                        MotionEvent.ACTION_CANCEL -> {
-                                      animate().cancel()
-                                      scaleX = 1f
-                                      scaleY = 1f
-                                      alpha = 1f
-                                      false
-                                  }
-                                  else -> false
-                              }
-                          }
-                          setOnClickListener {
-          '''
-          if touch_else not in s:
-              raise SystemExit('tab touch end marker not found')
-          s = s.replace(touch_else, touch_else_new, 1)
-
-          # 5) Remove unreachable legacy section branch (section 0 no longer exists).
+          # Remove dead legacy branch for section 0; only Collections and Watched exist now.
           dead_start = s.find('        if(videoSection==0){')
           if dead_start >= 0:
               dead_else = s.find('        } else if(visibleGroups.isEmpty()) {', dead_start)
               if dead_else < 0:
                   raise SystemExit('dead section end not found')
-              s = s[:dead_start] + '        if(visibleGroups.isEmpty()) {\n' + s[dead_else + len('        } else if(visibleGroups.isEmpty()) {\n'):]
+              tail_start = dead_else + len('        } else if(visibleGroups.isEmpty()) {')
+              s = s[:dead_start] + '        if(visibleGroups.isEmpty()) {' + s[tail_start:]
 
           p.write_text(s)
           PY
