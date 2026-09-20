@@ -5,6 +5,7 @@ import json
 import os
 import queue
 import socket
+import sys
 import threading
 import traceback
 import uuid
@@ -655,7 +656,23 @@ class App:
         self.root.mainloop()
 
 
+def self_test() -> int:
+    try:
+        ffmpeg = Path(STATE.analyzer._ffmpeg())
+        if not ffmpeg.exists():
+            raise RuntimeError("FFmpeg binary is missing")
+        # Force OCR initialization so packaging problems are caught in CI.
+        STATE.analyzer.ocr._ensure()
+        return 0
+    except Exception:
+        STATE.write_error(traceback.format_exc())
+        return 1
+
+
 def main():
+    if "--self-test" in sys.argv:
+        raise SystemExit(self_test())
+
     set_low_impact_priority()
     threading.Thread(target=http_server, name="sohr-http", daemon=True).start()
     threading.Thread(target=discovery_server, name="sohr-discovery", daemon=True).start()
