@@ -106,62 +106,101 @@ object ModernDialogs {
     ) {
         val dialog = Dialog(context)
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+
         val box = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(context, 20), dp(context, 20), dp(context, 20), dp(context, 18))
             background = rounded(palette.surface, dp(context, 24).toFloat())
         }
+
         box.addView(TextView(context).apply {
             text = title
             textSize = 20f
             setTextColor(palette.text)
             setTypeface(typeface, Typeface.BOLD)
+            setPadding(dp(context, 2), 0, dp(context, 2), 0)
         })
+
         box.addView(TextView(context).apply {
             text = message
             textSize = 14f
             setTextColor(palette.muted)
-            setPadding(0, dp(context, 8), 0, dp(context, 18))
+            setLineSpacing(0f, 1.08f)
+            setPadding(dp(context, 2), dp(context, 9), dp(context, 2), dp(context, 18))
         })
-        val actions = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+
         val cancel = TextView(context).apply {
             text = "Отмена"
             gravity = Gravity.CENTER
             textSize = 15f
+            setTypeface(typeface, Typeface.BOLD)
             setTextColor(palette.text)
             background = rounded(palette.surfaceAlt, dp(context, 15).toFloat())
             setOnClickListener {
-                animate().scaleX(0.97f).scaleY(0.97f).setDuration(60L).withEndAction {
-                    dialog.dismiss()
-                }.start()
+                animate().cancel()
+                animate()
+                    .scaleX(0.97f)
+                    .scaleY(0.97f)
+                    .setDuration(60L)
+                    .withEndAction { dialog.dismiss() }
+                    .start()
             }
         }
+
         val ok = TextView(context).apply {
             text = confirm
             gravity = Gravity.CENTER
-            textSize = 15f
+            textSize = 14.5f
+            maxLines = 1
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
-            background = rounded(if (destructive) Color.parseColor("#D9435F") else palette.accent, dp(context, 15).toFloat())
+            background = rounded(
+                if (destructive) Color.parseColor("#D9435F") else palette.accent,
+                dp(context, 15).toFloat()
+            )
+            setPadding(dp(context, 14), 0, dp(context, 14), 0)
             setOnClickListener {
                 if (!isEnabled) return@setOnClickListener
                 isEnabled = false
-                animate().scaleX(0.97f).scaleY(0.97f).setDuration(60L).withEndAction {
-                    dialog.dismiss()
-                    onConfirm()
-                }.start()
+                animate().cancel()
+                animate()
+                    .scaleX(0.97f)
+                    .scaleY(0.97f)
+                    .setDuration(60L)
+                    .withEndAction {
+                        dialog.dismiss()
+                        onConfirm()
+                    }
+                    .start()
             }
         }
-        actions.addView(cancel, LinearLayout.LayoutParams(0, dp(context, 48), 1f))
-        actions.addView(ok, LinearLayout.LayoutParams(0, dp(context, 48), 1f).apply { marginStart = dp(context, 10) })
-        box.addView(actions)
+
+        box.addView(
+            ok,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(context, 50)
+            )
+        )
+        box.addView(
+            cancel,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(context, 48)
+            ).apply { topMargin = dp(context, 10) }
+        )
+
         dialog.setContentView(box)
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        dialog.setCanceledOnTouchOutside(true)
         dialog.show()
-        dialog.window?.setLayout((context.resources.displayMetrics.widthPixels * 0.88f).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
+
+        val width = (context.resources.displayMetrics.widthPixels * 0.86f).toInt()
+        dialog.window?.setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT)
+
         box.alpha = 0f
-        box.scaleX = 0.96f
-        box.scaleY = 0.96f
+        box.scaleX = 0.965f
+        box.scaleY = 0.965f
         box.translationY = dp(context, 10).toFloat()
         box.animate()
             .alpha(1f)
