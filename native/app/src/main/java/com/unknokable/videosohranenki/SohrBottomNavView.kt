@@ -19,8 +19,8 @@ import kotlin.math.abs
 
 enum class SohrTab {
     VIDEOS,
-    SETTINGS,
     STREAK,
+    SETTINGS,
     ACCOUNT
 }
 
@@ -31,14 +31,14 @@ class SohrBottomNavView(
     private val onSelect: (SohrTab) -> Unit
 ) : FrameLayout(context) {
 
-    private val tabs = listOf(SohrTab.VIDEOS, SohrTab.SETTINGS, SohrTab.STREAK, SohrTab.ACCOUNT)
+    private val tabs = listOf(SohrTab.VIDEOS, SohrTab.STREAK, SohrTab.SETTINGS, SohrTab.ACCOUNT)
     private val icons = listOf(
         R.drawable.ic_nav_video,
-        R.drawable.ic_nav_settings,
         R.drawable.ic_nav_streak,
+        R.drawable.ic_nav_settings,
         R.drawable.ic_nav_account
     )
-    private val labels = listOf("Видео", "Настройки", "Стрик", "Аккаунт")
+    private val labels = listOf("Видео", "Стрик", "Настройки", "Аккаунт")
 
     private val columns = mutableListOf<LinearLayout>()
     private val iconViews = mutableListOf<View>()
@@ -195,7 +195,7 @@ class SohrBottomNavView(
             val from = indicator.translationX
             val to = target * slot
             indicatorAnimator = ValueAnimator.ofFloat(from, to).apply {
-                duration = 280L
+                duration = 205L
                 interpolator = smoothInterpolator
                 addUpdateListener { indicator.translationX = it.animatedValue as Float }
                 start()
@@ -289,7 +289,7 @@ class SohrBottomNavView(
         if (animate) {
             indicator.animate()
                 .translationX(selectedIndex * slot)
-                .setDuration(240L)
+                .setDuration(190L)
                 .setInterpolator(smoothInterpolator)
                 .start()
         } else {
