@@ -119,6 +119,7 @@ class PlayerScreen(
     private var lastPreviewMs = -1L
 
     private var fullscreen = false
+    private var fullscreenTransition = false
     private var dragging = false
     private var speed = settings.playbackSpeed
     private var sleepRunnable: Runnable? = null
@@ -769,7 +770,7 @@ class PlayerScreen(
         }
 
         val badge = TextView(activity).apply {
-            text = "BETA 1.0.1"
+            text = "BETA 1.0.2"
             textSize = 9f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
@@ -783,7 +784,7 @@ class PlayerScreen(
 
         val subtitle = TextView(activity).apply {
             text = if (item.source == "twitch") {
-                "Непрерывный анализ • каждый ролик от начала до конца"
+                "Storyboard + точная HLS-проверка • начало и конец ролика"
             } else {
                 "Полный локальный проход • видео + игры • начало → конец"
             }
@@ -1033,6 +1034,7 @@ class PlayerScreen(
                 try {
                     val result = if (item.source == "twitch") {
                         SmartChaptersAnalyzer.analyzeTwitch(
+                            context = activity.applicationContext,
                             videoId = twitchId!!,
                             durationSeconds = item.durationSeconds.coerceAtLeast(0),
                             onProgress = { percent, message ->
@@ -1429,35 +1431,81 @@ class PlayerScreen(
     }
 
     fun setFullscreenMode(enabled: Boolean) {
-        if (enabled) exitMiniPlayer()
-        fullscreen = enabled
-        header.visibility = if (enabled) View.GONE else View.VISIBLE
-        details.visibility = if (enabled) View.GONE else View.VISIBLE
-        actionsRow.visibility = if (enabled) View.GONE else View.VISIBLE
-        socialActionsRow.visibility = if (enabled) View.GONE else View.VISIBLE
-        smartChaptersBlock?.visibility = if (enabled) View.GONE else View.VISIBLE
-        nextVideosBlock.visibility = if (enabled) View.GONE else View.VISIBLE
+        if (fullscreenTransition) return
+        if (fullscreen == enabled) {
+            showOverlay()
+            return
+        }
 
-        val params = playerCard.layoutParams as? LinearLayout.LayoutParams
-        if (params != null) {
+        fullscreenTransition = true
+        try {
+            if (enabled && miniMode) exitMiniPlayer()
+
+            val params = (playerCard.layoutParams as? LinearLayout.LayoutParams)
+                ?: LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+
+            fullscreen = enabled
+
+            header.visibility = if (enabled) View.GONE else View.VISIBLE
+            details.visibility = if (enabled) View.GONE else View.VISIBLE
+            actionsRow.visibility = if (enabled) View.GONE else View.VISIBLE
+            socialActionsRow.visibility = if (enabled) View.GONE else View.VISIBLE
+            smartChaptersBlock?.visibility = if (enabled) View.GONE else View.VISIBLE
+            nextVideosBlock.visibility = if (enabled) View.GONE else View.VISIBLE
+            miniBar.visibility = View.GONE
+
+            params.width = ViewGroup.LayoutParams.MATCH_PARENT
+            params.weight = 0f
+
             if (enabled) {
-                params.height = 0
-                params.weight = 1f
+                params.height = ViewGroup.LayoutParams.MATCH_PARENT
                 params.marginStart = 0
                 params.marginEnd = 0
+                params.topMargin = 0
+                params.bottomMargin = 0
+                playerCard.clipToOutline = false
                 playerCard.background = rounded("#000000", 0)
             } else {
                 val width = activity.resources.displayMetrics.widthPixels
                 params.height = (width * 9f / 16f).toInt()
-                params.weight = 0f
                 params.marginStart = dp(12)
                 params.marginEnd = dp(12)
+                params.topMargin = 0
+                params.bottomMargin = 0
+                playerCard.clipToOutline = true
                 playerCard.background = rounded("#000000", 18)
             }
+
             playerCard.layoutParams = params
             playerCard.requestLayout()
+            root.requestLayout()
+            showOverlay()
+        } catch (_: Throwable) {
+            fullscreen = false
+            header.visibility = View.VISIBLE
+            details.visibility = View.VISIBLE
+            actionsRow.visibility = View.VISIBLE
+            socialActionsRow.visibility = View.VISIBLE
+            smartChaptersBlock?.visibility = View.VISIBLE
+            nextVideosBlock.visibility = View.VISIBLE
+
+            val width = activity.resources.displayMetrics.widthPixels
+            playerCard.layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                (width * 9f / 16f).toInt()
+            ).apply {
+                marginStart = dp(12)
+                marginEnd = dp(12)
+            }
+            playerCard.clipToOutline = true
+            playerCard.background = rounded("#000000", 18)
+            playerCard.requestLayout()
+        } finally {
+            fullscreenTransition = false
         }
-        showOverlay()
     }
 
     fun destroy() {

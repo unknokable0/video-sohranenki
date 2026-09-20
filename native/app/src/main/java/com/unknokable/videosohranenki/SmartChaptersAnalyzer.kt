@@ -1,5 +1,6 @@
 package com.unknokable.videosohranenki
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaDataSource
@@ -96,10 +97,12 @@ object SmartChaptersAnalyzer {
     }
 
     suspend fun analyzeTwitch(
+        context: Context,
         videoId: String,
         durationSeconds: Int,
         onProgress: suspend (Int, String) -> Unit = { _, _ -> }
     ): SmartAnalysisResult = TwitchContentAnalyzer.analyze(
+        context = context,
         videoId = videoId,
         durationSeconds = durationSeconds,
         onProgress = onProgress
@@ -1000,7 +1003,7 @@ object SmartChaptersAnalyzer {
 
     fun encode(chapters: List<SmartChapter>): String {
         val root = JSONObject()
-        root.put("version", 5)
+        root.put("version", 6)
         val array = JSONArray()
         chapters.forEach { chapter ->
             array.put(JSONObject().apply {
@@ -1017,7 +1020,7 @@ object SmartChaptersAnalyzer {
 
     fun decode(json: String): List<SmartChapter>? = runCatching {
         val root = JSONObject(json)
-        if (root.optInt("version", 0) != 5) return@runCatching null
+        if (root.optInt("version", 0) != 6) return@runCatching null
         val array = root.getJSONArray("chapters")
         val chapters = mutableListOf<SmartChapter>()
         for (i in 0 until array.length()) {

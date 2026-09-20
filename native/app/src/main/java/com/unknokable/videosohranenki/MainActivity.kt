@@ -3557,35 +3557,49 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setFullscreen(enabled: Boolean) {
-        if (fullScreen == enabled) {
-            playerScreen?.setFullscreenMode(enabled)
-            twitchPlayerScreen?.setFullscreenMode(enabled)
-            return
-        }
-        fullScreen = enabled
-        playerScreen?.setFullscreenMode(enabled)
-        twitchPlayerScreen?.setFullscreenMode(enabled)
-        ViewCompat.requestApplyInsets(root)
-        if (enabled) {
+        if (fullScreen == enabled) return
+
+        fun applySystemBars(fullscreen: Boolean) {
+            ViewCompat.requestApplyInsets(root)
             if (android.os.Build.VERSION.SDK_INT >= 30) {
                 window.insetsController?.let {
-                    it.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
-                    it.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    if (fullscreen) {
+                        it.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                        it.systemBarsBehavior =
+                            WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    } else {
+                        it.show(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                    }
                 }
             } else {
                 @Suppress("DEPRECATION")
-                window.decorView.systemUiVisibility =
-                    View.SYSTEM_UI_FLAG_FULLSCREEN or
-                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                run {
+                    window.decorView.systemUiVisibility =
+                        if (fullscreen) {
+                            View.SYSTEM_UI_FLAG_FULLSCREEN or
+                                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                        } else {
+                            View.SYSTEM_UI_FLAG_VISIBLE
+                        }
+                }
             }
-        } else {
-            if (android.os.Build.VERSION.SDK_INT >= 30) {
-                window.insetsController?.show(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
-            } else {
-                @Suppress("DEPRECATION")
-                run { window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE }
-            }
+        }
+
+        try {
+            // Update the player layout first. Only commit the Activity fullscreen
+            // state after that succeeds, so an OEM/layout exception cannot leave
+            // the app in a half-fullscreen state.
+            playerScreen?.setFullscreenMode(enabled)
+            twitchPlayerScreen?.setFullscreenMode(enabled)
+
+            fullScreen = enabled
+            applySystemBars(enabled)
+        } catch (_: Throwable) {
+            fullScreen = false
+            runCatching { playerScreen?.setFullscreenMode(false) }
+            runCatching { twitchPlayerScreen?.setFullscreenMode(false) }
+            runCatching { applySystemBars(false) }
         }
     }
 
