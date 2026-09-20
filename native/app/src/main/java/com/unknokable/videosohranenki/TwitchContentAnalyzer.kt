@@ -330,7 +330,7 @@ object TwitchContentAnalyzer {
         durationSeconds: Int
     ): Int {
         val windowStart = max(refinedStart + 20, coarseEnd - 70)
-        val windowEnd = min(durationSeconds, coarseEnd + 90)
+        val windowEnd = minOf(durationSeconds, coarseEnd + 90)
         if (windowEnd <= windowStart) return coarseEnd
 
         var sawVideo = false
