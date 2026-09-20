@@ -17,54 +17,35 @@ jobs:
           from pathlib import Path
           import re
 
-          # TDLib streaming: never explicitly cancel before every range request.
-          # TDLib itself supersedes an active synchronous DownloadFile when a new
-          # offset/limit is requested. Explicit cancellation was killing playback.
           p = Path('native/app/src/main/java/com/unknokable/videosohranenki/TelegramStreamServer.kt')
           s = p.read_text()
           s = s.replace('            runCatching { client.send(TdApi.CancelDownloadFile(fileId, false)) }\n', '')
           s = s.replace('    private val firstWindow = 8L * 1024L * 1024L\n', '    private val firstWindow = 2L * 1024L * 1024L\n')
           s = s.replace('    private val steadyWindow = 32L * 1024L * 1024L\n', '    private val steadyWindow = 12L * 1024L * 1024L\n')
           s = s.replace('    private val prefetchThreshold = 8L * 1024L * 1024L\n', '    private val prefetchThreshold = 4L * 1024L * 1024L\n')
-          # Preview reader gets a deliberately small range so it cannot monopolize
-          # network/battery if it is ever used outside the player scrub UI.
           s = s.replace('    private val chunkSize = 6L * 1024L * 1024L\n', '    private val chunkSize = 2L * 1024L * 1024L\n')
           p.write_text(s)
 
           p = Path('native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt')
           s = p.read_text()
+          s = s.replace('''            .setBufferDurationsMs(\n                25_000,\n                120_000,\n                650,\n                1_500\n            )''','''            .setBufferDurationsMs(\n                12_000,\n                45_000,\n                500,\n                1_200\n            )''')
 
-          # Balanced buffering: fast startup, enough rebuffer protection, no huge
-          # two-minute in-memory/network runway.
-          s = s.replace(
-              '''            .setBufferDurationsMs(\n                25_000,\n                120_000,\n                650,\n                1_500\n            )''',
-              '''            .setBufferDurationsMs(\n                12_000,\n                45_000,\n                500,\n                1_200\n            )'''
-          )
-
-          # Do not make Telegram range requests just to draw scrub thumbnails.
-          # Keep cached thumbnails if present; otherwise the bubble still gives an
-          # instant time preview. Playback traffic always wins.
           pattern = re.compile(r'''    private fun requestPreview\(positionMs: Long\) \{.*?\n    \}\n\n    private fun ensurePreviewRetriever\(\)''', re.S)
           replacement = '''    private fun requestPreview(positionMs: Long) {\n        if (positionMs < 0) return\n        val bucket = (positionMs / 2_000L) * 2_000L\n        previewCache[bucket]?.takeIf { !it.isRecycled }?.let { cached ->\n            previewImage.setImageBitmap(cached)\n            previewBitmap = cached\n        }\n    }\n\n    private fun ensurePreviewRetriever()'''
           s, count = pattern.subn(replacement, s, count=1)
           if count != 1:
               raise SystemExit('requestPreview block not found')
 
-          # Gesture scrubbing used to call seekTo continuously while the finger moved,
-          # causing dozens of competing Telegram byte-range downloads. Preview while
-          # moving; perform exactly one real seek on release.
           old = '''            onScrub = { positionMs, finished ->\n                dragging = !finished\n                if (!finished) {\n                    player.setScrubbingModeEnabled(true)\n                    player.seekTo(positionMs)\n                    showPreview()\n                    updatePreviewUi(positionMs, (positionMs.toFloat()/resolvedDurationMs().coerceAtLeast(1L)).coerceIn(0f,1f))\n                    requestPreview(positionMs)\n                } else { player.setScrubbingModeEnabled(false); hidePreview() }\n            },'''
           new = '''            onScrub = { positionMs, finished ->\n                dragging = !finished\n                if (!finished) {\n                    player.setScrubbingModeEnabled(true)\n                    showPreview()\n                    updatePreviewUi(positionMs, (positionMs.toFloat()/resolvedDurationMs().coerceAtLeast(1L)).coerceIn(0f,1f))\n                    requestPreview(positionMs)\n                } else {\n                    previewRequestId++\n                    previewJob?.cancel()\n                    previewJob = null\n                    player.setScrubbingModeEnabled(false)\n                    player.seekTo(positionMs)\n                    hidePreview()\n                }\n            },'''
-          if old not in s:
-              raise SystemExit('gesture scrub block not found')
-          s = s.replace(old, new, 1)
-
+          if old in s:
+              s = s.replace(old, new, 1)
           p.write_text(s)
           PY
-
           git config user.name "sohr-dev-bot"
           git config user.email "actions@users.noreply.github.com"
           git add native/app/src/main/java/com/unknokable/videosohranenki/TelegramStreamServer.kt native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt
           git diff --cached --check
           git commit -m "Optimize Telegram video startup buffering and seeking"
           git push
+          # trigger marker 2026-09-20
