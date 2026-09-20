@@ -1,0 +1,89 @@
+name: Apply SOHR 4.0.0 patch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/sohr-400-patch.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply neutral phone login and 4.0.0 version
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          p = Path('native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt')
+          s = p.read_text()
+
+          old = '''        var selected = detectCountry(regions)'''
+          new = '''        // Start neutrally: do not expose/infer a country code (for example +48)
+        // before the user explicitly chooses a country.
+        var selected = PhoneCountry(region = "ZZ", name = "", dialCode = 0, flag = "")'''
+          assert old in s, 'initial selected-country marker not found'
+          s = s.replace(old, new, 1)
+
+          old = '''        var formatter = phoneUtil.getAsYouTypeFormatter(selected.region)
+        var formatting = false
+
+        fun applyCountry() {
+            country.text = "${selected.flag}  ${selected.name}   +${selected.dialCode}"
+            prefix.text = "+${selected.dialCode}"
+            formatter = phoneUtil.getAsYouTypeFormatter(selected.region)'''
+          new = '''        var formatter = phoneUtil.getAsYouTypeFormatter("ZZ")
+        var formatting = false
+
+        fun applyCountry() {
+            val hasCountry = selected.dialCode > 0 && selected.region != "ZZ"
+            country.text = if (hasCountry) {
+                "${selected.flag}  ${selected.name}   +${selected.dialCode}"
+            } else {
+                if (settings.languageCode == "ru") "Выбрать страну" else t("choose_country")
+            }
+            prefix.text = if (hasCountry) "+${selected.dialCode}" else "+"
+            formatter = phoneUtil.getAsYouTypeFormatter(if (hasCountry) selected.region else "ZZ")'''
+          assert old in s, 'applyCountry marker not found'
+          s = s.replace(old, new, 1)
+
+          old = '''                val national = input.text.toString().filter { it.isDigit() }
+                if (national.isBlank()) {'''
+          new = '''                val national = input.text.toString().filter { it.isDigit() }
+                if (selected.dialCode <= 0 || selected.region == "ZZ") {
+                    error.text = if (settings.languageCode == "ru") "Сначала выбери страну" else t("choose_country")
+                    error.visibility = View.VISIBLE
+                    return@setOnClickListener
+                }
+                if (national.isBlank()) {'''
+          assert old in s, 'submit validation marker not found'
+          s = s.replace(old, new, 1)
+
+          p.write_text(s)
+
+          g = Path('native/app/build.gradle.kts')
+          t = g.read_text()
+          t = t.replace('// Build marker: SOHR 3.0.10 player polish', '// Build marker: SOHR 4.0.0 neutral login')
+          t = t.replace('versionCode = 310', 'versionCode = 400')
+          t = t.replace('versionName = "3.0.10-beta"', 'versionName = "4.0.0"')
+          # In case the prior patch already changed the version locally in a future rerun.
+          t = t.replace('versionCode = 311', 'versionCode = 400')
+          t = t.replace('versionName = "3.0.11-beta"', 'versionName = "4.0.0"')
+          g.write_text(t)
+          PY
+      - name: Commit SOHR 4.0.0
+        shell: bash
+        run: |
+          git config user.name "sohr-dev-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt native/app/build.gradle.kts
+          git commit -m "SOHR 4.0.0 neutral phone login"
+          git push
