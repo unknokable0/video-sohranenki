@@ -937,11 +937,13 @@ object TwitchContentAnalyzer {
         val strongEvidence = BooleanArray(timeline.size)
         val moderateEvidence = BooleanArray(timeline.size)
         val directPlayerEvidence = BooleanArray(timeline.size)
+        val sampled = BooleanArray(timeline.size)
 
         for (probe in probes) {
             val index = probe.timelineIndex
             if (index !in timeline.indices) continue
 
+            sampled[index] = true
             if (probe.score >= 6) strongEvidence[index] = true
             if (probe.score >= 3) moderateEvidence[index] = true
             if (probe.ocr.youtubeLike || probe.ocr.playerLike) {
@@ -1070,17 +1072,28 @@ object TwitchContentAnalyzer {
                 Int.MAX_VALUE
             }
 
-            // Motion can bridge a short fullscreen/static-control section, but
-            // it cannot keep one giant chapter alive for minutes.
-            if (sinceExplicit <= 35 && motionSignal(i)) {
-                misses = max(0, misses - 1)
+            // Unsampled storyboard points are UNKNOWN, not negative evidence.
+            // They may still expose a hard scene cut, but they must not close a
+            // chapter just because OCR was never run on them.
+            if (!sampled[i]) {
+                if (sinceExplicit <= 40 && motionSignal(i)) {
+                    continue
+                }
+                if (timeline[i].diff >= 24 && sinceExplicit >= 20) {
+                    misses = max(1, misses)
+                }
                 continue
             }
 
             val marker = markerAt(markers, time)
-            misses += if (isGameCategory(marker)) 2 else 1
+            val hardCut = timeline[i].diff >= 18
+            misses += when {
+                isGameCategory(marker) && !directPlayerEvidence[i] -> 2
+                hardCut -> 2
+                else -> 1
+            }
 
-            if (misses >= 3) {
+            if (misses >= 2) {
                 closeRange(i)
             }
         }
