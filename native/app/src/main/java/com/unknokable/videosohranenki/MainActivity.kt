@@ -2184,6 +2184,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openPlayer(item: VideoItem, startSeconds: Int = 0) {
+        fullScreen = false
         if (item.source == "twitch") {
             openTwitchPlayer(item, startSeconds)
             return
@@ -2249,6 +2250,7 @@ class MainActivity : AppCompatActivity() {
 
 
     private fun openTwitchPlayer(item: VideoItem, startSeconds: Int = 0) {
+        fullScreen = false
         val videoId = item.externalUrl
             ?.let { runCatching { Uri.parse(it).lastPathSegment }.getOrNull() }
             ?.removePrefix("v")
@@ -3557,8 +3559,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setFullscreen(enabled: Boolean) {
-        if (fullScreen == enabled) return
-
         fun applySystemBars(fullscreen: Boolean) {
             ViewCompat.requestApplyInsets(root)
             if (android.os.Build.VERSION.SDK_INT >= 30) {
@@ -3587,18 +3587,23 @@ class MainActivity : AppCompatActivity() {
         }
 
         try {
-            // Update the player layout first. Only commit the Activity fullscreen
-            // state after that succeeds, so an OEM/layout exception cannot leave
-            // the app in a half-fullscreen state.
+            // Never short-circuit on the Activity flag. PlayerScreen owns the
+            // actual fullscreen state and can recover even if Activity state
+            // got out of sync after navigation or an OEM-specific layout event.
             playerScreen?.setFullscreenMode(enabled)
             twitchPlayerScreen?.setFullscreenMode(enabled)
 
-            fullScreen = enabled
-            applySystemBars(enabled)
+            val actual =
+                playerScreen?.isFullscreen
+                    ?: twitchPlayerScreen?.isFullscreen
+                    ?: false
+
+            fullScreen = actual
+            applySystemBars(actual)
         } catch (_: Throwable) {
             fullScreen = false
-            runCatching { playerScreen?.setFullscreenMode(false) }
-            runCatching { twitchPlayerScreen?.setFullscreenMode(false) }
+            runCatching { playerScreen?.exitFullscreen() }
+            runCatching { twitchPlayerScreen?.exitFullscreen() }
             runCatching { applySystemBars(false) }
         }
     }

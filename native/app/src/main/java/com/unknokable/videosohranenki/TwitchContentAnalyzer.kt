@@ -140,9 +140,7 @@ object TwitchContentAnalyzer {
 
         coroutineContext.ensureActive()
 
-        val gameSegments = gameChapters(normalizedMarkers, durationSeconds)
-
-        onProgress(48, "Проверяем весь Just Chatting по времени…")
+        onProgress(48, "Ищем только просмотр видео по всей записи…")
 
         val probeIndices = buildProbeIndices(
             timeline = timeline,
@@ -170,11 +168,11 @@ object TwitchContentAnalyzer {
 
         onProgress(91, "Уточняем границы…")
 
-        val combined = combineStrict(
-            games = gameSegments,
-            videos = videos,
-            durationSeconds = durationSeconds
-        )
+        // Beta 1.0.4 is intentionally VIDEO-ONLY.
+        // Games/categories are used only to exclude non-video periods.
+        val combined = videos
+            .filter { it.title.startsWith("Смотрит") }
+            .sortedBy { it.startSeconds }
 
         val refined = runCatching {
             refineWithRealHlsFrames(
@@ -939,12 +937,65 @@ object TwitchContentAnalyzer {
             }
         }
 
+        fun snappedStart(range: RawRange): Int {
+            val firstEvidence = (range.startIndex..range.endIndex)
+                .firstOrNull { strongEvidence[it] || moderateEvidence[it] || motionSignal(it) }
+                ?: range.startIndex
+
+            val firstTime = timeline[firstEvidence].timeSec
+            val minTime = (firstTime - 75).coerceAtLeast(0)
+            var bestIndex = range.startIndex
+
+            var i = firstEvidence
+            while (i > 0 && timeline[i].timeSec >= minTime) {
+                // A strong cut immediately before the first confirmed video
+                // frame is our best storyboard estimate of the real start.
+                if (timeline[i].diff >= 18) {
+                    bestIndex = (i - 1).coerceAtLeast(0)
+                    break
+                }
+                i -= 1
+            }
+
+            return timeline[bestIndex].timeSec.coerceAtLeast(0)
+        }
+
+        fun snappedEnd(range: RawRange): Int {
+            val lastEvidence = (range.endIndex downTo range.startIndex)
+                .firstOrNull { strongEvidence[it] || moderateEvidence[it] || motionSignal(it) }
+                ?: range.endIndex
+
+            val lastTime = timeline[lastEvidence].timeSec
+            val maxTime = (lastTime + 75).coerceAtMost(durationSeconds)
+            var bestIndex = range.endIndex
+
+            var i = (lastEvidence + 1).coerceAtMost(timeline.lastIndex)
+            while (i <= timeline.lastIndex && timeline[i].timeSec <= maxTime) {
+                val marker = markerAt(markers, timeline[i].timeSec)
+                val explicitExit =
+                    !isChatLike(marker) ||
+                    (
+                        timeline[i].diff >= 18 &&
+                        !moderateEvidence[i] &&
+                        !strongEvidence[i] &&
+                        !motionSignal(i)
+                    )
+
+                if (explicitExit) {
+                    bestIndex = i
+                    break
+                }
+                i += 1
+            }
+
+            return timeline[bestIndex].timeSec.coerceAtMost(durationSeconds)
+        }
+
         val chapters = mutableListOf<SmartChapter>()
 
         for (range in mergedRanges) {
-            val startSec = timeline[range.startIndex].timeSec.coerceAtLeast(0)
-            val endSec = timeline[range.endIndex].timeSec
-                .coerceAtMost(durationSeconds)
+            val startSec = snappedStart(range)
+            val endSec = snappedEnd(range)
 
             if (endSec - startSec < 35) continue
 
@@ -967,7 +1018,13 @@ object TwitchContentAnalyzer {
             val splitPoints = robustTitleSplits(anchors, startSec, endSec)
 
             if (splitPoints.isEmpty()) {
-                val title = bestTitle(anchors)
+                val title = bestTitle(
+                    anchors.sortedWith(
+                        compareBy<TitleAnchor> {
+                            if (it.timeSec <= startSec + 55) 0 else 1
+                        }.thenByDescending { it.confidence }
+                    )
+                )
                 chapters += SmartChapter(
                     startSeconds = startSec,
                     endSeconds = endSec,
