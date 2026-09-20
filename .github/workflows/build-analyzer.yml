@@ -44,6 +44,8 @@ jobs:
       - name: Build portable Analyzer
         shell: pwsh
         run: |
+          $manifest = Join-Path $env:GITHUB_WORKSPACE "analyzer/app.manifest"
+          $versionInfo = Join-Path $env:GITHUB_WORKSPACE "analyzer/version_info.txt"
           pyinstaller `
             --noconfirm `
             --clean `
@@ -55,8 +57,8 @@ jobs:
             --workpath "build/portable" `
             --specpath "build/spec-portable" `
             --contents-directory "_runtime" `
-            --manifest "analyzer/app.manifest" `
-            --version-file "analyzer/version_info.txt" `
+            --manifest "$manifest" `
+            --version-file "$versionInfo" `
             --paths analyzer `
             --collect-all rapidocr `
             --collect-all imageio_ffmpeg `
@@ -67,6 +69,8 @@ jobs:
       - name: Build single-file Analyzer
         shell: pwsh
         run: |
+          $manifest = Join-Path $env:GITHUB_WORKSPACE "analyzer/app.manifest"
+          $versionInfo = Join-Path $env:GITHUB_WORKSPACE "analyzer/version_info.txt"
           pyinstaller `
             --noconfirm `
             --clean `
@@ -77,8 +81,8 @@ jobs:
             --distpath "dist/single" `
             --workpath "build/single" `
             --specpath "build/spec-single" `
-            --manifest "analyzer/app.manifest" `
-            --version-file "analyzer/version_info.txt" `
+            --manifest "$manifest" `
+            --version-file "$versionInfo" `
             --paths analyzer `
             --collect-all rapidocr `
             --collect-all imageio_ffmpeg `
