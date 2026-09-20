@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 5.0.2: smooth video open/back transitions
+# SOHR 5.x: smart local-first sync, cached previews, stats, Share -> SOHR
 on:
   push:
     branches: [main]
