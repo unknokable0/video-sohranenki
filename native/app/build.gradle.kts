@@ -1,3 +1,4 @@
+// Build marker: SOHR 3.0.6 visual polish
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
