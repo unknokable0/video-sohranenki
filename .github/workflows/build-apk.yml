@@ -1,4 +1,4 @@
-# SOHR 3.0.11 verified build trigger
+# SOHR 4.0.0 player step 1 build
 name: Build Android APK
 
 on:
@@ -48,7 +48,7 @@ jobs:
         run: |
           if [ -n "$SOHR_KEYSTORE_B64" ]; then
             printf '%s' "$SOHR_KEYSTORE_B64" | base64 --decode > "$GITHUB_WORKSPACE/native/sohr-release.jks"
-            SOHR_KEYSTORE_PATH="$GITHUB_WORKSPACE/native/sohr-release.jks"             SOHR_KEYSTORE_PASSWORD="$SOHR_KEYSTORE_PASSWORD"             SOHR_KEY_ALIAS="$SOHR_KEY_ALIAS"             SOHR_KEY_PASSWORD="$SOHR_KEY_PASSWORD"             gradle -p native :app:assembleRelease --no-daemon --stacktrace
+            SOHR_KEYSTORE_PATH="$GITHUB_WORKSPACE/native/sohr-release.jks" SOHR_KEYSTORE_PASSWORD="$SOHR_KEYSTORE_PASSWORD" SOHR_KEY_ALIAS="$SOHR_KEY_ALIAS" SOHR_KEY_PASSWORD="$SOHR_KEY_PASSWORD" gradle -p native :app:assembleRelease --no-daemon --stacktrace
             cp native/app/build/outputs/apk/release/app-release.apk SOHR.apk
           else
             gradle -p native :app:assembleDebug --no-daemon --stacktrace
@@ -75,7 +75,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: SOHR-BETA-3.0
+          name: SOHR-4.0.0-STEP1
           path: SOHR.apk
           if-no-files-found: error
           retention-days: 30
