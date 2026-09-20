@@ -1,4 +1,4 @@
-// Build marker: SOHR 3.0.8 animation pass
+// Build marker: SOHR 3.0.9 Telegram navigation
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -15,8 +15,8 @@ android {
         applicationId = "com.unknokable.videosohranenki"
         minSdk = 26
         targetSdk = 35
-        versionCode = 308
-        versionName = "3.0.8-beta"
+        versionCode = 309
+        versionName = "3.0.9-beta"
 
         buildConfigField("int", "TELEGRAM_API_ID", telegramApiId)
         buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")
