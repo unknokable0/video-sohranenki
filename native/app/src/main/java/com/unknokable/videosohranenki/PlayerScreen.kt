@@ -259,10 +259,8 @@ class PlayerScreen(
         root.addView(details)
         socialActionsRow = buildSocialActions()
         root.addView(socialActionsRow)
-        if (item.source == "twitch") {
-            smartChaptersBlock = buildSmartChaptersBlock()
-            root.addView(smartChaptersBlock)
-        }
+        smartChaptersBlock = buildSmartChaptersBlock()
+        root.addView(smartChaptersBlock)
         nextVideosBlock = buildNextVideosBlock()
         root.addView(nextVideosBlock)
         miniBar = buildMiniPlayer()
@@ -769,8 +767,8 @@ class PlayerScreen(
             setTextColor(palette.text)
         }
 
-        val beta = TextView(activity).apply {
-            text = "BETA"
+        val badge = TextView(activity).apply {
+            text = "V2"
             textSize = 9.5f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
@@ -780,22 +778,39 @@ class PlayerScreen(
         }
 
         titleRow.addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        titleRow.addView(beta)
+        titleRow.addView(badge)
 
         val subtitle = TextView(activity).apply {
-            text = "Быстрый анализ структуры стрима без скачивания всего видео"
+            text = if (item.source == "twitch") {
+                "Twitch-превью + главы + OCR • без скачивания всего стрима"
+            } else {
+                "Редкие кадры + локальный OCR • экономно для батареи"
+            }
             textSize = 12f
             setTextColor(palette.muted)
             setPadding(0, dp(5), 0, dp(10))
         }
 
+        val progressTrack = FrameLayout(activity).apply {
+            background = roundedInt(palette.surface, 4)
+            visibility = View.GONE
+        }
+        val progressFill = View(activity).apply {
+            background = rounded("#8B5CF6", 4)
+        }
+        progressTrack.addView(
+            progressFill,
+            FrameLayout.LayoutParams(0, dp(4), Gravity.START)
+        )
+
         val statusRow = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(8), 0, 0)
         }
 
         val status = TextView(activity).apply {
-            text = "Нажми «Анализировать» — обычно это занимает секунды"
+            text = "Готово к быстрому анализу"
             textSize = 12f
             setTextColor(palette.muted)
         }
@@ -821,25 +836,57 @@ class PlayerScreen(
 
         card.addView(titleRow)
         card.addView(subtitle)
+        card.addView(progressTrack, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(4)))
         card.addView(statusRow)
         card.addView(results)
         outer.addView(card)
 
-        val videoId = twitchVideoId()
-        if (videoId == null) {
-            status.text = "Не удалось определить Twitch Video ID"
-            action.isEnabled = false
-            action.alpha = 0.45f
-            return outer
+        val twitchId = if (item.source == "twitch") twitchVideoId() else null
+        val cacheKey = if (item.source == "twitch") {
+            val id = twitchId
+            if (id == null) {
+                status.text = "Не удалось определить Twitch Video ID"
+                action.isEnabled = false
+                action.alpha = 0.45f
+                return outer
+            }
+            "twitch-" + id
+        } else {
+            "telegram-" + item.messageId + "-" + item.fileSize + "-" + item.durationSeconds
+        }
+
+        fun setProgress(percent: Int, message: String) {
+            val safe = percent.coerceIn(0, 100)
+            status.text = message
+            action.text = if (safe in 1..99) safe.toString() + "%" else "Анализ…"
+            progressTrack.visibility = View.VISIBLE
+            progressTrack.post {
+                val target = (progressTrack.width * (safe / 100f)).toInt()
+                val lp = progressFill.layoutParams as FrameLayout.LayoutParams
+                val duration = if (settings.animations) 180L else 0L
+                progressFill.animate().cancel()
+                progressFill.animate()
+                    .setDuration(duration)
+                    .withEndAction {
+                        lp.width = target
+                        progressFill.layoutParams = lp
+                    }
+                    .start()
+                if (!settings.animations) {
+                    lp.width = target
+                    progressFill.layoutParams = lp
+                }
+            }
         }
 
         fun renderChapters(chapters: List<SmartChapter>, elapsedMs: Long, cached: Boolean) {
             results.removeAllViews()
+            progressTrack.visibility = View.GONE
             status.text = if (cached) {
-                "Готово • ${chapters.size} глав • из кеша"
+                "Готово • " + chapters.size + " глав • сохранено"
             } else {
                 val seconds = elapsedMs / 1000.0
-                "Готово • ${chapters.size} глав • %.1f с".format(seconds)
+                "Готово • " + chapters.size + " глав • %.1f с".format(seconds)
             }
             status.setTextColor(palette.accent)
             action.text = "Обновить"
@@ -886,6 +933,8 @@ class PlayerScreen(
                     textSize = 11f
                     setTextColor(palette.muted)
                     setPadding(0, dp(3), 0, 0)
+                    maxLines = 2
+                    ellipsize = android.text.TextUtils.TruncateAt.END
                 })
 
                 row.addView(time, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -923,12 +972,12 @@ class PlayerScreen(
                             .setDuration(210L)
                             .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
                             .start()
-                    }, (index.coerceAtMost(8) * 35L))
+                    }, (index.coerceAtMost(10) * 32L))
                 }
             }
         }
 
-        settings.smartChaptersCache(videoId)?.let { cached ->
+        settings.smartChaptersCache(cacheKey)?.let { cached ->
             SmartChaptersAnalyzer.decode(cached)?.takeIf { it.isNotEmpty() }?.let {
                 renderChapters(it, 0L, true)
             }
@@ -937,32 +986,52 @@ class PlayerScreen(
         action.setOnClickListener {
             pulse(action)
             action.isEnabled = false
-            action.alpha = 0.72f
-            action.text = "Анализ…"
+            action.alpha = 0.78f
             status.setTextColor(palette.muted)
-            status.text = "Проверяем структуру Twitch…"
+            results.removeAllViews()
+            setProgress(2, "Запускаем анализ…")
 
             val started = SystemClock.elapsedRealtime()
             smartChapterScope.launch {
                 try {
-                    val chapters = SmartChaptersAnalyzer.analyze(
-                        videoId = videoId,
-                        durationSeconds = item.durationSeconds.coerceAtLeast(0)
-                    )
-                    status.text = "Группируем найденные фрагменты…"
-                    val encoded = SmartChaptersAnalyzer.encode(chapters)
-                    settings.saveSmartChaptersCache(videoId, encoded)
+                    val result = if (item.source == "twitch") {
+                        SmartChaptersAnalyzer.analyzeTwitch(
+                            videoId = twitchId!!,
+                            durationSeconds = item.durationSeconds.coerceAtLeast(0),
+                            onProgress = { percent, message ->
+                                withContext(Dispatchers.Main.immediate) {
+                                    setProgress(percent, message)
+                                }
+                            }
+                        )
+                    } else {
+                        SmartChaptersAnalyzer.analyzeTelegram(
+                            durationSeconds = item.durationSeconds.coerceAtLeast(0),
+                            sourceFactory = previewDataSourceFactory,
+                            mediaUrl = mediaUrl,
+                            videoTitle = cleanTitle(item.title),
+                            onProgress = { percent, message ->
+                                withContext(Dispatchers.Main.immediate) {
+                                    setProgress(percent, message)
+                                }
+                            }
+                        )
+                    }
+
+                    val encoded = SmartChaptersAnalyzer.encode(result.chapters)
+                    settings.saveSmartChaptersCache(cacheKey, encoded)
                     renderChapters(
-                        chapters = chapters,
+                        chapters = result.chapters,
                         elapsedMs = SystemClock.elapsedRealtime() - started,
                         cached = false
                     )
                 } catch (e: Exception) {
+                    progressTrack.visibility = View.GONE
                     action.isEnabled = true
                     action.alpha = 1f
                     action.text = "Повторить"
                     status.setTextColor(Color.parseColor("#FF7A90"))
-                    status.text = e.message ?: "Не удалось проанализировать стрим"
+                    status.text = e.message ?: "Не удалось проанализировать видео"
                 }
             }
         }
@@ -1307,14 +1376,14 @@ class PlayerScreen(
 
     private fun enterMiniPlayer() {
         if(miniMode||fullscreen)return; miniMode=true; persistPlaybackPosition(true)
-        header.visibility=View.GONE; details.visibility=View.GONE; socialActionsRow.visibility=View.GONE; actionsRow.visibility=View.GONE; nextVideosBlock.visibility=View.GONE; overlay.visibility=View.GONE
+        header.visibility=View.GONE; details.visibility=View.GONE; socialActionsRow.visibility=View.GONE; actionsRow.visibility=View.GONE; smartChaptersBlock?.visibility=View.GONE; nextVideosBlock.visibility=View.GONE; overlay.visibility=View.GONE
         (playerView.parent as? ViewGroup)?.removeView(playerView); miniVideoHost.removeAllViews(); miniVideoHost.addView(playerView,FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.MATCH_PARENT)); playerCard.visibility=View.GONE
         root.gravity=Gravity.BOTTOM; miniBar.alpha=0f; miniBar.translationY=dp(76).toFloat(); miniBar.visibility=View.VISIBLE; miniBar.animate().alpha(1f).translationY(0f).setDuration(260L).start()
     }
 
     private fun exitMiniPlayer() {
         if(!miniMode)return; miniMode=false; (playerView.parent as? ViewGroup)?.removeView(playerView); playerCard.addView(playerView,0,FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.MATCH_PARENT)); miniBar.visibility=View.GONE; root.gravity=Gravity.TOP; playerCard.visibility=View.VISIBLE
-        header.visibility=View.VISIBLE; details.visibility=View.VISIBLE; socialActionsRow.visibility=View.VISIBLE; actionsRow.visibility=View.VISIBLE; nextVideosBlock.visibility=View.VISIBLE; showOverlay()
+        header.visibility=View.VISIBLE; details.visibility=View.VISIBLE; socialActionsRow.visibility=View.VISIBLE; actionsRow.visibility=View.VISIBLE; smartChaptersBlock?.visibility=View.VISIBLE; nextVideosBlock.visibility=View.VISIBLE; showOverlay()
     }
 
     private fun showTransientIndicator(value:String) {
@@ -1329,6 +1398,7 @@ class PlayerScreen(
         details.visibility = if (enabled) View.GONE else View.VISIBLE
         actionsRow.visibility = if (enabled) View.GONE else View.VISIBLE
         socialActionsRow.visibility = if (enabled) View.GONE else View.VISIBLE
+        smartChaptersBlock?.visibility = if (enabled) View.GONE else View.VISIBLE
         nextVideosBlock.visibility = if (enabled) View.GONE else View.VISIBLE
 
         val params = playerCard.layoutParams as? LinearLayout.LayoutParams
