@@ -68,6 +68,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var root: FrameLayout
     private var streamServer: TelegramStreamServer? = null
     private var playerScreen: PlayerScreen? = null
+    private var currentStreamingItem: VideoItem? = null
     private lateinit var settings: AppSettings
     private lateinit var streakTracker: StreakTracker
     private lateinit var updateManager: SohrUpdateManager
@@ -165,7 +166,11 @@ class MainActivity : AppCompatActivity() {
                     suppressNextContentAnimation = true
                     val day = currentDay
                     if (day != null && day.videos.isNotEmpty()) showDayCollection(day) else { currentDay = null; showFeed(currentVideos) }
-                    root.postDelayed({ outgoingPlayer?.destroy() }, if (settings.animations) 280L else 0L)
+                    root.postDelayed({
+                        outgoingPlayer?.destroy()
+                        currentStreamingItem?.let { streamed -> streamServer?.release(streamed) }
+                        currentStreamingItem = null
+                    }, if (settings.animations) 280L else 0L)
                     return
                 }
                 if (isSettingsScreen) {
@@ -1704,7 +1709,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             runCatching {
-                val cutoff = System.currentTimeMillis() - 7L * 24L * 60L * 60L * 1000L
+                val cutoff = System.currentTimeMillis() - 24L * 60L * 60L * 1000L
                 cacheDir.walkTopDown()
                     .filter { it.isFile && it.lastModified() < cutoff }
                     .forEach { it.delete() }
@@ -1713,7 +1718,7 @@ class MainActivity : AppCompatActivity() {
             runCatching {
                 val files = cacheDir.walkTopDown().filter { it.isFile }.toList()
                 var total = files.sumOf { it.length() }
-                val maxBytes = 256L * 1024L * 1024L
+                val maxBytes = 96L * 1024L * 1024L
                 if (total > maxBytes) {
                     files.sortedBy { it.lastModified() }.forEach { file ->
                         if (total <= maxBytes) return@forEach
@@ -2172,6 +2177,8 @@ class MainActivity : AppCompatActivity() {
         val nextItem = if (currentIndex >= 0) orderedForPlayback.getOrNull(currentIndex + 1) else null
         nextItem?.takeIf { it.localPath == null }?.let { server?.prefetch(it) }
         playerScreen?.destroy()
+        currentStreamingItem?.let { previous -> streamServer?.release(previous) }
+        currentStreamingItem = if (localFile == null) item else null
         isSettingsScreen = false
         isAccountScreen = false
         isStreakScreen = false
@@ -3144,9 +3151,6 @@ class MainActivity : AppCompatActivity() {
         playerScreen?.setFullscreenMode(enabled)
         ViewCompat.requestApplyInsets(root)
         if (enabled) {
-            if (settings.autoRotateFullscreen) {
-                runCatching { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE }
-            }
             if (android.os.Build.VERSION.SDK_INT >= 30) {
                 window.insetsController?.let {
                     it.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
@@ -3160,7 +3164,6 @@ class MainActivity : AppCompatActivity() {
                     View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
             }
         } else {
-            runCatching { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
             if (android.os.Build.VERSION.SDK_INT >= 30) {
                 window.insetsController?.show(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
             } else {

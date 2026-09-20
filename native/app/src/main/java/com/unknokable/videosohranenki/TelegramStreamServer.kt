@@ -31,6 +31,14 @@ class TelegramStreamServer(
             fileSize = item.fileSize
         )
 
+    fun release(item: VideoItem) {
+        if (item.fileId <= 0) return
+        scope.launch {
+            runCatching { client.send(TdApi.CancelDownloadFile(item.fileId, false)) }
+            runCatching { client.send(TdApi.DeleteFile(item.fileId)) }
+        }
+    }
+
     fun prefetch(item: VideoItem) {
         if (item.fileSize <= 0L) return
         scope.launch {
@@ -151,17 +159,23 @@ private class TelegramFileInputStream(
             min(target, endInclusive - offset + 1)
         }
 
+        if (!usePrefetch && offset > 0L) {
+            runBlocking { runCatching { client.send(TdApi.CancelDownloadFile(fileId, false)) } }
+        }
+
         val result = runBlocking {
             client.send(TdApi.DownloadFile(fileId, 32, windowStart, windowLimit, true))
         }
         applyLocalRange(result.local)
 
-        if (bufferedEndExclusive < requestedEnd) {
+        var attempts = 0
+        while (bufferedEndExclusive < requestedEnd && attempts < 3) {
             val retryLimit = minOf(maxOf(requested, firstWindow), endInclusive - offset + 1)
             val retry = runBlocking {
-                    client.send(TdApi.DownloadFile(fileId, 32, offset, retryLimit, true))
+                client.send(TdApi.DownloadFile(fileId, 32, offset, retryLimit, true))
             }
             applyLocalRange(retry.local)
+            attempts++
         }
 
         if (usePrefetch) {
@@ -247,8 +261,11 @@ private class TelegramMediaDataSource(
         }
 
         val limit = minOf(maxOf(requested, chunkSize), fileSize - position)
+        if (position > 0L) {
+            runBlocking { runCatching { client.send(TdApi.CancelDownloadFile(fileId, false)) } }
+        }
         val result = runBlocking {
-            client.send(TdApi.DownloadFile(fileId, 24, position, limit, true))
+            client.send(TdApi.DownloadFile(fileId, 32, position, limit, true))
         }
 
         val path = result.local.path

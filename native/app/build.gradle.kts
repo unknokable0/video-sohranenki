@@ -1,4 +1,4 @@
-// Build marker: SOHR smooth back + watched restore + swipe tabs
+// Build marker: SOHR fullscreen + seek + cache fix
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
