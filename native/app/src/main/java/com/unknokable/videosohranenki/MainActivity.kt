@@ -94,6 +94,10 @@ class MainActivity : AppCompatActivity() {
     private var startupPhase = true
     private var startupStatusView: TextView? = null
     private var completedUpdateNotice: String? = null
+    private var feedRefreshButton: LinearLayout? = null
+    private var feedRefreshLabel: TextView? = null
+    private var feedRefreshLoader: LoadingWaveView? = null
+    private var feedRefreshCompletedFlash = false
 
     private val palette get() = settings.palette()
     private val bg get() = palette.background
@@ -1284,14 +1288,24 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadVideos() {
+    private fun loadVideos(inPlace: Boolean = false) {
         if (loadJob?.isActive == true) {
-            reloadRequested = true
+            if (inPlace) {
+                feedRefreshLabel?.text = "Уже проверяем…"
+            } else {
+                reloadRequested = true
+            }
             return
         }
 
+        if (inPlace) {
+            setFeedRefreshLoading(true)
+        }
+
         loadJob = lifecycleScope.launch {
-            withContext(Dispatchers.Main) { showLoading("Собираем записи за неделю…") }
+            if (!inPlace) {
+                withContext(Dispatchers.Main) { showLoading("Собираем записи за неделю…") }
+            }
             try {
                 val chat = client.send(TdApi.SearchPublicChat("t2x2_video"))
                 channelChatId = chat.id
@@ -1344,17 +1358,37 @@ class MainActivity : AppCompatActivity() {
                 withContext(Dispatchers.Main) {
                     currentVideos = preparedVideos
                     currentDay = null
+                    feedRefreshCompletedFlash = inPlace
                     showFeed(preparedVideos)
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    showMessage(
-                        "Не удалось загрузить записи",
-                        e.message ?: "Неизвестная ошибка Telegram"
-                    )
+                    if (inPlace) {
+                        setFeedRefreshLoading(false, "Ошибка")
+                        Toast.makeText(
+                            this@MainActivity,
+                            e.message ?: "Не удалось проверить новые видео",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        feedRefreshButton?.postDelayed({
+                            setFeedRefreshLoading(false, "Проверить новые")
+                        }, 1400L)
+                    } else {
+                        showMessage(
+                            "Не удалось загрузить записи",
+                            e.message ?: "Неизвестная ошибка Telegram"
+                        )
+                    }
                 }
             }
         }
+    }
+
+    private fun setFeedRefreshLoading(loading: Boolean, label: String? = null) {
+        feedRefreshButton?.isEnabled = !loading
+        feedRefreshButton?.alpha = if (loading) 0.92f else 1f
+        feedRefreshLoader?.visibility = if (loading) View.VISIBLE else View.GONE
+        feedRefreshLabel?.text = label ?: if (loading) "Работаем…" else "Проверить новые"
     }
 
     private fun messageToVideo(message: TdApi.Message): VideoItem? {
@@ -1487,42 +1521,75 @@ class MainActivity : AppCompatActivity() {
             setTextColor(muted)
         }
 
-        val refresh = TextView(this).apply {
-            text = "↻  Проверить новые"
+        val refreshLoader = LoadingWaveView(this, purple).apply {
+            visibility = View.GONE
+        }
+
+        val refreshLabel = TextView(this).apply {
+            text = if (feedRefreshCompletedFlash) "Готово" else "Проверить новые"
             textSize = 12f
-            gravity = Gravity.CENTER
+            gravity = Gravity.CENTER_VERTICAL
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(purple)
+        }
+
+        val refresh = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(12), 0, dp(12), 0)
             background = roundedBg(palette.surfaceAlt, 16)
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+            isClickable = true
+            isFocusable = true
+            contentDescription = "Проверить новые видео"
+            addView(
+                refreshLoader,
+                LinearLayout.LayoutParams(dp(24), dp(24)).apply {
+                    marginEnd = dp(7)
+                }
+            )
+            addView(
+                refreshLabel,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
             setOnClickListener {
                 if (!isEnabled) return@setOnClickListener
                 animatePress(this)
-                isEnabled = false
-                loadVideos()
-                postDelayed({ isEnabled = true }, 1200)
+                loadVideos(inPlace = true)
             }
         }
 
-        val settingsButton = ImageButton(this).apply {
-            setImageResource(R.drawable.ic_settings)
-            imageTintList = ColorStateList.valueOf(purple)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            background = roundedBg(palette.surfaceAlt, 16)
-            setPadding(dp(13), dp(13), dp(13), dp(13))
-            contentDescription = "Настройки"
-            setOnClickListener {
-                if (!isEnabled) return@setOnClickListener
-                animatePress(this)
-                isEnabled = false
-                showSettings()
-                postDelayed({ isEnabled = true }, 420)
-            }
-        }
+        feedRefreshButton = refresh
+        feedRefreshLabel = refreshLabel
+        feedRefreshLoader = refreshLoader
 
-        controlRow.addView(sectionTitle, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        controlRow.addView(refresh, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)).apply { marginEnd = dp(8) })
-        controlRow.addView(settingsButton, LinearLayout.LayoutParams(dp(48), dp(48)))
+        controlRow.addView(
+            sectionTitle,
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        )
+        controlRow.addView(
+            refresh,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44))
+        )
+
+        if (feedRefreshCompletedFlash) {
+            feedRefreshCompletedFlash = false
+            refresh.postDelayed({
+                if (feedRefreshButton === refresh && refresh.isEnabled) {
+                    refreshLabel.animate().cancel()
+                    refreshLabel.animate()
+                        .alpha(0f)
+                        .setDuration(80L)
+                        .withEndAction {
+                            refreshLabel.text = "Проверить новые"
+                            refreshLabel.animate().alpha(1f).setDuration(120L).start()
+                        }
+                        .start()
+                }
+            }, 1100L)
+        }
 
         header.addView(titleView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         header.addView(subtitle, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -1639,6 +1706,9 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        feedRefreshButton = null
+        feedRefreshLabel = null
+        feedRefreshLoader = null
         server.prefetch(item)
         playerScreen?.destroy()
         isSettingsScreen = false
