@@ -2165,12 +2165,12 @@ class MainActivity : AppCompatActivity() {
         feedRefreshButton = null
         feedRefreshLabel = null
         feedRefreshLoader = null
-        server.prefetch(item)
+        if (localFile == null) server?.prefetch(item)
         val orderedForPlayback = (currentDay?.videos ?: currentVideos)
             .sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })
         val currentIndex = orderedForPlayback.indexOfFirst { it.messageId == item.messageId }
         val nextItem = if (currentIndex >= 0) orderedForPlayback.getOrNull(currentIndex + 1) else null
-        nextItem?.let { server.prefetch(it) }
+        nextItem?.takeIf { it.localPath == null }?.let { server?.prefetch(it) }
         playerScreen?.destroy()
         isSettingsScreen = false
         isAccountScreen = false
