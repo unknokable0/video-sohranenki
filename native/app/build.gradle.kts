@@ -6,7 +6,7 @@ plugins {
 
 val telegramApiId = System.getenv("TELEGRAM_API_ID") ?: "0"
 val telegramApiHash = System.getenv("TELEGRAM_API_HASH") ?: ""
-val twitchClientId = System.getenv("TWITCH_CLIENT_ID") ?: ""
+val twitchClientId = System.getenv("TWITCH_CLIENT_ID")?.takeIf { it.isNotBlank() } ?: "gnr3cikerodr25wpbrb04a11031qiz"
 val sohrBuildNumber = System.getenv("SOHR_BUILD_NUMBER")?.toIntOrNull()
 val sohrVersionName = System.getenv("SOHR_VERSION_NAME")
 

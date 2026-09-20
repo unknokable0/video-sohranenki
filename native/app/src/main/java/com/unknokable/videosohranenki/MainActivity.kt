@@ -2302,7 +2302,7 @@ class MainActivity : AppCompatActivity() {
         val auth = Uri.parse("https://id.twitch.tv/oauth2/authorize").buildUpon()
             .appendQueryParameter("response_type", "token")
             .appendQueryParameter("client_id", clientId)
-            .appendQueryParameter("redirect_uri", "sohr://twitch-auth")
+            .appendQueryParameter("redirect_uri", "https://unknokable0.github.io/video-sohranenki/twitch-auth/")
             .appendQueryParameter("scope", "")
             .appendQueryParameter("state", state)
             .build()
