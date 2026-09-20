@@ -17,7 +17,7 @@
 <body>
   <main class="card">
     <h1>SOHR</h1>
-    <p id="status">Возвращаемся в приложение…</p>
+    <p id="status">Проверяем вход Twitch…</p>
     <a id="open" href="sohr://twitch-auth">Открыть SOHR</a>
   </main>
   <script>
@@ -33,7 +33,13 @@
         status.textContent = "Twitch не вернул данные авторизации. Вернись в SOHR и попробуй ещё раз.";
         return;
       }
-      setTimeout(() => { window.location.href = target; }, 120);
+      const params = new URLSearchParams(payload.replace(/^[#?]/, ""));
+      if (params.get("error")) {
+        status.textContent = "Вход отменён. Возвращаемся в SOHR…";
+      } else {
+        status.textContent = "Вход выполнен. Теперь Twitch доступен в SOHR.";
+      }
+      setTimeout(() => { window.location.href = target; }, 850);
     })();
   </script>
 </body>

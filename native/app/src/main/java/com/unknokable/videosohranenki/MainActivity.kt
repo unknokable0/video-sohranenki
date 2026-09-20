@@ -68,6 +68,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var root: FrameLayout
     private var streamServer: TelegramStreamServer? = null
     private var playerScreen: PlayerScreen? = null
+    private var twitchPlayerScreen: TwitchPlayerScreen? = null
     private var currentStreamingItem: VideoItem? = null
     private lateinit var settings: AppSettings
     private lateinit var streakTracker: StreakTracker
@@ -81,6 +82,7 @@ class MainActivity : AppCompatActivity() {
     private var telegramVideos: List<VideoItem> = emptyList()
     private var twitchVideos: List<VideoItem> = emptyList()
     private var twitchLoadJob: kotlinx.coroutines.Job? = null
+    private var pendingTwitchWelcome = false
     private var currentDay: DayCollection? = null
     private var isPlayerScreen = false
     private var isSettingsScreen = false
@@ -158,12 +160,18 @@ class MainActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (fullScreen) {
-                    setFullscreen(false)
+                    if (twitchPlayerScreen?.isFullscreen == true) {
+                        twitchPlayerScreen?.exitFullscreen()
+                    } else {
+                        setFullscreen(false)
+                    }
                     return
                 }
                 if (isPlayerScreen) {
                     val outgoingPlayer = playerScreen
+                    val outgoingTwitchPlayer = twitchPlayerScreen
                     playerScreen = null
+                    twitchPlayerScreen = null
                     isPlayerScreen = false
                     pendingRootSlide = -1
                     suppressNextContentAnimation = true
@@ -171,6 +179,7 @@ class MainActivity : AppCompatActivity() {
                     if (day != null && day.videos.isNotEmpty()) showDayCollection(day) else { currentDay = null; showSelectedVideoSource() }
                     root.postDelayed({
                         outgoingPlayer?.destroy()
+                        outgoingTwitchPlayer?.destroy()
                         currentStreamingItem?.let { streamed -> streamServer?.release(streamed) }
                         currentStreamingItem = null
                     }, if (settings.animations) 280L else 0L)
@@ -2176,11 +2185,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun openPlayer(item: VideoItem, startSeconds: Int = 0) {
         if (item.source == "twitch") {
-            val url = item.externalUrl ?: return
-            runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-                .onFailure { Toast.makeText(this, "Не удалось открыть Twitch", Toast.LENGTH_SHORT).show() }
+            openTwitchPlayer(item)
             return
         }
+        twitchPlayerScreen?.destroy()
+        twitchPlayerScreen = null
         val localFile = item.localPath?.let(::File)?.takeIf { it.exists() }
         val server = streamServer
         if (localFile == null && server == null) return
@@ -2238,6 +2247,45 @@ class MainActivity : AppCompatActivity() {
     }
 
 
+
+    private fun openTwitchPlayer(item: VideoItem) {
+        val videoId = item.externalUrl
+            ?.let { runCatching { Uri.parse(it).lastPathSegment }.getOrNull() }
+            ?.removePrefix("v")
+            ?.filter { it.isDigit() }
+            .orEmpty()
+
+        if (videoId.isBlank()) {
+            showMessage("Не удалось открыть Twitch", "У записи нет корректного Twitch Video ID.")
+            return
+        }
+
+        playerScreen?.destroy()
+        playerScreen = null
+        twitchPlayerScreen?.destroy()
+        currentStreamingItem?.let { streamed -> streamServer?.release(streamed) }
+        currentStreamingItem = null
+
+        isSettingsScreen = false
+        isAccountScreen = false
+        isStreakScreen = false
+        isPlayerScreen = true
+
+        twitchPlayerScreen = TwitchPlayerScreen(
+            activity = this,
+            item = item,
+            videoId = videoId,
+            palette = palette,
+            animationsEnabled = settings.animations,
+            onBack = { onBackPressedDispatcher.onBackPressed() },
+            onFullscreen = { setFullscreen(it) }
+        )
+
+        pendingRootSlide = 1
+        replaceRoot(twitchPlayerScreen!!.root)
+        streakTracker.markWatched()
+    }
+
     private fun showSelectedVideoSource(forceRefresh: Boolean = false) {
         currentDay = null
         videoSection = 1
@@ -2273,16 +2321,32 @@ class MainActivity : AppCompatActivity() {
         if (inPlace) setFeedRefreshLoading(true) else showLoading("Загружаем стримы Twitch…")
         twitchLoadJob = lifecycleScope.launch {
             try {
-                val videos = TwitchApi.loadArchives(BuildConfig.TWITCH_CLIENT_ID.trim(), token, "t2x2", 7)
+                val twitchLogin = TwitchApi.validateToken(clientId, token)
+                settings.twitchLogin = twitchLogin.takeIf { it.isNotBlank() }
+                val videos = TwitchApi.loadArchives(clientId, token, "t2x2", 7)
                 twitchVideos = videos
                 currentVideos = videos
                 currentDay = null
                 feedRefreshCompletedFlash = inPlace
                 if (inPlace) suppressNextRootAnimation = true
                 showFeed(videos)
+                if (pendingTwitchWelcome) {
+                    pendingTwitchWelcome = false
+                    root.postDelayed({
+                        val account = settings.twitchLogin?.let { " @$it" }.orEmpty()
+                        ModernDialogs.showNotice(
+                            context = this@MainActivity,
+                            palette = palette,
+                            title = "Twitch подключён",
+                            message = "Вход выполнен$account. Теперь записи Twitch доступны прямо в SOHR.",
+                            button = "Готово"
+                        )
+                    }, 260L)
+                }
             } catch (_: TwitchAuthException) {
                 settings.twitchAccessToken = null
                 settings.twitchOauthState = null
+                settings.twitchLogin = null
                 startTwitchLogin()
             } catch (e: Exception) {
                 if (inPlace) {
@@ -2338,7 +2402,9 @@ class MainActivity : AppCompatActivity() {
         }
         settings.twitchAccessToken = token
         settings.twitchOauthState = null
+        settings.twitchLogin = null
         settings.videoSource = "twitch"
+        pendingTwitchWelcome = true
         sourceIntent.data = null
         if (loadAfter) loadTwitchVideos(inPlace = false)
         return true
@@ -2364,6 +2430,7 @@ class MainActivity : AppCompatActivity() {
                 showSettings()
             },
             onCheckUpdates = { checkForUpdates() },
+            onTwitchLogout = { confirmTwitchLogout() },
             onLogout = { confirmLogout() }
         )
         replaceRoot(withBottomNav(screen.build(), SohrTab.SETTINGS))
@@ -2680,6 +2747,7 @@ class MainActivity : AppCompatActivity() {
             },
             onLanguageChanged = { showSettings() },
             onCheckUpdates = { checkForUpdates() },
+            onTwitchLogout = { confirmTwitchLogout() },
             onLogout = { confirmLogout() }
         ).build()
 
@@ -3245,6 +3313,51 @@ class MainActivity : AppCompatActivity() {
 
 
 
+
+    private fun confirmTwitchLogout() {
+        ModernDialogs.showConfirm(
+            context = this,
+            palette = palette,
+            title = "Выйти из Twitch?",
+            message = "SOHR отключит Twitch-аккаунт и отзовёт выданный приложению токен.",
+            confirm = "Выйти",
+            destructive = true
+        ) {
+            lifecycleScope.launch {
+                val token = settings.twitchAccessToken
+                var revokeFailed = false
+                if (!token.isNullOrBlank()) {
+                    try {
+                        TwitchApi.revokeToken(BuildConfig.TWITCH_CLIENT_ID.trim(), token)
+                    } catch (_: Exception) {
+                        revokeFailed = true
+                    }
+                }
+
+                settings.twitchAccessToken = null
+                settings.twitchOauthState = null
+                settings.twitchLogin = null
+                twitchVideos = emptyList()
+                if (settings.videoSource == "twitch") settings.videoSource = "telegram"
+
+                showSettings()
+                root.postDelayed({
+                    ModernDialogs.showNotice(
+                        context = this@MainActivity,
+                        palette = palette,
+                        title = "Twitch отключён",
+                        message = if (revokeFailed) {
+                            "Аккаунт удалён из SOHR. Twitch не подтвердил отзыв токена из-за ошибки сети."
+                        } else {
+                            "Аккаунт Twitch отключён от SOHR."
+                        },
+                        button = "Готово"
+                    )
+                }, 180L)
+            }
+        }
+    }
+
     private fun confirmLogout() {
         ModernDialogs.showConfirm(
             context = this,
@@ -3700,6 +3813,8 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         playerScreen?.destroy()
         playerScreen = null
+        twitchPlayerScreen?.destroy()
+        twitchPlayerScreen = null
         streamServer?.stop()
         if (::client.isInitialized) client.close()
         super.onDestroy()

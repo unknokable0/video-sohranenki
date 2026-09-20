@@ -13,6 +13,48 @@ import kotlin.math.abs
 class TwitchAuthException(message: String = "Twitch authorization expired") : IOException(message)
 
 object TwitchApi {
+    suspend fun validateToken(clientId: String, accessToken: String): String = withContext(Dispatchers.IO) {
+        val connection = (URL("https://id.twitch.tv/oauth2/validate").openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 10_000
+            readTimeout = 12_000
+            setRequestProperty("Authorization", "OAuth $accessToken")
+            setRequestProperty("Accept", "application/json")
+        }
+        try {
+            val code = connection.responseCode
+            val body = (if (code in 200..299) connection.inputStream else connection.errorStream)
+                ?.bufferedReader()?.use { it.readText() }.orEmpty()
+            if (code == 401) throw TwitchAuthException()
+            if (code !in 200..299) throw IOException("Twitch validate: HTTP $code")
+            val root = JSONObject(body)
+            if (root.optString("client_id") != clientId) throw TwitchAuthException("Twitch Client ID mismatch")
+            root.optString("login")
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    suspend fun revokeToken(clientId: String, accessToken: String) = withContext(Dispatchers.IO) {
+        val body = "client_id=" + java.net.URLEncoder.encode(clientId, "UTF-8") +
+            "&token=" + java.net.URLEncoder.encode(accessToken, "UTF-8")
+        val connection = (URL("https://id.twitch.tv/oauth2/revoke").openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = 10_000
+            readTimeout = 12_000
+            doOutput = true
+            setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+            setRequestProperty("Accept", "application/json")
+        }
+        try {
+            connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+            val code = connection.responseCode
+            if (code !in 200..299 && code != 400) throw IOException("Twitch logout: HTTP $code")
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     suspend fun loadArchives(clientId: String, accessToken: String, login: String, days: Long = 7): List<VideoItem> =
         withContext(Dispatchers.IO) {
             require(clientId.isNotBlank()) { "Twitch Client ID не настроен" }
