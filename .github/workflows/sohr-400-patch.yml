@@ -1,4 +1,4 @@
-name: SOHR smooth player transitions
+name: SOHR smart sync previews stats share
 on:
   push:
     branches: [main]
@@ -10,92 +10,438 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Remove player transition jank
+      - name: Apply local-first sync, previews, stats and Share to SOHR
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
-          player = Path('native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt')
-          s = player.read_text()
-          old_lines = [
-              '        playerView = PlayerView(activity).apply {',
-              '            useController = false',
-              '            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT',
-              '            setBackgroundColor(Color.BLACK)',
-              '        }',
-          ]
-          new_lines = [
-              '        playerView = activity.layoutInflater.inflate(',
-              '            R.layout.view_sohr_player,',
-              '            playerCard,',
-              '            false',
-              '        ) as PlayerView',
-              '        playerView.apply {',
-              '            useController = false',
-              '            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT',
-              '            setBackgroundColor(Color.BLACK)',
-              '        }',
-          ]
-          old = '\n'.join(old_lines)
-          new = '\n'.join(new_lines)
-          if old not in s:
-              raise SystemExit('PlayerView construction block not found')
-          player.write_text(s.replace(old, new, 1))
-          layout = Path('native/app/src/main/res/layout/view_sohr_player.xml')
-          layout.parent.mkdir(parents=True, exist_ok=True)
-          xml = [
-              '<?xml version="1.0" encoding="utf-8"?>',
-              '<androidx.media3.ui.PlayerView xmlns:android="http://schemas.android.com/apk/res/android"',
-              '    xmlns:app="http://schemas.android.com/apk/res-auto"',
-              '    android:layout_width="match_parent"',
-              '    android:layout_height="match_parent"',
-              '    android:background="#000000"',
-              '    app:resize_mode="fit"',
-              '    app:surface_type="texture_view"',
-              '    app:use_controller="false" />',
-              '',
-          ]
-          layout.write_text('\n'.join(xml))
-          main = Path('native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt')
-          m = main.read_text()
-          old_var = '    private var suppressNextRootAnimation = false\n'
-          if 'private var suppressNextContentAnimation' not in m:
-              if old_var not in m:
-                  raise SystemExit('root animation state field not found')
-              m = m.replace(old_var, old_var + '    private var suppressNextContentAnimation = false\n', 1)
-          old_back = '\n'.join([
-              '                    pendingRootSlide = -1',
-              '                    val day = currentDay',
-              '                    if (day != null && day.videos.isNotEmpty()) showDayCollection(day) else { currentDay = null; showFeed(currentVideos) }',
-          ])
-          new_back = '\n'.join([
-              '                    pendingRootSlide = -1',
-              '                    suppressNextContentAnimation = true',
-              '                    val day = currentDay',
-              '                    if (day != null && day.videos.isNotEmpty()) showDayCollection(day) else { currentDay = null; showFeed(currentVideos) }',
-          ])
-          if old_back not in m:
-              raise SystemExit('player back block not found')
-          m = m.replace(old_back, new_back, 1)
-          old_anim = '        val animateContent = settings.animations && old != null && old !== content\n'
-          new_anim = '        val skipContentAnimation = suppressNextContentAnimation\n        suppressNextContentAnimation = false\n        val animateContent = settings.animations && !skipContentAnimation && old != null && old !== content\n'
-          if old_anim not in m:
-              raise SystemExit('content animation gate not found')
-          m = m.replace(old_anim, new_anim, 1)
-          start = m.find('    private fun replaceRoot(view: View) {')
-          end = m.find('    private fun installPressAnimations(view: View) {', start)
-          if start < 0 or end < 0:
-              raise SystemExit('replaceRoot block not found')
-          block = m[start:end]
-          block = block.replace('.translationX(dp(48).toFloat())\n                .setDuration(150L)', '.translationX(dp(36).toFloat())\n                .setDuration(210L)')
-          block = block.replace('view.translationX = dp(48).toFloat()\n            view.animate()', 'view.translationX = dp(36).toFloat()\n            view.animate()')
-          block = block.replace('.translationX(0f)\n                .setDuration(150L)', '.translationX(0f)\n                .setDuration(210L)')
-          m = m[:start] + block + m[end:]
-          main.write_text(m)
+
+          base = Path('native/app/src/main/java/com/unknokable/videosohranenki')
+
+          # 1) Extend VideoItem with an optional local source used by Android Share -> SOHR.
+          p = base / 'VideoItem.kt'
+          s = p.read_text()
+          if 'val localPath:' not in s:
+              s = s.replace('    val thumbnailPath: String? = null\n', '    val thumbnailPath: String? = null,\n    val localPath: String? = null\n')
+          p.write_text(s)
+
+          # 2) Persistent catalog cache + safe local import + representative thumbnail extraction.
+          (base / 'SohrVideoCache.kt').write_text(r'''package com.unknokable.videosohranenki
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
+import android.net.Uri
+import android.provider.OpenableColumns
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.File
+
+class SohrVideoCache(private val context: Context) {
+    private val catalogFile = File(context.filesDir, "sohr_video_catalog.json")
+    private val importsDir = File(context.filesDir, "sohr_imports").apply { mkdirs() }
+    private val thumbsDir = File(context.filesDir, "sohr_thumbs").apply { mkdirs() }
+
+    fun load(): List<VideoItem> = runCatching {
+        if (!catalogFile.exists()) return emptyList()
+        val array = JSONArray(catalogFile.readText())
+        buildList {
+            for (i in 0 until array.length()) {
+                val o = array.getJSONObject(i)
+                val localPath = o.optString("localPath").takeIf { it.isNotBlank() }
+                if (localPath != null && !File(localPath).exists()) continue
+                add(VideoItem(
+                    messageId = o.getLong("messageId"),
+                    title = o.optString("title", "Видео"),
+                    date = o.getInt("date"),
+                    durationSeconds = o.optInt("durationSeconds", 0),
+                    fileId = o.optInt("fileId", 0),
+                    fileSize = o.optLong("fileSize", 0L),
+                    mimeType = o.optString("mimeType", "video/mp4"),
+                    thumbnailFileId = if (o.has("thumbnailFileId") && !o.isNull("thumbnailFileId")) o.getInt("thumbnailFileId") else null,
+                    thumbnailPath = o.optString("thumbnailPath").takeIf { it.isNotBlank() && File(it).exists() },
+                    localPath = localPath
+                ))
+            }
+        }
+    }.getOrDefault(emptyList())
+
+    @Synchronized
+    fun save(items: List<VideoItem>) {
+        runCatching {
+            val array = JSONArray()
+            items.distinctBy { it.messageId }.forEach { item ->
+                array.put(JSONObject().apply {
+                    put("messageId", item.messageId)
+                    put("title", item.title)
+                    put("date", item.date)
+                    put("durationSeconds", item.durationSeconds)
+                    put("fileId", item.fileId)
+                    put("fileSize", item.fileSize)
+                    put("mimeType", item.mimeType)
+                    put("thumbnailFileId", item.thumbnailFileId ?: JSONObject.NULL)
+                    put("thumbnailPath", item.thumbnailPath ?: "")
+                    put("localPath", item.localPath ?: "")
+                })
+            }
+            val tmp = File(catalogFile.parentFile, catalogFile.name + ".tmp")
+            tmp.writeText(array.toString())
+            if (catalogFile.exists()) catalogFile.delete()
+            tmp.renameTo(catalogFile)
+        }
+    }
+
+    fun importSharedVideo(uri: Uri): VideoItem {
+        val resolver = context.contentResolver
+        var displayName = "Видео"
+        runCatching {
+            resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                if (c.moveToFirst()) displayName = c.getString(0)?.takeIf { it.isNotBlank() } ?: displayName
+            }
+        }
+        val mime = resolver.getType(uri)?.takeIf { it.startsWith("video/") } ?: "video/mp4"
+        val stamp = System.currentTimeMillis()
+        val ext = when {
+            mime.contains("webm") -> "webm"
+            mime.contains("quicktime") -> "mov"
+            else -> "mp4"
+        }
+        val target = File(importsDir, "video_$stamp.$ext")
+        resolver.openInputStream(uri).use { input ->
+            requireNotNull(input) { "Не удалось открыть видео" }
+            target.outputStream().buffered().use { output -> input.copyTo(output, 256 * 1024) }
+        }
+
+        var durationMs = 0L
+        var thumbPath: String? = null
+        runCatching {
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(target.absolutePath)
+                durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                val frameUs = if (durationMs > 4_000L) (durationMs * 350L) else 1_000_000L
+                val frame = retriever.getFrameAtTime(frameUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                if (frame != null) {
+                    val thumb = File(thumbsDir, "thumb_$stamp.jpg")
+                    thumb.outputStream().use { frame.compress(Bitmap.CompressFormat.JPEG, 88, it) }
+                    frame.recycle()
+                    thumbPath = thumb.absolutePath
+                }
+            } finally {
+                retriever.release()
+            }
+        }
+
+        return VideoItem(
+            messageId = -stamp,
+            title = displayName.substringBeforeLast('.').ifBlank { "Видео" },
+            date = (System.currentTimeMillis() / 1000L).toInt(),
+            durationSeconds = (durationMs / 1000L).toInt(),
+            fileId = 0,
+            fileSize = target.length(),
+            mimeType = mime,
+            thumbnailPath = thumbPath,
+            localPath = target.absolutePath
+        )
+    }
+}
+''')
+
+          (base / 'LocalFileMediaDataSource.kt').write_text(r'''package com.unknokable.videosohranenki
+
+import android.media.MediaDataSource
+import java.io.File
+import java.io.RandomAccessFile
+
+class LocalFileMediaDataSource(file: File) : MediaDataSource() {
+    private val raf = RandomAccessFile(file, "r")
+    override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {
+        if (position >= raf.length()) return -1
+        raf.seek(position)
+        return raf.read(buffer, offset, size)
+    }
+    override fun getSize(): Long = raf.length()
+    override fun close() = raf.close()
+}
+''')
+
+          # 3) MainActivity: local-first cached feed, quiet background refresh, stats snapshot, Android share import.
+          p = base / 'MainActivity.kt'
+          s = p.read_text()
+          if 'import android.net.Uri' not in s:
+              s = s.replace('import android.os.Bundle\n', 'import android.os.Bundle\nimport android.net.Uri\n')
+          if 'private lateinit var videoCache:' not in s:
+              s = s.replace('    private lateinit var updateManager: SohrUpdateManager\n', '    private lateinit var updateManager: SohrUpdateManager\n    private lateinit var videoCache: SohrVideoCache\n    private var telegramReady = false\n')
+          s = s.replace('        updateManager = SohrUpdateManager(this)\n', '        updateManager = SohrUpdateManager(this)\n        videoCache = SohrVideoCache(this)\n')
+
+          # Copy incoming shared content immediately while URI permission is valid.
+          marker = '        setContentView(root)\n'
+          if 'handleSharedIntent(intent)' not in s:
+              s = s.replace(marker, marker + '        handleSharedIntent(intent)\n', 1)
+
+          # New intent while app is already running.
+          if 'override fun onNewIntent(intent: Intent)' not in s:
+              resume_marker = '    override fun onResume() {\n'
+              new_intent = '''    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleSharedIntent(intent)
+    }
+
+'''
+              s = s.replace(resume_marker, new_intent + resume_marker, 1)
+
+          # New Telegram messages refresh in place rather than rebuilding the visible screen with a root transition.
+          s = s.replace('                            loadVideos()\n', '                            loadVideos(inPlace = true)\n', 1)
+
+          old_ready = '''            is TdApi.AuthorizationStateReady -> {
+                settings.authPhone = null
+                ensureStreamServer()
+                cleanupStorage()
+                loadVideos()
+            }
+'''
+          new_ready = '''            is TdApi.AuthorizationStateReady -> {
+                settings.authPhone = null
+                telegramReady = true
+                ensureStreamServer()
+                cleanupStorage()
+                val cutoff = LocalDate.now(ZoneId.systemDefault()).minusDays(6).atStartOfDay(ZoneId.systemDefault()).toEpochSecond()
+                val cached = videoCache.load().filter { it.localPath != null || it.date.toLong() >= cutoff }
+                    .sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })
+                if (cached.isNotEmpty()) {
+                    currentVideos = cached
+                    updateStatsSnapshot(cached)
+                    runOnUiThread {
+                        suppressNextRootAnimation = true
+                        showFeed(cached)
+                    }
+                }
+                loadVideos(inPlace = cached.isNotEmpty())
+            }
+'''
+          if old_ready not in s:
+              raise SystemExit('AuthorizationStateReady block not found')
+          s = s.replace(old_ready, new_ready, 1)
+
+          # Keep local imports when Telegram refreshes the remote catalog.
+          old_collected = '                val collected = linkedMapOf<Long, VideoItem>()\n'
+          new_collected = '''                val collected = linkedMapOf<Long, VideoItem>()
+                videoCache.load().asSequence().filter { it.localPath != null }.forEach { collected[it.messageId] = it }
+'''
+          if old_collected not in s:
+              raise SystemExit('collected marker not found')
+          s = s.replace(old_collected, new_collected, 1)
+
+          # Local items must not be removed by Telegram date filtering.
+          s = s.replace('                    .filter { it.date.toLong() >= cutoffEpoch }\n', '                    .filter { it.localPath != null || it.date.toLong() >= cutoffEpoch }\n', 1)
+
+          # Preserve cached thumbnail paths before deciding whether another TDLib download is needed.
+          old_prepared = '''                val preparedVideos = if (settings.previews) {
+                    videos.chunked(6).flatMap { batch ->
+'''
+          new_prepared = '''                val cachedById = videoCache.load().associateBy { it.messageId }
+                val videosWithCachedThumbs = videos.map { item ->
+                    val cached = cachedById[item.messageId]
+                    if (item.thumbnailPath.isNullOrBlank() && cached?.thumbnailPath?.let { File(it).exists() } == true)
+                        item.copy(thumbnailPath = cached.thumbnailPath)
+                    else item
+                }
+                val preparedVideos = if (settings.previews) {
+                    videosWithCachedThumbs.chunked(6).flatMap { batch ->
+'''
+          if old_prepared not in s:
+              raise SystemExit('preparedVideos marker not found')
+          s = s.replace(old_prepared, new_prepared, 1)
+          s = s.replace('                    videos.map { it.copy(thumbnailPath = null) }\n', '                    videosWithCachedThumbs\n', 1)
+
+          old_assign = '                    currentVideos = preparedVideos\n'
+          new_assign = '''                    currentVideos = preparedVideos
+                    videoCache.save(preparedVideos)
+                    updateStatsSnapshot(preparedVideos)
+'''
+          if old_assign not in s:
+              raise SystemExit('currentVideos assignment not found')
+          s = s.replace(old_assign, new_assign, 1)
+
+          # Avoid re-downloading previews already present on disk.
+          attach_marker = '    private suspend fun attachThumbnail(item: VideoItem): VideoItem {\n'
+          if attach_marker not in s:
+              raise SystemExit('attachThumbnail not found')
+          if 'item.thumbnailPath?.takeIf { File(it).exists() }' not in s:
+              s = s.replace(attach_marker, attach_marker + '        item.thumbnailPath?.takeIf { File(it).exists() }?.let { return item }\n', 1)
+
+          # Stats + Share handling live close to watched state helpers.
+          watched_marker = '    private fun watchedVideoIds(): Set<String> =\n'
+          if watched_marker not in s:
+              raise SystemExit('watched helpers marker not found')
+          if 'private fun updateStatsSnapshot' not in s:
+              helpers = '''    private fun updateStatsSnapshot(videos: List<VideoItem>) {
+        val watched = watchedVideoIds()
+        val watchedVideos = videos.filter { watched.contains(it.messageId.toString()) }
+        getSharedPreferences("sohr_stats", MODE_PRIVATE).edit()
+            .putInt("videos", videos.size)
+            .putInt("watched", watchedVideos.size)
+            .putLong("watched_seconds", watchedVideos.sumOf { it.durationSeconds.toLong() })
+            .apply()
+    }
+
+    private fun handleSharedIntent(sourceIntent: Intent?) {
+        if (sourceIntent?.action != Intent.ACTION_SEND) return
+        val type = sourceIntent.type.orEmpty()
+        if (!type.startsWith("video/")) return
+        val uri: Uri = if (android.os.Build.VERSION.SDK_INT >= 33) {
+            sourceIntent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+        } else {
+            @Suppress("DEPRECATION") sourceIntent.getParcelableExtra(Intent.EXTRA_STREAM)
+        } ?: return
+        sourceIntent.action = null
+        lifecycleScope.launch {
+            val imported = runCatching { withContext(Dispatchers.IO) { videoCache.importSharedVideo(uri) } }.getOrNull() ?: return@launch
+            val merged = (videoCache.load() + imported)
+                .distinctBy { it.messageId }
+                .sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })
+            videoCache.save(merged)
+            currentVideos = (currentVideos + imported)
+                .distinctBy { it.messageId }
+                .sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })
+            updateStatsSnapshot(currentVideos)
+            if (telegramReady) {
+                currentDay = null
+                suppressNextRootAnimation = true
+                showFeed(currentVideos)
+            }
+        }
+    }
+
+'''
+              s = s.replace(watched_marker, helpers + watched_marker, 1)
+
+          # Refresh stats whenever watched state changes.
+          s = s.replace('        if (added) prefs.edit().putStringSet("ids", ids).apply()\n        return added\n', '        if (added) { prefs.edit().putStringSet("ids", ids).apply(); updateStatsSnapshot(currentVideos) }\n        return added\n', 1)
+          s = s.replace('        if (removed) prefs.edit().putStringSet("ids", ids).apply()\n        return removed\n', '        if (removed) { prefs.edit().putStringSet("ids", ids).apply(); updateStatsSnapshot(currentVideos) }\n        return removed\n', 1)
+
+          # Local imported videos play directly; Telegram videos continue through the optimized stream server.
+          old_open = '''    private fun openPlayer(item: VideoItem, startSeconds: Int = 0) {
+        val server = streamServer
+        if (server == null) {
+            Toast.makeText(this, "Видеопоток ещё не готов", Toast.LENGTH_SHORT).show()
+            return
+        }
+'''
+          new_open = '''    private fun openPlayer(item: VideoItem, startSeconds: Int = 0) {
+        val localFile = item.localPath?.let(::File)?.takeIf { it.exists() }
+        val server = streamServer
+        if (localFile == null && server == null) {
+            return
+        }
+'''
+          if old_open not in s:
+              raise SystemExit('openPlayer header not found')
+          s = s.replace(old_open, new_open, 1)
+          old_media = '''            mediaUrl = server.url(item),
+            previewDataSourceFactory = { server.mediaDataSource(item) },
+'''
+          new_media = '''            mediaUrl = localFile?.let { Uri.fromFile(it).toString() } ?: server!!.url(item),
+            previewDataSourceFactory = { localFile?.let { LocalFileMediaDataSource(it) } ?: server!!.mediaDataSource(item) },
+'''
+          if old_media not in s:
+              raise SystemExit('PlayerScreen media source block not found')
+          s = s.replace(old_media, new_media, 1)
+          p.write_text(s)
+
+          # 4) Settings: compact statistics card.
+          p = base / 'SettingsScreen.kt'
+          s = p.read_text()
+          add_after = '        root.addView(subtitle)\n\n'
+          if 'root.addView(statisticsCard())' not in s:
+              if add_after not in s:
+                  raise SystemExit('settings subtitle marker not found')
+              s = s.replace(add_after, add_after + '        root.addView(statisticsCard())\n\n', 1)
+          language_marker = '    private fun languageSelector(): View {\n'
+          if 'private fun statisticsCard()' not in s:
+              stats_method = '''    private fun statisticsCard(): View {
+        val prefs = activity.getSharedPreferences("sohr_stats", android.content.Context.MODE_PRIVATE)
+        val videos = prefs.getInt("videos", 0)
+        val watched = prefs.getInt("watched", 0)
+        val seconds = prefs.getLong("watched_seconds", 0L)
+        val hours = seconds / 3600L
+        val minutes = (seconds % 3600L) / 60L
+        val streak = StreakTracker(activity).currentStreak()
+
+        val card = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            background = rounded(palette.surface, 18)
+        }
+        card.addView(TextView(activity).apply {
+            text = "Статистика"
+            textSize = 15f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(palette.text)
+        })
+        card.addView(TextView(activity).apply {
+            text = "Твоя активность в SOHR"
+            textSize = 12f
+            setTextColor(palette.muted)
+            setPadding(0, dp(3), 0, dp(12))
+        })
+        val row = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
+        fun cell(value: String, label: String): View = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(5), dp(10), dp(5), dp(10))
+            background = rounded(palette.surfaceAlt, 14)
+            addView(TextView(activity).apply {
+                text = value; textSize = 18f; gravity = Gravity.CENTER
+                setTypeface(typeface, Typeface.BOLD); setTextColor(palette.accent)
+            })
+            addView(TextView(activity).apply {
+                text = label; textSize = 10.5f; gravity = Gravity.CENTER; setTextColor(palette.muted)
+                setPadding(0, dp(3), 0, 0)
+            })
+        }
+        row.addView(cell(videos.toString(), "Видео"), LinearLayout.LayoutParams(0, dp(76), 1f).apply { marginEnd = dp(5) })
+        row.addView(cell(watched.toString(), "Просмотрено"), LinearLayout.LayoutParams(0, dp(76), 1f).apply { marginStart = dp(5); marginEnd = dp(5) })
+        row.addView(cell(if (hours > 0) "${hours}ч ${minutes}м" else "${minutes}м", "Просмотр"), LinearLayout.LayoutParams(0, dp(76), 1f).apply { marginStart = dp(5); marginEnd = dp(5) })
+        row.addView(cell(streak.toString(), "Стрик"), LinearLayout.LayoutParams(0, dp(76), 1f).apply { marginStart = dp(5) })
+        card.addView(row)
+        return LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(card)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }
+        }
+    }
+
+'''
+              if language_marker not in s:
+                  raise SystemExit('languageSelector marker not found')
+              s = s.replace(language_marker, stats_method + language_marker, 1)
+          p.write_text(s)
+
+          # 5) Android Share target: video/* -> SOHR.
+          p = Path('native/app/src/main/AndroidManifest.xml')
+          s = p.read_text()
+          if 'android.intent.action.SEND' not in s:
+              launcher = '''            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+'''
+              share = launcher + '''            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+'''
+              if launcher not in s:
+                  raise SystemExit('launcher intent filter not found')
+              s = s.replace(launcher, share, 1)
+          p.write_text(s)
           PY
           git config user.name "sohr-dev-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt native/app/src/main/res/layout/view_sohr_player.xml
+          git add native/app/src/main/java/com/unknokable/videosohranenki native/app/src/main/AndroidManifest.xml
           git diff --cached --check
-          git commit -m "SOHR: smooth video open and back transitions"
+          git commit -m "SOHR: local-first sync previews stats and Share import"
           git push
