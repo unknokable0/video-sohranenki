@@ -43,6 +43,9 @@ import coil.load
 import coil.transform.CircleCropTransformation
 import io.github.tdlibandroid.ktx.TdClient
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -84,6 +87,8 @@ class MainActivity : AppCompatActivity() {
     private var primaryContentHost: FrameLayout? = null
     private var primaryNav: SohrBottomNavView? = null
     private var primaryShellLightTheme: Boolean? = null
+    private var startupPhase = true
+    private var startupStatusView: TextView? = null
 
     private val palette get() = settings.palette()
     private val bg get() = palette.background
@@ -218,6 +223,16 @@ class MainActivity : AppCompatActivity() {
             alpha = 0f
         }
 
+        val status = TextView(this).apply {
+            text = "Запускаем SOHR…"
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTextColor(muted)
+            setPadding(0, dp(12), 0, 0)
+            alpha = 0f
+        }
+        startupStatusView = status
+
         center.addView(
             logo,
             LinearLayout.LayoutParams(
@@ -231,6 +246,13 @@ class MainActivity : AppCompatActivity() {
                 topMargin = dp(18)
                 gravity = Gravity.CENTER_HORIZONTAL
             }
+        )
+        center.addView(
+            status,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
         )
 
         page.addView(
@@ -261,6 +283,11 @@ class MainActivity : AppCompatActivity() {
         loader.animate()
             .alpha(1f)
             .setStartDelay(120L)
+            .setDuration(220L)
+            .start()
+        status.animate()
+            .alpha(1f)
+            .setStartDelay(200L)
             .setDuration(220L)
             .start()
     }
@@ -347,6 +374,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderPhoneLogin(regions: List<PhoneCountry>) {
+        startupPhase = false
+        startupStatusView = null
         val phoneUtil = PhoneNumberUtil.getInstance()
         var selected = detectCountry(regions)
 
@@ -929,6 +958,9 @@ class MainActivity : AppCompatActivity() {
         onSecondary: (() -> Unit)? = null,
         onSubmit: suspend (String) -> Unit
     ) {
+        startupPhase = false
+        startupStatusView = null
+
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1131,54 +1163,24 @@ class MainActivity : AppCompatActivity() {
         view.animate().cancel()
         view.scaleX = 1f
         view.scaleY = 1f
+        view.rotation = 0f
 
         val ease = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
 
         view.animate()
-            .scaleX(0.965f)
-            .scaleY(0.965f)
+            .scaleX(0.955f)
+            .scaleY(0.955f)
             .setDuration(65L)
             .setInterpolator(ease)
             .withEndAction {
                 view.animate()
-                    .scaleX(1.025f)
-                    .scaleY(1.025f)
-                    .setDuration(95L)
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(125L)
                     .setInterpolator(ease)
-                    .withEndAction {
-                        view.animate()
-                            .scaleX(1f)
-                            .scaleY(1f)
-                            .setDuration(105L)
-                            .setInterpolator(ease)
-                            .start()
-                    }
                     .start()
             }
             .start()
-
-        if (view is ImageButton || view is ImageView) {
-            view.rotation = 0f
-            view.animate()
-                .rotation(-3f)
-                .setDuration(70L)
-                .setInterpolator(ease)
-                .withEndAction {
-                    view.animate()
-                        .rotation(1.5f)
-                        .setDuration(85L)
-                        .setInterpolator(ease)
-                        .withEndAction {
-                            view.animate()
-                                .rotation(0f)
-                                .setDuration(100L)
-                                .setInterpolator(ease)
-                                .start()
-                        }
-                        .start()
-                }
-                .start()
-        }
     }
 
     private fun friendlyAuthError(raw: String?): String {
@@ -1303,7 +1305,13 @@ class MainActivity : AppCompatActivity() {
                     .sortedByDescending { it.date }
 
                 val preparedVideos = if (settings.previews) {
-                    videos.map { item -> attachThumbnail(item) }
+                    videos.chunked(6).flatMap { batch ->
+                        coroutineScope {
+                            batch.map { item ->
+                                async(Dispatchers.IO) { attachThumbnail(item) }
+                            }.awaitAll()
+                        }
+                    }
                 } else {
                     videos.map { it.copy(thumbnailPath = null) }
                 }
@@ -1381,9 +1389,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showFeed(videos: List<VideoItem>) {
+        startupPhase = false
+        startupStatusView = null
         isPlayerScreen = false
         isSettingsScreen = false
         isAccountScreen = false
+        isStreakScreen = false
         currentDay = null
         setFullscreen(false)
         applySystemTheme()
@@ -1932,8 +1943,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         val oldShell = primaryShell
+        val oldSystemColor = bg
 
         settings.lightTheme = light
+        val newSystemColor = bg
+        animateSystemChrome(oldSystemColor, newSystemColor, light, 430L)
 
         val nextContent = SettingsScreen(
             this,
@@ -2466,6 +2480,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showLoading(message: String) {
+        if (startupPhase && startupStatusView != null) {
+            startupStatusView?.animate()?.cancel()
+            startupStatusView?.text = message
+            startupStatusView?.alpha = 0.72f
+            startupStatusView?.animate()?.alpha(1f)?.setDuration(140L)?.start()
+            return
+        }
+
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -2488,6 +2510,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showMessage(title: String, description: String) {
+        startupPhase = false
+        startupStatusView = null
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -2572,19 +2596,45 @@ class MainActivity : AppCompatActivity() {
             cornerRadius = dp(radiusDp).toFloat()
         }
 
+    private fun animateSystemChrome(fromColor: Int, toColor: Int, light: Boolean, durationMs: Long) {
+        val evaluator = android.animation.ArgbEvaluator()
+        var appearanceSwitched = false
+        android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = durationMs
+            interpolator = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
+            addUpdateListener { animator ->
+                val fraction = animator.animatedFraction
+                val color = evaluator.evaluate(fraction, fromColor, toColor) as Int
+                root.setBackgroundColor(color)
+                window.statusBarColor = color
+                window.navigationBarColor = color
+                if (!appearanceSwitched && fraction >= 0.55f) {
+                    appearanceSwitched = true
+                    applySystemBarIconAppearance(light)
+                }
+            }
+        }.start()
+    }
+
+    private fun applySystemBarIconAppearance(light: Boolean) {
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            val mask = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
+                WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+            window.insetsController?.setSystemBarsAppearance(if (light) mask else 0, mask)
+        } else {
+            @Suppress("DEPRECATION")
+            run {
+                window.decorView.systemUiVisibility =
+                    if (light) View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR else View.SYSTEM_UI_FLAG_VISIBLE
+            }
+        }
+    }
+
     private fun applySystemTheme() {
         root.setBackgroundColor(bg)
         window.statusBarColor = bg
         window.navigationBarColor = bg
-        if (android.os.Build.VERSION.SDK_INT >= 30) {
-            val mask = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
-                WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
-            val appearance = if (settings.lightTheme) mask else 0
-            window.insetsController?.setSystemBarsAppearance(appearance, mask)
-        } else {
-            @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility = if (settings.lightTheme) View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR else View.SYSTEM_UI_FLAG_VISIBLE
-        }
+        applySystemBarIconAppearance(settings.lightTheme)
     }
 
     private fun dp(value: Int): Int =
