@@ -1,4 +1,4 @@
-// Build marker: SOHR watched library + cleaner player + smooth back navigation
+// Build marker: SOHR polished update dialog + smooth video tabs
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
