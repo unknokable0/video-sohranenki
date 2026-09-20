@@ -103,7 +103,8 @@ class MainActivity : AppCompatActivity() {
     private var feedRefreshLoader: LoadingWaveView? = null
     private var feedRefreshCompletedFlash = false
     private var startupUpdateCheckDone = false
-    private var videoSection = 1 // 0 ordinary, 1 collections, 2 watched
+    private var videoSection = 1 // 1 collections, 2 watched
+    private var pendingVideoSectionCrossfade = false
 
     private val palette get() = settings.palette()
     private val bg get() = palette.background
@@ -1917,29 +1918,33 @@ class MainActivity : AppCompatActivity() {
         val header=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(16),dp(16),dp(16),dp(10)); setBackgroundColor(bg) }
         header.addView(TextView(this).apply { text="SOHR"; textSize=24f; setTextColor(this@MainActivity.text); setTypeface(typeface,Typeface.BOLD) })
         header.addView(TextView(this).apply {
-            text=when(videoSection){0->"${regularVideos.size} непросмотренных видео";2->"${watchedVideos.size} просмотрено • ${watchedGroups.size} сборников";else->"Последние 7 дней • ${regularGroups.size} сборников • ${regularVideos.size} видео"}
+            text=if(videoSection==2) "${watchedVideos.size} просмотрено • ${watchedGroups.size} сборников" else "Последние 7 дней • ${regularGroups.size} сборников • ${regularVideos.size} видео"
             textSize=12f; setTextColor(muted); setPadding(0,dp(5),0,dp(10))
         })
 
         val tabs=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(dp(3),dp(3),dp(3),dp(3)); background=roundedBg(palette.surfaceAlt,18) }
-        listOf("Обычные","Сборники","Просмотренное").forEachIndexed { index,label ->
-            val selected=videoSection==index
+        listOf("Сборники" to 1, "Просмотренное" to 2).forEachIndexed { position,(label,section) ->
+            val selected=videoSection==section
             val tab=TextView(this).apply {
                 text=label; textSize=12f; gravity=Gravity.CENTER; setTypeface(typeface,Typeface.BOLD)
                 setTextColor(if(selected) Color.WHITE else muted); background=roundedBg(if(selected) purple else Color.TRANSPARENT,15)
                 isClickable=true; isFocusable=true
                 setOnClickListener {
-                    if(videoSection==index) return@setOnClickListener
-                    animatePress(this); pendingRootSlide=if(index>videoSection) 1 else -1; videoSection=index; showFeed(currentVideos)
+                    if(videoSection==section) return@setOnClickListener
+                    animatePress(this)
+                    pendingVideoSectionCrossfade=true
+                    pendingRootSlide=0
+                    videoSection=section
+                    showFeed(currentVideos)
                 }
             }
-            tabs.addView(tab,LinearLayout.LayoutParams(0,dp(40),1f).apply { if(index>0) marginStart=dp(3) })
+            tabs.addView(tab,LinearLayout.LayoutParams(0,dp(40),1f).apply { if(position>0) marginStart=dp(3) })
         }
         header.addView(tabs,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(46)))
 
         val controls=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(0,dp(10),0,0) }
         controls.addView(TextView(this).apply {
-            text=when(videoSection){0->"Все непросмотренные";2->"Просмотрено по дням";else->"Сборники по дням"}; textSize=14f; setTypeface(typeface,Typeface.BOLD); setTextColor(muted)
+            text=if(videoSection==2) "Просмотрено по дням" else "Сборники по дням"; textSize=14f; setTypeface(typeface,Typeface.BOLD); setTextColor(muted)
         },LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
         val loader=LoadingWaveView(this,purple).apply { visibility=View.GONE }
         val refreshText=TextView(this).apply { text=if(feedRefreshCompletedFlash) "Готово" else "Проверить новые"; textSize=12f; gravity=Gravity.CENTER_VERTICAL; setTypeface(typeface,Typeface.BOLD); setTextColor(purple) }
@@ -2879,6 +2884,8 @@ class MainActivity : AppCompatActivity() {
         val old = if (host.childCount > 0) host.getChildAt(host.childCount - 1) else null
 
         val animateContent = settings.animations && old != null && old !== content
+        val sectionCrossfade = pendingVideoSectionCrossfade
+        pendingVideoSectionCrossfade = false
         content.alpha = 1f
         content.translationX = 0f
         content.translationY = 0f
@@ -2903,7 +2910,28 @@ class MainActivity : AppCompatActivity() {
                 content.setLayerType(View.LAYER_TYPE_HARDWARE, null)
 
                 val telegramInterpolator = android.view.animation.DecelerateInterpolator(1.5f)
-                if (slide < 0) {
+                if (sectionCrossfade) {
+                    content.alpha = 0f
+                    content.translationX = 0f
+                    old.alpha = 1f
+                    old.translationX = 0f
+                    old.animate()
+                        .alpha(0f)
+                        .setDuration(120L)
+                        .setInterpolator(telegramInterpolator)
+                        .start()
+                    content.animate()
+                        .alpha(1f)
+                        .setDuration(170L)
+                        .setInterpolator(telegramInterpolator)
+                        .withEndAction {
+                            old.alpha = 1f
+                            old.setLayerType(View.LAYER_TYPE_NONE, null)
+                            content.setLayerType(View.LAYER_TYPE_NONE, null)
+                            if (old.parent === host) host.removeView(old)
+                        }
+                        .start()
+                } else if (slide < 0) {
                     // Telegram pop: reveal the previous screen underneath and
                     // slide/fade only the current screen to the right.
                     content.alpha = 1f
@@ -3034,26 +3062,15 @@ class MainActivity : AppCompatActivity() {
                 if (!manual && runtimePrefs.getInt("ignored_update_code", -1) == info.versionCode) return@launch
                 if (manual) showSettings()
 
-                val title = buildString {
-                    append("Доступна SOHR ")
-                    append(info.versionName)
-                    if (info.notes.isNotBlank()) {
-                        append("\n")
-                        append(info.notes)
-                    }
-                }
                 root.post {
-                    ModernDialogs.showChoices(
+                    ModernDialogs.showConfirm(
                         context = this@MainActivity,
                         palette = palette,
-                        title = title,
-                        options = listOf("Обновить сейчас", "Позже", "Больше не показывать эту версию"),
-                        selected = -1
-                    ) { which ->
-                        when (which) {
-                            0 -> downloadAndInstallUpdate(info)
-                            2 -> runtimePrefs.edit().putInt("ignored_update_code", info.versionCode).apply()
-                        }
+                        title = "Доступна новая версия",
+                        message = "SOHR ${info.versionName}",
+                        confirm = "Обновить сейчас"
+                    ) {
+                        downloadAndInstallUpdate(info)
                     }
                 }
             } catch (e: Exception) {

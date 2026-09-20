@@ -33,13 +33,7 @@ object ModernDialogs {
             background = rounded(palette.surface, dp(context, 22).toFloat())
         }
 
-        box.addView(TextView(context).apply {
-            text = title
-            textSize = 18f
-            setTextColor(palette.text)
-            setTypeface(typeface, Typeface.BOLD)
-            setPadding(dp(context, 2), 0, dp(context, 2), dp(context, 10))
-        })
+        addHeader(box, context, palette, title, dialog)
 
         val list = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -126,7 +120,7 @@ object ModernDialogs {
             setDimAmount(0.52f)
             addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         }
-        dialog.setCanceledOnTouchOutside(true)
+        dialog.setCanceledOnTouchOutside(false)
         dialog.show()
 
         val width = (context.resources.displayMetrics.widthPixels * 0.82f).toInt()
@@ -181,12 +175,7 @@ object ModernDialogs {
             background = rounded(palette.surface, dp(context, 22).toFloat())
         }
 
-        box.addView(TextView(context).apply {
-            text = title
-            textSize = 18f
-            setTextColor(palette.text)
-            setTypeface(typeface, Typeface.BOLD)
-        })
+        addHeader(box, context, palette, title, dialog)
 
         box.addView(TextView(context).apply {
             text = message
@@ -242,12 +231,7 @@ object ModernDialogs {
             background = rounded(palette.surface, dp(context, 22).toFloat())
         }
 
-        box.addView(TextView(context).apply {
-            text = title
-            textSize = 18f
-            setTextColor(palette.text)
-            setTypeface(typeface, Typeface.BOLD)
-        })
+        addHeader(box, context, palette, title, dialog)
 
         box.addView(TextView(context).apply {
             text = message
@@ -272,6 +256,42 @@ object ModernDialogs {
         showDialog(context, dialog, box, 0.84f)
     }
 
+    private fun addHeader(
+        box: LinearLayout,
+        context: Context,
+        palette: ThemePalette,
+        title: String,
+        dialog: Dialog
+    ) {
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(context, 2), 0, 0, dp(context, 10))
+        }
+        val titleView = TextView(context).apply {
+            text = title
+            textSize = 18f
+            setTextColor(palette.text)
+            setTypeface(typeface, Typeface.BOLD)
+        }
+        val close = TextView(context).apply {
+            text = "×"
+            textSize = 25f
+            gravity = Gravity.CENTER
+            setTextColor(palette.muted)
+            background = rounded(palette.surfaceAlt, dp(context, 16).toFloat())
+            isClickable = true
+            isFocusable = true
+            contentDescription = "Закрыть"
+            setOnClickListener { animateClose(this, dialog) {} }
+        }
+        row.addView(titleView, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        row.addView(close, LinearLayout.LayoutParams(dp(context, 38), dp(context, 38)).apply {
+            marginStart = dp(context, 10)
+        })
+        box.addView(row)
+    }
+
     private fun showDialog(
         context: Context,
         dialog: Dialog,
@@ -280,7 +300,7 @@ object ModernDialogs {
     ) {
         dialog.setContentView(box)
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        dialog.setCanceledOnTouchOutside(true)
+        dialog.setCanceledOnTouchOutside(false)
         dialog.show()
         dialog.window?.apply {
             setDimAmount(0.52f)
