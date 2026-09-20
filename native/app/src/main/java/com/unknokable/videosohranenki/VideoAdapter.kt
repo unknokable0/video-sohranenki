@@ -158,18 +158,19 @@ class VideoAdapter(
         holder.meta.text = formatMeta(item)
 
         val thumb = item.thumbnailPath
-        if (!thumb.isNullOrBlank() && File(thumb).exists()) {
+        val remoteThumb = item.thumbnailUrl
+        val model: Any? = when {
+            !thumb.isNullOrBlank() && File(thumb).exists() -> File(thumb)
+            !remoteThumb.isNullOrBlank() -> remoteThumb
+            else -> null
+        }
+        if (model != null) {
             holder.thumbnail.alpha = 0f
-            holder.thumbnail.load(File(thumb)) {
+            holder.thumbnail.load(model) {
                 crossfade(animationsEnabled)
-                listener(
-                    onSuccess = { _, _ ->
-                        holder.thumbnail.animate()
-                            .alpha(1f)
-                            .setDuration(if (animationsEnabled) 180 else 0)
-                            .start()
-                    }
-                )
+                listener(onSuccess = { _, _ ->
+                    holder.thumbnail.animate().alpha(1f).setDuration(if (animationsEnabled) 180 else 0).start()
+                })
             }
         } else {
             holder.thumbnail.setImageDrawable(null)

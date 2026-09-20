@@ -144,14 +144,15 @@ class DayCollectionAdapter(
         holder.title.text = dayTitle(item.date)
         holder.meta.text = buildMeta(item)
 
-        val thumbPath = item.videos.firstOrNull { !it.thumbnailPath.isNullOrBlank() }?.thumbnailPath
-        if (!thumbPath.isNullOrBlank() && File(thumbPath).exists()) {
-            holder.image.load(File(thumbPath)) {
-                crossfade(animationsEnabled)
-            }
-        } else {
-            holder.image.setImageDrawable(null)
+        val firstWithThumb = item.videos.firstOrNull { !it.thumbnailPath.isNullOrBlank() || !it.thumbnailUrl.isNullOrBlank() }
+        val thumbPath = firstWithThumb?.thumbnailPath
+        val thumbModel: Any? = when {
+            !thumbPath.isNullOrBlank() && File(thumbPath).exists() -> File(thumbPath)
+            !firstWithThumb?.thumbnailUrl.isNullOrBlank() -> firstWithThumb?.thumbnailUrl
+            else -> null
         }
+        if (thumbModel != null) holder.image.load(thumbModel) { crossfade(animationsEnabled) }
+        else holder.image.setImageDrawable(null)
 
         if (animationsEnabled) {
             holder.itemView.alpha = 0f
@@ -189,8 +190,8 @@ class DayCollectionAdapter(
             val m = (duration % 3600) / 60
             if (h > 0) "$h ч ${m} мин" else "$m мин"
         } else null
-        return listOfNotNull("${item.videos.size} видео", durationText, "@t2x2_video")
-            .joinToString(" · ")
+        val source = if (item.videos.firstOrNull()?.source == "twitch") "Twitch • @t2x2" else "@t2x2_video"
+        return listOfNotNull("${item.videos.size} видео", durationText, source).joinToString(" · ")
     }
 
     class Holder(

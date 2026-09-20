@@ -51,6 +51,22 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean("light_theme", false)
         set(value) = prefs.edit().putBoolean("light_theme", value).apply()
 
+    var videoSource: String
+        get() = prefs.getString("video_source", "telegram") ?: "telegram"
+        set(value) = prefs.edit().putString("video_source", if (value == "twitch") "twitch" else "telegram").apply()
+
+    var twitchAccessToken: String?
+        get() = prefs.getString("twitch_access_token", null)
+        set(value) = prefs.edit().apply {
+            if (value.isNullOrBlank()) remove("twitch_access_token") else putString("twitch_access_token", value)
+        }.apply()
+
+    var twitchOauthState: String?
+        get() = prefs.getString("twitch_oauth_state", null)
+        set(value) = prefs.edit().apply {
+            if (value.isNullOrBlank()) remove("twitch_oauth_state") else putString("twitch_oauth_state", value)
+        }.apply()
+
     var collectionSort: CollectionSort
         get() = runCatching {
             CollectionSort.valueOf(prefs.getString("collection_sort", CollectionSort.NEWEST.name)!!)

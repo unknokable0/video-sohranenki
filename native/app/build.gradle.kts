@@ -6,6 +6,7 @@ plugins {
 
 val telegramApiId = System.getenv("TELEGRAM_API_ID") ?: "0"
 val telegramApiHash = System.getenv("TELEGRAM_API_HASH") ?: ""
+val twitchClientId = System.getenv("TWITCH_CLIENT_ID") ?: ""
 val sohrBuildNumber = System.getenv("SOHR_BUILD_NUMBER")?.toIntOrNull()
 val sohrVersionName = System.getenv("SOHR_VERSION_NAME")
 
@@ -20,6 +21,7 @@ android {
         versionName = sohrVersionName ?: "4.1.0"
         buildConfigField("int", "TELEGRAM_API_ID", telegramApiId)
         buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")
+        buildConfigField("String", "TWITCH_CLIENT_ID", "\"$twitchClientId\"")
     }
     buildFeatures { buildConfig = true }
     signingConfigs {

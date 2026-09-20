@@ -76,6 +76,7 @@ class SettingsScreen(
         root.addView(subtitle)
 
         root.addView(statisticsCard())
+        root.addView(sourceSelector())
 
         root.addView(themeSelector())
         root.addView(languageSelector())
@@ -208,6 +209,69 @@ class SettingsScreen(
         card.addView(row)
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL; addView(card)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }
+        }
+    }
+
+
+    private fun sourceSelector(): View {
+        val box = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            background = rounded(palette.surface, 18)
+        }
+        box.addView(TextView(activity).apply {
+            text = "Источник видео"
+            textSize = 15f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(palette.text)
+        })
+        box.addView(TextView(activity).apply {
+            text = "Какие сборники показывать на главной"
+            textSize = 12f
+            setTextColor(palette.muted)
+            setPadding(0, dp(3), 0, dp(12))
+        })
+        val selector = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+            background = rounded(palette.surfaceAlt, 16)
+        }
+        lateinit var telegram: TextView
+        lateinit var twitch: TextView
+        fun render() {
+            val isTwitch = settings.videoSource == "twitch"
+            telegram.setTextColor(if (!isTwitch) Color.WHITE else palette.muted)
+            twitch.setTextColor(if (isTwitch) Color.WHITE else palette.muted)
+            telegram.background = rounded(if (!isTwitch) palette.accent else Color.TRANSPARENT, 13)
+            twitch.background = rounded(if (isTwitch) palette.accent else Color.TRANSPARENT, 13)
+        }
+        fun option(label: String) = TextView(activity).apply {
+            text = label
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            isClickable = true
+            isFocusable = true
+        }
+        telegram = option("Telegram")
+        twitch = option("Twitch")
+        telegram.setOnClickListener {
+            if (settings.videoSource == "telegram") return@setOnClickListener
+            animateTap(telegram); settings.videoSource = "telegram"; needsReload = true; render()
+        }
+        twitch.setOnClickListener {
+            if (settings.videoSource == "twitch") return@setOnClickListener
+            animateTap(twitch); settings.videoSource = "twitch"; needsReload = true; render()
+        }
+        selector.addView(telegram, LinearLayout.LayoutParams(0, dp(44), 1f))
+        selector.addView(twitch, LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginStart = dp(4) })
+        render()
+        box.addView(selector, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)))
+        return LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(box)
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }
         }
     }

@@ -78,6 +78,9 @@ class MainActivity : AppCompatActivity() {
     private var waitingForInstallPermission = false
     private var updateProgressLabel: TextView? = null
     private var currentVideos: List<VideoItem> = emptyList()
+    private var telegramVideos: List<VideoItem> = emptyList()
+    private var twitchVideos: List<VideoItem> = emptyList()
+    private var twitchLoadJob: kotlinx.coroutines.Job? = null
     private var currentDay: DayCollection? = null
     private var isPlayerScreen = false
     private var isSettingsScreen = false
@@ -139,7 +142,7 @@ class MainActivity : AppCompatActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         root = FrameLayout(this).apply { setBackgroundColor(bg) }
         setContentView(root)
-        handleSharedIntent(intent)
+        if (!handleTwitchAuthIntent(intent, loadAfter = false)) handleSharedIntent(intent)
         ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
             if (!fullScreen) {
                 val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
@@ -165,7 +168,7 @@ class MainActivity : AppCompatActivity() {
                     pendingRootSlide = -1
                     suppressNextContentAnimation = true
                     val day = currentDay
-                    if (day != null && day.videos.isNotEmpty()) showDayCollection(day) else { currentDay = null; showFeed(currentVideos) }
+                    if (day != null && day.videos.isNotEmpty()) showDayCollection(day) else { currentDay = null; showSelectedVideoSource() }
                     root.postDelayed({
                         outgoingPlayer?.destroy()
                         currentStreamingItem?.let { streamed -> streamServer?.release(streamed) }
@@ -176,25 +179,25 @@ class MainActivity : AppCompatActivity() {
                 if (isSettingsScreen) {
                     isSettingsScreen = false
                     pendingRootSlide = -1
-                    showFeed(currentVideos)
+                    showSelectedVideoSource()
                     return
                 }
                 if (isAccountScreen) {
                     isAccountScreen = false
                     pendingRootSlide = -1
-                    showFeed(currentVideos)
+                    showSelectedVideoSource()
                     return
                 }
                 if (isStreakScreen) {
                     isStreakScreen = false
                     pendingRootSlide = -1
-                    showFeed(currentVideos)
+                    showSelectedVideoSource()
                     return
                 }
                 if (currentDay != null) {
                     currentDay = null
                     pendingRootSlide = -1
-                    showFeed(currentVideos)
+                    showSelectedVideoSource()
                     return
                 }
                 finish()
@@ -247,7 +250,7 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleSharedIntent(intent)
+        if (!handleTwitchAuthIntent(intent, loadAfter = true)) handleSharedIntent(intent)
     }
 
     override fun onResume() {
@@ -419,12 +422,15 @@ class MainActivity : AppCompatActivity() {
                 val cutoff = LocalDate.now(zone).minusDays(6).atStartOfDay(zone).toEpochSecond()
                 val cached = videoCache.load().filter { it.localPath != null || it.date.toLong() >= cutoff }
                     .sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })
-                if (cached.isNotEmpty()) {
+                telegramVideos = cached
+                if (cached.isNotEmpty()) updateStatsSnapshot(cached)
+                if (settings.videoSource == "telegram" && cached.isNotEmpty()) {
                     currentVideos = cached
-                    updateStatsSnapshot(cached)
                     runOnUiThread { suppressNextRootAnimation = true; showFeed(cached) }
+                } else if (settings.videoSource == "twitch") {
+                    runOnUiThread { showSelectedVideoSource(forceRefresh = true) }
                 }
-                loadVideos(inPlace = cached.isNotEmpty())
+                loadVideos(inPlace = cached.isNotEmpty() || settings.videoSource != "telegram")
             }
             is TdApi.AuthorizationStateLoggingOut -> runOnUiThread { showLoading("Выходим…") }
             is TdApi.AuthorizationStateClosing -> runOnUiThread { showLoading("Закрываем соединение…") }
@@ -1744,21 +1750,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadVideos(inPlace: Boolean = false) {
+        val visibleTelegram = settings.videoSource == "telegram"
         if (loadJob?.isActive == true) {
-            if (inPlace) {
-                feedRefreshLabel?.text = "Уже проверяем…"
-            } else {
-                reloadRequested = true
-            }
+            if (inPlace && visibleTelegram) feedRefreshLabel?.text = "Уже проверяем…"
+            else if (!inPlace) reloadRequested = true
             return
         }
-
-        if (inPlace) {
-            setFeedRefreshLoading(true)
-        }
-
+        if (inPlace && visibleTelegram) setFeedRefreshLoading(true)
         loadJob = lifecycleScope.launch {
-            if (!inPlace) {
+            if (!inPlace && visibleTelegram) {
                 withContext(Dispatchers.Main) { showLoading("Собираем записи за неделю…") }
             }
             try {
@@ -1817,10 +1817,12 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 withContext(Dispatchers.Main) {
-                    val changed = currentVideos.map { it.messageId } != preparedVideos.map { it.messageId }
-                    currentVideos = preparedVideos
+                    telegramVideos = preparedVideos
                     videoCache.save(preparedVideos)
                     updateStatsSnapshot(preparedVideos)
+                    if (settings.videoSource != "telegram") return@withContext
+                    val changed = currentVideos.map { it.messageId } != preparedVideos.map { it.messageId }
+                    currentVideos = preparedVideos
                     if (inPlace && !changed) {
                         setFeedRefreshLoading(false, "Готово")
                         feedRefreshButton?.postDelayed({
@@ -1837,6 +1839,7 @@ class MainActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
+                    if (settings.videoSource != "telegram") return@withContext
                     if (inPlace) {
                         setFeedRefreshLoading(false, "Ошибка")
                         Toast.makeText(
@@ -1946,10 +1949,11 @@ class MainActivity : AppCompatActivity() {
             val merged = (videoCache.load() + imported).distinctBy { it.messageId }
                 .sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })
             videoCache.save(merged)
-            currentVideos = (currentVideos + imported).distinctBy { it.messageId }
+            telegramVideos = (telegramVideos + imported).distinctBy { it.messageId }
                 .sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })
-            updateStatsSnapshot(currentVideos)
-            if (telegramReady) {
+            updateStatsSnapshot(telegramVideos)
+            if (telegramReady && settings.videoSource == "telegram") {
+                currentVideos = telegramVideos
                 currentDay = null
                 suppressNextRootAnimation = true
                 showFeed(currentVideos)
@@ -1988,6 +1992,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showFeed(videos: List<VideoItem>) {
+        currentVideos = videos
         if (!startupUpdateCheckDone) {
             startupUpdateCheckDone = true
             root.postDelayed({ checkForUpdates(manual = false) }, 900L)
@@ -2014,7 +2019,8 @@ class MainActivity : AppCompatActivity() {
         val header=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(16),dp(16),dp(16),dp(10)); setBackgroundColor(bg) }
         header.addView(TextView(this).apply { text="SOHR"; textSize=24f; setTextColor(this@MainActivity.text); setTypeface(typeface,Typeface.BOLD) })
         header.addView(TextView(this).apply {
-            text=if(videoSection==2) "${watchedVideos.size} просмотрено • ${watchedGroups.size} сборников" else "Последние 7 дней • ${regularGroups.size} сборников • ${regularVideos.size} видео"
+            val sourceName = if (settings.videoSource == "twitch") "Twitch • @t2x2" else "Telegram • @t2x2_video"
+            text=if(videoSection==2) "$sourceName • ${watchedVideos.size} просмотрено • ${watchedGroups.size} сборников" else "$sourceName • Последние 7 дней • ${regularGroups.size} сборников • ${regularVideos.size} видео"
             textSize=12f; setTextColor(muted); setPadding(0,dp(5),0,dp(10))
         })
 
@@ -2061,7 +2067,12 @@ class MainActivity : AppCompatActivity() {
         val refresh=LinearLayout(this).apply {
             orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER; setPadding(dp(12),0,dp(12),0); background=roundedBg(palette.surfaceAlt,16); isClickable=true; isFocusable=true
             addView(loader,LinearLayout.LayoutParams(dp(24),dp(24)).apply{marginEnd=dp(7)}); addView(refreshText)
-            setOnClickListener { if(isEnabled){ animatePress(this); loadVideos(inPlace=true) } }
+            setOnClickListener {
+                if (isEnabled) {
+                    animatePress(this)
+                    if (settings.videoSource == "twitch") loadTwitchVideos(inPlace = true) else loadVideos(inPlace = true)
+                }
+            }
         }
         feedRefreshButton=refresh; feedRefreshLabel=refreshText; feedRefreshLoader=loader
         controls.addView(refresh,LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,dp(44)))
@@ -2121,7 +2132,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         val subtitle = TextView(this).apply {
-            text = "${collection.videos.size} видео • @t2x2_video"
+            val sourceName = if (collection.videos.firstOrNull()?.source == "twitch") "Twitch • @t2x2" else "@t2x2_video"
+            text = "${collection.videos.size} видео • $sourceName"
             textSize = 12f
             gravity = Gravity.CENTER
             setTextColor(muted)
@@ -2163,6 +2175,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openPlayer(item: VideoItem, startSeconds: Int = 0) {
+        if (item.source == "twitch") {
+            val url = item.externalUrl ?: return
+            runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                .onFailure { Toast.makeText(this, "Не удалось открыть Twitch", Toast.LENGTH_SHORT).show() }
+            return
+        }
         val localFile = item.localPath?.let(::File)?.takeIf { it.exists() }
         val server = streamServer
         if (localFile == null && server == null) return
@@ -2219,6 +2237,113 @@ class MainActivity : AppCompatActivity() {
         replaceRoot(playerScreen!!.root)
     }
 
+
+    private fun showSelectedVideoSource(forceRefresh: Boolean = false) {
+        currentDay = null
+        videoSection = 1
+        if (settings.videoSource == "twitch") {
+            if (!forceRefresh && twitchVideos.isNotEmpty()) {
+                currentVideos = twitchVideos
+                showFeed(twitchVideos)
+            } else loadTwitchVideos(inPlace = false)
+        } else {
+            if (!forceRefresh && telegramVideos.isNotEmpty()) {
+                currentVideos = telegramVideos
+                showFeed(telegramVideos)
+            } else loadVideos(inPlace = false)
+        }
+    }
+
+    private fun loadTwitchVideos(inPlace: Boolean = false) {
+        val clientId = BuildConfig.TWITCH_CLIENT_ID.trim()
+        if (clientId.isBlank()) {
+            showMessage("Twitch ещё не подключён", "Добавь TWITCH_CLIENT_ID в GitHub Actions Secrets и зарегистрируй redirect URL sohr://twitch-auth.")
+            return
+        }
+        val token = settings.twitchAccessToken
+        if (token.isNullOrBlank()) {
+            if (!inPlace) showLoading("Открываем вход Twitch…")
+            startTwitchLogin()
+            return
+        }
+        if (twitchLoadJob?.isActive == true) {
+            if (inPlace) feedRefreshLabel?.text = "Уже проверяем…"
+            return
+        }
+        if (inPlace) setFeedRefreshLoading(true) else showLoading("Загружаем стримы Twitch…")
+        twitchLoadJob = lifecycleScope.launch {
+            try {
+                val videos = TwitchApi.loadArchives(BuildConfig.TWITCH_CLIENT_ID.trim(), token, "t2x2", 7)
+                twitchVideos = videos
+                currentVideos = videos
+                currentDay = null
+                feedRefreshCompletedFlash = inPlace
+                if (inPlace) suppressNextRootAnimation = true
+                showFeed(videos)
+            } catch (_: TwitchAuthException) {
+                settings.twitchAccessToken = null
+                settings.twitchOauthState = null
+                startTwitchLogin()
+            } catch (e: Exception) {
+                if (inPlace) {
+                    setFeedRefreshLoading(false, "Ошибка")
+                    Toast.makeText(this@MainActivity, e.message ?: "Ошибка Twitch", Toast.LENGTH_LONG).show()
+                    feedRefreshButton?.postDelayed({ setFeedRefreshLoading(false, "Проверить новые") }, 1400L)
+                } else showMessage("Не удалось загрузить Twitch", e.message ?: "Ошибка сети Twitch")
+            }
+        }
+    }
+
+    private fun startTwitchLogin() {
+        val clientId = BuildConfig.TWITCH_CLIENT_ID.trim()
+        if (clientId.isBlank()) return
+        val state = java.util.UUID.randomUUID().toString().replace("-", "")
+        settings.twitchOauthState = state
+        val auth = Uri.parse("https://id.twitch.tv/oauth2/authorize").buildUpon()
+            .appendQueryParameter("response_type", "token")
+            .appendQueryParameter("client_id", clientId)
+            .appendQueryParameter("redirect_uri", "sohr://twitch-auth")
+            .appendQueryParameter("scope", "")
+            .appendQueryParameter("state", state)
+            .build()
+        runCatching { startActivity(Intent(Intent.ACTION_VIEW, auth)) }
+            .onFailure { showMessage("Не удалось открыть Twitch", it.message ?: "Не найден браузер") }
+    }
+
+    private fun handleTwitchAuthIntent(sourceIntent: Intent?, loadAfter: Boolean): Boolean {
+        val data = sourceIntent?.data ?: return false
+        if (data.scheme != "sohr" || data.host != "twitch-auth") return false
+        fun decode(value: String): String = runCatching { java.net.URLDecoder.decode(value, "UTF-8") }.getOrDefault(value)
+        val params = linkedMapOf<String, String>()
+        data.fragment.orEmpty().split("&").filter { it.contains("=") }.forEach { part ->
+            params[decode(part.substringBefore("="))] = decode(part.substringAfter("="))
+        }
+        data.queryParameterNames.forEach { key -> data.getQueryParameter(key)?.let { params[key] = it } }
+        val error = params["error"]
+        if (!error.isNullOrBlank()) {
+            settings.twitchOauthState = null
+            showMessage("Вход Twitch отменён", params["error_description"] ?: error)
+            return true
+        }
+        val expectedState = settings.twitchOauthState
+        if (!expectedState.isNullOrBlank() && expectedState != params["state"]) {
+            settings.twitchOauthState = null
+            showMessage("Не удалось войти в Twitch", "Проверка входа не совпала. Попробуй ещё раз.")
+            return true
+        }
+        val token = params["access_token"]
+        if (token.isNullOrBlank()) {
+            showMessage("Не удалось войти в Twitch", "Twitch не вернул токен доступа.")
+            return true
+        }
+        settings.twitchAccessToken = token
+        settings.twitchOauthState = null
+        settings.videoSource = "twitch"
+        sourceIntent.data = null
+        if (loadAfter) loadTwitchVideos(inPlace = false)
+        return true
+    }
+
     private fun showSettings() {
         isSettingsScreen = true
         isAccountScreen = false
@@ -2230,7 +2355,7 @@ class MainActivity : AppCompatActivity() {
             settings,
             onBack = { needsReload ->
                 isSettingsScreen = false
-                if (needsReload) loadVideos() else showFeed(currentVideos)
+                showSelectedVideoSource(forceRefresh = needsReload)
             },
             onThemeChanged = { light, source ->
                 animateThemeReveal(light, source)
@@ -2548,7 +2673,7 @@ class MainActivity : AppCompatActivity() {
             settings,
             onBack = { needsReload ->
                 isSettingsScreen = false
-                if (needsReload) loadVideos() else showFeed(currentVideos)
+                showSelectedVideoSource(forceRefresh = needsReload)
             },
             onThemeChanged = { nextLight, nextSource ->
                 animateThemeReveal(nextLight, nextSource)
@@ -2576,7 +2701,7 @@ class MainActivity : AppCompatActivity() {
                 pendingRootSlide = if (tab.ordinal > currentPrimaryTab.ordinal) 1 else -1
                 currentPrimaryTab = tab
                 when (tab) {
-                    SohrTab.VIDEOS -> showFeed(currentVideos)
+                    SohrTab.VIDEOS -> showSelectedVideoSource()
                     SohrTab.SETTINGS -> showSettings()
                     SohrTab.STREAK -> showStreak()
                     SohrTab.ACCOUNT -> showAccount()
@@ -2935,7 +3060,7 @@ class MainActivity : AppCompatActivity() {
                     pendingRootSlide = if (tab.ordinal > currentPrimaryTab.ordinal) 1 else -1
                     currentPrimaryTab = tab
                     when (tab) {
-                        SohrTab.VIDEOS -> showFeed(currentVideos)
+                        SohrTab.VIDEOS -> showSelectedVideoSource()
                         SohrTab.SETTINGS -> showSettings()
                         SohrTab.STREAK -> showStreak()
                         SohrTab.ACCOUNT -> showAccount()

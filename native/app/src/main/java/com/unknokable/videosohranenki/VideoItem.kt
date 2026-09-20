@@ -10,5 +10,8 @@ data class VideoItem(
     val mimeType: String,
     val thumbnailFileId: Int? = null,
     val thumbnailPath: String? = null,
-    val localPath: String? = null
+    val localPath: String? = null,
+    val source: String = "telegram",
+    val thumbnailUrl: String? = null,
+    val externalUrl: String? = null
 )
