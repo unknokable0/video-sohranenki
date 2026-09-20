@@ -152,6 +152,7 @@ private class TelegramFileInputStream(
         }
 
         val result = runBlocking {
+            runCatching { client.send(TdApi.CancelDownloadFile(fileId, false)) }
             client.send(TdApi.DownloadFile(fileId, 32, windowStart, windowLimit, true))
         }
         applyLocalRange(result.local)
@@ -159,6 +160,7 @@ private class TelegramFileInputStream(
         if (bufferedEndExclusive < requestedEnd) {
             val retryLimit = minOf(maxOf(requested, firstWindow), endInclusive - offset + 1)
             val retry = runBlocking {
+                runCatching { client.send(TdApi.CancelDownloadFile(fileId, false)) }
                 client.send(TdApi.DownloadFile(fileId, 32, offset, retryLimit, true))
             }
             applyLocalRange(retry.local)

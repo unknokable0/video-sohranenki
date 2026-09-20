@@ -3145,7 +3145,7 @@ class MainActivity : AppCompatActivity() {
         ViewCompat.requestApplyInsets(root)
         if (enabled) {
             if (settings.autoRotateFullscreen) {
-                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                runCatching { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE }
             }
             if (android.os.Build.VERSION.SDK_INT >= 30) {
                 window.insetsController?.let {
@@ -3160,7 +3160,7 @@ class MainActivity : AppCompatActivity() {
                     View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
             }
         } else {
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            runCatching { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
             if (android.os.Build.VERSION.SDK_INT >= 30) {
                 window.insetsController?.show(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
             } else {

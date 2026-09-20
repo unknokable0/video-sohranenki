@@ -444,6 +444,9 @@ class PlayerScreen(
 
                 override fun onScrubStop(positionMs: Long, canceled: Boolean) {
                     if (!canceled) {
+                        previewRequestId++
+                        previewJob?.cancel()
+                        previewJob = null
                         player.seekTo(positionMs)
                         currentTime.text = formatMs(positionMs)
                     }
@@ -1111,23 +1114,25 @@ class PlayerScreen(
         socialActionsRow.visibility = if (enabled) View.GONE else View.VISIBLE
         nextVideosBlock.visibility = if (enabled) View.GONE else View.VISIBLE
 
-        val params = playerCard.layoutParams as LinearLayout.LayoutParams
-        if (enabled) {
-            params.height = 0
-            params.weight = 1f
-            params.marginStart = 0
-            params.marginEnd = 0
-            playerCard.background = rounded("#000000", 0)
-        } else {
-            val width = activity.resources.displayMetrics.widthPixels
-            params.height = (width * 9f / 16f).toInt()
-            params.weight = 0f
-            params.marginStart = dp(12)
-            params.marginEnd = dp(12)
-            playerCard.background = rounded("#000000", 18)
+        val params = playerCard.layoutParams as? LinearLayout.LayoutParams
+        if (params != null) {
+            if (enabled) {
+                params.height = 0
+                params.weight = 1f
+                params.marginStart = 0
+                params.marginEnd = 0
+                playerCard.background = rounded("#000000", 0)
+            } else {
+                val width = activity.resources.displayMetrics.widthPixels
+                params.height = (width * 9f / 16f).toInt()
+                params.weight = 0f
+                params.marginStart = dp(12)
+                params.marginEnd = dp(12)
+                playerCard.background = rounded("#000000", 18)
+            }
+            playerCard.layoutParams = params
+            playerCard.requestLayout()
         }
-        playerCard.layoutParams = params
-        playerCard.requestLayout()
         showOverlay()
     }
 
