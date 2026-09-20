@@ -12,7 +12,7 @@ val sohrVersionName = System.getenv("SOHR_VERSION_NAME")
 
 android {
     namespace = "com.unknokable.videosohranenki"
-    compileSdk = 35
+    compileSdk = 36
     defaultConfig {
         applicationId = "com.unknokable.videosohranenki"
         minSdk = 26
