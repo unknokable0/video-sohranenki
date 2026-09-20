@@ -26,8 +26,12 @@ except Exception:
     pass
 
 try:
-    from rapidocr import RapidOCR
+    from rapidocr import EngineType, LangRec, ModelType, OCRVersion, RapidOCR
 except Exception:
+    EngineType = None
+    LangRec = None
+    ModelType = None
+    OCRVersion = None
     RapidOCR = None
 
 GQL_URL = "https://gql.twitch.tv/gql"
@@ -185,13 +189,20 @@ class OCR:
     def _ensure(self):
         if self._engine is not None:
             return
-        if RapidOCR is None:
+        if any(x is None for x in (RapidOCR, EngineType, LangRec, ModelType, OCRVersion)):
             raise RuntimeError("RapidOCR не установлен")
         self._engine = RapidOCR(
             params={
-                "Rec.lang_type": "ru",
+                "Rec.engine_type": EngineType.ONNXRUNTIME,
+                "Rec.lang_type": LangRec.CYRILLIC,
+                "Rec.model_type": ModelType.MOBILE,
+                "Rec.ocr_version": OCRVersion.PPOCRV5,
+                "Global.use_cls": False,
                 "Global.log_level": "warning",
                 "Global.text_score": 0.45,
+                "EngineConfig.onnxruntime.intra_op_num_threads": CPU_THREADS,
+                "EngineConfig.onnxruntime.inter_op_num_threads": 1,
+                "EngineConfig.onnxruntime.enable_cpu_mem_arena": False,
             }
         )
 
