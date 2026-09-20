@@ -678,6 +678,7 @@ class PlayerScreen(
                     val minutes = listOf(0,10,20,30,45,60)[which]
                     val r = Runnable {
                         player.pause()
+                        showOverlay()
                     }
                     sleepRunnable = r
                     handler.postDelayed(r, minutes * 60_000L)
