@@ -93,6 +93,7 @@ class MainActivity : AppCompatActivity() {
     private var primaryShellLightTheme: Boolean? = null
     private var startupPhase = true
     private var startupStatusView: TextView? = null
+    private var completedUpdateNotice: String? = null
 
     private val palette get() = settings.palette()
     private val bg get() = palette.background
@@ -108,6 +109,15 @@ class MainActivity : AppCompatActivity() {
         settings = AppSettings(this)
         streakTracker = StreakTracker(this)
         updateManager = SohrUpdateManager(this)
+
+        val runtimePrefs = getSharedPreferences("sohr_runtime", MODE_PRIVATE)
+        val previousVersionCode = runtimePrefs.getInt("last_version_code", 0)
+        if (previousVersionCode > 0 && previousVersionCode < BuildConfig.VERSION_CODE) {
+            completedUpdateNotice = BuildConfig.VERSION_NAME
+        }
+        runtimePrefs.edit()
+            .putInt("last_version_code", BuildConfig.VERSION_CODE)
+            .apply()
         WindowCompat.setDecorFitsSystemWindows(window, false)
         root = FrameLayout(this).apply { setBackgroundColor(bg) }
         setContentView(root)
@@ -1404,6 +1414,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showFeed(videos: List<VideoItem>) {
+        completedUpdateNotice?.let { version ->
+            completedUpdateNotice = null
+            root.postDelayed({
+                ModernDialogs.showNotice(
+                    context = this@MainActivity,
+                    palette = palette,
+                    title = "Обновление завершено",
+                    message = "SOHR обновлён до версии " + version + ". Всё готово к работе.",
+                    button = "Готово"
+                )
+            }, 420L)
+        }
+
         startupPhase = false
         startupStatusView = null
         isPlayerScreen = false
