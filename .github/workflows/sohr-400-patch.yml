@@ -1,4 +1,4 @@
-name: SOHR 5.0 UI stability pass
+name: SOHR 5.0 watched action cleanup
 on:
   push:
     branches: [main]
@@ -10,134 +10,130 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Fix library transitions and navigation stability
+      - name: Unify watched action and remove share UI
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
           import re
-          p = Path('native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt')
-          s = p.read_text()
 
-          # Fix the screenshot bug: translationX was applied to the new section
-          # but never animated back to zero, permanently shifting/clipping the page.
-          old = '''                if (sectionCrossfade) {
-                              val travel = dp(18).toFloat() * if (sectionDirection == 0) 1 else sectionDirection
-                              content.alpha = 0f
-                              content.translationX = travel
-                              old.alpha = 1f
-                              old.translationX = 0f
-                              old.animate()
-                                  .alpha(0f)
-                                  .setDuration(120L)
-                                  .setInterpolator(telegramInterpolator)
-                                  .start()
-                              content.animate()
-                                  .alpha(1f)
-                                  .setDuration(170L)
-                                  .setInterpolator(telegramInterpolator)
-                                  .withEndAction {
-                                      old.alpha = 1f
-                                      old.setLayerType(View.LAYER_TYPE_NONE, null)
-                                      content.setLayerType(View.LAYER_TYPE_NONE, null)
-                                      if (old.parent === host) host.removeView(old)
-                                  }
-                                  .start()
-          '''
-          new = '''                if (sectionCrossfade) {
-                              val direction = if (sectionDirection == 0) 1 else sectionDirection
-                              val travel = dp(22).toFloat() * direction
-                              content.alpha = 0f
-                              content.translationX = travel
-                              old.alpha = 1f
-                              old.translationX = 0f
-                              old.animate()
-                                  .alpha(0.12f)
-                                  .translationX(-travel * 0.18f)
-                                  .setDuration(150L)
-                                  .setInterpolator(telegramInterpolator)
-                                  .start()
-                              content.animate()
-                                  .alpha(1f)
-                                  .translationX(0f)
-                                  .setDuration(220L)
-                                  .setInterpolator(telegramInterpolator)
-                                  .withEndAction {
-                                      old.animate().cancel()
-                                      old.alpha = 1f
-                                      old.translationX = 0f
-                                      old.translationY = 0f
-                                      content.alpha = 1f
-                                      content.translationX = 0f
-                                      content.translationY = 0f
-                                      old.setLayerType(View.LAYER_TYPE_NONE, null)
-                                      content.setLayerType(View.LAYER_TYPE_NONE, null)
-                                      if (old.parent === host) host.removeView(old)
-                                  }
-                                  .start()
-          '''
-          if old not in s:
-              raise SystemExit('section transition block not found')
-          s = s.replace(old, new, 1)
+          player = Path('native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt')
+          s = player.read_text()
 
-          # If the user taps/swipes rapidly, never keep half-animated stale pages.
-          marker = '''        val old = if (host.childCount > 0) host.getChildAt(host.childCount - 1) else null
+          start = s.find('    private fun buildSocialActions(): LinearLayout {')
+          end = s.find('    private fun buildNextVideosBlock(): LinearLayout {', start)
+          if start < 0 or end < 0:
+              raise SystemExit('buildSocialActions block not found')
 
-                  val animateContent = settings.animations && old != null && old !== content
-          '''
-          replacement = '''        while (host.childCount > 1) {
-                      val stale = host.getChildAt(0)
-                      stale.animate().cancel()
-                      stale.alpha = 1f
-                      stale.translationX = 0f
-                      stale.translationY = 0f
-                      stale.setLayerType(View.LAYER_TYPE_NONE, null)
-                      host.removeViewAt(0)
-                  }
-                  val old = if (host.childCount > 0) host.getChildAt(host.childCount - 1) else null
-                  old?.animate()?.cancel()
-                  old?.alpha = 1f
-                  old?.translationX = 0f
-                  old?.translationY = 0f
-                  old?.scaleX = 1f
-                  old?.scaleY = 1f
+          new_block = '''    private fun buildSocialActions(): LinearLayout {
+        val row = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(2), dp(12), dp(10))
+        }
+        var watched = isWatched
+        lateinit var watchedButton: TextView
 
-                  val animateContent = settings.animations && old != null && old !== content
-          '''
-          if marker not in s:
-              raise SystemExit('host cleanup marker not found')
-          s = s.replace(marker, replacement, 1)
+        fun syncWatchedAction(animated: Boolean = false) {
+            val nextText = if (watched) "↩  В сборники" else "✓  В просмотренные"
+            val nextBackground = if (watched) palette.accent else palette.surfaceAlt
+            val nextTextColor = if (watched) Color.WHITE else palette.text
 
-          # Keep the section tabs' own swipe listener: the generic press installer
-          # must not replace it later when the page is attached.
-          s, count = re.subn(
-              r'(isClickable=true; isFocusable=true\s*\n\s*)(var swipeStartX = 0f)',
-              r'\1tag = "sohr_video_section_tab"\n                \2',
-              s,
-              count=1
-          )
-          if count != 1:
-              raise SystemExit('video tab gesture marker not found')
+            watchedButton.animate().cancel()
+            if (animated && settings.animations) {
+                watchedButton.animate()
+                    .alpha(0.55f)
+                    .scaleX(0.96f)
+                    .scaleY(0.96f)
+                    .setDuration(70L)
+                    .withEndAction {
+                        watchedButton.text = nextText
+                        watchedButton.setTextColor(nextTextColor)
+                        watchedButton.background = roundedInt(nextBackground, 14)
+                        watchedButton.animate()
+                            .alpha(1f)
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .setDuration(130L)
+                            .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                            .start()
+                    }
+                    .start()
+            } else {
+                watchedButton.text = nextText
+                watchedButton.setTextColor(nextTextColor)
+                watchedButton.background = roundedInt(nextBackground, 14)
+                watchedButton.alpha = 1f
+                watchedButton.scaleX = 1f
+                watchedButton.scaleY = 1f
+            }
+        }
 
-          old_press = 'if (buttonLike && target !is SohrBottomNavView) {'
-          new_press = 'if (buttonLike && target !is SohrBottomNavView && target.tag != "sohr_video_section_tab") {'
-          if old_press not in s:
-              raise SystemExit('press animation marker not found')
-          s = s.replace(old_press, new_press, 1)
+        watchedButton = actionPill("") {
+            watched = !watched
+            onWatchedChange?.invoke(item, watched)
+            syncWatchedAction(animated = true)
+        }
+        syncWatchedAction()
 
-          # Remove dead legacy branch for section 0; only Collections and Watched exist now.
-          dead_start = s.find('        if(videoSection==0){')
-          if dead_start >= 0:
-              dead_else = s.find('        } else if(visibleGroups.isEmpty()) {', dead_start)
-              if dead_else < 0:
-                  raise SystemExit('dead section end not found')
-              tail_start = dead_else + len('        } else if(visibleGroups.isEmpty()) {')
-              s = s[:dead_start] + '        if(visibleGroups.isEmpty()) {' + s[tail_start:]
+        val downloadButton = actionPill("↓  Скачать") { enqueueDownload() }
+        row.addView(
+            watchedButton,
+            LinearLayout.LayoutParams(0, dp(44), 1.35f).apply { marginEnd = dp(6) }
+        )
+        row.addView(
+            downloadButton,
+            LinearLayout.LayoutParams(0, dp(44), 0.85f)
+        )
+        return row
+    }
 
-          p.write_text(s)
+'''
+          s = s[:start] + new_block + s[end:]
+
+          # Sharing is no longer part of SOHR's player UI.
+          if 'Intent(' not in s and 'Intent.' not in s:
+              s = s.replace('import android.content.Intent\n', '')
+          player.write_text(s)
+
+          main = Path('native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt')
+          m = main.read_text()
+          old = '''            onWatchedChange = { watched, shouldBeWatched ->
+                if (shouldBeWatched) markVideoWatched(watched.messageId) else unmarkVideoWatched(watched.messageId)
+                val noLongerBelongsToOpenSection = (videoSection == 1 && shouldBeWatched) || (videoSection == 2 && !shouldBeWatched)
+                if (noLongerBelongsToOpenSection) currentDay = currentDay?.copy(videos = currentDay?.videos?.filterNot { it.messageId == watched.messageId } ?: emptyList())
+            },
+'''
+          new = '''            onWatchedChange = { watched, shouldBeWatched ->
+                if (shouldBeWatched) markVideoWatched(watched.messageId) else unmarkVideoWatched(watched.messageId)
+                val belongsToOpenSection = (videoSection == 1 && !shouldBeWatched) || (videoSection == 2 && shouldBeWatched)
+                currentDay = currentDay?.let { day ->
+                    if (belongsToOpenSection) {
+                        if (day.videos.any { it.messageId == watched.messageId }) day
+                        else day.copy(videos = (day.videos + watched).sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId }))
+                    } else {
+                        day.copy(videos = day.videos.filterNot { it.messageId == watched.messageId })
+                    }
+                }
+            },
+'''
+          if old not in m:
+              raise SystemExit('onWatchedChange block not found')
+          m = m.replace(old, new, 1)
+          main.write_text(m)
+
+          # Guard against the removed share action being accidentally left in native UI.
+          leftovers = []
+          for path in Path('native/app/src/main/java').rglob('*.kt'):
+              text = path.read_text()
+              if 'Поделиться' in text or 'Intent.ACTION_SEND' in text:
+                  leftovers.append(str(path))
+          if leftovers:
+              raise SystemExit('share UI still present in: ' + ', '.join(leftovers))
           PY
           git config user.name "sohr-dev-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt
-          git commit -m "SOHR 5.0: fix clipped library and harden transitions"
+          git add native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt
+          git diff --cached --check
+          git commit -m "SOHR 5.0: unify watched toggle and remove share"
           git push
