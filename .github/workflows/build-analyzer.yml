@@ -1,0 +1,68 @@
+name: Build SOHR Analyzer
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - "analyzer/**"
+      - ".github/workflows/build-analyzer.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: analyzer/requirements.txt
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r analyzer/requirements.txt
+          pip install pyinstaller
+
+      - name: Build analyzer EXE
+        shell: pwsh
+        run: |
+          pyinstaller `
+            --noconfirm `
+            --clean `
+            --onefile `
+            --windowed `
+            --name "SOHR-Analyzer" `
+            --paths analyzer `
+            --collect-all rapidocr `
+            --collect-all imageio_ffmpeg `
+            --collect-all onnxruntime `
+            --hidden-import cv2 `
+            analyzer/main.py
+
+      - name: Smoke test EXE
+        shell: pwsh
+        run: |
+          if (!(Test-Path "dist/SOHR-Analyzer.exe")) { throw "EXE not created" }
+          $size=(Get-Item "dist/SOHR-Analyzer.exe").Length
+          if ($size -lt 10000000) { throw "EXE is unexpectedly small" }
+          Write-Host "SOHR Analyzer size: $size bytes"
+
+      - name: Publish SOHR Analyzer
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view sohr-analyzer-latest *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create sohr-analyzer-latest --title "SOHR Analyzer Latest" --prerelease --notes "SOHR PC Analyzer automatic channel."
+          }
+          gh release upload sohr-analyzer-latest "dist/SOHR-Analyzer.exe" --clobber
