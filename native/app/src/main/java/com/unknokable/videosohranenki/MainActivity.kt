@@ -700,6 +700,7 @@ class MainActivity : AppCompatActivity() {
         val scroll = ScrollView(this).apply {
             isVerticalScrollBarEnabled = false
             isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
             isFillViewport = true
             addView(list)
         }
@@ -1956,6 +1957,7 @@ class MainActivity : AppCompatActivity() {
             val list = RecyclerView(this).apply {
             isVerticalScrollBarEnabled = false
             isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
                 layoutManager = LinearLayoutManager(this@MainActivity)
                 adapter = DayCollectionAdapter(groups, palette, settings.animations) { showDayCollection(it) }
                 setBackgroundColor(bg)
@@ -2030,6 +2032,7 @@ class MainActivity : AppCompatActivity() {
         val list = RecyclerView(this).apply {
             isVerticalScrollBarEnabled = false
             isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = VideoAdapter(sortedVideos, palette, settings.animations) { openPlayer(it) }
             setBackgroundColor(bg)
@@ -2130,6 +2133,7 @@ class MainActivity : AppCompatActivity() {
         val scroll = ScrollView(this).apply {
             isVerticalScrollBarEnabled = false
             isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
             isFillViewport = true
             setBackgroundColor(bg)
         }
