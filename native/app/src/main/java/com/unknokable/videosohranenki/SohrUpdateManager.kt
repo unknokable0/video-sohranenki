@@ -2,6 +2,8 @@ package com.unknokable.videosohranenki
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -74,6 +76,54 @@ class SohrUpdateManager(private val context: Context) {
             }
         }
         target
+    }
+
+    fun isSignatureCompatible(apk: File): Boolean {
+        return runCatching {
+            val currentDigests = signingDigests(
+                context.packageManager.getPackageInfo(
+                    context.packageName,
+                    signingFlags()
+                )
+            )
+            val archiveInfo = context.packageManager.getPackageArchiveInfo(
+                apk.absolutePath,
+                signingFlags()
+            ) ?: return false
+            val archiveDigests = signingDigests(archiveInfo)
+            currentDigests.isNotEmpty() &&
+                archiveDigests.isNotEmpty() &&
+                currentDigests.any { it in archiveDigests }
+        }.getOrDefault(false)
+    }
+
+    private fun signingFlags(): Int =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            PackageManager.GET_SIGNING_CERTIFICATES
+        } else {
+            @Suppress("DEPRECATION")
+            PackageManager.GET_SIGNATURES
+        }
+
+    private fun signingDigests(info: PackageInfo): Set<String> {
+        val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val signingInfo = info.signingInfo ?: return emptySet()
+            val signers = if (signingInfo.hasMultipleSigners()) {
+                signingInfo.apkContentsSigners
+            } else {
+                signingInfo.signingCertificateHistory
+            }
+            signers.toList()
+        } else {
+            @Suppress("DEPRECATION")
+            info.signatures?.toList().orEmpty()
+        }
+
+        return signatures.map { signature ->
+            val digest = MessageDigest.getInstance("SHA-256")
+                .digest(signature.toByteArray())
+            digest.joinToString("") { "%02x".format(it) }
+        }.toSet()
     }
 
     fun canRequestInstall(): Boolean =
