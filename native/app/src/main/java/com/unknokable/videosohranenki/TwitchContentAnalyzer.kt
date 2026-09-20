@@ -220,7 +220,8 @@ object TwitchContentAnalyzer {
     private data class BoundaryProbe(
         val timeSec: Int,
         val score: Int,
-        val title: String?
+        val title: String?,
+        val hash: Long
     )
 
     private suspend fun refineStartsWithStoryboard(
@@ -274,6 +275,7 @@ object TwitchContentAnalyzer {
                         targetWidth = if (allowImageLabels) 480 else 400
                     ) ?: continue
 
+                    val visualHash = mainContentHash(frame)
                     val crop = mainAnalysisCrop(frame)
                     try {
                         val ocr = recognize(crop)
@@ -295,7 +297,8 @@ object TwitchContentAnalyzer {
                                 .toInt()
                                 .coerceIn(0, durationSeconds.coerceAtLeast(0)),
                             score = score,
-                            title = ocr.title?.takeIf(::isStrongTitle)
+                            title = ocr.title?.takeIf(::isStrongTitle),
+                            hash = visualHash
                         )
                     } finally {
                         if (crop !== frame && !crop.isRecycled) crop.recycle()
@@ -344,17 +347,26 @@ object TwitchContentAnalyzer {
                     i -= 1
                 }
 
-                // Storyboard thumbnails are discrete samples. If the frame before
-                // the first confirmed video is non-video, the real transition is
-                // somewhere between them. Starting from that previous thumbnail
-                // avoids cutting off the opening seconds.
-                val boundaryIndex = if (
-                    earliestPositive > 0 &&
-                    !positive(earliestPositive - 1)
-                ) {
-                    earliestPositive - 1
-                } else {
-                    earliestPositive
+                // OCR/player UI usually appears a little after the actual
+                // watched video starts. Look for the nearest strong visual cut
+                // immediately before the first confirmed video frame.
+                var cutBoundary = -1
+                var j = earliestPositive
+                val earliestTime = probes[earliestPositive].timeSec
+                while (j > 0 && probes[j].timeSec >= earliestTime - 90) {
+                    val cut = hamming(probes[j].hash, probes[j - 1].hash)
+                    if (cut >= 14) {
+                        cutBoundary = j - 1
+                        break
+                    }
+                    j -= 1
+                }
+
+                val boundaryIndex = when {
+                    cutBoundary >= 0 -> cutBoundary
+                    earliestPositive > 0 && !positive(earliestPositive - 1) ->
+                        earliestPositive - 1
+                    else -> earliestPositive
                 }
 
                 val refinedStart = probes[boundaryIndex].timeSec
