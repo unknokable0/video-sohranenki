@@ -665,7 +665,6 @@ class PlayerScreen(
             player.setPlaybackSpeed(speed)
             speedActionButton?.text =
                 if (speed == 1f) "1×  Скорость" else speed.toString() + "×  Скорость"
-            Toast.makeText(activity, "Скорость " + labels[which], Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -679,7 +678,6 @@ class PlayerScreen(
                     val minutes = listOf(0,10,20,30,45,60)[which]
                     val r = Runnable {
                         player.pause()
-                        Toast.makeText(activity, "Таймер сна завершён", Toast.LENGTH_SHORT).show()
                     }
                     sleepRunnable = r
                     handler.postDelayed(r, minutes * 60_000L)
