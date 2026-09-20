@@ -99,51 +99,11 @@ object SmartChaptersAnalyzer {
         videoId: String,
         durationSeconds: Int,
         onProgress: suspend (Int, String) -> Unit = { _, _ -> }
-    ): SmartAnalysisResult = withContext(Dispatchers.IO) {
-        require(videoId.isNotBlank() && videoId.all(Char::isDigit)) { "Некорректный Twitch Video ID" }
-
-        onProgress(8, "Читаем структуру Twitch…")
-        val extras = fetchTwitchExtras(videoId)
-        coroutineContext.ensureActive()
-
-        val baseMarkers = normalizeMarkers(extras.markers, durationSeconds)
-        val storyboard = runCatching { extras.storyboardUrl?.let(::fetchStoryboard) }.getOrNull()
-
-        if (storyboard == null) {
-            onProgress(88, "Собираем главы…")
-            val fallback = buildFromMarkers(baseMarkers, durationSeconds)
-            onProgress(100, "Готово")
-            return@withContext SmartAnalysisResult(fallback, 0, false)
-        }
-
-        onProgress(18, "Берём лёгкие превью вместо всего видео…")
-        val samples = loadStoryboardSamples(storyboard, baseMarkers, durationSeconds)
-        coroutineContext.ensureActive()
-
-        onProgress(45, "Ищем крупные смены сцены…")
-        val ocrIndexes = chooseOcrIndexes(samples, baseMarkers, maxOcr = 36)
-        val semanticIndexes = chooseSemanticIndexes(samples, baseMarkers, maxItems = 36)
-        val analysisIndexes = (ocrIndexes + semanticIndexes).distinct().sorted()
-
-        var analysisDone = 0
-        for (idx in analysisIndexes) {
-            coroutineContext.ensureActive()
-            val sample = samples.getOrNull(idx) ?: continue
-            val bitmap = sample.bitmap ?: continue
-            sample.ocr = recognize(bitmap)
-            sample.labels = recognizeLabels(bitmap)
-            analysisDone++
-            val p = 48 + ((analysisDone * 38) / max(1, analysisIndexes.size))
-            onProgress(p.coerceAtMost(86), "Ищем только видео и игры…")
-        }
-
-        onProgress(90, "Объединяем найденные фрагменты…")
-        val chapters = buildTwitchChapters(baseMarkers, samples, durationSeconds)
-        samples.forEach { it.bitmap?.takeIf { b -> !b.isRecycled }?.recycle() }
-
-        onProgress(100, "Готово")
-        SmartAnalysisResult(chapters, samples.size, ocrIndexes.isNotEmpty())
-    }
+    ): SmartAnalysisResult = TwitchContentAnalyzer.analyze(
+        videoId = videoId,
+        durationSeconds = durationSeconds,
+        onProgress = onProgress
+    )
 
     suspend fun analyzeTelegram(
         durationSeconds: Int,
@@ -172,7 +132,7 @@ object SmartChaptersAnalyzer {
                 retriever.setDataSource(mediaUrl, emptyMap())
             }
 
-            val times = sampleTimes(durationSeconds, maxSamples = 72)
+            val times = sampleTimes(durationSeconds, maxSamples = 180)
             val samples = ArrayList<FrameSample>(times.size)
 
             for ((index, sec) in times.withIndex()) {
@@ -188,20 +148,18 @@ object SmartChaptersAnalyzer {
                 onProgress(p.coerceAtMost(50), "Ищем крупные смены в видео…")
             }
 
-            val ocrIndexes = chooseTelegramOcrIndexes(samples, maxOcr = 32)
-            val semanticIndexes = chooseSemanticIndexes(samples, emptyList(), maxItems = 32)
-            val analysisIndexes = (ocrIndexes + semanticIndexes).distinct().sorted()
+            val analysisIndexes = samples.indices.toList()
 
             var analysisDone = 0
             for (idx in analysisIndexes) {
                 coroutineContext.ensureActive()
-                val sample = samples.getOrNull(idx) ?: continue
+                val sample = samples[idx]
                 val bitmap = sample.bitmap ?: continue
                 sample.ocr = recognize(bitmap)
                 sample.labels = recognizeLabels(bitmap)
                 analysisDone++
                 val p = 52 + ((analysisDone * 34) / max(1, analysisIndexes.size))
-                onProgress(p.coerceAtMost(86), "Ищем только видео и игры…")
+                onProgress(p.coerceAtMost(86), "Ищем видео и игры по всей записи…")
             }
 
             onProgress(90, "Собираем понятные таймкоды…")
@@ -600,6 +558,12 @@ object SmartChaptersAnalyzer {
                 SceneMode.GAME,
                 null,
                 76
+            )
+
+            marker.isBlank() && videoLabels >= 1 -> TargetDetection(
+                SceneMode.WATCHING,
+                title,
+                if (title != null) 80 else 70
             )
 
             isChatCategory(marker) && videoLabels >= 2 -> TargetDetection(
@@ -1036,7 +1000,7 @@ object SmartChaptersAnalyzer {
 
     fun encode(chapters: List<SmartChapter>): String {
         val root = JSONObject()
-        root.put("version", 3)
+        root.put("version", 4)
         val array = JSONArray()
         chapters.forEach { chapter ->
             array.put(JSONObject().apply {
@@ -1053,7 +1017,7 @@ object SmartChaptersAnalyzer {
 
     fun decode(json: String): List<SmartChapter>? = runCatching {
         val root = JSONObject(json)
-        if (root.optInt("version", 0) != 3) return@runCatching null
+        if (root.optInt("version", 0) != 4) return@runCatching null
         val array = root.getJSONArray("chapters")
         val chapters = mutableListOf<SmartChapter>()
         for (i in 0 until array.length()) {

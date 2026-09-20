@@ -769,12 +769,12 @@ class PlayerScreen(
         }
 
         val badge = TextView(activity).apply {
-            text = "V3"
-            textSize = 9.5f
+            text = "BETA 1.0.0"
+            textSize = 9f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
-            setPadding(dp(8), dp(4), dp(8), dp(4))
+            setPadding(dp(9), dp(4), dp(9), dp(4))
             background = rounded("#8B5CF6", 11)
         }
 
@@ -783,9 +783,9 @@ class PlayerScreen(
 
         val subtitle = TextView(activity).apply {
             text = if (item.source == "twitch") {
-                "Только видео и игры • начало → конец • без пустых глав"
+                "Полный проход по стриму • видео + игры • начало → конец"
             } else {
-                "Только видео и игры • локальный анализ • начало → конец"
+                "Полный локальный проход • видео + игры • начало → конец"
             }
             textSize = 12f
             setTextColor(palette.muted)
