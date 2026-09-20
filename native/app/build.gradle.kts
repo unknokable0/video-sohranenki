@@ -1,4 +1,4 @@
-// Build marker: SOHR 4.0.0 permanent release signing
+// Build marker: SOHR 4.1.0 complete player update
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -15,16 +15,14 @@ android {
         applicationId = "com.unknokable.videosohranenki"
         minSdk = 26
         targetSdk = 35
-        versionCode = 400
-        versionName = "4.0.0"
+        versionCode = 410
+        versionName = "4.1.0"
 
         buildConfigField("int", "TELEGRAM_API_ID", telegramApiId)
         buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")
     }
 
-    buildFeatures {
-        buildConfig = true
-    }
+    buildFeatures { buildConfig = true }
 
     signingConfigs {
         create("release") {
@@ -49,9 +47,7 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
+    kotlinOptions { jvmTarget = "17" }
 }
 
 dependencies {
