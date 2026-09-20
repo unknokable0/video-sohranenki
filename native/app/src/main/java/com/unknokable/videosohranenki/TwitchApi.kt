@@ -12,7 +12,27 @@ import kotlin.math.abs
 
 class TwitchAuthException(message: String = "Twitch authorization expired") : IOException(message)
 
+data class TwitchProfile(
+    val id: String,
+    val login: String,
+    val displayName: String,
+    val profileImageUrl: String
+)
+
 object TwitchApi {
+    suspend fun loadCurrentUser(clientId: String, accessToken: String): TwitchProfile = withContext(Dispatchers.IO) {
+        val root = getJson("https://api.twitch.tv/helix/users", clientId, accessToken)
+        val data = root.optJSONArray("data")
+        if (data == null || data.length() == 0) throw IOException("Twitch не вернул профиль пользователя")
+        val user = data.getJSONObject(0)
+        TwitchProfile(
+            id = user.optString("id"),
+            login = user.optString("login"),
+            displayName = user.optString("display_name").ifBlank { user.optString("login") },
+            profileImageUrl = user.optString("profile_image_url")
+        )
+    }
+
     suspend fun validateToken(clientId: String, accessToken: String): String = withContext(Dispatchers.IO) {
         val connection = (URL("https://id.twitch.tv/oauth2/validate").openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"

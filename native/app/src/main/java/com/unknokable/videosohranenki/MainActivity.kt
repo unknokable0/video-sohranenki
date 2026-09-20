@@ -2430,7 +2430,6 @@ class MainActivity : AppCompatActivity() {
                 showSettings()
             },
             onCheckUpdates = { checkForUpdates() },
-            onTwitchLogout = { confirmTwitchLogout() },
             onLogout = { confirmLogout() }
         )
         replaceRoot(withBottomNav(screen.build(), SohrTab.SETTINGS))
@@ -2747,7 +2746,6 @@ class MainActivity : AppCompatActivity() {
             },
             onLanguageChanged = { showSettings() },
             onCheckUpdates = { checkForUpdates() },
-            onTwitchLogout = { confirmTwitchLogout() },
             onLogout = { confirmLogout() }
         ).build()
 
@@ -2885,7 +2883,7 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(bg)
             val spinner = LoadingWaveView(this@MainActivity, purple)
             val label = TextView(this@MainActivity).apply {
-                text = "Загружаем профиль…"
+                text = "Загружаем аккаунты…"
                 textSize = 14f
                 gravity = Gravity.CENTER
                 setTextColor(muted)
@@ -2899,29 +2897,43 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 val user = client.send(TdApi.GetMe())
-                val avatarPath = withContext(Dispatchers.IO) {
-                    val photoId = user.profilePhoto?.small?.id ?: return@withContext null
+                val token = settings.twitchAccessToken
+
+                val telegramAvatar = kotlinx.coroutines.async(Dispatchers.IO) {
+                    val photoId = user.profilePhoto?.small?.id ?: return@async null
                     runCatching {
                         val file = client.send(TdApi.DownloadFile(photoId, 2, 0, 0, true))
                         file.local.path.takeIf { it.isNotBlank() && file.local.isDownloadingCompleted }
                     }.getOrNull()
                 }
-                withContext(Dispatchers.Main) {
-                    renderAccount(user, avatarPath)
-                }
+
+                val twitchProfile = if (!token.isNullOrBlank()) {
+                    try {
+                        TwitchApi.loadCurrentUser(BuildConfig.TWITCH_CLIENT_ID.trim(), token).also {
+                            settings.twitchLogin = it.login.takeIf(String::isNotBlank)
+                        }
+                    } catch (_: TwitchAuthException) {
+                        settings.twitchAccessToken = null
+                        settings.twitchOauthState = null
+                        settings.twitchLogin = null
+                        null
+                    } catch (_: Exception) {
+                        null
+                    }
+                } else null
+
+                renderAccount(user, telegramAvatar.await(), twitchProfile)
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    showMessage("Не удалось открыть аккаунт", e.message ?: "Ошибка Telegram")
-                }
+                showMessage("Не удалось открыть аккаунт", e.message ?: "Ошибка Telegram")
             }
         }
     }
 
-    private fun renderAccount(user: TdApi.User, avatarPath: String?) {
+    private fun renderAccount(user: TdApi.User, avatarPath: String?, twitchProfile: TwitchProfile?) {
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(bg)
-            setPadding(dp(16), dp(18), dp(16), dp(12))
+            setPadding(dp(16), dp(18), dp(16), dp(24))
         }
 
         val title = TextView(this).apply {
@@ -2931,7 +2943,7 @@ class MainActivity : AppCompatActivity() {
             setTextColor(this@MainActivity.text)
         }
         val subtitle = TextView(this).apply {
-            text = "Профиль"
+            text = "Telegram и Twitch"
             textSize = 13f
             setTextColor(muted)
             setPadding(0, dp(4), 0, dp(18))
@@ -2939,49 +2951,43 @@ class MainActivity : AppCompatActivity() {
         page.addView(title)
         page.addView(subtitle)
 
-        val card = LinearLayout(this).apply {
+        val telegramCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(dp(18), dp(20), dp(18), dp(20))
             background = roundedBg(panel, 24)
         }
 
-        val avatarFrame = FrameLayout(this).apply {
+        val telegramAvatarFrame = FrameLayout(this).apply {
             background = roundedBg(palette.accentSoft, 46)
             setPadding(dp(3), dp(3), dp(3), dp(3))
         }
-
-        val avatar = ImageView(this).apply {
+        val telegramAvatar = ImageView(this).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
             background = roundedBg(panel, 42)
         }
-
         if (!avatarPath.isNullOrBlank() && File(avatarPath).exists()) {
-            avatar.load(File(avatarPath)) {
+            telegramAvatar.load(File(avatarPath)) {
                 crossfade(settings.animations)
                 transformations(CircleCropTransformation())
             }
         } else {
-            avatar.load(R.drawable.ic_launcher) {
+            telegramAvatar.load(R.drawable.ic_launcher) {
                 transformations(CircleCropTransformation())
             }
         }
-
-        avatarFrame.addView(
-            avatar,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
+        telegramAvatarFrame.addView(
+            telegramAvatar,
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         )
-        card.addView(avatarFrame, LinearLayout.LayoutParams(dp(92), dp(92)))
+        telegramCard.addView(telegramAvatarFrame, LinearLayout.LayoutParams(dp(92), dp(92)))
 
         val fullName = listOf(user.firstName, user.lastName)
             .filter { it.isNotBlank() }
             .joinToString(" ")
             .ifBlank { "Telegram" }
 
-        card.addView(TextView(this).apply {
+        telegramCard.addView(TextView(this).apply {
             text = fullName
             textSize = 21f
             gravity = Gravity.CENTER
@@ -2989,8 +2995,7 @@ class MainActivity : AppCompatActivity() {
             setTextColor(this@MainActivity.text)
             setPadding(0, dp(12), 0, dp(3))
         })
-
-        card.addView(TextView(this).apply {
+        telegramCard.addView(TextView(this).apply {
             text = "SOHR • Telegram"
             textSize = 12f
             gravity = Gravity.CENTER
@@ -3005,7 +3010,6 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(14), dp(12), dp(10), dp(12))
             background = roundedBg(palette.surfaceAlt, 16)
         }
-
         val phoneLabel = TextView(this).apply {
             text = "Номер телефона"
             textSize = 12f
@@ -3044,56 +3048,180 @@ class MainActivity : AppCompatActivity() {
                             .start()
                     }
                     .start()
-                setImageResource(
-                    if (revealed) R.drawable.ic_visibility
-                    else R.drawable.ic_visibility_off
-                )
+                setImageResource(if (revealed) R.drawable.ic_visibility else R.drawable.ic_visibility_off)
                 contentDescription = if (revealed) "Скрыть номер" else "Показать номер"
                 animatePress(this)
             }
         }
         phoneRow.addView(phoneTexts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         phoneRow.addView(eye, LinearLayout.LayoutParams(dp(44), dp(44)))
+        telegramCard.addView(
+            phoneRow,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(18)
+            }
+        )
+        page.addView(telegramCard)
 
-        card.addView(phoneRow, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = dp(18) })
+        page.addView(TextView(this).apply {
+            text = "Twitch"
+            textSize = 15f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+            setPadding(dp(2), dp(20), 0, dp(10))
+        })
 
-        page.addView(card)
+        val twitchCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(18), dp(20), dp(18), dp(18))
+            background = roundedBg(panel, 24)
+        }
+
+        val twitchAvatarFrame = FrameLayout(this).apply {
+            background = roundedBg(Color.parseColor("#9147FF"), 46)
+            setPadding(dp(3), dp(3), dp(3), dp(3))
+        }
+        val twitchAvatar = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            background = roundedBg(panel, 42)
+        }
+
+        val connected = !settings.twitchAccessToken.isNullOrBlank()
+        val twitchLogin = twitchProfile?.login?.takeIf { it.isNotBlank() } ?: settings.twitchLogin
+        val twitchName = twitchProfile?.displayName?.takeIf { it.isNotBlank() }
+            ?: twitchLogin
+            ?: "Twitch"
+
+        if (!twitchProfile?.profileImageUrl.isNullOrBlank()) {
+            twitchAvatar.load(twitchProfile?.profileImageUrl) {
+                crossfade(settings.animations)
+                transformations(CircleCropTransformation())
+            }
+        } else {
+            twitchAvatar.load(R.drawable.ic_launcher) {
+                transformations(CircleCropTransformation())
+            }
+        }
+
+        twitchAvatarFrame.addView(
+            twitchAvatar,
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        )
+        twitchCard.addView(twitchAvatarFrame, LinearLayout.LayoutParams(dp(92), dp(92)))
+
+        twitchCard.addView(TextView(this).apply {
+            text = twitchName
+            textSize = 21f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+            setPadding(0, dp(12), 0, dp(3))
+        })
+
+        twitchCard.addView(TextView(this).apply {
+            text = if (connected) {
+                if (twitchLogin.isNullOrBlank()) "SOHR • Twitch" else "@$twitchLogin • Twitch"
+            } else {
+                "Twitch не подключён"
+            }
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setTextColor(if (connected) muted else palette.accent)
+        })
+
+        val twitchAction = TextView(this).apply {
+            text = if (connected) "Выйти из Twitch" else "Подключить Twitch"
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            background = rounded(
+                if (connected) Color.parseColor("#D9435F") else Color.parseColor("#9147FF"),
+                15
+            )
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                animatePress(this)
+                if (connected) {
+                    confirmTwitchLogout()
+                } else {
+                    startTwitchLogin()
+                }
+            }
+        }
+        twitchCard.addView(
+            twitchAction,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply {
+                topMargin = dp(16)
+            }
+        )
+
+        page.addView(twitchCard)
 
         val privacy = TextView(this).apply {
-            text = "Номер телефона скрыт по умолчанию."
+            text = "Аккаунты используются только для работы соответствующих источников в SOHR."
             textSize = 12f
             setTextColor(muted)
             setPadding(dp(4), dp(12), dp(4), 0)
         }
         page.addView(privacy)
 
-        if (settings.animations) {
-            card.alpha = 0f
-            card.translationY = dp(12).toFloat()
-            avatar.scaleX = 0.88f
-            avatar.scaleY = 0.88f
+        val scroll = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            isFillViewport = true
+            setBackgroundColor(bg)
+            addView(
+                page,
+                ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            )
         }
 
-        replaceRoot(withBottomNav(page, SohrTab.ACCOUNT))
+        if (settings.animations) {
+            telegramCard.alpha = 0f
+            telegramCard.translationY = dp(10).toFloat()
+            twitchCard.alpha = 0f
+            twitchCard.translationY = dp(12).toFloat()
+            telegramAvatar.scaleX = 0.88f
+            telegramAvatar.scaleY = 0.88f
+            twitchAvatar.scaleX = 0.88f
+            twitchAvatar.scaleY = 0.88f
+        }
+
+        replaceRoot(withBottomNav(scroll, SohrTab.ACCOUNT))
 
         if (settings.animations) {
-            card.post {
-                card.animate()
+            val ease = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
+            telegramCard.post {
+                telegramCard.animate()
                     .alpha(1f)
                     .translationY(0f)
-                    .setDuration(260)
-                    .setInterpolator(android.view.animation.DecelerateInterpolator(1.6f))
+                    .setDuration(250L)
+                    .setInterpolator(ease)
                     .start()
-
-                avatar.animate()
+                telegramAvatar.animate()
                     .scaleX(1f)
                     .scaleY(1f)
-                    .setStartDelay(60)
-                    .setDuration(280)
-                    .setInterpolator(android.view.animation.DecelerateInterpolator(1.8f))
+                    .setStartDelay(50L)
+                    .setDuration(270L)
+                    .setInterpolator(ease)
+                    .start()
+                twitchCard.animate()
+                    .alpha(1f)
+                    .translationY(0f)
+                    .setStartDelay(80L)
+                    .setDuration(270L)
+                    .setInterpolator(ease)
+                    .start()
+                twitchAvatar.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setStartDelay(130L)
+                    .setDuration(270L)
+                    .setInterpolator(ease)
                     .start()
             }
         }
@@ -3340,7 +3468,7 @@ class MainActivity : AppCompatActivity() {
                 twitchVideos = emptyList()
                 if (settings.videoSource == "twitch") settings.videoSource = "telegram"
 
-                showSettings()
+                showAccount()
                 root.postDelayed({
                     ModernDialogs.showNotice(
                         context = this@MainActivity,

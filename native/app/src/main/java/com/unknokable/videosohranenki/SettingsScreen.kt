@@ -22,7 +22,6 @@ class SettingsScreen(
     private val onThemeChanged: (Boolean, View) -> Unit,
     private val onLanguageChanged: () -> Unit,
     private val onCheckUpdates: () -> Unit,
-    private val onTwitchLogout: () -> Unit,
     private val onLogout: () -> Unit
 ) {
     private var needsReload = false
@@ -248,6 +247,7 @@ class SettingsScreen(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
         }
+
         fun option(label: String) = TextView(activity).apply {
             text = label
             textSize = 13f
@@ -264,68 +264,36 @@ class SettingsScreen(
         selector.addView(indicator, FrameLayout.LayoutParams(0, dp(44), Gravity.START or Gravity.CENTER_VERTICAL))
         selector.addView(buttons, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44), Gravity.CENTER))
 
-        val details = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
+        val sourceHint = TextView(activity).apply {
+            textSize = 12f
+            setTextColor(palette.muted)
             setPadding(dp(2), dp(10), dp(2), 0)
         }
 
-        fun fillDetails() {
-            details.removeAllViews()
-            val twitchSelected = settings.videoSource == "twitch"
-            val connected = !settings.twitchAccessToken.isNullOrBlank()
-            details.addView(TextView(activity).apply {
-                text = if (twitchSelected) {
-                    if (connected) {
-                        val login = settings.twitchLogin
-                        if (login.isNullOrBlank()) "Twitch подключён" else "Twitch подключён • @$login"
-                    } else {
-                        "При открытии Twitch SOHR предложит войти в аккаунт"
-                    }
-                } else {
-                    "Сборники из Telegram • @t2x2_video"
-                }
-                textSize = 12f
-                setTextColor(if (twitchSelected && connected) palette.accent else palette.muted)
-            })
-            if (twitchSelected && connected) {
-                details.addView(TextView(activity).apply {
-                    text = "Выйти из Twitch"
-                    textSize = 12.5f
-                    gravity = Gravity.CENTER
-                    setTypeface(typeface, Typeface.BOLD)
-                    setTextColor(Color.parseColor("#FF6B81"))
-                    background = rounded(palette.surfaceAlt, 13)
-                    isClickable = true
-                    isFocusable = true
-                    setOnClickListener {
-                        animateTap(this)
-                        onTwitchLogout()
-                    }
-                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42)).apply {
-                    topMargin = dp(10)
-                })
+        fun updateHint(animated: Boolean) {
+            val next = if (settings.videoSource == "twitch") {
+                "Сборники Twitch • @t2x2"
+            } else {
+                "Сборники Telegram • @t2x2_video"
             }
-        }
-
-        fun renderDetails(animated: Boolean) {
             if (!animated || !settings.animations) {
-                fillDetails()
-                details.alpha = 1f
-                details.translationY = 0f
+                sourceHint.text = next
+                sourceHint.alpha = 1f
+                sourceHint.translationY = 0f
                 return
             }
-            details.animate().cancel()
-            details.animate()
+            sourceHint.animate().cancel()
+            sourceHint.animate()
                 .alpha(0f)
-                .translationY(dp(4).toFloat())
-                .setDuration(85L)
+                .translationY(dp(3).toFloat())
+                .setDuration(75L)
                 .withEndAction {
-                    fillDetails()
-                    details.translationY = -dp(3).toFloat()
-                    details.animate()
+                    sourceHint.text = next
+                    sourceHint.translationY = -dp(3).toFloat()
+                    sourceHint.animate()
                         .alpha(1f)
                         .translationY(0f)
-                        .setDuration(165L)
+                        .setDuration(150L)
                         .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
                         .start()
                 }
@@ -352,12 +320,12 @@ class SettingsScreen(
                 indicator.translationX = target
             }
 
-            telegram.animate().cancel()
-            twitch.animate().cancel()
             telegram.setTextColor(if (!toTwitch) Color.WHITE else palette.muted)
             twitch.setTextColor(if (toTwitch) Color.WHITE else palette.muted)
+
             if (animate && settings.animations) {
                 val active = if (toTwitch) twitch else telegram
+                active.animate().cancel()
                 active.scaleX = 0.96f
                 active.scaleY = 0.96f
                 active.animate()
@@ -375,7 +343,7 @@ class SettingsScreen(
             settings.videoSource = "telegram"
             needsReload = true
             moveIndicator(false, true)
-            renderDetails(true)
+            updateHint(true)
         }
         twitch.setOnClickListener {
             if (settings.videoSource == "twitch") return@setOnClickListener
@@ -383,14 +351,14 @@ class SettingsScreen(
             settings.videoSource = "twitch"
             needsReload = true
             moveIndicator(true, true)
-            renderDetails(true)
+            updateHint(true)
         }
 
         selector.post { moveIndicator(settings.videoSource == "twitch", false) }
-        fillDetails()
+        updateHint(false)
 
         box.addView(selector, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)))
-        box.addView(details)
+        box.addView(sourceHint)
 
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
