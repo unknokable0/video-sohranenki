@@ -75,6 +75,8 @@ class SettingsScreen(
         }
         root.addView(subtitle)
 
+        root.addView(statisticsCard())
+
         root.addView(themeSelector())
         root.addView(languageSelector())
 
@@ -162,6 +164,52 @@ class SettingsScreen(
         )
 
         return frameRoot
+    }
+
+    private fun statisticsCard(): View {
+        val prefs = activity.getSharedPreferences("sohr_stats", android.content.Context.MODE_PRIVATE)
+        val videos = prefs.getInt("videos", 0)
+        val watched = prefs.getInt("watched", 0)
+        val seconds = prefs.getLong("watched_seconds", 0L)
+        val hours = seconds / 3600L
+        val minutes = (seconds % 3600L) / 60L
+        val streak = StreakTracker(activity).currentStreak()
+
+        val card = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            background = rounded(palette.surface, 18)
+        }
+        card.addView(TextView(activity).apply {
+            text = "Статистика"; textSize = 15f
+            setTypeface(typeface, Typeface.BOLD); setTextColor(palette.text)
+        })
+        card.addView(TextView(activity).apply {
+            text = "Твоя активность в SOHR"; textSize = 12f; setTextColor(palette.muted)
+            setPadding(0, dp(3), 0, dp(12))
+        })
+        val row = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
+        fun cell(value: String, label: String): View = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+            setPadding(dp(4), dp(9), dp(4), dp(9)); background = rounded(palette.surfaceAlt, 14)
+            addView(TextView(activity).apply {
+                text = value; textSize = 17f; gravity = Gravity.CENTER
+                setTypeface(typeface, Typeface.BOLD); setTextColor(palette.accent)
+            })
+            addView(TextView(activity).apply {
+                text = label; textSize = 10f; gravity = Gravity.CENTER; setTextColor(palette.muted)
+                setPadding(0, dp(3), 0, 0)
+            })
+        }
+        row.addView(cell(videos.toString(), "Видео"), LinearLayout.LayoutParams(0, dp(74), 1f).apply { marginEnd = dp(4) })
+        row.addView(cell(watched.toString(), "Просмотрено"), LinearLayout.LayoutParams(0, dp(74), 1f).apply { marginStart = dp(4); marginEnd = dp(4) })
+        row.addView(cell(if (hours > 0) "${hours}ч ${minutes}м" else "${minutes}м", "Просмотр"), LinearLayout.LayoutParams(0, dp(74), 1f).apply { marginStart = dp(4); marginEnd = dp(4) })
+        row.addView(cell(streak.toString(), "Стрик"), LinearLayout.LayoutParams(0, dp(74), 1f).apply { marginStart = dp(4) })
+        card.addView(row)
+        return LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL; addView(card)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }
+        }
     }
 
     private fun languageSelector(): View {

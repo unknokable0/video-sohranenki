@@ -11,6 +11,7 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
+import android.net.Uri
 import android.telephony.TelephonyManager
 import android.util.Rational
 import android.text.Editable
@@ -70,6 +71,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var settings: AppSettings
     private lateinit var streakTracker: StreakTracker
     private lateinit var updateManager: SohrUpdateManager
+    private lateinit var videoCache: SohrVideoCache
+    private var telegramReady = false
     private var pendingUpdateApk: File? = null
     private var waitingForInstallPermission = false
     private var updateProgressLabel: TextView? = null
@@ -122,6 +125,7 @@ class MainActivity : AppCompatActivity() {
         settings = AppSettings(this)
         streakTracker = StreakTracker(this)
         updateManager = SohrUpdateManager(this)
+        videoCache = SohrVideoCache(this)
 
         val runtimePrefs = getSharedPreferences("sohr_runtime", MODE_PRIVATE)
         val previousVersionCode = runtimePrefs.getInt("last_version_code", 0)
@@ -134,6 +138,7 @@ class MainActivity : AppCompatActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         root = FrameLayout(this).apply { setBackgroundColor(bg) }
         setContentView(root)
+        handleSharedIntent(intent)
         ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
             if (!fullScreen) {
                 val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
@@ -221,7 +226,7 @@ class MainActivity : AppCompatActivity() {
                     is TdApi.UpdateAuthorizationState -> handleAuthState(update.authorizationState)
                     is TdApi.UpdateNewMessage -> {
                         if (channelChatId != 0L && update.message.chatId == channelChatId) {
-                            loadVideos()
+                            loadVideos(inPlace = true)
                         }
                     }
                 }
@@ -232,6 +237,12 @@ class MainActivity : AppCompatActivity() {
             showLoading("Подключаем Telegram…")
             client.init()
         }, 620L)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleSharedIntent(intent)
     }
 
     override fun onResume() {
@@ -396,9 +407,19 @@ class MainActivity : AppCompatActivity() {
             }
             is TdApi.AuthorizationStateReady -> {
                 settings.authPhone = null
+                telegramReady = true
                 ensureStreamServer()
                 cleanupStorage()
-                loadVideos()
+                val zone = ZoneId.systemDefault()
+                val cutoff = LocalDate.now(zone).minusDays(6).atStartOfDay(zone).toEpochSecond()
+                val cached = videoCache.load().filter { it.localPath != null || it.date.toLong() >= cutoff }
+                    .sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })
+                if (cached.isNotEmpty()) {
+                    currentVideos = cached
+                    updateStatsSnapshot(cached)
+                    runOnUiThread { suppressNextRootAnimation = true; showFeed(cached) }
+                }
+                loadVideos(inPlace = cached.isNotEmpty())
             }
             is TdApi.AuthorizationStateLoggingOut -> runOnUiThread { showLoading("Выходим…") }
             is TdApi.AuthorizationStateClosing -> runOnUiThread { showLoading("Закрываем соединение…") }
@@ -1744,6 +1765,7 @@ class MainActivity : AppCompatActivity() {
                 val cutoffEpoch = cutoffDate.atStartOfDay(zone).toEpochSecond()
 
                 val collected = linkedMapOf<Long, VideoItem>()
+                videoCache.load().asSequence().filter { it.localPath != null }.forEach { collected[it.messageId] = it }
                 var fromMessageId = 0L
                 var page = 0
                 var reachedOldMessages = false
@@ -1769,11 +1791,16 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 val videos = collected.values
-                    .filter { it.date.toLong() >= cutoffEpoch }
+                    .filter { it.localPath != null || it.date.toLong() >= cutoffEpoch }
                     .sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })
 
+                val cachedById = videoCache.load().associateBy { it.messageId }
+                val videosWithCachedThumbs = videos.map { item ->
+                    val cached = cachedById[item.messageId]
+                    if (item.thumbnailPath.isNullOrBlank() && cached?.thumbnailPath?.let { File(it).exists() } == true) item.copy(thumbnailPath = cached.thumbnailPath) else item
+                }
                 val preparedVideos = if (settings.previews) {
-                    videos.chunked(6).flatMap { batch ->
+                    videosWithCachedThumbs.chunked(6).flatMap { batch ->
                         coroutineScope {
                             batch.map { item ->
                                 async(Dispatchers.IO) { attachThumbnail(item) }
@@ -1781,12 +1808,14 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 } else {
-                    videos.map { it.copy(thumbnailPath = null) }
+                    videosWithCachedThumbs
                 }
 
                 withContext(Dispatchers.Main) {
                     val changed = currentVideos.map { it.messageId } != preparedVideos.map { it.messageId }
                     currentVideos = preparedVideos
+                    videoCache.save(preparedVideos)
+                    updateStatsSnapshot(preparedVideos)
                     if (inPlace && !changed) {
                         setFeedRefreshLoading(false, "Готово")
                         feedRefreshButton?.postDelayed({
@@ -1877,6 +1906,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private suspend fun attachThumbnail(item: VideoItem): VideoItem {
+        item.thumbnailPath?.takeIf { File(it).exists() }?.let { return item }
         val thumbId = item.thumbnailFileId ?: return item
         return try {
             val file = client.send(TdApi.DownloadFile(thumbId, 1, 0, 0, true))
@@ -1884,6 +1914,41 @@ class MainActivity : AppCompatActivity() {
             item.copy(thumbnailPath = path)
         } catch (_: Exception) {
             item
+        }
+    }
+
+    private fun updateStatsSnapshot(videos: List<VideoItem>) {
+        val watched = watchedVideoIds()
+        val watchedVideos = videos.filter { watched.contains(it.messageId.toString()) }
+        getSharedPreferences("sohr_stats", MODE_PRIVATE).edit()
+            .putInt("videos", videos.size)
+            .putInt("watched", watchedVideos.size)
+            .putLong("watched_seconds", watchedVideos.sumOf { it.durationSeconds.toLong() })
+            .apply()
+    }
+
+    private fun handleSharedIntent(sourceIntent: Intent?) {
+        if (sourceIntent?.action != Intent.ACTION_SEND) return
+        if (!sourceIntent.type.orEmpty().startsWith("video/")) return
+        val uri: Uri = if (android.os.Build.VERSION.SDK_INT >= 33) {
+            sourceIntent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+        } else {
+            @Suppress("DEPRECATION") sourceIntent.getParcelableExtra(Intent.EXTRA_STREAM)
+        } ?: return
+        sourceIntent.action = null
+        lifecycleScope.launch {
+            val imported = runCatching { withContext(Dispatchers.IO) { videoCache.importSharedVideo(uri) } }.getOrNull() ?: return@launch
+            val merged = (videoCache.load() + imported).distinctBy { it.messageId }
+                .sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })
+            videoCache.save(merged)
+            currentVideos = (currentVideos + imported).distinctBy { it.messageId }
+                .sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })
+            updateStatsSnapshot(currentVideos)
+            if (telegramReady) {
+                currentDay = null
+                suppressNextRootAnimation = true
+                showFeed(currentVideos)
+            }
         }
     }
 
@@ -1896,7 +1961,7 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("sohr_watched", MODE_PRIVATE)
         val ids = prefs.getStringSet("ids", emptySet())?.toMutableSet() ?: mutableSetOf()
         val added = ids.add(messageId.toString())
-        if (added) prefs.edit().putStringSet("ids", ids).apply()
+        if (added) { prefs.edit().putStringSet("ids", ids).apply(); updateStatsSnapshot(currentVideos) }
         return added
     }
 
@@ -1904,7 +1969,7 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("sohr_watched", MODE_PRIVATE)
         val ids = prefs.getStringSet("ids", emptySet())?.toMutableSet() ?: mutableSetOf()
         val removed = ids.remove(messageId.toString())
-        if (removed) prefs.edit().putStringSet("ids", ids).apply()
+        if (removed) { prefs.edit().putStringSet("ids", ids).apply(); updateStatsSnapshot(currentVideos) }
         return removed
     }
 
@@ -2093,11 +2158,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openPlayer(item: VideoItem, startSeconds: Int = 0) {
+        val localFile = item.localPath?.let(::File)?.takeIf { it.exists() }
         val server = streamServer
-        if (server == null) {
-            Toast.makeText(this, "Видеопоток ещё не готов", Toast.LENGTH_SHORT).show()
-            return
-        }
+        if (localFile == null && server == null) return
 
         feedRefreshButton = null
         feedRefreshLabel = null
@@ -2121,8 +2184,8 @@ class MainActivity : AppCompatActivity() {
         playerScreen = PlayerScreen(
             activity = this,
             item = item,
-            mediaUrl = server.url(item),
-            previewDataSourceFactory = { server.mediaDataSource(item) },
+            mediaUrl = localFile?.let { Uri.fromFile(it).toString() } ?: server!!.url(item),
+            previewDataSourceFactory = { localFile?.let { LocalFileMediaDataSource(it) } ?: server!!.mediaDataSource(item) },
             settings = settings,
             startPositionMs = resumePositionMs,
             nextItem = nextItem,
