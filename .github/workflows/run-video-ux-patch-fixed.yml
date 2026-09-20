@@ -1,0 +1,30 @@
+name: Run corrected SOHR video UX patch
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/run-video-ux-patch-fixed.yml"]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply corrected patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import textwrap
+          y=Path('.github/workflows/sohr-400-patch.yml').read_text()
+          script=y.split("          python - <<'PY'\n",1)[1].split("\n          PY",1)[0]
+          script=textwrap.dedent(script)
+          a=script.index('# Smooth both sides of screen navigation instead of snapping the old page away.')
+          b=script.index("old='''    private val nextItem: VideoItem? = null,",a)
+          script=script[:a]+script[b:]
+          exec(compile(script,'sohr-video-ux-patch','exec'))
+          PY
+          git config user.name "sohr-dev-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt
+          git commit -m "SOHR: watched library, cleaner player and smoother back navigation"
+          git push
