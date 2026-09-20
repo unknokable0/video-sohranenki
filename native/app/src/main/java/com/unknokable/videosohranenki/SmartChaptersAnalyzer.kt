@@ -167,7 +167,7 @@ object SmartChaptersAnalyzer {
             samples.forEach { it.bitmap?.takeIf { b -> !b.isRecycled }?.recycle() }
 
             onProgress(100, "Готово")
-            SmartAnalysisResult(chapters, samples.size, ocrIndexes.isNotEmpty())
+            SmartAnalysisResult(chapters, samples.size, analysisIndexes.isNotEmpty())
         } finally {
             runCatching { retriever.release() }
             runCatching { dataSource?.close() }
