@@ -152,7 +152,9 @@ object SohrPcAnalyzerClient {
             ?: throw IOException("Analyzer не вернул ID задания")
 
         var lastProgress = -1
-        while (true) {
+        var completedResult: SmartAnalysisResult? = null
+
+        while (completedResult == null) {
             coroutineContext.ensureActive()
             delay(650L)
 
@@ -178,7 +180,7 @@ object SohrPcAnalyzerClient {
                 "done" -> {
                     val chapters = parseChapters(job.optJSONArray("chapters"))
                     onProgress(100, "Готово • найдено видео: " + chapters.size)
-                    return@withContext SmartAnalysisResult(
+                    completedResult = SmartAnalysisResult(
                         chapters = chapters,
                         scannedFrames = 0,
                         usedOcr = true
@@ -197,6 +199,8 @@ object SohrPcAnalyzerClient {
                 }
             }
         }
+
+        completedResult
     }
 
     private fun parseResult(result: JSONObject?): List<SmartChapter> {
