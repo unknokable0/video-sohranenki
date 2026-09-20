@@ -2889,18 +2889,21 @@ class MainActivity : AppCompatActivity() {
         val old = if (host.childCount > 0) host.getChildAt(host.childCount - 1) else null
 
         val animateContent = settings.animations && old != null && old !== content
-        content.alpha = if (animateContent) 0f else 1f
-        content.translationX = if (animateContent) dp(48).toFloat() * if (slide < 0) -1f else 1f else 0f
+        content.alpha = 1f
+        content.translationX = 0f
         content.translationY = 0f
 
         installPressAnimations(content)
-        host.addView(
-            content,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
+        val contentParams = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
         )
+        if (animateContent && slide < 0 && old != null) {
+            val oldIndex = host.indexOfChild(old).coerceAtLeast(0)
+            host.addView(content, oldIndex, contentParams)
+        } else {
+            host.addView(content, contentParams)
+        }
 
         if (old != null && old !== content) {
             if (animateContent) {
@@ -2908,29 +2911,41 @@ class MainActivity : AppCompatActivity() {
                 content.animate().cancel()
 
                 val telegramInterpolator = android.view.animation.DecelerateInterpolator(1.5f)
-                val direction = if (slide < 0) -1f else 1f
-
-                // Telegram-style push/pop: the new screen travels only 48dp,
-                // while alpha does most of the visual work.
-                old.animate()
-                    .alpha(if (slide < 0) 1f else 0.92f)
-                    .translationX(if (slide < 0) dp(48).toFloat() else -dp(8).toFloat())
-                    .setDuration(150L)
-                    .setInterpolator(telegramInterpolator)
-                    .start()
-
-                content.translationX = dp(48).toFloat() * direction
-                content.animate()
-                    .alpha(1f)
-                    .translationX(0f)
-                    .setDuration(150L)
-                    .setInterpolator(telegramInterpolator)
-                    .withEndAction {
-                        old.alpha = 1f
-                        old.translationX = 0f
-                        if (old.parent === host) host.removeView(old)
-                    }
-                    .start()
+                if (slide < 0) {
+                    // Telegram pop: reveal the previous screen underneath and
+                    // slide/fade only the current screen to the right.
+                    content.alpha = 1f
+                    content.translationX = 0f
+                    old.alpha = 1f
+                    old.translationX = 0f
+                    old.animate()
+                        .alpha(0f)
+                        .translationX(dp(48).toFloat())
+                        .setDuration(150L)
+                        .setInterpolator(telegramInterpolator)
+                        .withEndAction {
+                            old.alpha = 1f
+                            old.translationX = 0f
+                            if (old.parent === host) host.removeView(old)
+                        }
+                        .start()
+                } else {
+                    // Telegram push: previous screen stays in place, the new
+                    // screen fades in while travelling only 48dp from the right.
+                    old.alpha = 1f
+                    old.translationX = 0f
+                    content.alpha = 0f
+                    content.translationX = dp(48).toFloat()
+                    content.animate()
+                        .alpha(1f)
+                        .translationX(0f)
+                        .setDuration(150L)
+                        .setInterpolator(telegramInterpolator)
+                        .withEndAction {
+                            if (old.parent === host) host.removeView(old)
+                        }
+                        .start()
+                }
             } else {
                 host.removeView(old)
             }
@@ -3234,44 +3249,57 @@ class MainActivity : AppCompatActivity() {
         }
 
         val slide = if (requestedSlide != 0) requestedSlide else if (view === primaryShell) -1 else 0
-        view.alpha = 0f
-        view.translationX = dp(48).toFloat() * if (slide < 0) -1f else 1f
+        view.alpha = 1f
+        view.translationX = 0f
         view.translationY = 0f
 
         installPressAnimations(view)
-        root.addView(
-            view,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
+        val rootParams = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
         )
+        if (slide < 0) {
+            val oldIndex = root.indexOfChild(old).coerceAtLeast(0)
+            root.addView(view, oldIndex, rootParams)
+        } else {
+            root.addView(view, rootParams)
+        }
 
         old.animate().cancel()
         view.animate().cancel()
 
         val telegramInterpolator = android.view.animation.DecelerateInterpolator(1.5f)
-        val direction = if (slide < 0) -1f else 1f
-
-        old.animate()
-            .alpha(if (slide < 0) 1f else 0.92f)
-            .translationX(if (slide < 0) dp(48).toFloat() else -dp(8).toFloat())
-            .setDuration(150L)
-            .setInterpolator(telegramInterpolator)
-            .start()
-
-        view.translationX = dp(48).toFloat() * direction
-        view.animate()
-            .alpha(1f)
-            .translationX(0f)
-            .setDuration(150L)
-            .setInterpolator(telegramInterpolator)
-            .withEndAction {
-                old.alpha = 1f
-                old.translationX = 0f
-                if (old.parent === root) root.removeView(old)
-            }
-            .start()
+        if (slide < 0) {
+            view.alpha = 1f
+            view.translationX = 0f
+            old.alpha = 1f
+            old.translationX = 0f
+            old.animate()
+                .alpha(0f)
+                .translationX(dp(48).toFloat())
+                .setDuration(150L)
+                .setInterpolator(telegramInterpolator)
+                .withEndAction {
+                    old.alpha = 1f
+                    old.translationX = 0f
+                    if (old.parent === root) root.removeView(old)
+                }
+                .start()
+        } else {
+            old.alpha = 1f
+            old.translationX = 0f
+            view.alpha = 0f
+            view.translationX = dp(48).toFloat()
+            view.animate()
+                .alpha(1f)
+                .translationX(0f)
+                .setDuration(150L)
+                .setInterpolator(telegramInterpolator)
+                .withEndAction {
+                    if (old.parent === root) root.removeView(old)
+                }
+                .start()
+        }
     }
 
     private fun installPressAnimations(view: View) {
