@@ -1,4 +1,4 @@
-// Build marker: SOHR automatic per-change versioning
+// Build marker: SOHR complete player update, updater-ready
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -12,20 +12,16 @@ val sohrVersionName = System.getenv("SOHR_VERSION_NAME")
 android {
     namespace = "com.unknokable.videosohranenki"
     compileSdk = 35
-
     defaultConfig {
         applicationId = "com.unknokable.videosohranenki"
         minSdk = 26
         targetSdk = 35
         versionCode = sohrBuildNumber ?: 410
         versionName = sohrVersionName ?: "4.1.0"
-
         buildConfigField("int", "TELEGRAM_API_ID", telegramApiId)
         buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")
     }
-
     buildFeatures { buildConfig = true }
-
     signingConfigs {
         create("release") {
             val path = System.getenv("SOHR_KEYSTORE_PATH")
@@ -37,14 +33,12 @@ android {
             }
         }
     }
-
     buildTypes {
         release {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("release")
         }
     }
-
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
