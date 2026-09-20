@@ -1,0 +1,48 @@
+# Android / Gradle
+.gradle/
+**/build/
+local.properties
+*.apk
+*.aab
+
+# Signing keys / certificates
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+secrets.properties
+keystore.properties
+
+# Telegram / TDLib local session data
+**/tdlib_session_*/
+**/tdlib/
+**/tdlib-data/
+**/tdlib-files/
+
+# Debug / temporary dumps
+*debug*.html
+*.log
+*.tmp
+
+# IDE / OS
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local archives
+*.zip
+*.rar
+*.7z
