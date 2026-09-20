@@ -769,7 +769,7 @@ class PlayerScreen(
         }
 
         val badge = TextView(activity).apply {
-            text = "BETA 1.0.0"
+            text = "BETA 1.0.1"
             textSize = 9f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
@@ -783,7 +783,7 @@ class PlayerScreen(
 
         val subtitle = TextView(activity).apply {
             text = if (item.source == "twitch") {
-                "Полный проход по стриму • видео + игры • начало → конец"
+                "Непрерывный анализ • каждый ролик от начала до конца"
             } else {
                 "Полный локальный проход • видео + игры • начало → конец"
             }

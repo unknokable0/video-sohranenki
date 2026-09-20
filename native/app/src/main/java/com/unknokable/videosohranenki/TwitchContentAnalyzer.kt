@@ -138,16 +138,11 @@ object TwitchContentAnalyzer {
         coroutineContext.ensureActive()
 
         val gameSegments = gameChapters(normalizedMarkers, durationSeconds)
-        val dynamicCandidates = detectDynamicVideoRanges(
-            timeline = timeline,
-            markers = normalizedMarkers
-        ).toMutableList()
 
-        onProgress(48, "Проверяем ролики и ищем названия…")
+        onProgress(48, "Проверяем весь Just Chatting по времени…")
 
         val probeIndices = buildProbeIndices(
             timeline = timeline,
-            candidates = dynamicCandidates,
             markers = normalizedMarkers
         )
 
@@ -157,21 +152,14 @@ object TwitchContentAnalyzer {
             probeTimelineIndices = probeIndices,
             onProgress = { done, total ->
                 val percent = 48 + ((done * 38) / max(1, total))
-                onProgress(percent.coerceAtMost(86), "Читаем названия на экране…")
+                onProgress(percent.coerceAtMost(86), "Ищем начало ролика и его название…")
             }
         )
 
         coroutineContext.ensureActive()
 
-        addEvidenceCandidates(
+        val videos = buildPersistentVideoChapters(
             timeline = timeline,
-            probes = probes,
-            candidates = dynamicCandidates
-        )
-
-        val videos = buildVideoChapters(
-            timeline = timeline,
-            candidates = dynamicCandidates,
             probes = probes,
             markers = normalizedMarkers,
             durationSeconds = durationSeconds
@@ -314,7 +302,7 @@ object TwitchContentAnalyzer {
         durationSeconds: Int,
         onProgress: suspend (Int, Int) -> Unit
     ): List<TimelinePoint> {
-        val targetPoints = 900
+        val targetPoints = 2400
         val step = max(1, ceil(storyboard.count / targetPoints.toDouble()).toInt())
         val indexes = mutableListOf<Int>()
 
@@ -457,51 +445,57 @@ object TwitchContentAnalyzer {
 
     private fun buildProbeIndices(
         timeline: List<TimelinePoint>,
-        candidates: List<CandidateRange>,
         markers: List<Marker>
     ): List<Int> {
         if (timeline.isEmpty()) return emptyList()
         val wanted = linkedSetOf<Int>()
 
-        for (candidate in candidates) {
-            for (offset in -1..5) {
-                wanted += (candidate.startIndex + offset).coerceIn(0, timeline.lastIndex)
-            }
-            for (offset in -2..2) {
-                wanted += (candidate.endIndex + offset).coerceIn(0, timeline.lastIndex)
-            }
-
-            val length = candidate.endIndex - candidate.startIndex
-            val stride = max(1, length / 6)
-            var i = candidate.startIndex
-            while (i <= candidate.endIndex) {
-                wanted += i
-                i += stride
-            }
-        }
-
-        for (i in 1 until timeline.size) {
+        // Every large visual transition gets a dense neighborhood. This catches
+        // the exact moment a browser/player opens even if the title is only
+        // visible for a few storyboard frames.
+        for (i in timeline.indices) {
             val point = timeline[i]
             if (!isChatLike(markerAt(markers, point.timeSec))) continue
-            if (point.diff >= 22) {
-                wanted += (i - 1).coerceAtLeast(0)
-                wanted += i
-                if (i + 1 < timeline.size) wanted += i + 1
+
+            if (point.diff >= 12) {
+                for (offset in -2..3) {
+                    wanted += (i + offset).coerceIn(0, timeline.lastIndex)
+                }
             }
         }
 
-        val safetyStride = max(1, timeline.size / 110)
+        // Category boundaries get an explicit neighborhood as well.
+        for (marker in markers) {
+            val nearest = timeline.indices.minByOrNull {
+                kotlin.math.abs(timeline[it].timeSec - marker.startSec)
+            } ?: continue
+            for (offset in -2..3) {
+                wanted += (nearest + offset).coerceIn(0, timeline.lastIndex)
+            }
+        }
+
+        // Safety pass across the *entire* chat-like timeline. It prevents a
+        // quiet/static fullscreen video from being missed just because motion
+        // detection had no strong edge.
+        val stride = max(1, timeline.size / 600)
         var i = 0
         while (i < timeline.size) {
-            if (isChatLike(markerAt(markers, timeline[i].timeSec))) wanted += i
-            i += safetyStride
+            if (isChatLike(markerAt(markers, timeline[i].timeSec))) {
+                wanted += i
+            }
+            i += stride
+        }
+
+        // First few frames of the VOD are useful when a video begins very early.
+        for (i0 in 0..minOf(8, timeline.lastIndex)) {
+            if (isChatLike(markerAt(markers, timeline[i0].timeSec))) wanted += i0
         }
 
         return wanted
             .filter { it in timeline.indices }
             .distinct()
             .sorted()
-            .take(170)
+            .take(700)
     }
 
     private suspend fun analyzeProbes(
@@ -521,14 +515,19 @@ object TwitchContentAnalyzer {
                     storyboard,
                     point.storyboardIndex,
                     cache,
-                    targetWidth = 720
+                    targetWidth = 640
                 ) ?: continue
 
-                val ocr = recognize(frame)
-                val labels = recognizeLabels(frame)
+                val analysisFrame = mainAnalysisCrop(frame)
+                val ocr = recognize(analysisFrame)
+                val labels = recognizeLabels(analysisFrame)
                 val score = videoEvidenceScore(ocr, labels, point.diff)
 
                 out += Probe(timelineIndex, point.timeSec, ocr, labels, score)
+
+                if (analysisFrame !== frame && !analysisFrame.isRecycled) {
+                    analysisFrame.recycle()
+                }
                 if (!frame.isRecycled) frame.recycle()
 
                 if (position % 4 == 0 || position == probeTimelineIndices.lastIndex) {
@@ -572,97 +571,265 @@ object TwitchContentAnalyzer {
         candidates.addAll(merged)
     }
 
-    private fun buildVideoChapters(
+    private fun buildPersistentVideoChapters(
         timeline: List<TimelinePoint>,
-        candidates: List<CandidateRange>,
         probes: List<Probe>,
         markers: List<Marker>,
         durationSeconds: Int
     ): List<SmartChapter> {
-        val out = mutableListOf<SmartChapter>()
+        if (timeline.isEmpty()) return emptyList()
 
-        for (candidate in candidates.sortedBy { it.startIndex }) {
-            if (candidate.startIndex !in timeline.indices ||
-                candidate.endIndex !in timeline.indices
-            ) continue
+        val probeByIndex = probes.associateBy { it.timelineIndex }
+        val strongEvidence = BooleanArray(timeline.size)
+        val moderateEvidence = BooleanArray(timeline.size)
 
-            val rawStart = timeline[candidate.startIndex].timeSec
-            val rawEnd = timeline[candidate.endIndex].timeSec
-            val midpointSec = rawStart + ((rawEnd - rawStart) / 2)
+        for (probe in probes) {
+            if (probe.timelineIndex !in timeline.indices) continue
+            if (probe.score >= 6) strongEvidence[probe.timelineIndex] = true
+            if (probe.score >= 3) moderateEvidence[probe.timelineIndex] = true
 
-            if (isGameCategory(markerAt(markers, midpointSec))) continue
+            // Explicit player evidence persists around the sampled point.
+            if (probe.score >= 6) {
+                for (offset in -2..2) {
+                    val idx = probe.timelineIndex + offset
+                    if (idx in timeline.indices) moderateEvidence[idx] = true
+                }
+            }
+        }
 
-            val insideProbes = probes
-                .filter { it.timelineIndex in candidate.startIndex..candidate.endIndex }
-                .sortedBy { it.timeSec }
+        fun motionSignal(index: Int): Boolean {
+            val start = (index - 2).coerceAtLeast(1)
+            val end = (index + 1).coerceAtMost(timeline.lastIndex)
+            if (start > end) return false
 
-            val strongVideoProbes = insideProbes.filter { it.score >= 4 }
-            val evidenceRatio = if (insideProbes.isNotEmpty()) {
-                strongVideoProbes.size.toDouble() / insideProbes.size.toDouble()
-            } else 0.0
+            val diffs = (start..end).map { timeline[it].diff }
+            val active = diffs.count { it >= 13 }
+            val average = diffs.average()
+            return active >= 2 && average >= 11.5
+        }
 
-            val duration = rawEnd - rawStart
-            val accepted =
-                strongVideoProbes.any { it.score >= 6 } ||
-                (duration >= 70 && candidate.motionRatio >= 0.52 && evidenceRatio >= 0.20) ||
-                (duration >= 120 && candidate.motionRatio >= 0.62)
+        fun likelyVideo(index: Int): Boolean {
+            if (index !in timeline.indices) return false
+            val marker = markerAt(markers, timeline[index].timeSec)
+            if (!isChatLike(marker)) return false
 
-            if (!accepted) continue
+            if (strongEvidence[index]) return true
+            val motion = motionSignal(index)
+            return (moderateEvidence[index] && motion) || motion
+        }
 
-            val anchors = strongVideoProbes
+        data class RawRange(val startIndex: Int, val endIndex: Int)
+
+        val rawRanges = mutableListOf<RawRange>()
+        var activeStart: Int? = null
+        var pendingStart: Int? = null
+        var pendingHits = 0
+        var misses = 0
+        var lastPositive = -1
+
+        for (i in timeline.indices) {
+            val marker = markerAt(markers, timeline[i].timeSec)
+            val chatLike = isChatLike(marker)
+
+            if (!chatLike) {
+                if (activeStart != null) {
+                    val end = i.coerceAtLeast(activeStart!!)
+                    rawRanges += RawRange(activeStart!!, end)
+                }
+                activeStart = null
+                pendingStart = null
+                pendingHits = 0
+                misses = 0
+                lastPositive = -1
+                continue
+            }
+
+            val positive = likelyVideo(i)
+
+            if (activeStart == null) {
+                if (strongEvidence[i]) {
+                    activeStart = (i - 1).coerceAtLeast(0)
+                    lastPositive = i
+                    misses = 0
+                    pendingStart = null
+                    pendingHits = 0
+                    continue
+                }
+
+                if (positive) {
+                    if (pendingStart == null) pendingStart = (i - 1).coerceAtLeast(0)
+                    pendingHits += 1
+
+                    if (pendingHits >= 2) {
+                        activeStart = pendingStart
+                        lastPositive = i
+                        misses = 0
+                        pendingStart = null
+                        pendingHits = 0
+                    }
+                } else {
+                    pendingStart = null
+                    pendingHits = 0
+                }
+                continue
+            }
+
+            if (positive || moderateEvidence[i]) {
+                lastPositive = i
+                misses = 0
+            } else {
+                misses += 1
+            }
+
+            // Hysteresis is the key difference from Beta 1.0.0:
+            // once a video starts, a calm/fullscreen section does NOT end it.
+            // We need several consecutive weak points before closing.
+            if (misses >= 5) {
+                val endIndex = (lastPositive + 2)
+                    .coerceAtLeast(activeStart!!)
+                    .coerceAtMost(i)
+                rawRanges += RawRange(activeStart!!, endIndex)
+                activeStart = null
+                pendingStart = null
+                pendingHits = 0
+                misses = 0
+                lastPositive = -1
+            }
+        }
+
+        activeStart?.let {
+            rawRanges += RawRange(it, timeline.lastIndex)
+        }
+
+        // Merge tiny gaps caused by temporarily static scenes inside a video.
+        val mergedRanges = mutableListOf<RawRange>()
+        for (range in rawRanges) {
+            val previous = mergedRanges.lastOrNull()
+            if (previous == null) {
+                mergedRanges += range
+                continue
+            }
+
+            val gapSeconds =
+                timeline[range.startIndex].timeSec - timeline[previous.endIndex].timeSec
+
+            if (gapSeconds in 0..75) {
+                mergedRanges[mergedRanges.lastIndex] =
+                    RawRange(previous.startIndex, range.endIndex)
+            } else {
+                mergedRanges += range
+            }
+        }
+
+        val chapters = mutableListOf<SmartChapter>()
+
+        for (range in mergedRanges) {
+            val startSec = timeline[range.startIndex].timeSec.coerceAtLeast(0)
+            val endSec = timeline[range.endIndex].timeSec
+                .coerceAtMost(durationSeconds)
+
+            if (endSec - startSec < 35) continue
+
+            val anchors = probes
+                .asSequence()
+                .filter { it.timelineIndex in range.startIndex..range.endIndex }
+                .filter { it.score >= 4 }
                 .mapNotNull { probe ->
                     val title = probe.ocr.title?.takeIf(::isStrongTitle)
                         ?: return@mapNotNull null
-                    TitleAnchor(probe.timeSec, title, probe.ocr.confidence)
+                    TitleAnchor(
+                        timeSec = probe.timeSec,
+                        title = title,
+                        confidence = probe.ocr.confidence
+                    )
                 }
                 .sortedBy { it.timeSec }
+                .toList()
 
-            val splitPoints = titleChangeSplitPoints(anchors)
+            val splitPoints = robustTitleSplits(anchors, startSec, endSec)
 
             if (splitPoints.isEmpty()) {
                 val title = bestTitle(anchors)
-                out += SmartChapter(
-                    startSeconds = rawStart.coerceAtLeast(0),
-                    endSeconds = rawEnd.coerceAtMost(durationSeconds),
+                chapters += SmartChapter(
+                    startSeconds = startSec,
+                    endSeconds = endSec,
                     title = title?.let { "Смотрит: $it" } ?: "Смотрит видео",
                     detail = if (title != null) {
-                        "Название найдено по кадрам"
+                        "Название найдено по кадрам в начале/внутри ролика"
                     } else {
-                        "Уверенно определён просмотр видео"
+                        "Видео определено по непрерывной временной шкале"
                     },
-                    confidence = if (title != null) 91 else 74
+                    confidence = if (title != null) 92 else 78
                 )
                 continue
             }
 
             val boundaries = mutableListOf<Int>()
-            boundaries += rawStart
+            boundaries += startSec
             boundaries += splitPoints
-            boundaries += rawEnd
+            boundaries += endSec
 
-            for (i in 0 until boundaries.lastIndex) {
-                val start = boundaries[i]
-                val end = boundaries[i + 1]
-                if (end - start < 35) continue
+            for (segmentIndex in 0 until boundaries.lastIndex) {
+                val segmentStart = boundaries[segmentIndex]
+                val segmentEnd = boundaries[segmentIndex + 1]
+                if (segmentEnd - segmentStart < 30) continue
 
-                val segmentAnchors = anchors.filter { it.timeSec in start..end }
+                val segmentAnchors = anchors.filter {
+                    it.timeSec in segmentStart..segmentEnd
+                }
                 val title = bestTitle(segmentAnchors)
 
-                out += SmartChapter(
-                    startSeconds = start,
-                    endSeconds = end.coerceAtMost(durationSeconds),
+                chapters += SmartChapter(
+                    startSeconds = segmentStart,
+                    endSeconds = segmentEnd,
                     title = title?.let { "Смотрит: $it" } ?: "Смотрит видео",
                     detail = if (title != null) {
-                        "Отдельное видео • название распознано"
+                        "Отдельный ролик • название распознано"
                     } else {
                         "Отдельный видео-фрагмент"
                     },
-                    confidence = if (title != null) 91 else 72
+                    confidence = if (title != null) 92 else 76
                 )
             }
         }
 
-        return mergeVideoChapters(out)
+        return mergeVideoChapters(chapters)
+            .filter { it.endSeconds - it.startSeconds >= 30 }
+            .take(30)
+    }
+
+    private fun robustTitleSplits(
+        anchors: List<TitleAnchor>,
+        rangeStart: Int,
+        rangeEnd: Int
+    ): List<Int> {
+        if (anchors.size < 2) return emptyList()
+
+        val out = mutableListOf<Int>()
+        var currentClusterTitle = anchors.first().title
+        var currentTime = anchors.first().timeSec
+
+        for (i in 1 until anchors.size) {
+            val next = anchors[i]
+            val similar = similarity(currentClusterTitle, next.title) >= 0.52
+
+            if (!similar &&
+                next.confidence >= 84 &&
+                next.timeSec - currentTime >= 35
+            ) {
+                val split = currentTime + ((next.timeSec - currentTime) / 2)
+                if (split - rangeStart >= 25 && rangeEnd - split >= 25) {
+                    out += split
+                }
+                currentClusterTitle = next.title
+                currentTime = next.timeSec
+            } else if (similar) {
+                currentTime = next.timeSec
+                if (next.confidence >= 88) currentClusterTitle = next.title
+            }
+        }
+
+        return out.distinct().sorted()
     }
 
     private fun titleChangeSplitPoints(anchors: List<TitleAnchor>): List<Int> {
@@ -839,10 +1006,10 @@ object TwitchContentAnalyzer {
         diff: Int
     ): Int {
         var score = 0
-        if (ocr.youtubeLike) score += 5
-        if (ocr.playerLike) score += 3
+        if (ocr.youtubeLike) score += 6
+        if (ocr.playerLike) score += 4
         if (ocr.title != null && ocr.confidence >= 78) score += 2
-        if (diff >= 18) score += 1
+        if (diff >= 15) score += 1
 
         val labelText = labels.joinToString(" ") { it.first.lowercase() }
         if (
@@ -1027,6 +1194,12 @@ object TwitchContentAnalyzer {
 
         if (scaled !== cell && !cell.isRecycled) cell.recycle()
         return scaled
+    }
+
+    private fun mainAnalysisCrop(bitmap: Bitmap): Bitmap {
+        val width = (bitmap.width * 0.80f).toInt().coerceIn(1, bitmap.width)
+        val height = (bitmap.height * 0.90f).toInt().coerceIn(1, bitmap.height)
+        return Bitmap.createBitmap(bitmap, 0, 0, width, height)
     }
 
     private fun mainContentHash(bitmap: Bitmap): Long {
