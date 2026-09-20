@@ -1,4 +1,4 @@
-name: Improve SOHR video library UX
+name: SOHR 5.0 UI stability pass
 on:
   push:
     branches: [main]
@@ -10,217 +10,190 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Apply video UX update
+      - name: Fix library transitions and navigation stability
+        shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
-          mp=Path('native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt')
-          pp=Path('native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt')
-          m=mp.read_text(); p=pp.read_text()
+          p = Path('native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt')
+          s = p.read_text()
 
-          marker='    private var startupUpdateCheckDone = false\n'
-          if 'private var videoSection =' not in m:
-              m=m.replace(marker, marker+'    private var videoSection = 1 // 0 ordinary, 1 collections, 2 watched\n',1)
-
-          old='''    private fun setFullscreen(enabled: Boolean) {
-                  fullScreen = enabled
-                  playerScreen?.setFullscreenMode(enabled)
-                  ViewCompat.requestApplyInsets(root)
+          # 1) Exact bug visible in screenshots: section content was given translationX
+          # but the animator only changed alpha, leaving the entire page permanently shifted.
+          old = '''                if (sectionCrossfade) {
+                              val travel = dp(18).toFloat() * if (sectionDirection == 0) 1 else sectionDirection
+                              content.alpha = 0f
+                              content.translationX = travel
+                              old.alpha = 1f
+                              old.translationX = 0f
+                              old.animate()
+                                  .alpha(0f)
+                                  .setDuration(120L)
+                                  .setInterpolator(telegramInterpolator)
+                                  .start()
+                              content.animate()
+                                  .alpha(1f)
+                                  .setDuration(170L)
+                                  .setInterpolator(telegramInterpolator)
+                                  .withEndAction {
+                                      old.alpha = 1f
+                                      old.setLayerType(View.LAYER_TYPE_NONE, null)
+                                      content.setLayerType(View.LAYER_TYPE_NONE, null)
+                                      if (old.parent === host) host.removeView(old)
+                                  }
+                                  .start()
           '''
-          new='''    private fun setFullscreen(enabled: Boolean) {
-                  if (fullScreen == enabled) {
-                      playerScreen?.setFullscreenMode(enabled)
-                      return
-                  }
-                  fullScreen = enabled
-                  playerScreen?.setFullscreenMode(enabled)
-                  ViewCompat.requestApplyInsets(root)
+          new = '''                if (sectionCrossfade) {
+                              val direction = if (sectionDirection == 0) 1 else sectionDirection
+                              val travel = dp(22).toFloat() * direction
+                              content.alpha = 0f
+                              content.translationX = travel
+                              old.alpha = 1f
+                              old.translationX = 0f
+                              old.animate()
+                                  .alpha(0.12f)
+                                  .translationX(-travel * 0.18f)
+                                  .setDuration(150L)
+                                  .setInterpolator(telegramInterpolator)
+                                  .start()
+                              content.animate()
+                                  .alpha(1f)
+                                  .translationX(0f)
+                                  .setDuration(220L)
+                                  .setInterpolator(telegramInterpolator)
+                                  .withEndAction {
+                                      old.animate().cancel()
+                                      old.alpha = 1f
+                                      old.translationX = 0f
+                                      old.translationY = 0f
+                                      content.alpha = 1f
+                                      content.translationX = 0f
+                                      content.translationY = 0f
+                                      old.setLayerType(View.LAYER_TYPE_NONE, null)
+                                      content.setLayerType(View.LAYER_TYPE_NONE, null)
+                                      if (old.parent === host) host.removeView(old)
+                                  }
+                                  .start()
           '''
-          if old in m: m=m.replace(old,new,1)
+          if old not in s:
+              raise SystemExit('section transition block not found')
+          s = s.replace(old, new, 1)
 
-          a=m.index('    private fun showFeed(videos: List<VideoItem>) {')
-          b=m.index('    private fun showDayCollection(collection: DayCollection) {',a)
-          feed=r'''    private fun watchedVideoIds(): Set<String> =
-              getSharedPreferences("sohr_watched", MODE_PRIVATE).getStringSet("ids", emptySet())?.toSet() ?: emptySet()
+          # 2) Rapid tab changes could leave an interrupted old page in the host.
+          marker = '''        val old = if (host.childCount > 0) host.getChildAt(host.childCount - 1) else null
 
-              private fun isVideoWatched(messageId: Long): Boolean = watchedVideoIds().contains(messageId.toString())
-
-              private fun markVideoWatched(messageId: Long) {
-                  val prefs = getSharedPreferences("sohr_watched", MODE_PRIVATE)
-                  val ids = prefs.getStringSet("ids", emptySet())?.toMutableSet() ?: mutableSetOf()
-                  ids.add(messageId.toString())
-                  prefs.edit().putStringSet("ids", ids).apply()
-              }
-
-              private fun showFeed(videos: List<VideoItem>) {
-                  if (!startupUpdateCheckDone) {
-                      startupUpdateCheckDone = true
-                      root.postDelayed({ checkForUpdates(manual = false) }, 900L)
+                  val animateContent = settings.animations && old != null && old !== content
+          '''
+          replacement = '''        while (host.childCount > 1) {
+                      val stale = host.getChildAt(0)
+                      stale.animate().cancel()
+                      stale.setLayerType(View.LAYER_TYPE_NONE, null)
+                      host.removeViewAt(0)
                   }
-                  completedUpdateNotice?.let { version ->
-                      completedUpdateNotice = null
-                      root.postDelayed({ ModernDialogs.showNotice(this, palette, "Обновление завершено", "SOHR обновлён до версии $version. Всё готово к работе.", "Готово") }, 420L)
-                  }
-                  startupPhase=false; startupStatusView=null; isPlayerScreen=false; isSettingsScreen=false; isAccountScreen=false; isStreakScreen=false
-                  currentDay=null; setFullscreen(false); applySystemTheme()
+                  val old = if (host.childCount > 0) host.getChildAt(host.childCount - 1) else null
+                  old?.animate()?.cancel()
+                  old?.alpha = 1f
+                  old?.translationX = 0f
+                  old?.translationY = 0f
+                  old?.scaleX = 1f
+                  old?.scaleY = 1f
 
-                  val zone=ZoneId.systemDefault()
-                  val watched=watchedVideoIds()
-                  val watchedVideos=videos.filter { watched.contains(it.messageId.toString()) }
-                  val regularVideos=videos.filterNot { watched.contains(it.messageId.toString()) }
-                  fun groups(source: List<VideoItem>) = source.groupBy { Instant.ofEpochSecond(it.date.toLong()).atZone(zone).toLocalDate() }
-                      .map { (date,items) -> DayCollection(date,items.sortedWith(compareBy<VideoItem>{it.date}.thenBy{it.messageId})) }
-                      .sortedByDescending { it.date }
-                  val regularGroups=groups(regularVideos)
-                  val watchedGroups=groups(watchedVideos)
-                  val visibleGroups=if(videoSection==2) watchedGroups else regularGroups
+                  val animateContent = settings.animations && old != null && old !== content
+          '''
+          if marker not in s:
+              raise SystemExit('host cleanup marker not found')
+          s = s.replace(marker, replacement, 1)
 
-                  val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(bg) }
-                  val header=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(16),dp(16),dp(16),dp(10)); setBackgroundColor(bg) }
-                  header.addView(TextView(this).apply { text="SOHR"; textSize=24f; setTextColor(this@MainActivity.text); setTypeface(typeface,Typeface.BOLD) })
-                  header.addView(TextView(this).apply {
-                      text=when(videoSection){0->"${regularVideos.size} непросмотренных видео";2->"${watchedVideos.size} просмотрено • ${watchedGroups.size} сборников";else->"Последние 7 дней • ${regularGroups.size} сборников • ${regularVideos.size} видео"}
-                      textSize=12f; setTextColor(muted); setPadding(0,dp(5),0,dp(10))
-                  })
+          # 3) The global press-animation installer was overwriting the custom swipe listener
+          # on the video tabs. Mark those tabs and keep their gesture listener intact.
+          tab_marker = '''                isClickable=true; isFocusable=true
+                              var swipeStartX = 0f
+          '''
+          tab_replacement = '''                isClickable=true; isFocusable=true
+                              tag = "sohr_video_section_tab"
+                              var swipeStartX = 0f
+          '''
+          if tab_marker not in s:
+              raise SystemExit('video tab marker not found')
+          s = s.replace(tab_marker, tab_replacement, 1)
 
-                  val tabs=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(dp(3),dp(3),dp(3),dp(3)); background=roundedBg(palette.surfaceAlt,18) }
-                  listOf("Обычные","Сборники","Просмотренное").forEachIndexed { index,label ->
-                      val selected=videoSection==index
-                      val tab=TextView(this).apply {
-                          text=label; textSize=12f; gravity=Gravity.CENTER; setTypeface(typeface,Typeface.BOLD)
-                          setTextColor(if(selected) Color.WHITE else muted); background=roundedBg(if(selected) purple else Color.TRANSPARENT,15)
-                          isClickable=true; isFocusable=true
+          press_marker = '''            if (buttonLike && target !is SohrBottomNavView) {
+                          target.setOnTouchListener { v, event ->
+          '''
+          press_replacement = '''            if (buttonLike && target !is SohrBottomNavView && target.tag != "sohr_video_section_tab") {
+                          target.setOnTouchListener { v, event ->
+          '''
+          if press_marker not in s:
+              raise SystemExit('press animation marker not found')
+          s = s.replace(press_marker, press_replacement, 1)
+
+          # 4) Give the section gesture its own press feedback without stealing the swipe.
+          touch_down = '''                        MotionEvent.ACTION_DOWN -> { swipeStartX = event.x; swipeStartY = event.y; false }
+          '''
+          touch_down_new = '''                        MotionEvent.ACTION_DOWN -> {
+                                      swipeStartX = event.x
+                                      swipeStartY = event.y
+                                      if (settings.animations) {
+                                          animate().cancel()
+                                          animate().scaleX(0.985f).scaleY(0.985f).alpha(0.94f).setDuration(55L).start()
+                                      }
+                                      false
+                                  }
+          '''
+          if touch_down not in s:
+              raise SystemExit('tab ACTION_DOWN marker not found')
+          s = s.replace(touch_down, touch_down_new, 1)
+
+          touch_up = '''                        MotionEvent.ACTION_UP -> {
+                                      val dx = event.x - swipeStartX
+                                      val dy = event.y - swipeStartY
+          '''
+          touch_up_new = '''                        MotionEvent.ACTION_UP -> {
+                                      if (settings.animations) {
+                                          animate().cancel()
+                                          animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(120L).start()
+                                      }
+                                      val dx = event.x - swipeStartX
+                                      val dy = event.y - swipeStartY
+          '''
+          if touch_up not in s:
+              raise SystemExit('tab ACTION_UP marker not found')
+          s = s.replace(touch_up, touch_up_new, 1)
+
+          # Restore state on cancelled gestures too.
+          touch_else = '''                        else -> false
+                                  }
+                              }
+                              setOnClickListener {
+          '''
+          touch_else_new = '''                        MotionEvent.ACTION_CANCEL -> {
+                                      animate().cancel()
+                                      scaleX = 1f
+                                      scaleY = 1f
+                                      alpha = 1f
+                                      false
+                                  }
+                                  else -> false
+                              }
+                          }
                           setOnClickListener {
-                              if(videoSection==index) return@setOnClickListener
-                              animatePress(this); pendingRootSlide=if(index>videoSection) 1 else -1; videoSection=index; showFeed(currentVideos)
-                          }
-                      }
-                      tabs.addView(tab,LinearLayout.LayoutParams(0,dp(40),1f).apply { if(index>0) marginStart=dp(3) })
-                  }
-                  header.addView(tabs,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(46)))
-
-                  val controls=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(0,dp(10),0,0) }
-                  controls.addView(TextView(this).apply {
-                      text=when(videoSection){0->"Все непросмотренные";2->"Просмотрено по дням";else->"Сборники по дням"}; textSize=14f; setTypeface(typeface,Typeface.BOLD); setTextColor(muted)
-                  },LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
-                  val loader=LoadingWaveView(this,purple).apply { visibility=View.GONE }
-                  val refreshText=TextView(this).apply { text=if(feedRefreshCompletedFlash) "Готово" else "Проверить новые"; textSize=12f; gravity=Gravity.CENTER_VERTICAL; setTypeface(typeface,Typeface.BOLD); setTextColor(purple) }
-                  val refresh=LinearLayout(this).apply {
-                      orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER; setPadding(dp(12),0,dp(12),0); background=roundedBg(palette.surfaceAlt,16); isClickable=true; isFocusable=true
-                      addView(loader,LinearLayout.LayoutParams(dp(24),dp(24)).apply{marginEnd=dp(7)}); addView(refreshText)
-                      setOnClickListener { if(isEnabled){ animatePress(this); loadVideos(inPlace=true) } }
-                  }
-                  feedRefreshButton=refresh; feedRefreshLabel=refreshText; feedRefreshLoader=loader
-                  controls.addView(refresh,LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,dp(44)))
-                  header.addView(controls); page.addView(header)
-
-                  if(feedRefreshCompletedFlash){ feedRefreshCompletedFlash=false; refresh.postDelayed({ if(feedRefreshButton===refresh&&refresh.isEnabled){ refreshText.animate().alpha(0f).setDuration(80L).withEndAction{refreshText.text="Проверить новые";refreshText.animate().alpha(1f).setDuration(120L).start()}.start() } },1100L) }
-
-                  if(videoSection==0){
-                      if(regularVideos.isEmpty()) page.addView(TextView(this).apply{text="Все видео просмотрены";textSize=16f;gravity=Gravity.CENTER;setTextColor(muted)},LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
-                      else {
-                          val ordered=regularVideos.sortedWith(compareByDescending<VideoItem>{it.date}.thenByDescending{it.messageId})
-                          val list=RecyclerView(this).apply { isVerticalScrollBarEnabled=false;isHorizontalScrollBarEnabled=false;overScrollMode=View.OVER_SCROLL_NEVER;layoutManager=LinearLayoutManager(this@MainActivity);adapter=VideoAdapter(ordered,palette,settings.animations){openPlayer(it)};setBackgroundColor(bg);setHasFixedSize(true);itemAnimator=if(settings.animations)itemAnimator else null }
-                          page.addView(list,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
-                      }
-                  } else if(visibleGroups.isEmpty()) {
-                      page.addView(TextView(this).apply { text=if(videoSection==2) "Здесь появятся видео, которые ты отметил как просмотренные." else "Непросмотренных сборников пока нет.";textSize=15f;gravity=Gravity.CENTER;setTextColor(muted);setPadding(dp(28),0,dp(28),0) },LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
-                  } else {
-                      val list=RecyclerView(this).apply { isVerticalScrollBarEnabled=false;isHorizontalScrollBarEnabled=false;overScrollMode=View.OVER_SCROLL_NEVER;layoutManager=LinearLayoutManager(this@MainActivity);adapter=DayCollectionAdapter(visibleGroups,palette,settings.animations){showDayCollection(it)};setBackgroundColor(bg);setHasFixedSize(true);itemAnimator=if(settings.animations)itemAnimator else null }
-                      page.addView(list,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
-                  }
-                  replaceRoot(withBottomNav(page,SohrTab.VIDEOS))
-              }
-
           '''
-          m=m[:a]+feed+m[b:]
+          if touch_else not in s:
+              raise SystemExit('tab touch end marker not found')
+          s = s.replace(touch_else, touch_else_new, 1)
 
-          old='                    currentDay?.let { showDayCollection(it) } ?: showFeed(currentVideos)\n                    return\n'
-          new='''                    val day = currentDay
-                              if (day != null && day.videos.isNotEmpty()) showDayCollection(day) else { currentDay = null; showFeed(currentVideos) }
-                              return
-          '''
-          if old in m: m=m.replace(old,new,1)
+          # 5) Remove unreachable legacy section branch (section 0 no longer exists).
+          dead_start = s.find('        if(videoSection==0){')
+          if dead_start >= 0:
+              dead_else = s.find('        } else if(visibleGroups.isEmpty()) {', dead_start)
+              if dead_else < 0:
+                  raise SystemExit('dead section end not found')
+              s = s[:dead_start] + '        if(visibleGroups.isEmpty()) {\n' + s[dead_else + len('        } else if(visibleGroups.isEmpty()) {\n'):]
 
-          old='''            nextItem = nextItem,
-                      onPlayNext = { next -> openPlayer(next) },
-                      onBack = { onBackPressedDispatcher.onBackPressed() },
-          '''
-          new='''            nextItem = nextItem,
-                      onPlayNext = { next -> openPlayer(next) },
-                      isWatched = isVideoWatched(item.messageId),
-                      onMarkWatched = { watched ->
-                          markVideoWatched(watched.messageId)
-                          if (videoSection != 2) currentDay = currentDay?.copy(videos = currentDay?.videos?.filterNot { it.messageId == watched.messageId } ?: emptyList())
-                      },
-                      onBack = { onBackPressedDispatcher.onBackPressed() },
-          '''
-          if old not in m: raise SystemExit('player constructor call marker missing')
-          m=m.replace(old,new,1)
-
-          # Smooth both sides of screen navigation instead of snapping the old page away.
-          m=m.replace('val telegramInterpolator = android.view.animation.DecelerateInterpolator(1.5f)','val telegramInterpolator = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)',1)
-          transition_start=m.index('        val telegramInterpolator = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)',m.index('    private fun replaceRoot'))
-          transition_end=m.index('    private fun installPressAnimations',transition_start)
-          block=m[transition_start:transition_end]
-          block=block.replace('.setDuration(150L)','.setDuration(210L)').replace('dp(48).toFloat()','dp(54).toFloat()')
-          m=m[:transition_start]+block+m[transition_end:]
-
-          old='''    private val nextItem: VideoItem? = null,
-              private val onPlayNext: ((VideoItem) -> Unit)? = null,
-              private val onBack: () -> Unit,
-          '''
-          new='''    private val nextItem: VideoItem? = null,
-              private val onPlayNext: ((VideoItem) -> Unit)? = null,
-              private val isWatched: Boolean = false,
-              private val onMarkWatched: ((VideoItem) -> Unit)? = null,
-              private val onBack: () -> Unit,
-          '''
-          if old not in p: raise SystemExit('PlayerScreen constructor marker missing')
-          p=p.replace(old,new,1)
-          p=p.replace('        actionsRow = buildActions()\n','',1).replace('        root.addView(actionsRow)\n','',1)
-          p=p.replace('        times.addView(qualityButton, LinearLayout.LayoutParams(dp(62), dp(32)).apply { marginStart = dp(4) })\n','',1)
-
-          a=p.index('    private fun buildSocialActions(): LinearLayout {')
-          b=p.index('    private fun buildNextVideosBlock(): LinearLayout {',a)
-          social=r'''    private fun buildSocialActions(): LinearLayout {
-                  val row=LinearLayout(activity).apply { orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(12),dp(2),dp(12),dp(10)) }
-                  var watched=isWatched
-                  lateinit var watchedButton:TextView
-                  watchedButton=actionPill("✓  Просмотрено") {
-                      if(watched) return@actionPill
-                      ModernDialogs.showConfirm(activity,palette,"Отметить просмотренным?","Видео переместится в раздел «Просмотренное» и исчезнет из обычных сборников.","Да, просмотрено") {
-                          watched=true;onMarkWatched?.invoke(item);watchedButton.alpha=.72f
-                          watchedButton.animate().cancel();watchedButton.scaleX=.96f;watchedButton.scaleY=.96f;watchedButton.animate().scaleX(1f).scaleY(1f).setDuration(if(settings.animations)180L else 0L).start()
-                      }
-                  }
-                  if(watched) watchedButton.alpha=.72f
-                  val shareButton=actionPill("↗  Поделиться") { val send=Intent(Intent.ACTION_SEND).apply{type="text/plain";putExtra(Intent.EXTRA_SUBJECT,cleanTitle(item.title));putExtra(Intent.EXTRA_TEXT,"${cleanTitle(item.title)} • SOHR")};runCatching{activity.startActivity(Intent.createChooser(send,"Поделиться видео"))} }
-                  val downloadButton=actionPill("↓  Скачать"){enqueueDownload()}
-                  row.addView(watchedButton,LinearLayout.LayoutParams(0,dp(42),1f).apply{marginEnd=dp(5)});row.addView(shareButton,LinearLayout.LayoutParams(0,dp(42),1f).apply{marginEnd=dp(5)});row.addView(downloadButton,LinearLayout.LayoutParams(0,dp(42),1f))
-                  return row
-              }
-
-          '''
-          p=p[:a]+social+p[b:]
-
-          marker='                    val textBox = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }\n'
-          if marker not in p: raise SystemExit('next card marker missing')
-          thumb=r'''                    val thumb = ImageView(activity).apply {
-                              scaleType=ImageView.ScaleType.CENTER_CROP
-                              background=roundedInt(palette.surface,12)
-                              clipToOutline=true
-                              next.thumbnailPath?.takeIf{it.isNotBlank()}?.let{path->runCatching{BitmapFactory.decodeFile(path)}.getOrNull()?.let{setImageBitmap(it)}}
-                          }
-                          addView(thumb,LinearLayout.LayoutParams(dp(96),dp(58)).apply{marginEnd=dp(12)})
-
-          '''
-          p=p.replace(marker,thumb+marker,1)
-
-          mp.write_text(m);pp.write_text(p)
+          p.write_text(s)
           PY
           git config user.name "sohr-dev-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt
-          git commit -m "SOHR: watched library, cleaner player and smoother navigation"
+          git add native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt
+          git commit -m "SOHR 5.0: fix clipped library and harden transitions"
           git push
