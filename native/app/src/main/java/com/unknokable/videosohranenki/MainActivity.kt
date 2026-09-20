@@ -829,55 +829,401 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showCodeLogin(state: TdApi.AuthorizationStateWaitCode) {
+        startupPhase = false
+        startupStatusView = null
+
         val info = state.codeInfo
         val expected = requestedPhoneNumber
         val actual = normalizePhone(info.phoneNumber)
         if (!expected.isNullOrBlank() && actual.isNotBlank() && normalizePhone(expected) != actual) {
-            authErrorView?.apply {
-                text = "Telegram ждёт код для другого номера. Авторизация будет сброшена."
-                visibility = View.VISIBLE
-            }
             resetTelegramAuthorization("Номер авторизации не совпал с введённым")
             return
         }
+
         val delivery = authCodeDeliveryLabel(info.type?.javaClass?.simpleName.orEmpty())
         val nextDelivery = authCodeDeliveryLabel(info.nextType?.javaClass?.simpleName.orEmpty())
         val timeout = info.timeout.coerceAtLeast(0)
+        val codeLength = runCatching {
+            info.type?.javaClass?.getField("length")?.getInt(info.type)
+        }.getOrNull()?.coerceIn(4, 8) ?: 5
 
-        val extra = buildString {
-            append("Код отправлен: ")
-            append(delivery)
-            if (info.phoneNumber.isNotBlank()) append("\nНомер: ${info.phoneNumber}")
-            if (timeout > 0 && nextDelivery.isNotBlank()) {
-                append("\nПовторная отправка через $timeout сек. Следующий способ: $nextDelivery.")
-            } else if (nextDelivery.isNotBlank()) {
-                append("\nМожно запросить код ещё раз: $nextDelivery.")
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(18), dp(18), dp(18), dp(24))
+            setBackgroundColor(bg)
+        }
+
+        val back = ImageButton(this).apply {
+            setImageResource(R.drawable.ic_back)
+            imageTintList = ColorStateList.valueOf(this@MainActivity.text)
+            background = roundedBg(palette.surfaceAlt, 22)
+            setPadding(dp(11), dp(11), dp(11), dp(11))
+            contentDescription = "Назад"
+            setOnClickListener {
+                animatePress(this)
+                resetTelegramAuthorization("Смена номера")
             }
         }
 
-        showAuthForm(
-            title = "Код подтверждения",
-            subtitle = extra,
-            hint = "Код",
-            inputType = InputType.TYPE_CLASS_NUMBER,
-            button = "Продолжить",
-            footer = "Если код не появился, сначала проверь официальный Telegram на других устройствах. Затем попробуй «Отправить код ещё раз».",
-            showBack = true,
-            secondaryButton = "Отправить код ещё раз",
-            onBack = { resetTelegramAuthorization("Смена номера") },
-            onSecondary = {
-                launchRequest {
-                    client.send(TdApi.ResendAuthenticationCode(null))
+        val backRow = FrameLayout(this).apply {
+            addView(
+                back,
+                FrameLayout.LayoutParams(dp(44), dp(44), Gravity.START)
+            )
+        }
+        container.addView(
+            backRow,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(52)
+            )
+        )
+
+        val artwork = ImageView(this).apply {
+            setImageResource(R.drawable.ic_auth_telegram_code)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            alpha = 0f
+            scaleX = 0.9f
+            scaleY = 0.9f
+        }
+        container.addView(
+            artwork,
+            LinearLayout.LayoutParams(dp(112), dp(112)).apply {
+                topMargin = dp(8)
+                gravity = Gravity.CENTER_HORIZONTAL
+            }
+        )
+
+        val title = TextView(this).apply {
+            text = "Проверь Telegram"
+            textSize = 27f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+            setPadding(0, dp(16), 0, 0)
+        }
+
+        val subtitle = TextView(this).apply {
+            text = buildString {
+                append("Введи код, который пришёл ")
+                append(delivery)
+                if (info.phoneNumber.isNotBlank()) {
+                    append("\n")
+                    append(info.phoneNumber)
                 }
             }
-        ) { value ->
-            val code = value.trim()
-            if (code.length < 3 || code.any { !it.isDigit() }) {
-                throw IllegalArgumentException("Проверь код подтверждения")
-            }
-            client.send(TdApi.CheckAuthenticationCode(code))
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setTextColor(muted)
+            setLineSpacing(0f, 1.12f)
+            setPadding(dp(12), dp(8), dp(12), dp(22))
         }
+
+        container.addView(title)
+        container.addView(
+            subtitle,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        val codeWrap = FrameLayout(this).apply {
+            clipChildren = false
+            clipToPadding = false
+        }
+
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setSingleLine(true)
+            isCursorVisible = false
+            setTextColor(Color.TRANSPARENT)
+            setHintTextColor(Color.TRANSPARENT)
+            background = null
+            alpha = 0.02f
+            filters = arrayOf(android.text.InputFilter.LengthFilter(codeLength))
+            contentDescription = "Код подтверждения"
+        }
+
+        val cellsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            isClickable = true
+            isFocusable = true
+        }
+
+        val cells = MutableList(codeLength) { index ->
+            TextView(this).apply {
+                textSize = 23f
+                gravity = Gravity.CENTER
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(this@MainActivity.text)
+                background = codeCellDrawable(active = index == 0, filled = false)
+                scaleX = if (index == 0) 1f else 0.98f
+                scaleY = if (index == 0) 1f else 0.98f
+            }.also { cell ->
+                cellsRow.addView(
+                    cell,
+                    LinearLayout.LayoutParams(0, dp(58), 1f).apply {
+                        if (index > 0) marginStart = dp(8)
+                    }
+                )
+            }
+        }
+
+        fun focusKeyboard() {
+            input.requestFocus()
+            input.postDelayed({
+                val imm = getSystemService(INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+                imm?.showSoftInput(input, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+            }, 80L)
+        }
+
+        cellsRow.setOnClickListener {
+            animatePress(cellsRow)
+            focusKeyboard()
+        }
+
+        codeWrap.addView(
+            input,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(58)
+            )
+        )
+        codeWrap.addView(
+            cellsRow,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(58)
+            )
+        )
+
+        container.addView(
+            codeWrap,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(58)
+            ).apply {
+                marginStart = dp(12)
+                marginEnd = dp(12)
+            }
+        )
+
+        val error = TextView(this).apply {
+            textSize = 12.5f
+            gravity = Gravity.CENTER
+            setTextColor(Color.parseColor("#FF6B81"))
+            visibility = View.GONE
+            setPadding(dp(8), dp(10), dp(8), 0)
+        }
+        authErrorView = error
+        container.addView(
+            error,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        val autoHint = TextView(this).apply {
+            text = "Код подтвердится автоматически"
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setTextColor(muted)
+            setPadding(0, dp(12), 0, 0)
+        }
+        container.addView(autoHint)
+
+        val help = TextView(this).apply {
+            text = "Не пришёл код?"
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(purple)
+            setPadding(dp(12), dp(18), dp(12), dp(12))
+            setOnClickListener {
+                animatePress(this)
+                val helpText = buildString {
+                    append("Сначала проверь официальный Telegram на других устройствах и уведомления. ")
+                    append("Текущий способ доставки: ")
+                    append(delivery)
+                    append(".")
+                    if (timeout > 0) {
+                        append("\n\nПовторный запрос обычно станет доступен примерно через ")
+                        append(timeout)
+                        append(" сек.")
+                    }
+                    if (nextDelivery.isNotBlank()) {
+                        append("\nСледующий способ: ")
+                        append(nextDelivery)
+                        append(".")
+                    }
+                }
+                ModernDialogs.showConfirm(
+                    context = this@MainActivity,
+                    palette = palette,
+                    title = "Не пришёл код?",
+                    message = helpText,
+                    confirm = "Отправить ещё раз"
+                ) {
+                    launchRequest {
+                        client.send(TdApi.ResendAuthenticationCode(null))
+                    }
+                }
+            }
+        }
+        container.addView(help)
+
+        var previousLength = 0
+        var submitting = false
+
+        fun renderCode(value: String, errorState: Boolean = false) {
+            val digits = value.filter { it.isDigit() }.take(codeLength)
+            cells.forEachIndexed { index, cell ->
+                val filled = index < digits.length
+                val active = index == digits.length.coerceAtMost(codeLength - 1) && digits.length < codeLength
+                cell.text = if (filled) digits[index].toString() else ""
+                cell.background = codeCellDrawable(active, filled, errorState)
+
+                if (filled && index >= previousLength && settings.animations) {
+                    cell.animate().cancel()
+                    cell.scaleX = 0.84f
+                    cell.scaleY = 0.84f
+                    cell.alpha = 0.45f
+                    cell.animate()
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .alpha(1f)
+                        .setDuration(165L)
+                        .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                        .start()
+                } else {
+                    cell.alpha = 1f
+                    if (!filled && !active) {
+                        cell.scaleX = 0.98f
+                        cell.scaleY = 0.98f
+                    } else {
+                        cell.scaleX = 1f
+                        cell.scaleY = 1f
+                    }
+                }
+            }
+            previousLength = digits.length
+        }
+
+        fun submitCode(code: String) {
+            if (submitting || code.length != codeLength) return
+            submitting = true
+            error.visibility = View.GONE
+            cells.forEach { it.alpha = 0.72f }
+
+            lifecycleScope.launch {
+                try {
+                    client.send(TdApi.CheckAuthenticationCode(code))
+                } catch (e: Exception) {
+                    submitting = false
+                    val message = friendlyAuthError(e.message)
+                    error.text = message
+                    error.visibility = View.VISIBLE
+                    cells.forEach { it.alpha = 1f }
+                    renderCode(code, errorState = true)
+
+                    codeWrap.animate().cancel()
+                    codeWrap.animate()
+                        .translationX(dp(7).toFloat())
+                        .setDuration(55L)
+                        .withEndAction {
+                            codeWrap.animate()
+                                .translationX(-dp(7).toFloat())
+                                .setDuration(70L)
+                                .withEndAction {
+                                    codeWrap.animate()
+                                        .translationX(0f)
+                                        .setDuration(70L)
+                                        .start()
+                                }
+                                .start()
+                        }
+                        .start()
+                }
+            }
+        }
+
+        input.addTextChangedListener(object : TextWatcher {
+            private var editing = false
+
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+
+            override fun afterTextChanged(s: Editable?) {
+                if (editing) return
+                val raw = s?.toString().orEmpty()
+                val digits = raw.filter { it.isDigit() }.take(codeLength)
+                if (digits != raw) {
+                    editing = true
+                    input.setText(digits)
+                    input.setSelection(digits.length)
+                    editing = false
+                }
+
+                error.visibility = View.GONE
+                renderCode(digits)
+
+                if (digits.length == codeLength) {
+                    input.postDelayed({ submitCode(digits) }, 120L)
+                }
+            }
+        })
+
+        replaceRoot(container)
+
+        if (settings.animations) {
+            artwork.animate()
+                .alpha(1f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(300L)
+                .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                .start()
+
+            title.alpha = 0f
+            subtitle.alpha = 0f
+            codeWrap.alpha = 0f
+            codeWrap.translationY = dp(10).toFloat()
+
+            title.animate().alpha(1f).setStartDelay(70L).setDuration(220L).start()
+            subtitle.animate().alpha(1f).setStartDelay(110L).setDuration(220L).start()
+            codeWrap.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setStartDelay(140L)
+                .setDuration(260L)
+                .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                .start()
+        } else {
+            artwork.alpha = 1f
+            artwork.scaleX = 1f
+            artwork.scaleY = 1f
+        }
+
+        focusKeyboard()
     }
+
+    private fun codeCellDrawable(active: Boolean, filled: Boolean, error: Boolean = false): android.graphics.drawable.GradientDrawable =
+        android.graphics.drawable.GradientDrawable().apply {
+            setColor(palette.surfaceAlt)
+            cornerRadius = dp(14).toFloat()
+            val strokeColor = when {
+                error -> Color.parseColor("#FF6B81")
+                active -> purple
+                filled -> Color.argb(170, Color.red(purple), Color.green(purple), Color.blue(purple))
+                else -> palette.stroke
+            }
+            setStroke(dp(if (active || error) 2 else 1), strokeColor)
+        }
 
     private fun showEmailAddressLogin() {
         showAuthForm(
