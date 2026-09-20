@@ -16,6 +16,7 @@ import android.text.TextWatcher
 import android.text.method.HideReturnsTransformationMethod
 import android.text.method.PasswordTransformationMethod
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewAnimationUtils
@@ -2434,7 +2435,7 @@ class MainActivity : AppCompatActivity() {
 
         settings.lightTheme = light
         val newSystemColor = bg
-        animateSystemChrome(oldSystemColor, newSystemColor, light, 230L)
+        animateSystemChrome(oldSystemColor, newSystemColor, light, 300L)
 
         val nextContent = SettingsScreen(
             this,
@@ -2503,6 +2504,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         nextShell.visibility = View.INVISIBLE
+        nextShell.alpha = 0.94f
+        nextShell.scaleX = 0.995f
+        nextShell.scaleY = 0.995f
         root.addView(
             nextShell,
             FrameLayout.LayoutParams(
@@ -2521,6 +2525,17 @@ class MainActivity : AppCompatActivity() {
 
         nextShell.post {
             nextShell.visibility = View.VISIBLE
+            nextShell.animate()
+                .alpha(1f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(260L)
+                .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                .start()
+            oldShell?.animate()
+                ?.alpha(0.88f)
+                ?.setDuration(220L)
+                ?.start()
 
             val maxX = maxOf(cx, nextShell.width - cx).toDouble()
             val maxY = maxOf(cy, nextShell.height - cy).toDouble()
@@ -2533,7 +2548,7 @@ class MainActivity : AppCompatActivity() {
                 0f,
                 finalRadius
             ).apply {
-                duration = 230L
+                duration = 320L
                 interpolator = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
                 addListener(object : android.animation.AnimatorListenerAdapter() {
                     override fun onAnimationEnd(animation: android.animation.Animator) {
@@ -2890,11 +2905,20 @@ class MainActivity : AppCompatActivity() {
                 old.animate().cancel()
                 content.animate().cancel()
 
+                old.cameraDistance = dp(1200).toFloat()
+                content.cameraDistance = dp(1200).toFloat()
+                old.pivotX = if (slide >= 0) old.width.toFloat() else 0f
+                content.pivotX = if (slide >= 0) 0f else content.width.toFloat()
+                content.rotationY = if (slide != 0) 2.2f * slide else 0.8f * slide
+
                 old.animate()
                     .alpha(0f)
-                    .translationX(if (slide != 0) -dp(7).toFloat() * slide else 0f)
+                    .translationX(if (slide != 0) -dp(10).toFloat() * slide else 0f)
                     .translationY(if (slide == 0) -dp(2).toFloat() else 0f)
-                    .setDuration(if (slide != 0) 115L else 95L)
+                    .rotationY(if (slide != 0) -2.0f * slide else 0f)
+                    .scaleX(0.992f)
+                    .scaleY(0.992f)
+                    .setDuration(if (slide != 0) 145L else 110L)
                     .setInterpolator(android.view.animation.PathInterpolator(0.4f, 0f, 1f, 1f))
                     .start()
 
@@ -2902,9 +2926,15 @@ class MainActivity : AppCompatActivity() {
                     .alpha(1f)
                     .translationX(0f)
                     .translationY(0f)
-                    .setDuration(if (slide != 0) 190L else 155L)
+                    .rotationY(0f)
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(if (slide != 0) 215L else 175L)
                     .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
                     .withEndAction {
+                        content.rotationY = 0f
+                        content.scaleX = 1f
+                        content.scaleY = 1f
                         if (old.parent === host) host.removeView(old)
                     }
                     .start()
@@ -3199,6 +3229,7 @@ class MainActivity : AppCompatActivity() {
             view.alpha = 1f
             view.translationX = 0f
             view.translationY = 0f
+            installPressAnimations(view)
             root.addView(
                 view,
                 FrameLayout.LayoutParams(
@@ -3214,6 +3245,7 @@ class MainActivity : AppCompatActivity() {
         view.translationX = if (slide != 0) dp(16).toFloat() * slide else 0f
         view.translationY = if (slide == 0) dp(5).toFloat() else 0f
 
+        installPressAnimations(view)
         root.addView(
             view,
             FrameLayout.LayoutParams(
@@ -3225,11 +3257,22 @@ class MainActivity : AppCompatActivity() {
         old.animate().cancel()
         view.animate().cancel()
 
+        old.cameraDistance = dp(1200).toFloat()
+        view.cameraDistance = dp(1200).toFloat()
+        old.pivotX = if (slide >= 0) old.width.toFloat() else 0f
+        view.pivotX = if (slide >= 0) 0f else view.width.toFloat()
+        view.rotationY = if (slide != 0) 2.4f * slide else 0f
+        view.scaleX = 0.994f
+        view.scaleY = 0.994f
+
         old.animate()
             .alpha(0f)
-            .translationX(if (slide != 0) -dp(9).toFloat() * slide else 0f)
+            .translationX(if (slide != 0) -dp(12).toFloat() * slide else 0f)
             .translationY(if (slide == 0) -dp(3).toFloat() else 0f)
-            .setDuration(if (slide != 0) 115L else 95L)
+            .rotationY(if (slide != 0) -2.2f * slide else 0f)
+            .scaleX(0.99f)
+            .scaleY(0.99f)
+            .setDuration(if (slide != 0) 150L else 115L)
             .setInterpolator(android.view.animation.PathInterpolator(0.4f, 0f, 1f, 1f))
             .start()
 
@@ -3237,12 +3280,64 @@ class MainActivity : AppCompatActivity() {
             .alpha(1f)
             .translationX(0f)
             .translationY(0f)
-            .setDuration(if (slide != 0) 195L else 160L)
+            .rotationY(0f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(if (slide != 0) 225L else 180L)
             .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
             .withEndAction {
+                view.rotationY = 0f
+                view.scaleX = 1f
+                view.scaleY = 1f
                 if (old.parent === root) root.removeView(old)
             }
             .start()
+    }
+
+    private fun installPressAnimations(view: View) {
+        if (!settings.animations) return
+
+        fun attach(target: View) {
+            val buttonLike =
+                target is Button ||
+                target is ImageButton ||
+                (target is TextView && target.isClickable) ||
+                (target is LinearLayout && target.isClickable)
+
+            if (buttonLike && target !is SohrBottomNavView) {
+                target.setOnTouchListener { v, event ->
+                    when (event.actionMasked) {
+                        MotionEvent.ACTION_DOWN -> {
+                            v.animate().cancel()
+                            v.animate()
+                                .scaleX(0.972f)
+                                .scaleY(0.972f)
+                                .alpha(0.92f)
+                                .setDuration(55L)
+                                .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                                .start()
+                        }
+                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                            v.animate().cancel()
+                            v.animate()
+                                .scaleX(1f)
+                                .scaleY(1f)
+                                .alpha(1f)
+                                .setDuration(115L)
+                                .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                                .start()
+                        }
+                    }
+                    false
+                }
+            }
+
+            if (target is ViewGroup) {
+                for (i in 0 until target.childCount) attach(target.getChildAt(i))
+            }
+        }
+
+        attach(view)
     }
 
     private fun roundedBg(color: Int, radiusDp: Int): android.graphics.drawable.GradientDrawable =
