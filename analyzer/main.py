@@ -665,7 +665,13 @@ def self_test() -> int:
         STATE.analyzer.ocr._ensure()
         return 0
     except Exception:
-        STATE.write_error(traceback.format_exc())
+        trace = traceback.format_exc()
+        STATE.write_error(trace)
+        try:
+            sys.stderr.write(trace)
+            sys.stderr.flush()
+        except Exception:
+            pass
         return 1
 
 
