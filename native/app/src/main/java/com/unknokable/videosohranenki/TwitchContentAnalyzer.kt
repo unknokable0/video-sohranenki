@@ -3,6 +3,7 @@ package com.unknokable.videosohranenki
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.os.SystemClock
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.label.ImageLabeling
 import com.google.mlkit.vision.label.defaults.ImageLabelerOptions
@@ -198,6 +199,12 @@ object TwitchContentAnalyzer {
         val title: String?
     )
 
+    private data class QuickBoundaryResult(
+        val startSeconds: Int,
+        val endSeconds: Int,
+        val title: String?
+    )
+
     private suspend fun refineWithRealHlsFrames(
         context: Context,
         videoId: String,
@@ -210,57 +217,61 @@ object TwitchContentAnalyzer {
         }
         if (watchIndexes.isEmpty()) return chapters
 
-        onProgress(92, "Уточняем таймкоды по настоящему видео…")
-        val hlsUrl = TwitchVodResolver.resolve(videoId)
+        onProgress(92, "Быстро уточняем границы роликов…")
+
+        // This stage is optional precision, never a requirement for a result.
+        // If Twitch/HLS is slow, the already-computed storyboard chapters win.
+        val hlsUrl = runCatching {
+            TwitchVodResolver.resolve(
+                videoId = videoId,
+                connectTimeoutMs = 2_500,
+                readTimeoutMs = 3_200
+            )
+        }.getOrNull() ?: return chapters
+
+        val deadline = SystemClock.elapsedRealtime() + 7_500L
         val refiner = TwitchBoundaryRefiner(context, hlsUrl)
         val out = chapters.toMutableList()
 
         try {
             for ((position, chapterIndex) in watchIndexes.withIndex()) {
                 coroutineContext.ensureActive()
+                if (SystemClock.elapsedRealtime() >= deadline) break
+
                 val chapter = out[chapterIndex]
-
-                val preciseStart = refineStartBoundary(
+                val refined = quickRefineChapter(
                     refiner = refiner,
-                    coarseStart = chapter.startSeconds,
-                    coarseEnd = chapter.endSeconds
+                    chapter = chapter,
+                    durationSeconds = durationSeconds,
+                    deadlineMs = deadline
                 )
 
-                val preciseEnd = refineEndBoundary(
-                    refiner = refiner,
-                    refinedStart = preciseStart,
-                    coarseEnd = chapter.endSeconds,
-                    durationSeconds = durationSeconds
-                )
-
-                val betterTitle = if (chapter.title == "Смотрит видео") {
-                    findTitleNearBoundary(
-                        refiner = refiner,
-                        startSeconds = preciseStart,
-                        endSeconds = minOf(preciseEnd, preciseStart + 45)
-                    )
-                } else {
-                    null
-                }
+                val betterTitle = refined.title
+                    ?.takeIf { chapter.title == "Смотрит видео" }
 
                 out[chapterIndex] = chapter.copy(
-                    startSeconds = preciseStart,
-                    endSeconds = preciseEnd.coerceAtLeast(preciseStart + 1),
+                    startSeconds = refined.startSeconds,
+                    endSeconds = refined.endSeconds
+                        .coerceAtLeast(refined.startSeconds + 1),
                     title = betterTitle?.let { "Смотрит: " + it } ?: chapter.title,
-                    detail = if (betterTitle != null) {
-                        "Точная HLS-граница • название найдено в начале ролика"
-                    } else {
-                        "Точная HLS-проверка начала и конца"
+                    detail = when {
+                        betterTitle != null ->
+                            "Быстрая HLS-проверка • название найдено у начала ролика"
+                        refined.startSeconds != chapter.startSeconds ||
+                            refined.endSeconds != chapter.endSeconds ->
+                            "Быстрая HLS-проверка границ"
+                        else ->
+                            chapter.detail
                     },
                     confidence = if (betterTitle != null) {
                         max(chapter.confidence, 94)
                     } else {
-                        max(chapter.confidence, 84)
+                        chapter.confidence
                     }
                 )
 
                 val percent = 92 + (((position + 1) * 7) / max(1, watchIndexes.size))
-                onProgress(percent.coerceAtMost(99), "Уточняем начало и конец роликов…")
+                onProgress(percent.coerceAtMost(99), "Проверяем начало и конец роликов…")
             }
         } finally {
             refiner.close()
@@ -271,166 +282,113 @@ object TwitchContentAnalyzer {
             .sortedBy { it.startSeconds }
     }
 
-    private suspend fun refineStartBoundary(
+    private suspend fun quickRefineChapter(
         refiner: TwitchBoundaryRefiner,
-        coarseStart: Int,
-        coarseEnd: Int
-    ): Int {
-        val windowStart = (coarseStart - 90).coerceAtLeast(0)
-        val windowEnd = minOf(coarseEnd - 15, coarseStart + 70)
-        if (windowEnd <= windowStart) return coarseStart
+        chapter: SmartChapter,
+        durationSeconds: Int,
+        deadlineMs: Long
+    ): QuickBoundaryResult {
+        var start = chapter.startSeconds
+        var end = chapter.endSeconds
+        var bestTitle: String? = null
 
-        val coarseTimes = generateSequence(windowStart) { it + 6 }
-            .takeWhile { it <= windowEnd }
-            .toList()
+        suspend fun check(time: Int): ExactFrameCheck? {
+            if (SystemClock.elapsedRealtime() >= deadlineMs) return null
+            return exactFrameCheck(
+                refiner = refiner,
+                timeSeconds = time.coerceIn(0, durationSeconds)
+            )
+        }
 
-        var previousPositive = false
-        var firstPositiveOfRun: Int? = null
+        // First pass: two inexpensive probes per edge for every chapter.
+        // Move backwards if real HLS already shows the video before the
+        // storyboard boundary; extend forwards if it is still playing.
+        val startEarlyTime = (chapter.startSeconds - 10).coerceAtLeast(0)
+        val startEarly = check(startEarlyTime)
+        if (startEarly?.isVideo == true) {
+            start = startEarlyTime
+            bestTitle = startEarly.title
+        } else {
+            val startAt = check(chapter.startSeconds)
+            if (startAt?.isVideo == true) {
+                bestTitle = startAt.title
+            }
+        }
 
-        for (time in coarseTimes) {
-            val check = exactFrameCheck(refiner, time)
-            if (check.isVideo) {
-                if (previousPositive) {
-                    val rough = firstPositiveOfRun ?: (time - 6).coerceAtLeast(windowStart)
-                    val fineStart = (rough - 6).coerceAtLeast(windowStart)
-                    var best = rough
-                    var fine = fineStart
-                    var consecutive = 0
-
-                    while (fine <= rough + 6) {
-                        val fineCheck = exactFrameCheck(refiner, fine)
-                        if (fineCheck.isVideo) {
-                            consecutive += 1
-                            if (consecutive >= 2) {
-                                best = (fine - 2).coerceAtLeast(fineStart)
-                                break
-                            }
-                        } else {
-                            consecutive = 0
-                        }
-                        fine += 2
-                    }
-                    return best
-                }
-                if (!previousPositive) firstPositiveOfRun = time
-                previousPositive = true
+        if (SystemClock.elapsedRealtime() < deadlineMs) {
+            val endAfterTime = (chapter.endSeconds + 10)
+                .coerceAtMost(durationSeconds)
+            val endAfter = check(endAfterTime)
+            if (endAfter?.isVideo == true) {
+                end = endAfterTime
             } else {
-                previousPositive = false
-                firstPositiveOfRun = null
-            }
-        }
-
-        return coarseStart
-    }
-
-    private suspend fun refineEndBoundary(
-        refiner: TwitchBoundaryRefiner,
-        refinedStart: Int,
-        coarseEnd: Int,
-        durationSeconds: Int
-    ): Int {
-        val windowStart = max(refinedStart + 20, coarseEnd - 70)
-        val windowEnd = minOf(durationSeconds, coarseEnd + 90)
-        if (windowEnd <= windowStart) return coarseEnd
-
-        var sawVideo = false
-        var negativeRunStart: Int? = null
-        var consecutiveNegative = 0
-        var time = windowStart
-
-        while (time <= windowEnd) {
-            val check = exactFrameCheck(refiner, time)
-            if (check.isVideo) {
-                sawVideo = true
-                consecutiveNegative = 0
-                negativeRunStart = null
-            } else if (sawVideo) {
-                if (negativeRunStart == null) negativeRunStart = time
-                consecutiveNegative += 1
-
-                if (consecutiveNegative >= 2) {
-                    val rough = negativeRunStart ?: time
-                    val fineStart = (rough - 6).coerceAtLeast(refinedStart + 10)
-                    val fineEnd = (rough + 6).coerceAtMost(durationSeconds)
-                    var lastVideo = fineStart
-                    var fine = fineStart
-
-                    while (fine <= fineEnd) {
-                        val fineCheck = exactFrameCheck(refiner, fine)
-                        if (fineCheck.isVideo) lastVideo = fine
-                        fine += 2
-                    }
-
-                    return (lastVideo + 2)
-                        .coerceAtMost(durationSeconds)
-                        .coerceAtLeast(refinedStart + 10)
+                val endBeforeTime = (chapter.endSeconds - 8)
+                    .coerceAtLeast(start + 1)
+                val endBefore = check(endBeforeTime)
+                if (endBefore?.isVideo == false) {
+                    end = endBeforeTime
                 }
             }
-            time += 6
         }
 
-        return coarseEnd.coerceAtMost(durationSeconds)
-    }
-
-    private suspend fun findTitleNearBoundary(
-        refiner: TwitchBoundaryRefiner,
-        startSeconds: Int,
-        endSeconds: Int
-    ): String? {
-        if (endSeconds <= startSeconds) return null
-
-        val candidates = mutableListOf<Pair<String, Int>>()
-        var time = startSeconds
-
-        while (time <= endSeconds) {
-            val frame = refiner.frameAt(time * 1000L)
-            if (frame != null) {
-                try {
-                    val crop = mainAnalysisCrop(frame)
-                    try {
-                        val ocr = recognize(crop)
-                        val title = ocr.title?.takeIf(::isStrongTitle)
-                        if (title != null) {
-                            candidates += title to ocr.confidence
-                        }
-                    } finally {
-                        if (crop !== frame && !crop.isRecycled) crop.recycle()
-                    }
-                } finally {
-                    if (!frame.isRecycled) frame.recycle()
-                }
+        // One extra backwards probe only when it is cheap and useful.
+        if (
+            start < chapter.startSeconds &&
+            SystemClock.elapsedRealtime() + 900L < deadlineMs
+        ) {
+            val fartherTime = (start - 10).coerceAtLeast(0)
+            val farther = check(fartherTime)
+            if (farther?.isVideo == true) {
+                start = fartherTime
+                if (bestTitle == null) bestTitle = farther.title
             }
-            time += 5
         }
 
-        return candidates.maxByOrNull { it.second }?.first
+        return QuickBoundaryResult(
+            startSeconds = start,
+            endSeconds = end.coerceAtMost(durationSeconds),
+            title = bestTitle
+        )
     }
 
     private suspend fun exactFrameCheck(
         refiner: TwitchBoundaryRefiner,
         timeSeconds: Int
     ): ExactFrameCheck {
-        val frame = refiner.frameAt(timeSeconds.coerceAtLeast(0) * 1000L)
-            ?: return ExactFrameCheck(false, null)
+        val frame = refiner.frameAt(
+            positionMs = timeSeconds.coerceAtLeast(0) * 1000L,
+            timeoutMs = 850L
+        ) ?: return ExactFrameCheck(false, null)
 
         return try {
             val crop = mainAnalysisCrop(frame)
             try {
                 val ocr = recognize(crop)
-                val labels = recognizeLabels(crop)
-                val score = videoEvidenceScore(ocr, labels, 0)
-                val labelText = labels.joinToString(" ") { it.first.lowercase() }
-                val strongVideoLabel = listOf(
-                    "movie", "film", "video", "television", "multimedia"
-                ).any { it in labelText }
+                val strongTextEvidence =
+                    ocr.youtubeLike ||
+                    ocr.playerLike ||
+                    (ocr.title != null && ocr.confidence >= 84)
 
-                ExactFrameCheck(
-                    isVideo = score >= 4 ||
-                        ocr.youtubeLike ||
-                        ocr.playerLike ||
-                        (strongVideoLabel && labels.firstOrNull()?.second?.let { it >= 0.62f } == true),
-                    title = ocr.title?.takeIf(::isStrongTitle)
-                )
+                if (strongTextEvidence) {
+                    ExactFrameCheck(
+                        isVideo = true,
+                        title = ocr.title?.takeIf(::isStrongTitle)
+                    )
+                } else {
+                    // Image labeling is the slower second check, so only run
+                    // it when OCR/player chrome did not already answer.
+                    val labels = recognizeLabels(crop)
+                    val labelText = labels.joinToString(" ") { it.first.lowercase() }
+                    val strongVideoLabel = listOf(
+                        "movie", "film", "video", "television", "multimedia"
+                    ).any { it in labelText }
+
+                    ExactFrameCheck(
+                        isVideo = strongVideoLabel &&
+                            labels.firstOrNull()?.second?.let { it >= 0.60f } == true,
+                        title = ocr.title?.takeIf(::isStrongTitle)
+                    )
+                }
             } finally {
                 if (crop !== frame && !crop.isRecycled) crop.recycle()
             }
@@ -735,7 +693,7 @@ object TwitchContentAnalyzer {
         // Safety pass across the *entire* chat-like timeline. It prevents a
         // quiet/static fullscreen video from being missed just because motion
         // detection had no strong edge.
-        val stride = max(1, timeline.size / 600)
+        val stride = max(1, timeline.size / 820)
         var i = 0
         while (i < timeline.size) {
             if (isChatLike(markerAt(markers, timeline[i].timeSec))) {
@@ -753,7 +711,7 @@ object TwitchContentAnalyzer {
             .filter { it in timeline.indices }
             .distinct()
             .sorted()
-            .take(700)
+            .take(900)
     }
 
     private suspend fun analyzeProbes(
@@ -873,7 +831,9 @@ object TwitchContentAnalyzer {
 
             if (strongEvidence[index]) return true
             val motion = motionSignal(index)
-            return (moderateEvidence[index] && motion) || motion
+            // Beta 1.0.3: once OCR/player/image evidence says this is a video,
+            // do not require motion too. Quiet/fullscreen videos are still videos.
+            return moderateEvidence[index] || motion
         }
 
         data class RawRange(val startIndex: Int, val endIndex: Int)

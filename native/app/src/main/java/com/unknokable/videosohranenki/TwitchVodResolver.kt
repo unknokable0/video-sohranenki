@@ -19,7 +19,11 @@ object TwitchVodResolver {
             "streamPlaybackAccessToken(channelName: \$login, params: {platform: \"web\", playerBackend: \"mediaplayer\", playerType: \$playerType}) @include(if: \$isLive) { value signature __typename } " +
             "videoPlaybackAccessToken(id: \$vodID, params: {platform: \"web\", playerBackend: \"mediaplayer\", playerType: \$playerType}) @include(if: \$isVod) { value signature __typename } }"
 
-    suspend fun resolve(videoId: String): String = withContext(Dispatchers.IO) {
+    suspend fun resolve(
+        videoId: String,
+        connectTimeoutMs: Int = 10_000,
+        readTimeoutMs: Int = 15_000
+    ): String = withContext(Dispatchers.IO) {
         require(videoId.all(Char::isDigit) && videoId.isNotBlank()) { "Некорректный Twitch Video ID" }
 
         val payload = JSONObject().apply {
@@ -36,8 +40,8 @@ object TwitchVodResolver {
 
         val connection = (URL(GQL_URL).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
-            connectTimeout = 10_000
-            readTimeout = 15_000
+            connectTimeout = connectTimeoutMs.coerceIn(1_500, 15_000)
+            readTimeout = readTimeoutMs.coerceIn(2_000, 20_000)
             doOutput = true
             setRequestProperty("Client-ID", TWITCH_WEB_CLIENT_ID)
             setRequestProperty("Content-Type", "application/json")

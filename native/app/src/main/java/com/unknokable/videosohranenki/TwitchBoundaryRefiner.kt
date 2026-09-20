@@ -38,25 +38,46 @@ class TwitchBoundaryRefiner(
     private var extractor: FrameExtractor? = null
     private var closed = false
 
-    suspend fun frameAt(positionMs: Long): Bitmap? =
-        suspendCancellableCoroutine { continuation ->
-            if (closed) {
-                continuation.resume(null)
-                return@suspendCancellableCoroutine
-            }
+    suspend fun frameAt(
+        positionMs: Long,
+        timeoutMs: Long = 850L
+    ): Bitmap? = suspendCancellableCoroutine { continuation ->
+        if (closed) {
+            continuation.resume(null)
+            return@suspendCancellableCoroutine
+        }
 
-            handler.post {
-                if (closed || !continuation.isActive) return@post
+        handler.post {
+            if (closed || !continuation.isActive) return@post
 
-                try {
-                    val activeExtractor = extractor ?: FrameExtractor.Builder(
-                        appContext,
-                        mediaItem
-                    ).build().also { extractor = it }
+            try {
+                val activeExtractor = extractor ?: FrameExtractor.Builder(
+                    appContext,
+                    mediaItem
+                ).build().also { extractor = it }
 
-                    val future = activeExtractor.getFrame(positionMs.coerceAtLeast(0L))
-                    future.addListener(
-                        {
+                val future = activeExtractor.getFrame(positionMs.coerceAtLeast(0L))
+                val timeout = Runnable {
+                    if (continuation.isActive) {
+                        future.cancel(true)
+                        continuation.resume(null)
+                    }
+                }
+
+                handler.postDelayed(timeout, timeoutMs.coerceIn(250L, 2_000L))
+
+                continuation.invokeOnCancellation {
+                    handler.post {
+                        handler.removeCallbacks(timeout)
+                        future.cancel(true)
+                    }
+                }
+
+                future.addListener(
+                    {
+                        handler.removeCallbacks(timeout)
+
+                        if (continuation.isActive) {
                             try {
                                 val frame = future.get()
                                 val source = frame.bitmap
@@ -64,22 +85,19 @@ class TwitchBoundaryRefiner(
                                     source.copy(Bitmap.Config.ARGB_8888, false)
                                 }.getOrNull()
 
-                                if (continuation.isActive) {
-                                    continuation.resume(safeCopy ?: source)
-                                } else {
-                                    safeCopy?.takeIf { it !== source && !it.isRecycled }?.recycle()
-                                }
+                                continuation.resume(safeCopy ?: source)
                             } catch (_: Throwable) {
                                 if (continuation.isActive) continuation.resume(null)
                             }
-                        },
-                        callbackExecutor
-                    )
-                } catch (_: Throwable) {
-                    if (continuation.isActive) continuation.resume(null)
-                }
+                        }
+                    },
+                    callbackExecutor
+                )
+            } catch (_: Throwable) {
+                if (continuation.isActive) continuation.resume(null)
             }
         }
+    }
 
     override fun close() {
         if (closed) return
