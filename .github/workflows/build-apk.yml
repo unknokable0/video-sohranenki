@@ -8,6 +8,9 @@ on:
       - ".github/workflows/build-apk.yml"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -35,12 +38,45 @@ jobs:
         run: gradle -p native :app:assembleDebug --no-daemon --stacktrace
 
       - name: Collect APK
-        run: cp native/app/build/outputs/apk/debug/app-debug.apk SOHR-BETA-3.0.apk
+        run: cp native/app/build/outputs/apk/debug/app-debug.apk SOHR.apk
+
+      - name: Generate updater manifest
+        shell: bash
+        run: |
+          VERSION_CODE=$(grep -oP 'versionCode\s*=\s*\K[0-9]+' native/app/build.gradle.kts | head -1)
+          VERSION_NAME=$(grep -oP 'versionName\s*=\s*"\K[^"]+' native/app/build.gradle.kts | head -1)
+          SHA256=$(sha256sum SOHR.apk | awk '{print $1}')
+          cat > update.json <<EOF
+          {
+            "versionCode": $VERSION_CODE,
+            "versionName": "$VERSION_NAME",
+            "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/SOHR.apk",
+            "sha256": "$SHA256",
+            "notes": "Новая версия SOHR готова к установке."
+          }
+          EOF
+          cat update.json
+
+      - name: Publish updater channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if gh release view sohr-latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload sohr-latest SOHR.apk update.json --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create sohr-latest SOHR.apk update.json \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "SOHR Latest" \
+              --notes "Автоматический канал обновлений SOHR." \
+              --prerelease
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: SOHR-BETA-3.0
-          path: SOHR-BETA-3.0.apk
+          path: SOHR.apk
           if-no-files-found: error
           retention-days: 30
