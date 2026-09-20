@@ -1,6 +1,8 @@
 package com.unknokable.videosohranenki
 
 import android.app.Dialog
+import android.app.PictureInPictureParams
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.ColorStateList
 import android.graphics.Bitmap
@@ -10,6 +12,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.telephony.TelephonyManager
+import android.util.Rational
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
@@ -221,11 +224,42 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (android.os.Build.VERSION.SDK_INT >= 24 && !isInPictureInPictureMode) {
+            stopService(Intent(this, PlaybackKeepAliveService::class.java))
+        }
         if (waitingForInstallPermission && updateManager.canRequestInstall()) {
             waitingForInstallPermission = false
             pendingUpdateApk?.takeIf { it.exists() }?.let { apk ->
                 root.postDelayed({ launchUpdateInstaller(apk) }, 220L)
             }
+        }
+    }
+
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        val activePlayer = playerScreen?.player
+        if (!isPlayerScreen || activePlayer?.isPlaying != true) return
+        val serviceIntent = Intent(this, PlaybackKeepAliveService::class.java)
+        if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(serviceIntent) else startService(serviceIntent)
+        if (android.os.Build.VERSION.SDK_INT >= 26 && !isInPictureInPictureMode) {
+            runCatching {
+                enterPictureInPictureMode(
+                    PictureInPictureParams.Builder()
+                        .setAspectRatio(Rational(16, 9))
+                        .build()
+                )
+            }
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        if (isPlayerScreen) {
+            playerScreen?.setFullscreenMode(isInPictureInPictureMode)
+        }
+        if (!isInPictureInPictureMode && playerScreen?.player?.isPlaying != true) {
+            stopService(Intent(this, PlaybackKeepAliveService::class.java))
         }
     }
 
