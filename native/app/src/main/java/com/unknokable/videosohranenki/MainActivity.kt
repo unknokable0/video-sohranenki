@@ -408,7 +408,9 @@ class MainActivity : AppCompatActivity() {
         startupPhase = false
         startupStatusView = null
         val phoneUtil = PhoneNumberUtil.getInstance()
-        var selected = detectCountry(regions)
+        // Start neutrally: do not expose/infer a country code (for example +48)
+        // before the user explicitly chooses a country.
+        var selected = PhoneCountry(region = "ZZ", name = "", dialCode = 0, flag = "")
 
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -500,13 +502,18 @@ class MainActivity : AppCompatActivity() {
             background = null
         }
 
-        var formatter = phoneUtil.getAsYouTypeFormatter(selected.region)
+        var formatter = phoneUtil.getAsYouTypeFormatter("ZZ")
         var formatting = false
 
         fun applyCountry() {
-            country.text = "${selected.flag}  ${selected.name}   +${selected.dialCode}"
-            prefix.text = "+${selected.dialCode}"
-            formatter = phoneUtil.getAsYouTypeFormatter(selected.region)
+            val hasCountry = selected.dialCode > 0 && selected.region != "ZZ"
+            country.text = if (hasCountry) {
+                "${selected.flag}  ${selected.name}   +${selected.dialCode}"
+            } else {
+                if (settings.languageCode == "ru") "Выбрать страну" else t("choose_country")
+            }
+            prefix.text = if (hasCountry) "+${selected.dialCode}" else "+"
+            formatter = phoneUtil.getAsYouTypeFormatter(if (hasCountry) selected.region else "ZZ")
             val digits = input.text.toString().filter { it.isDigit() }
             if (digits.isNotEmpty()) {
                 formatting = true
@@ -563,6 +570,11 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener {
                 animatePress(this)
                 val national = input.text.toString().filter { it.isDigit() }
+                if (selected.dialCode <= 0 || selected.region == "ZZ") {
+                    error.text = if (settings.languageCode == "ru") "Сначала выбери страну" else t("choose_country")
+                    error.visibility = View.VISIBLE
+                    return@setOnClickListener
+                }
                 if (national.isBlank()) {
                     error.text = t("phone_empty")
                     error.visibility = View.VISIBLE
