@@ -106,9 +106,9 @@ private class TelegramFileInputStream(
     private var prefetchedStart = -1L
     private var prefetchedLimit = 0L
 
-    private val firstWindow = 8L * 1024L * 1024L
-    private val steadyWindow = 32L * 1024L * 1024L
-    private val prefetchThreshold = 8L * 1024L * 1024L
+    private val firstWindow = 2L * 1024L * 1024L
+    private val steadyWindow = 12L * 1024L * 1024L
+    private val prefetchThreshold = 4L * 1024L * 1024L
 
     override fun read(): Int {
         val one = ByteArray(1)
@@ -152,7 +152,6 @@ private class TelegramFileInputStream(
         }
 
         val result = runBlocking {
-            runCatching { client.send(TdApi.CancelDownloadFile(fileId, false)) }
             client.send(TdApi.DownloadFile(fileId, 32, windowStart, windowLimit, true))
         }
         applyLocalRange(result.local)
@@ -160,8 +159,7 @@ private class TelegramFileInputStream(
         if (bufferedEndExclusive < requestedEnd) {
             val retryLimit = minOf(maxOf(requested, firstWindow), endInclusive - offset + 1)
             val retry = runBlocking {
-                runCatching { client.send(TdApi.CancelDownloadFile(fileId, false)) }
-                client.send(TdApi.DownloadFile(fileId, 32, offset, retryLimit, true))
+                    client.send(TdApi.DownloadFile(fileId, 32, offset, retryLimit, true))
             }
             applyLocalRange(retry.local)
         }
@@ -226,7 +224,7 @@ private class TelegramMediaDataSource(
     private var filePath: String? = null
     private var cachedStart = -1L
     private var cachedEndExclusive = -1L
-    private val chunkSize = 6L * 1024L * 1024L
+    private val chunkSize = 2L * 1024L * 1024L
 
     @Synchronized
     override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {

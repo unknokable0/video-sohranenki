@@ -277,10 +277,10 @@ class PlayerScreen(
 
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                25_000,
-                120_000,
-                650,
-                1_500
+                12_000,
+                45_000,
+                500,
+                1_200
             )
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
@@ -564,48 +564,6 @@ class PlayerScreen(
         previewCache[bucket]?.takeIf { !it.isRecycled }?.let { cached ->
             previewImage.setImageBitmap(cached)
             previewBitmap = cached
-            return
-        }
-        if (lastPreviewMs >= 0 && kotlin.math.abs(bucket - lastPreviewMs) < 1_500) return
-        lastPreviewMs = bucket
-        val requestId = ++previewRequestId
-
-        previewJob?.cancel()
-        previewJob = previewScope.launch {
-            delay(20)
-            val bitmap = runCatching {
-                previewMutex.withLock {
-                    ensurePreviewRetriever()
-                    val raw = previewRetriever?.getFrameAtTime(
-                        bucket * 1000L,
-                        MediaMetadataRetriever.OPTION_CLOSEST_SYNC
-                    ) ?: return@withLock null
-
-                    val width = 320
-                    val height = (raw.height * (width.toFloat() / raw.width.toFloat()))
-                        .toInt()
-                        .coerceAtLeast(1)
-                    val scaled = if (raw.width > width) {
-                        Bitmap.createScaledBitmap(raw, width, height, true)
-                    } else {
-                        raw
-                    }
-                    if (scaled !== raw) raw.recycle()
-                    scaled
-                }
-            }.getOrNull()
-
-            if (bitmap != null) {
-                withContext(Dispatchers.Main) {
-                    if (!dragging || requestId != previewRequestId) {
-                        bitmap.recycle()
-                        return@withContext
-                    }
-                    previewCache[bucket] = bitmap
-                    previewImage.setImageBitmap(bitmap)
-                    previewBitmap = bitmap
-                }
-            }
         }
     }
 
@@ -919,11 +877,17 @@ class PlayerScreen(
                 dragging = !finished
                 if (!finished) {
                     player.setScrubbingModeEnabled(true)
-                    player.seekTo(positionMs)
                     showPreview()
                     updatePreviewUi(positionMs, (positionMs.toFloat()/resolvedDurationMs().coerceAtLeast(1L)).coerceIn(0f,1f))
                     requestPreview(positionMs)
-                } else { player.setScrubbingModeEnabled(false); hidePreview() }
+                } else {
+                    previewRequestId++
+                    previewJob?.cancel()
+                    previewJob = null
+                    player.setScrubbingModeEnabled(false)
+                    player.seekTo(positionMs)
+                    hidePreview()
+                }
             },
             onBrightness = { showTransientIndicator("☀  $it%") },
             onVolume = { showTransientIndicator("♪  $it%") },
