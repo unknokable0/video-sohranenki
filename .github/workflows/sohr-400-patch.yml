@@ -16,113 +16,92 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import re
-
           player = Path('native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt')
           s = player.read_text()
-
           start = s.find('    private fun buildSocialActions(): LinearLayout {')
           end = s.find('    private fun buildNextVideosBlock(): LinearLayout {', start)
           if start < 0 or end < 0:
               raise SystemExit('buildSocialActions block not found')
-
-          new_block = '''    private fun buildSocialActions(): LinearLayout {
-        val row = LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(2), dp(12), dp(10))
-        }
-        var watched = isWatched
-        lateinit var watchedButton: TextView
-
-        fun syncWatchedAction(animated: Boolean = false) {
-            val nextText = if (watched) "↩  В сборники" else "✓  В просмотренные"
-            val nextBackground = if (watched) palette.accent else palette.surfaceAlt
-            val nextTextColor = if (watched) Color.WHITE else palette.text
-
-            watchedButton.animate().cancel()
-            if (animated && settings.animations) {
-                watchedButton.animate()
-                    .alpha(0.55f)
-                    .scaleX(0.96f)
-                    .scaleY(0.96f)
-                    .setDuration(70L)
-                    .withEndAction {
-                        watchedButton.text = nextText
-                        watchedButton.setTextColor(nextTextColor)
-                        watchedButton.background = roundedInt(nextBackground, 14)
-                        watchedButton.animate()
-                            .alpha(1f)
-                            .scaleX(1f)
-                            .scaleY(1f)
-                            .setDuration(130L)
-                            .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
-                            .start()
-                    }
-                    .start()
-            } else {
-                watchedButton.text = nextText
-                watchedButton.setTextColor(nextTextColor)
-                watchedButton.background = roundedInt(nextBackground, 14)
-                watchedButton.alpha = 1f
-                watchedButton.scaleX = 1f
-                watchedButton.scaleY = 1f
-            }
-        }
-
-        watchedButton = actionPill("") {
-            watched = !watched
-            onWatchedChange?.invoke(item, watched)
-            syncWatchedAction(animated = true)
-        }
-        syncWatchedAction()
-
-        val downloadButton = actionPill("↓  Скачать") { enqueueDownload() }
-        row.addView(
-            watchedButton,
-            LinearLayout.LayoutParams(0, dp(44), 1.35f).apply { marginEnd = dp(6) }
-        )
-        row.addView(
-            downloadButton,
-            LinearLayout.LayoutParams(0, dp(44), 0.85f)
-        )
-        return row
-    }
-
-'''
-          s = s[:start] + new_block + s[end:]
-
-          # Sharing is no longer part of SOHR's player UI.
+          lines = [
+              '    private fun buildSocialActions(): LinearLayout {',
+              '        val row = LinearLayout(activity).apply {',
+              '            orientation = LinearLayout.HORIZONTAL',
+              '            gravity = Gravity.CENTER_VERTICAL',
+              '            setPadding(dp(12), dp(2), dp(12), dp(10))',
+              '        }',
+              '        var watched = isWatched',
+              '        lateinit var watchedButton: TextView',
+              '',
+              '        fun syncWatchedAction(animated: Boolean = false) {',
+              '            val nextText = if (watched) "↩  В сборники" else "✓  В просмотренные"',
+              '            val nextBackground = if (watched) palette.accent else palette.surfaceAlt',
+              '            val nextTextColor = if (watched) Color.WHITE else palette.text',
+              '            watchedButton.animate().cancel()',
+              '            if (animated && settings.animations) {',
+              '                watchedButton.animate()',
+              '                    .alpha(0.55f).scaleX(0.96f).scaleY(0.96f)',
+              '                    .setDuration(70L)',
+              '                    .withEndAction {',
+              '                        watchedButton.text = nextText',
+              '                        watchedButton.setTextColor(nextTextColor)',
+              '                        watchedButton.background = roundedInt(nextBackground, 14)',
+              '                        watchedButton.animate()',
+              '                            .alpha(1f).scaleX(1f).scaleY(1f)',
+              '                            .setDuration(130L)',
+              '                            .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))',
+              '                            .start()',
+              '                    }.start()',
+              '            } else {',
+              '                watchedButton.text = nextText',
+              '                watchedButton.setTextColor(nextTextColor)',
+              '                watchedButton.background = roundedInt(nextBackground, 14)',
+              '                watchedButton.alpha = 1f',
+              '                watchedButton.scaleX = 1f',
+              '                watchedButton.scaleY = 1f',
+              '            }',
+              '        }',
+              '',
+              '        watchedButton = actionPill("") {',
+              '            watched = !watched',
+              '            onWatchedChange?.invoke(item, watched)',
+              '            syncWatchedAction(animated = true)',
+              '        }',
+              '        syncWatchedAction()',
+              '        val downloadButton = actionPill("↓  Скачать") { enqueueDownload() }',
+              '        row.addView(watchedButton, LinearLayout.LayoutParams(0, dp(44), 1.35f).apply { marginEnd = dp(6) })',
+              '        row.addView(downloadButton, LinearLayout.LayoutParams(0, dp(44), 0.85f))',
+              '        return row',
+              '    }',
+              '',
+          ]
+          s = s[:start] + '\n'.join(lines) + s[end:]
           if 'Intent(' not in s and 'Intent.' not in s:
               s = s.replace('import android.content.Intent\n', '')
           player.write_text(s)
 
           main = Path('native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt')
           m = main.read_text()
-          old = '''            onWatchedChange = { watched, shouldBeWatched ->
-                if (shouldBeWatched) markVideoWatched(watched.messageId) else unmarkVideoWatched(watched.messageId)
-                val noLongerBelongsToOpenSection = (videoSection == 1 && shouldBeWatched) || (videoSection == 2 && !shouldBeWatched)
-                if (noLongerBelongsToOpenSection) currentDay = currentDay?.copy(videos = currentDay?.videos?.filterNot { it.messageId == watched.messageId } ?: emptyList())
-            },
-'''
-          new = '''            onWatchedChange = { watched, shouldBeWatched ->
-                if (shouldBeWatched) markVideoWatched(watched.messageId) else unmarkVideoWatched(watched.messageId)
-                val belongsToOpenSection = (videoSection == 1 && !shouldBeWatched) || (videoSection == 2 && shouldBeWatched)
-                currentDay = currentDay?.let { day ->
-                    if (belongsToOpenSection) {
-                        if (day.videos.any { it.messageId == watched.messageId }) day
-                        else day.copy(videos = (day.videos + watched).sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId }))
-                    } else {
-                        day.copy(videos = day.videos.filterNot { it.messageId == watched.messageId })
-                    }
-                }
-            },
-'''
-          if old not in m:
+          pattern = re.compile(r'''            onWatchedChange = \{ watched, shouldBeWatched ->\n                if \(shouldBeWatched\) markVideoWatched\(watched\.messageId\) else unmarkVideoWatched\(watched\.messageId\)\n                val noLongerBelongsToOpenSection = .*?\n                if \(noLongerBelongsToOpenSection\) .*?\n            \},\n''')
+          replacement = '\n'.join([
+              '            onWatchedChange = { watched, shouldBeWatched ->',
+              '                if (shouldBeWatched) markVideoWatched(watched.messageId) else unmarkVideoWatched(watched.messageId)',
+              '                val belongsToOpenSection = (videoSection == 1 && !shouldBeWatched) || (videoSection == 2 && shouldBeWatched)',
+              '                currentDay = currentDay?.let { day ->',
+              '                    if (belongsToOpenSection) {',
+              '                        if (day.videos.any { it.messageId == watched.messageId }) day',
+              '                        else day.copy(videos = (day.videos + watched).sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId }))',
+              '                    } else {',
+              '                        day.copy(videos = day.videos.filterNot { it.messageId == watched.messageId })',
+              '                    }',
+              '                }',
+              '            },',
+              '',
+          ])
+          m, count = pattern.subn(replacement, m, count=1)
+          if count != 1:
               raise SystemExit('onWatchedChange block not found')
-          m = m.replace(old, new, 1)
           main.write_text(m)
 
-          # Guard against the removed share action being accidentally left in native UI.
           leftovers = []
           for path in Path('native/app/src/main/java').rglob('*.kt'):
               text = path.read_text()
