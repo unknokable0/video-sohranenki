@@ -105,6 +105,7 @@ class MainActivity : AppCompatActivity() {
     private var startupUpdateCheckDone = false
     private var videoSection = 1 // 1 collections, 2 watched
     private var pendingVideoSectionCrossfade = false
+    private var pendingVideoSectionDirection = 0
 
     private val palette get() = settings.palette()
     private val bg get() = palette.background
@@ -151,31 +152,36 @@ class MainActivity : AppCompatActivity() {
                     return
                 }
                 if (isPlayerScreen) {
-                    playerScreen?.destroy()
+                    val outgoingPlayer = playerScreen
                     playerScreen = null
                     isPlayerScreen = false
                     pendingRootSlide = -1
                     val day = currentDay
                     if (day != null && day.videos.isNotEmpty()) showDayCollection(day) else { currentDay = null; showFeed(currentVideos) }
+                    root.postDelayed({ outgoingPlayer?.destroy() }, if (settings.animations) 280L else 0L)
                     return
                 }
                 if (isSettingsScreen) {
                     isSettingsScreen = false
+                    pendingRootSlide = -1
                     showFeed(currentVideos)
                     return
                 }
                 if (isAccountScreen) {
                     isAccountScreen = false
+                    pendingRootSlide = -1
                     showFeed(currentVideos)
                     return
                 }
                 if (isStreakScreen) {
                     isStreakScreen = false
+                    pendingRootSlide = -1
                     showFeed(currentVideos)
                     return
                 }
                 if (currentDay != null) {
                     currentDay = null
+                    pendingRootSlide = -1
                     showFeed(currentVideos)
                     return
                 }
@@ -1884,11 +1890,29 @@ class MainActivity : AppCompatActivity() {
 
     private fun isVideoWatched(messageId: Long): Boolean = watchedVideoIds().contains(messageId.toString())
 
-    private fun markVideoWatched(messageId: Long) {
+    private fun markVideoWatched(messageId: Long): Boolean {
         val prefs = getSharedPreferences("sohr_watched", MODE_PRIVATE)
         val ids = prefs.getStringSet("ids", emptySet())?.toMutableSet() ?: mutableSetOf()
-        ids.add(messageId.toString())
-        prefs.edit().putStringSet("ids", ids).apply()
+        val added = ids.add(messageId.toString())
+        if (added) prefs.edit().putStringSet("ids", ids).apply()
+        return added
+    }
+
+    private fun unmarkVideoWatched(messageId: Long): Boolean {
+        val prefs = getSharedPreferences("sohr_watched", MODE_PRIVATE)
+        val ids = prefs.getStringSet("ids", emptySet())?.toMutableSet() ?: mutableSetOf()
+        val removed = ids.remove(messageId.toString())
+        if (removed) prefs.edit().putStringSet("ids", ids).apply()
+        return removed
+    }
+
+    private fun switchVideoSection(section: Int) {
+        if (section !in 1..2 || videoSection == section) return
+        pendingVideoSectionCrossfade = true
+        pendingVideoSectionDirection = if (section > videoSection) 1 else -1
+        pendingRootSlide = 0
+        videoSection = section
+        showFeed(currentVideos)
     }
 
     private fun showFeed(videos: List<VideoItem>) {
@@ -1929,13 +1953,26 @@ class MainActivity : AppCompatActivity() {
                 text=label; textSize=12f; gravity=Gravity.CENTER; setTypeface(typeface,Typeface.BOLD)
                 setTextColor(if(selected) Color.WHITE else muted); background=roundedBg(if(selected) purple else Color.TRANSPARENT,15)
                 isClickable=true; isFocusable=true
+                var swipeStartX = 0f
+                var swipeStartY = 0f
+                setOnTouchListener { _, event ->
+                    when (event.actionMasked) {
+                        MotionEvent.ACTION_DOWN -> { swipeStartX = event.x; swipeStartY = event.y; false }
+                        MotionEvent.ACTION_UP -> {
+                            val dx = event.x - swipeStartX
+                            val dy = event.y - swipeStartY
+                            if (kotlin.math.abs(dx) >= dp(46) && kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.25f) {
+                                switchVideoSection(if (dx < 0f) 2 else 1)
+                                true
+                            } else false
+                        }
+                        else -> false
+                    }
+                }
                 setOnClickListener {
                     if(videoSection==section) return@setOnClickListener
                     animatePress(this)
-                    pendingVideoSectionCrossfade=true
-                    pendingRootSlide=0
-                    videoSection=section
-                    showFeed(currentVideos)
+                    switchVideoSection(section)
                 }
             }
             tabs.addView(tab,LinearLayout.LayoutParams(0,dp(40),1f).apply { if(position>0) marginStart=dp(3) })
@@ -2095,9 +2132,10 @@ class MainActivity : AppCompatActivity() {
             nextItem = nextItem,
             onPlayNext = { next -> openPlayer(next) },
             isWatched = isVideoWatched(item.messageId),
-            onMarkWatched = { watched ->
-                markVideoWatched(watched.messageId)
-                if (videoSection != 2) currentDay = currentDay?.copy(videos = currentDay?.videos?.filterNot { it.messageId == watched.messageId } ?: emptyList())
+            onWatchedChange = { watched, shouldBeWatched ->
+                if (shouldBeWatched) markVideoWatched(watched.messageId) else unmarkVideoWatched(watched.messageId)
+                val noLongerBelongsToOpenSection = (videoSection == 1 && shouldBeWatched) || (videoSection == 2 && !shouldBeWatched)
+                if (noLongerBelongsToOpenSection) currentDay = currentDay?.copy(videos = currentDay?.videos?.filterNot { it.messageId == watched.messageId } ?: emptyList())
             },
             onBack = { onBackPressedDispatcher.onBackPressed() },
             onFullscreen = { setFullscreen(it) },
@@ -2885,7 +2923,9 @@ class MainActivity : AppCompatActivity() {
 
         val animateContent = settings.animations && old != null && old !== content
         val sectionCrossfade = pendingVideoSectionCrossfade
+        val sectionDirection = pendingVideoSectionDirection
         pendingVideoSectionCrossfade = false
+        pendingVideoSectionDirection = 0
         content.alpha = 1f
         content.translationX = 0f
         content.translationY = 0f
@@ -2911,8 +2951,9 @@ class MainActivity : AppCompatActivity() {
 
                 val telegramInterpolator = android.view.animation.DecelerateInterpolator(1.5f)
                 if (sectionCrossfade) {
+                    val travel = dp(18).toFloat() * if (sectionDirection == 0) 1 else sectionDirection
                     content.alpha = 0f
-                    content.translationX = 0f
+                    content.translationX = travel
                     old.alpha = 1f
                     old.translationX = 0f
                     old.animate()
