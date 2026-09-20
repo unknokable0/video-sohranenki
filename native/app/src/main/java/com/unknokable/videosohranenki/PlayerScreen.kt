@@ -145,7 +145,12 @@ class PlayerScreen(
             clipToOutline = true
         }
 
-        playerView = PlayerView(activity).apply {
+        playerView = activity.layoutInflater.inflate(
+            R.layout.view_sohr_player,
+            playerCard,
+            false
+        ) as PlayerView
+        playerView.apply {
             useController = false
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
             setBackgroundColor(Color.BLACK)

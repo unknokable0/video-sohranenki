@@ -89,6 +89,7 @@ class MainActivity : AppCompatActivity() {
     private var loadJob: kotlinx.coroutines.Job? = null
     private var reloadRequested = false
     private var suppressNextRootAnimation = false
+    private var suppressNextContentAnimation = false
     private var currentPrimaryTab = SohrTab.VIDEOS
     private var pendingRootSlide = 0
     private var primaryShell: LinearLayout? = null
@@ -156,6 +157,7 @@ class MainActivity : AppCompatActivity() {
                     playerScreen = null
                     isPlayerScreen = false
                     pendingRootSlide = -1
+                    suppressNextContentAnimation = true
                     val day = currentDay
                     if (day != null && day.videos.isNotEmpty()) showDayCollection(day) else { currentDay = null; showFeed(currentVideos) }
                     root.postDelayed({ outgoingPlayer?.destroy() }, if (settings.animations) 280L else 0L)
@@ -2937,7 +2939,9 @@ class MainActivity : AppCompatActivity() {
         old?.scaleX = 1f
         old?.scaleY = 1f
 
-        val animateContent = settings.animations && old != null && old !== content
+        val skipContentAnimation = suppressNextContentAnimation
+        suppressNextContentAnimation = false
+        val animateContent = settings.animations && !skipContentAnimation && old != null && old !== content
         val sectionCrossfade = pendingVideoSectionCrossfade
         val sectionDirection = pendingVideoSectionDirection
         pendingVideoSectionCrossfade = false
@@ -3376,8 +3380,8 @@ class MainActivity : AppCompatActivity() {
             old.translationX = 0f
             old.animate()
                 .alpha(0f)
-                .translationX(dp(48).toFloat())
-                .setDuration(150L)
+                .translationX(dp(36).toFloat())
+                .setDuration(210L)
                 .setInterpolator(telegramInterpolator)
                 .withEndAction {
                     old.alpha = 1f
@@ -3391,11 +3395,11 @@ class MainActivity : AppCompatActivity() {
             old.alpha = 1f
             old.translationX = 0f
             view.alpha = 0f
-            view.translationX = dp(48).toFloat()
+            view.translationX = dp(36).toFloat()
             view.animate()
                 .alpha(1f)
                 .translationX(0f)
-                .setDuration(150L)
+                .setDuration(210L)
                 .setInterpolator(telegramInterpolator)
                 .withEndAction {
                     old.setLayerType(View.LAYER_TYPE_NONE, null)
