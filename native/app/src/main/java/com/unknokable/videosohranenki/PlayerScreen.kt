@@ -125,7 +125,7 @@ class PlayerScreen(
             )
         )
 
-        bufferingLoader = LoadingWaveView(activity, Color.WHITE).apply {
+        bufferingLoader = LoadingWaveView(activity, palette.accent).apply {
             visibility = View.GONE
             alpha = 0.92f
         }
@@ -180,11 +180,12 @@ class PlayerScreen(
 
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                15_000,
-                45_000,
-                750,
-                1_500
+                6_000,
+                24_000,
+                350,
+                900
             )
+            .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
         player = ExoPlayer.Builder(activity)
@@ -198,8 +199,8 @@ class PlayerScreen(
         player.setMediaItem(MediaItem.fromUri(mediaUrl))
         if (startPositionMs > 0) player.seekTo(startPositionMs)
         player.repeatMode = Player.REPEAT_MODE_OFF
-        player.prepare()
         player.playWhenReady = settings.autoplay
+        player.prepare()
 
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -594,11 +595,9 @@ class PlayerScreen(
                 val half = playerCard.width / 2f
                 if (e.x < half) {
                     player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0))
-                    showGestureHint("−10 сек")
                 } else {
                     val duration = player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
                     player.seekTo((player.currentPosition + 10_000).coerceAtMost(duration))
-                    showGestureHint("+10 сек")
                 }
                 return true
             }
@@ -634,9 +633,6 @@ class PlayerScreen(
         }
     }
 
-    private fun showGestureHint(text: String) {
-        Toast.makeText(activity, text, Toast.LENGTH_SHORT).show()
-    }
 
     private fun showPlayerMenu() {
         val labels = listOf(
