@@ -25,9 +25,22 @@ android {
         buildConfig = true
     }
 
+    signingConfigs {
+        create("release") {
+            val path = System.getenv("SOHR_KEYSTORE_PATH")
+            if (!path.isNullOrBlank()) {
+                storeFile = file(path)
+                storePassword = System.getenv("SOHR_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("SOHR_KEY_ALIAS")
+                keyPassword = System.getenv("SOHR_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
