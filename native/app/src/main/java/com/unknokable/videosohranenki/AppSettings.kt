@@ -51,5 +51,24 @@ class AppSettings(context: Context) {
         }.getOrDefault(VideoSort.NEWEST)
         set(value) = prefs.edit().putString("video_sort", value.name).apply()
 
+    fun playbackPosition(messageId: Long): Long =
+        prefs.getLong("playback_position_" + messageId, 0L)
+
+    fun savePlaybackPosition(messageId: Long, positionMs: Long, durationMs: Long) {
+        val shouldClear = positionMs < 5_000L ||
+            (durationMs > 0L && durationMs - positionMs <= 10_000L)
+        prefs.edit().apply {
+            if (shouldClear) {
+                remove("playback_position_" + messageId)
+            } else {
+                putLong("playback_position_" + messageId, positionMs)
+            }
+        }.apply()
+    }
+
+    fun clearPlaybackPosition(messageId: Long) {
+        prefs.edit().remove("playback_position_" + messageId).apply()
+    }
+
     fun palette(): ThemePalette = if (lightTheme) AppThemes.Light else AppThemes.Dark
 }
