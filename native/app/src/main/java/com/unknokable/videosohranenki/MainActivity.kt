@@ -1727,10 +1727,21 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 withContext(Dispatchers.Main) {
+                    val changed = currentVideos.map { it.messageId } != preparedVideos.map { it.messageId }
                     currentVideos = preparedVideos
-                    currentDay = null
-                    feedRefreshCompletedFlash = inPlace
-                    showFeed(preparedVideos)
+                    if (inPlace && !changed) {
+                        setFeedRefreshLoading(false, "Готово")
+                        feedRefreshButton?.postDelayed({
+                            if (feedRefreshButton?.isEnabled == true) {
+                                setFeedRefreshLoading(false, "Проверить новые")
+                            }
+                        }, 900L)
+                    } else {
+                        currentDay = null
+                        feedRefreshCompletedFlash = inPlace
+                        if (inPlace) suppressNextRootAnimation = true
+                        showFeed(preparedVideos)
+                    }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -1846,7 +1857,7 @@ class MainActivity : AppCompatActivity() {
         val baseGroups = videos
             .groupBy { Instant.ofEpochSecond(it.date.toLong()).atZone(zone).toLocalDate() }
             .map { (date, dayVideos) ->
-                DayCollection(date, dayVideos.sortedByDescending { it.date })
+                DayCollection(date, dayVideos.sortedBy { it.date })
             }
 
         val groups = baseGroups.sortedByDescending { it.date }
@@ -2000,7 +2011,7 @@ class MainActivity : AppCompatActivity() {
         setFullscreen(false)
         applySystemTheme()
 
-        val sortedVideos = collection.videos.sortedByDescending { it.date }
+        val sortedVideos = collection.videos.sortedBy { it.date }
 
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -2087,6 +2098,10 @@ class MainActivity : AppCompatActivity() {
         feedRefreshLabel = null
         feedRefreshLoader = null
         server.prefetch(item)
+        val orderedForPlayback = (currentDay?.videos ?: currentVideos).sortedBy { it.date }
+        val currentIndex = orderedForPlayback.indexOfFirst { it.messageId == item.messageId }
+        val nextItem = if (currentIndex >= 0) orderedForPlayback.getOrNull(currentIndex + 1) else null
+        nextItem?.let { server.prefetch(it) }
         playerScreen?.destroy()
         isSettingsScreen = false
         isAccountScreen = false
@@ -2104,6 +2119,8 @@ class MainActivity : AppCompatActivity() {
             previewDataSourceFactory = { server.mediaDataSource(item) },
             settings = settings,
             startPositionMs = resumePositionMs,
+            nextItem = nextItem,
+            onPlayNext = { next -> openPlayer(next) },
             onBack = { onBackPressedDispatcher.onBackPressed() },
             onFullscreen = { setFullscreen(it) },
             onPlaybackStarted = { streakTracker.markWatched() }
@@ -2909,6 +2926,8 @@ class MainActivity : AppCompatActivity() {
             if (animateContent) {
                 old.animate().cancel()
                 content.animate().cancel()
+                old.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+                content.setLayerType(View.LAYER_TYPE_HARDWARE, null)
 
                 val telegramInterpolator = android.view.animation.DecelerateInterpolator(1.5f)
                 if (slide < 0) {
@@ -2926,6 +2945,8 @@ class MainActivity : AppCompatActivity() {
                         .withEndAction {
                             old.alpha = 1f
                             old.translationX = 0f
+                            old.setLayerType(View.LAYER_TYPE_NONE, null)
+                            content.setLayerType(View.LAYER_TYPE_NONE, null)
                             if (old.parent === host) host.removeView(old)
                         }
                         .start()
@@ -2942,6 +2963,8 @@ class MainActivity : AppCompatActivity() {
                         .setDuration(150L)
                         .setInterpolator(telegramInterpolator)
                         .withEndAction {
+                            old.setLayerType(View.LAYER_TYPE_NONE, null)
+                            content.setLayerType(View.LAYER_TYPE_NONE, null)
                             if (old.parent === host) host.removeView(old)
                         }
                         .start()
@@ -3267,6 +3290,8 @@ class MainActivity : AppCompatActivity() {
 
         old.animate().cancel()
         view.animate().cancel()
+        old.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        view.setLayerType(View.LAYER_TYPE_HARDWARE, null)
 
         val telegramInterpolator = android.view.animation.DecelerateInterpolator(1.5f)
         if (slide < 0) {
@@ -3282,6 +3307,8 @@ class MainActivity : AppCompatActivity() {
                 .withEndAction {
                     old.alpha = 1f
                     old.translationX = 0f
+                    old.setLayerType(View.LAYER_TYPE_NONE, null)
+                    view.setLayerType(View.LAYER_TYPE_NONE, null)
                     if (old.parent === root) root.removeView(old)
                 }
                 .start()
@@ -3296,6 +3323,8 @@ class MainActivity : AppCompatActivity() {
                 .setDuration(150L)
                 .setInterpolator(telegramInterpolator)
                 .withEndAction {
+                    old.setLayerType(View.LAYER_TYPE_NONE, null)
+                    view.setLayerType(View.LAYER_TYPE_NONE, null)
                     if (old.parent === root) root.removeView(old)
                 }
                 .start()

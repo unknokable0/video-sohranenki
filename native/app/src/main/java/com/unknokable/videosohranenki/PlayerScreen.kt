@@ -2,6 +2,7 @@ package com.unknokable.videosohranenki
 
 import android.app.Activity
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -19,7 +20,6 @@ import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.media3.common.C
@@ -54,6 +54,8 @@ class PlayerScreen(
     private val previewDataSourceFactory: () -> MediaDataSource,
     private val settings: AppSettings,
     private val startPositionMs: Long = 0L,
+    private val nextItem: VideoItem? = null,
+    private val onPlayNext: ((VideoItem) -> Unit)? = null,
     private val onBack: () -> Unit,
     private val onFullscreen: (Boolean) -> Unit,
     private val onPlaybackStarted: () -> Unit
@@ -67,7 +69,7 @@ class PlayerScreen(
     private lateinit var details: LinearLayout
     private lateinit var overlay: FrameLayout
     private lateinit var playPause: ImageButton
-    private lateinit var seekBar: SeekBar
+    private lateinit var seekBar: SohrTimeBar
     private lateinit var currentTime: TextView
     private lateinit var totalTime: TextView
     private lateinit var qualityButton: TextView
@@ -77,12 +79,22 @@ class PlayerScreen(
     private lateinit var previewBubble: LinearLayout
     private lateinit var previewImage: ImageView
     private lateinit var previewTime: TextView
+    private lateinit var posterImage: ImageView
+    private lateinit var endOverlay: LinearLayout
     private val previewScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val previewMutex = Mutex()
     private var previewRetriever: MediaMetadataRetriever? = null
     private var previewDataSource: MediaDataSource? = null
     private var previewJob: Job? = null
     private var previewBitmap: Bitmap? = null
+    private val previewCache = object : LinkedHashMap<Long, Bitmap>(10, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, Bitmap>?): Boolean {
+            if (size <= 10) return false
+            eldest?.value?.takeIf { it !== previewBitmap }?.recycle()
+            return true
+        }
+    }
+    private var previewRequestId = 0L
     private var lastPreviewMs = -1L
 
     private var fullscreen = false
@@ -106,7 +118,7 @@ class PlayerScreen(
     init {
         root.orientation = LinearLayout.VERTICAL
         root.setBackgroundColor(palette.background)
-        root.keepScreenOn = true
+        root.keepScreenOn = false
 
         header = buildHeader()
         root.addView(header)
@@ -124,6 +136,21 @@ class PlayerScreen(
         }
         playerCard.addView(
             playerView,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        posterImage = ImageView(activity).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setBackgroundColor(Color.BLACK)
+            item.thumbnailPath?.takeIf { it.isNotBlank() }?.let { path ->
+                runCatching { BitmapFactory.decodeFile(path) }.getOrNull()?.let { setImageBitmap(it) }
+            }
+        }
+        playerCard.addView(
+            posterImage,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -192,12 +219,21 @@ class PlayerScreen(
             }
         )
 
+        endOverlay = buildEndOverlay()
+        playerCard.addView(
+            endOverlay,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                18_000,
-                75_000,
-                1_200,
-                4_000
+                15_000,
+                60_000,
+                900,
+                2_500
             )
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
@@ -217,16 +253,27 @@ class PlayerScreen(
         if (startPositionMs > 0) player.seekTo(startPositionMs)
         player.repeatMode = Player.REPEAT_MODE_OFF
         player.playbackParameters = PlaybackParameters(speed)
-        player.playWhenReady = settings.autoplay
+        player.playWhenReady = true
         player.prepare()
 
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 updatePlayIcon()
+                root.keepScreenOn = isPlaying
+                if (isPlaying && ::endOverlay.isInitialized) endOverlay.visibility = View.GONE
                 if (isPlaying && !playbackCounted) {
                     playbackCounted = true
                     onPlaybackStarted()
                 }
+            }
+
+            override fun onRenderedFirstFrame() {
+                posterImage.animate().cancel()
+                posterImage.animate()
+                    .alpha(0f)
+                    .setDuration(if (settings.animations) 120L else 0L)
+                    .withEndAction { posterImage.visibility = View.GONE }
+                    .start()
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -258,6 +305,10 @@ class PlayerScreen(
 
                 if (playbackState == Player.STATE_ENDED) {
                     settings.clearPlaybackPosition(item.messageId)
+                    root.keepScreenOn = false
+                    showEndOverlay()
+                } else if (playbackState == Player.STATE_READY && !player.isPlaying) {
+                    root.keepScreenOn = false
                 }
             }
         })
@@ -329,39 +380,28 @@ class PlayerScreen(
             setPadding(dp(14), dp(6), dp(14), dp(10))
         }
 
-        seekBar = SeekBar(activity).apply {
-            max = 1000
-            progressTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#A78BFA"))
-            thumbTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
-            progressBackgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#66FFFFFF"))
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    if (!fromUser) return
-                    val duration = player.duration
-                    if (duration <= 0) return
-                    val target = duration * progress / 1000L
-                    previewTime.text = formatMs(target)
-                    currentTime.text = formatMs(target)
-                    showPreview()
-                    requestPreview(target)
-                }
-
-                override fun onStartTrackingTouch(seekBar: SeekBar?) {
+        seekBar = SohrTimeBar(activity).apply {
+            listener = object : SohrTimeBar.Listener {
+                override fun onScrubStart(positionMs: Long) {
                     dragging = true
                     showPreview()
+                    updatePreviewUi(positionMs, 0f)
                 }
 
-                override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                    val duration = player.duration
-                    if (duration > 0) {
-                        val target = duration * (seekBar?.progress ?: 0) / 1000L
-                        player.seekTo(target)
-                        currentTime.text = formatMs(target)
+                override fun onScrubMove(positionMs: Long, fraction: Float) {
+                    updatePreviewUi(positionMs, fraction)
+                    requestPreview(positionMs)
+                }
+
+                override fun onScrubStop(positionMs: Long, canceled: Boolean) {
+                    if (!canceled) {
+                        player.seekTo(positionMs)
+                        currentTime.text = formatMs(positionMs)
                     }
                     dragging = false
-                    handler.postDelayed({ hidePreview() }, 120)
+                    handler.postDelayed({ hidePreview() }, 90L)
                 }
-            })
+            }
         }
 
         val times = LinearLayout(activity).apply {
@@ -396,7 +436,7 @@ class PlayerScreen(
         times.addView(qualityButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)).apply { marginStart = dp(7) })
         times.addView(fullscreenButton, LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginStart = dp(5) })
 
-        bottom.addView(seekBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(32)))
+        bottom.addView(seekBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(30)))
         bottom.addView(times)
 
         frame.addView(
@@ -442,19 +482,33 @@ class PlayerScreen(
         return box
     }
 
+    private fun updatePreviewUi(positionMs: Long, fraction: Float) {
+        previewTime.text = formatMs(positionMs)
+        currentTime.text = formatMs(positionMs)
+        val maxShift = ((playerCard.width - dp(174)) / 2f).coerceAtLeast(0f)
+        previewBubble.translationX = ((fraction.coerceIn(0f, 1f) - 0.5f) * 2f * maxShift)
+    }
+
     private fun requestPreview(positionMs: Long) {
         if (positionMs < 0) return
-        if (lastPreviewMs >= 0 && kotlin.math.abs(positionMs - lastPreviewMs) < 750) return
-        lastPreviewMs = positionMs
+        val bucket = (positionMs / 2_000L) * 2_000L
+        previewCache[bucket]?.takeIf { !it.isRecycled }?.let { cached ->
+            previewImage.setImageBitmap(cached)
+            previewBitmap = cached
+            return
+        }
+        if (lastPreviewMs >= 0 && kotlin.math.abs(bucket - lastPreviewMs) < 1_500) return
+        lastPreviewMs = bucket
+        val requestId = ++previewRequestId
 
         previewJob?.cancel()
         previewJob = previewScope.launch {
-            delay(70)
+            delay(20)
             val bitmap = runCatching {
                 previewMutex.withLock {
                     ensurePreviewRetriever()
                     val raw = previewRetriever?.getFrameAtTime(
-                        positionMs * 1000L,
+                        bucket * 1000L,
                         MediaMetadataRetriever.OPTION_CLOSEST_SYNC
                     ) ?: return@withLock null
 
@@ -474,12 +528,12 @@ class PlayerScreen(
 
             if (bitmap != null) {
                 withContext(Dispatchers.Main) {
-                    if (!dragging) {
+                    if (!dragging || requestId != previewRequestId) {
                         bitmap.recycle()
                         return@withContext
                     }
+                    previewCache[bucket] = bitmap
                     previewImage.setImageBitmap(bitmap)
-                    previewBitmap?.takeIf { it !== bitmap }?.recycle()
                     previewBitmap = bitmap
                 }
             }
@@ -524,6 +578,55 @@ class PlayerScreen(
             .setDuration(if (settings.animations) 100 else 0)
             .withEndAction { previewBubble.visibility = View.GONE }
             .start()
+    }
+
+    private fun buildEndOverlay(): LinearLayout {
+        return LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(24), dp(24), dp(24), dp(24))
+            setBackgroundColor(Color.parseColor("#CC000000"))
+            visibility = View.GONE
+
+            val label = TextView(activity).apply {
+                text = if (nextItem != null) "Видео закончилось" else "Конец видео"
+                textSize = 15f
+                gravity = Gravity.CENTER
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(Color.WHITE)
+                setPadding(0, 0, 0, dp(12))
+            }
+            val button = TextView(activity).apply {
+                text = if (nextItem != null) "▶  Следующее видео" else "↻  Смотреть сначала"
+                textSize = 14f
+                gravity = Gravity.CENTER
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(Color.WHITE)
+                setPadding(dp(18), dp(12), dp(18), dp(12))
+                background = rounded("#8B5CF6", 22)
+                setOnClickListener {
+                    pulse(this)
+                    val next = nextItem
+                    if (next != null && onPlayNext != null) {
+                        onPlayNext.invoke(next)
+                    } else {
+                        endOverlay.visibility = View.GONE
+                        player.seekTo(0L)
+                        player.play()
+                    }
+                }
+            }
+            addView(label)
+            addView(button, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+    }
+
+    private fun showEndOverlay() {
+        hideOverlay()
+        endOverlay.alpha = 0f
+        endOverlay.visibility = View.VISIBLE
+        endOverlay.animate().cancel()
+        endOverlay.animate().alpha(1f).setDuration(if (settings.animations) 140L else 0L).start()
     }
 
     private fun buildDetails(): LinearLayout {
@@ -751,7 +854,8 @@ class PlayerScreen(
         previewJob?.cancel()
         previewScope.cancel()
         previewImage.setImageDrawable(null)
-        previewBitmap?.recycle()
+        previewCache.values.toSet().forEach { bitmap -> if (!bitmap.isRecycled) bitmap.recycle() }
+        previewCache.clear()
         previewBitmap = null
         runCatching { previewRetriever?.release() }
         runCatching { previewDataSource?.close() }
@@ -825,14 +929,14 @@ class PlayerScreen(
         handler.postDelayed({
             updateProgress()
             scheduleProgress()
-        }, 350)
+        }, if (player.isPlaying) 250L else 850L)
     }
 
     private fun updateProgress() {
         if (!dragging) {
             val duration = player.duration
             if (duration > 0) {
-                seekBar.progress = ((player.currentPosition * 1000L) / duration).toInt().coerceIn(0, 1000)
+                seekBar.setProgress(player.currentPosition, duration, player.bufferedPosition)
                 totalTime.text = formatMs(duration)
             }
         }
