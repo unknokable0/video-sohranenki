@@ -1,6 +1,11 @@
 package com.unknokable.videosohranenki
 
 import android.app.Activity
+import android.app.DownloadManager
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Environment
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -77,6 +82,8 @@ class PlayerScreen(
     private lateinit var seekFeedback: TextView
     private lateinit var bufferingLoader: LoadingWaveView
     private lateinit var actionsRow: LinearLayout
+    private lateinit var socialActionsRow: LinearLayout
+    private lateinit var nextVideosBlock: LinearLayout
     private lateinit var previewBubble: LinearLayout
     private lateinit var previewImage: ImageView
     private lateinit var previewTime: TextView
@@ -231,8 +238,12 @@ class PlayerScreen(
 
         details = buildDetails()
         root.addView(details)
+        socialActionsRow = buildSocialActions()
+        root.addView(socialActionsRow)
         actionsRow = buildActions()
         root.addView(actionsRow)
+        nextVideosBlock = buildNextVideosBlock()
+        root.addView(nextVideosBlock)
 
         previewBubble = buildSeekPreview()
         playerCard.addView(
@@ -322,7 +333,7 @@ class PlayerScreen(
                 }
 
                 if (playbackState == Player.STATE_READY) {
-                    totalTime.text = formatMs(player.duration)
+                    updateDurationLabel()
                     updateQualityLabel()
                 }
 
@@ -433,8 +444,15 @@ class PlayerScreen(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        currentTime = timeLabel("0:00")
-        totalTime = timeLabel("0:00")
+        currentTime = timeLabel("0:00").apply {
+            minWidth = dp(42)
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+        }
+        totalTime = timeLabel(initialDurationLabel()).apply {
+            minWidth = dp(48)
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            setPadding(dp(6), 0, dp(8), 0)
+        }
         val spacer = View(activity)
 
         qualityButton = TextView(activity).apply {
@@ -455,11 +473,11 @@ class PlayerScreen(
             }
         }
 
-        times.addView(currentTime)
+        times.addView(currentTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)))
         times.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
-        times.addView(totalTime)
-        times.addView(qualityButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)).apply { marginStart = dp(7) })
-        times.addView(fullscreenButton, LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginStart = dp(5) })
+        times.addView(totalTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)))
+        times.addView(qualityButton, LinearLayout.LayoutParams(dp(62), dp(32)).apply { marginStart = dp(4) })
+        times.addView(fullscreenButton, LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginStart = dp(4) })
 
         bottom.addView(seekBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(30)))
         bottom.addView(times)
@@ -679,6 +697,124 @@ class PlayerScreen(
         return box
     }
 
+    private fun buildSocialActions(): LinearLayout {
+        val row = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(2), dp(12), dp(10))
+        }
+
+        val prefs = activity.getSharedPreferences("sohr_player_actions", Context.MODE_PRIVATE)
+        var liked = prefs.getBoolean("liked_${item.messageId}", false)
+        lateinit var likeButton: TextView
+        likeButton = actionPill(if (liked) "♥  Нравится" else "♡  Нравится") {
+            liked = !liked
+            prefs.edit().putBoolean("liked_${item.messageId}", liked).apply()
+            likeButton.text = if (liked) "♥  Нравится" else "♡  Нравится"
+        }
+
+        val shareButton = actionPill("↗  Поделиться") {
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_SUBJECT, cleanTitle(item.title))
+                putExtra(Intent.EXTRA_TEXT, "${cleanTitle(item.title)} • SOHR")
+            }
+            runCatching { activity.startActivity(Intent.createChooser(send, "Поделиться видео")) }
+        }
+
+        val downloadButton = actionPill("↓  Скачать") { enqueueDownload() }
+
+        row.addView(likeButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { marginEnd = dp(5) })
+        row.addView(shareButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { marginEnd = dp(5) })
+        row.addView(downloadButton, LinearLayout.LayoutParams(0, dp(42), 1f))
+        return row
+    }
+
+    private fun buildNextVideosBlock(): LinearLayout {
+        return LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(4), dp(12), dp(18))
+
+            addView(TextView(activity).apply {
+                text = "Следующие видео"
+                textSize = 17f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(palette.text)
+                setPadding(dp(4), dp(4), dp(4), dp(10))
+            })
+
+            val next = nextItem
+            if (next == null) {
+                addView(TextView(activity).apply {
+                    text = "Это последнее видео в сборнике"
+                    textSize = 13f
+                    setTextColor(palette.muted)
+                    setPadding(dp(14), dp(14), dp(14), dp(14))
+                    background = roundedInt(palette.surfaceAlt, 16)
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            } else {
+                addView(LinearLayout(activity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(14), dp(12), dp(14), dp(12))
+                    background = roundedInt(palette.surfaceAlt, 16)
+                    isClickable = true
+                    isFocusable = true
+
+                    val textBox = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+                    textBox.addView(TextView(activity).apply {
+                        text = cleanTitle(next.title)
+                        textSize = 14f
+                        maxLines = 2
+                        setTypeface(typeface, Typeface.BOLD)
+                        setTextColor(palette.text)
+                    })
+                    textBox.addView(TextView(activity).apply {
+                        text = "${formatMs(next.durationSeconds * 1000L)}  •  Следующее"
+                        textSize = 12f
+                        setTextColor(palette.muted)
+                        setPadding(0, dp(4), 0, 0)
+                    })
+                    addView(textBox, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                    addView(TextView(activity).apply {
+                        text = "▶"
+                        textSize = 17f
+                        gravity = Gravity.CENTER
+                        setTextColor(Color.WHITE)
+                        background = rounded("#8B5CF6", 20)
+                    }, LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginStart = dp(10) })
+                    setOnClickListener {
+                        pulse(this)
+                        onPlayNext?.invoke(next)
+                    }
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            }
+        }
+    }
+
+    private fun enqueueDownload() {
+        val safeTitle = cleanTitle(item.title)
+            .replace(Regex("[^\\p{L}\\p{N}._ -]"), "_")
+            .take(70)
+            .ifBlank { "SOHR_${item.messageId}" }
+        val fileName = if (safeTitle.endsWith(".mp4", true)) safeTitle else "$safeTitle.mp4"
+        runCatching {
+            val request = DownloadManager.Request(Uri.parse(mediaUrl))
+                .setTitle(cleanTitle(item.title))
+                .setDescription("SOHR • загрузка видео")
+                .setMimeType(item.mimeType.ifBlank { "video/mp4" })
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setDestinationInExternalFilesDir(activity, Environment.DIRECTORY_DOWNLOADS, fileName)
+                .setAllowedOverMetered(true)
+                .setAllowedOverRoaming(false)
+            val manager = activity.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            manager.enqueue(request)
+            Toast.makeText(activity, "Загрузка началась", Toast.LENGTH_SHORT).show()
+        }.onFailure {
+            Toast.makeText(activity, "Не удалось начать загрузку", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun buildActions(): LinearLayout {
         val row = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -882,6 +1018,8 @@ class PlayerScreen(
         header.visibility = if (enabled) View.GONE else View.VISIBLE
         details.visibility = if (enabled) View.GONE else View.VISIBLE
         actionsRow.visibility = if (enabled) View.GONE else View.VISIBLE
+        socialActionsRow.visibility = if (enabled) View.GONE else View.VISIBLE
+        nextVideosBlock.visibility = if (enabled) View.GONE else View.VISIBLE
 
         val params = playerCard.layoutParams as LinearLayout.LayoutParams
         if (enabled) {
@@ -992,7 +1130,7 @@ class PlayerScreen(
 
     private fun updateProgress() {
         if (!dragging) {
-            val duration = player.duration
+            val duration = resolvedDurationMs()
             if (duration > 0) {
                 seekBar.setProgress(player.currentPosition, duration, player.bufferedPosition)
                 totalTime.text = formatMs(duration)
@@ -1003,13 +1141,26 @@ class PlayerScreen(
         updatePlayIcon()
     }
 
+    private fun resolvedDurationMs(): Long {
+        val playerDuration = player.duration
+        if (playerDuration != C.TIME_UNSET && playerDuration > 0L) return playerDuration
+        return item.durationSeconds.coerceAtLeast(0) * 1000L
+    }
+
+    private fun initialDurationLabel(): String = formatMs(item.durationSeconds.coerceAtLeast(0) * 1000L)
+
+    private fun updateDurationLabel() {
+        if (!::totalTime.isInitialized) return
+        totalTime.text = formatMs(resolvedDurationMs())
+    }
+
     private fun persistPlaybackPosition(force: Boolean = false) {
         val now = SystemClock.elapsedRealtime()
         if (!force && now - lastProgressPersistAt < 2_000L) return
         lastProgressPersistAt = now
 
         val position = player.currentPosition.coerceAtLeast(0L)
-        val duration = player.duration
+        val duration = resolvedDurationMs()
         settings.savePlaybackPosition(item.messageId, position, duration)
     }
 
