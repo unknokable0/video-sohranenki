@@ -1953,6 +1953,7 @@ class MainActivity : AppCompatActivity() {
                 text=label; textSize=12f; gravity=Gravity.CENTER; setTypeface(typeface,Typeface.BOLD)
                 setTextColor(if(selected) Color.WHITE else muted); background=roundedBg(if(selected) purple else Color.TRANSPARENT,15)
                 isClickable=true; isFocusable=true
+                tag = "sohr_video_section_tab"
                 var swipeStartX = 0f
                 var swipeStartY = 0f
                 setOnTouchListener { _, event ->
@@ -1996,14 +1997,7 @@ class MainActivity : AppCompatActivity() {
 
         if(feedRefreshCompletedFlash){ feedRefreshCompletedFlash=false; refresh.postDelayed({ if(feedRefreshButton===refresh&&refresh.isEnabled){ refreshText.animate().alpha(0f).setDuration(80L).withEndAction{refreshText.text="Проверить новые";refreshText.animate().alpha(1f).setDuration(120L).start()}.start() } },1100L) }
 
-        if(videoSection==0){
-            if(regularVideos.isEmpty()) page.addView(TextView(this).apply{text="Все видео просмотрены";textSize=16f;gravity=Gravity.CENTER;setTextColor(muted)},LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
-            else {
-                val ordered=regularVideos.sortedWith(compareByDescending<VideoItem>{it.date}.thenByDescending{it.messageId})
-                val list=RecyclerView(this).apply { isVerticalScrollBarEnabled=false;isHorizontalScrollBarEnabled=false;overScrollMode=View.OVER_SCROLL_NEVER;layoutManager=LinearLayoutManager(this@MainActivity);adapter=VideoAdapter(ordered,palette,settings.animations){openPlayer(it)};setBackgroundColor(bg);setHasFixedSize(true);itemAnimator=if(settings.animations)itemAnimator else null }
-                page.addView(list,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
-            }
-        } else if(visibleGroups.isEmpty()) {
+        if(visibleGroups.isEmpty()) {
             page.addView(TextView(this).apply { text=if(videoSection==2) "Здесь появятся видео, которые ты отметил как просмотренные." else "Непросмотренных сборников пока нет.";textSize=15f;gravity=Gravity.CENTER;setTextColor(muted);setPadding(dp(28),0,dp(28),0) },LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
         } else {
             val list=RecyclerView(this).apply { isVerticalScrollBarEnabled=false;isHorizontalScrollBarEnabled=false;overScrollMode=View.OVER_SCROLL_NEVER;layoutManager=LinearLayoutManager(this@MainActivity);adapter=DayCollectionAdapter(visibleGroups,palette,settings.animations){showDayCollection(it)};setBackgroundColor(bg);setHasFixedSize(true);itemAnimator=if(settings.animations)itemAnimator else null }
@@ -2919,7 +2913,22 @@ class MainActivity : AppCompatActivity() {
         currentPrimaryTab = selected
         nav.syncSelected(selected, animate = false)
 
+        while (host.childCount > 1) {
+            val stale = host.getChildAt(0)
+            stale.animate().cancel()
+            stale.alpha = 1f
+            stale.translationX = 0f
+            stale.translationY = 0f
+            stale.setLayerType(View.LAYER_TYPE_NONE, null)
+            host.removeViewAt(0)
+        }
         val old = if (host.childCount > 0) host.getChildAt(host.childCount - 1) else null
+        old?.animate()?.cancel()
+        old?.alpha = 1f
+        old?.translationX = 0f
+        old?.translationY = 0f
+        old?.scaleX = 1f
+        old?.scaleY = 1f
 
         val animateContent = settings.animations && old != null && old !== content
         val sectionCrossfade = pendingVideoSectionCrossfade
@@ -2951,22 +2960,31 @@ class MainActivity : AppCompatActivity() {
 
                 val telegramInterpolator = android.view.animation.DecelerateInterpolator(1.5f)
                 if (sectionCrossfade) {
-                    val travel = dp(18).toFloat() * if (sectionDirection == 0) 1 else sectionDirection
+                    val direction = if (sectionDirection == 0) 1 else sectionDirection
+                    val travel = dp(22).toFloat() * direction
                     content.alpha = 0f
                     content.translationX = travel
                     old.alpha = 1f
                     old.translationX = 0f
                     old.animate()
-                        .alpha(0f)
-                        .setDuration(120L)
+                        .alpha(0.12f)
+                        .translationX(-travel * 0.18f)
+                        .setDuration(150L)
                         .setInterpolator(telegramInterpolator)
                         .start()
                     content.animate()
                         .alpha(1f)
-                        .setDuration(170L)
+                        .translationX(0f)
+                        .setDuration(220L)
                         .setInterpolator(telegramInterpolator)
                         .withEndAction {
+                            old.animate().cancel()
                             old.alpha = 1f
+                            old.translationX = 0f
+                            old.translationY = 0f
+                            content.alpha = 1f
+                            content.translationX = 0f
+                            content.translationY = 0f
                             old.setLayerType(View.LAYER_TYPE_NONE, null)
                             content.setLayerType(View.LAYER_TYPE_NONE, null)
                             if (old.parent === host) host.removeView(old)
@@ -3391,7 +3409,7 @@ class MainActivity : AppCompatActivity() {
                 (target is TextView && target.isClickable) ||
                 (target is LinearLayout && target.isClickable)
 
-            if (buttonLike && target !is SohrBottomNavView) {
+            if (buttonLike && target !is SohrBottomNavView && target.tag != "sohr_video_section_tab") {
                 target.setOnTouchListener { v, event ->
                     when (event.actionMasked) {
                         MotionEvent.ACTION_DOWN -> {
