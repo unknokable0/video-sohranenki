@@ -1813,7 +1813,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val levelData = listOf(
-            Triple("1–9 дней", Color.parseColor("#D7D7DE"), "Белый"),
+            Triple("1–9 дней", Color.parseColor("#E7E7EC"), "Белый"),
             Triple("10–19 дней", Color.parseColor("#9A68FF"), "Фиолетовый"),
             Triple("20–49 дней", Color.parseColor("#4D98FF"), "Синий"),
             Triple("50–99 дней", Color.parseColor("#FF4A5E"), "Красный"),
@@ -1896,14 +1896,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun streakColor(streak: Int): Int = when {
-        streak <= 0 -> Color.parseColor("#777782")
-        streak < 10 -> Color.parseColor("#D7D7DE")
-        streak < 20 -> Color.parseColor("#9A68FF")
-        streak < 50 -> Color.parseColor("#4D98FF")
-        streak < 100 -> Color.parseColor("#FF4A5E")
-        else -> Color.parseColor("#B7FF28")
-    }
+    private fun streakColor(streak: Int): Int = StreakFireView.colorForStreak(streak)
 
     private fun nextStreakMilestone(streak: Int): Int? = when {
         streak < 10 -> 10
