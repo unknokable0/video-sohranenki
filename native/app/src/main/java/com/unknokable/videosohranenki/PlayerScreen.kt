@@ -9,6 +9,7 @@ import android.media.MediaDataSource
 import android.media.MediaMetadataRetriever
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.GestureDetector
 import android.view.Gravity
 import android.view.MotionEvent
@@ -29,6 +30,7 @@ import androidx.media3.common.TrackGroup
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -88,6 +90,7 @@ class PlayerScreen(
     private var speed = 1f
     private var sleepRunnable: Runnable? = null
     private var playbackCounted = false
+    private var lastProgressPersistAt = 0L
     private val showBufferingRunnable = Runnable {
         if (::bufferingLoader.isInitialized && player.playbackState == Player.STATE_BUFFERING) {
             bufferingLoader.visibility = View.VISIBLE
@@ -196,7 +199,10 @@ class PlayerScreen(
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
-        player = ExoPlayer.Builder(activity)
+        val renderersFactory = DefaultRenderersFactory(activity)
+            .forceEnableMediaCodecAsynchronousQueueing()
+
+        player = ExoPlayer.Builder(activity, renderersFactory)
             .setLoadControl(loadControl)
             .setSeekBackIncrementMs(10_000)
             .setSeekForwardIncrementMs(10_000)
@@ -244,6 +250,10 @@ class PlayerScreen(
                 if (playbackState == Player.STATE_READY) {
                     totalTime.text = formatMs(player.duration)
                     updateQualityLabel()
+                }
+
+                if (playbackState == Player.STATE_ENDED) {
+                    settings.clearPlaybackPosition(item.messageId)
                 }
             }
         })
@@ -743,6 +753,8 @@ class PlayerScreen(
     }
 
     fun destroy() {
+        persistPlaybackPosition(force = true)
+        root.keepScreenOn = false
         sleepRunnable?.let { handler.removeCallbacks(it) }
         handler.removeCallbacks(showBufferingRunnable)
         handler.removeCallbacksAndMessages(null)
@@ -834,7 +846,19 @@ class PlayerScreen(
             }
         }
         currentTime.text = formatMs(player.currentPosition)
+        persistPlaybackPosition()
         updatePlayIcon()
+    }
+
+    private fun persistPlaybackPosition(force: Boolean = false) {
+        if (!::player.isInitialized) return
+        val now = SystemClock.elapsedRealtime()
+        if (!force && now - lastProgressPersistAt < 2_000L) return
+        lastProgressPersistAt = now
+
+        val position = player.currentPosition.coerceAtLeast(0L)
+        val duration = player.duration
+        settings.savePlaybackPosition(item.messageId, position, duration)
     }
 
     private fun toggleOverlay() {
