@@ -91,6 +91,7 @@ class PlayerScreen(
     private var sleepRunnable: Runnable? = null
     private var playbackCounted = false
     private var lastProgressPersistAt = 0L
+    private var speedActionButton: TextView? = null
     private val showBufferingRunnable = Runnable {
         if (::bufferingLoader.isInitialized && player.playbackState == Player.STATE_BUFFERING) {
             bufferingLoader.visibility = View.VISIBLE
@@ -557,6 +558,7 @@ class PlayerScreen(
 
         val speedLabel = if (speed == 1f) "1×  Скорость" else speed.toString() + "×  Скорость"
         val speedBtn = actionPill(speedLabel) { showSpeedPicker() }
+        speedActionButton = speedBtn
         val sleepBtn = actionPill("◷  Таймер") { showSleepPicker() }
 
         row.addView(
@@ -661,6 +663,8 @@ class PlayerScreen(
             speed = speeds[which]
             settings.playbackSpeed = speed
             player.setPlaybackSpeed(speed)
+            speedActionButton?.text =
+                if (speed == 1f) "1×  Скорость" else speed.toString() + "×  Скорость"
             Toast.makeText(activity, "Скорость " + labels[which], Toast.LENGTH_SHORT).show()
         }
     }
