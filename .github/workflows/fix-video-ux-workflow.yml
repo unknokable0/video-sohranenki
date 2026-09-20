@@ -1,0 +1,35 @@
+name: Repair video UX patch workflow
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/fix-video-ux-workflow.yml"]
+permissions:
+  contents: write
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Repair robust patch markers
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/sohr-400-patch.yml')
+          s=p.read_text()
+
+          a=s.index('          # Remove redundant speed/timer row below video.')
+          b=s.index('          # Replace Like with Mark watched + confirmation.', a)
+          replacement='''          # Remove redundant speed/timer row below video. They remain in the video settings sheet.\n          player = player.replace('        actionsRow = buildActions()\\n', '', 1)\n          player = player.replace('        root.addView(actionsRow)\\n', '', 1)\n\n          # Remove redundant quality shortcut from the player overlay. Quality remains in the gear/settings sheet.\n          player = player.replace('        times.addView(qualityButton, LinearLayout.LayoutParams(dp(62), dp(32)).apply { marginStart = dp(4) })\\n', '', 1)\n\n'''
+          s=s[:a]+replacement+s[b:]
+
+          a=s.index('          # Rich next-video card with thumbnail/poster.')
+          b=s.index('          main_path.write_text(main)', a)
+          replacement='''          # Rich next-video card with thumbnail/poster.\n          marker = '                    val textBox = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }\\n'\n          if marker not in player:\n              raise SystemExit('next card marker missing')\n          thumb = r\'''                    val thumb = ImageView(activity).apply {\n                        scaleType = ImageView.ScaleType.CENTER_CROP\n                        background = roundedInt(palette.surface, 12)\n                        clipToOutline = true\n                        next.thumbnailPath?.takeIf { it.isNotBlank() }?.let { path ->\n                            runCatching { BitmapFactory.decodeFile(path) }.getOrNull()?.let { setImageBitmap(it) }\n                        }\n                    }\n                    addView(thumb, LinearLayout.LayoutParams(dp(96), dp(58)).apply { marginEnd = dp(12) })\n\n\'''\n          player = player.replace(marker, thumb + marker, 1)\n\n'''
+          s=s[:a]+replacement+s[b:]
+          p.write_text(s)
+          PY
+          git config user.name "sohr-dev-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add .github/workflows/sohr-400-patch.yml
+          git commit -m "Repair SOHR video UX patch matching"
+          git push
