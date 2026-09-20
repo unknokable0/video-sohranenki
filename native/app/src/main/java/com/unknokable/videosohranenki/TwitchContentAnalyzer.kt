@@ -124,8 +124,8 @@ object TwitchContentAnalyzer {
             activityManager?.isLowRamDevice == true ||
             (activityManager?.memoryClass ?: 256) <= 192 ||
             freeHeap < 160L * 1024L * 1024L
-        val timelineBudget = if (lowRamDevice) 900 else 1_600
-        val probeBudget = if (lowRamDevice) 240 else 480
+        val timelineBudget = if (lowRamDevice) 1_800 else 4_000
+        val probeBudget = if (lowRamDevice) 300 else 700
 
         onProgress(5, "Получаем карту стрима…")
         val (markers, storyboardUrl) = fetchExtras(videoId)
@@ -577,7 +577,7 @@ object TwitchContentAnalyzer {
         targetPoints: Int,
         onProgress: suspend (Int, Int) -> Unit
     ): List<TimelinePoint> {
-        val safeTargetPoints = targetPoints.coerceIn(600, 1_600)
+        val safeTargetPoints = targetPoints.coerceIn(800, 4_000)
         val step = max(1, ceil(storyboard.count / safeTargetPoints.toDouble()).toInt())
         val indexes = mutableListOf<Int>()
 
@@ -724,65 +724,92 @@ object TwitchContentAnalyzer {
         maxProbes: Int
     ): List<Int> {
         if (timeline.isEmpty()) return emptyList()
-        val wanted = linkedSetOf<Int>()
 
-        // Every large visual transition gets a dense neighborhood. This catches
-        // the exact moment a browser/player opens even if the title is only
-        // visible for a few storyboard frames.
+        val priority = linkedSetOf<Int>()
+        val baseline = linkedSetOf<Int>()
+
+        // Scan every major visual transition across the WHOLE VOD. Twitch
+        // category metadata is only a hint; a watched video can appear while
+        // the stream is still categorized as a game or something else.
         for (i in timeline.indices) {
-            val point = timeline[i]
-            if (!isChatLike(markerAt(markers, point.timeSec))) continue
-
-            if (point.diff >= 12) {
-                for (offset in -2..3) {
-                    wanted += (i + offset).coerceIn(0, timeline.lastIndex)
+            val diff = timeline[i].diff
+            if (diff >= 10) {
+                val radius = if (diff >= 20) 3 else 2
+                for (offset in -radius..radius) {
+                    priority += (i + offset).coerceIn(0, timeline.lastIndex)
                 }
             }
         }
 
-        // Category boundaries get an explicit neighborhood as well.
+        // Category changes remain useful scene-change hints, but never filter
+        // frames out of analysis.
         for (marker in markers) {
             val nearest = timeline.indices.minByOrNull {
                 kotlin.math.abs(timeline[it].timeSec - marker.startSec)
             } ?: continue
-            for (offset in -2..3) {
-                wanted += (nearest + offset).coerceIn(0, timeline.lastIndex)
+            for (offset in -2..2) {
+                priority += (nearest + offset).coerceIn(0, timeline.lastIndex)
             }
         }
 
-        // Safety pass across the *entire* chat-like timeline. It prevents a
-        // quiet/static fullscreen video from being missed just because motion
-        // detection had no strong edge.
-        val stride = max(1, timeline.size / 420)
-        var i = 0
-        while (i < timeline.size) {
-            if (isChatLike(markerAt(markers, timeline[i].timeSec))) {
-                wanted += i
-            }
-            i += stride
+        // Uniform coverage across the entire recording catches fullscreen or
+        // quiet videos that do not expose obvious YouTube/player chrome.
+        val limit = maxProbes.coerceIn(220, 700)
+        val baselineTarget = max(80, limit / 3)
+        val stride = max(1, timeline.size / baselineTarget)
+        var index = 0
+        while (index < timeline.size) {
+            baseline += index
+            index += stride
+        }
+        baseline += timeline.lastIndex
+
+        for (i in 0..minOf(10, timeline.lastIndex)) {
+            baseline += i
         }
 
-        // First few frames of the VOD are useful when a video begins very early.
-        for (i0 in 0..minOf(8, timeline.lastIndex)) {
-            if (isChatLike(markerAt(markers, timeline[i0].timeSec))) wanted += i0
-        }
-
-        val sorted = wanted
+        val prioritySorted = priority
+            .filter { it in timeline.indices }
+            .distinct()
+            .sorted()
+        val baselineSorted = baseline
             .filter { it in timeline.indices }
             .distinct()
             .sorted()
 
-        return evenlySampleIndices(
-            sorted = sorted,
-            limit = maxProbes.coerceIn(180, 480)
-        )
+        val selected = linkedSetOf<Int>()
+        val priorityBudget = minOf(limit, max(1, (limit * 3) / 4))
+        selected += evenlySampleIndices(prioritySorted, priorityBudget)
+
+        val remaining = limit - selected.size
+        if (remaining > 0) {
+            selected += evenlySampleIndices(
+                baselineSorted.filterNot { it in selected },
+                remaining
+            )
+        }
+
+        // Fill any unused capacity from the full candidate union.
+        val stillMissing = limit - selected.size
+        if (stillMissing > 0) {
+            val union = (prioritySorted + baselineSorted)
+                .distinct()
+                .sorted()
+                .filterNot { it in selected }
+            selected += evenlySampleIndices(union, stillMissing)
+        }
+
+        return selected.sorted()
     }
 
     private fun evenlySampleIndices(
         sorted: List<Int>,
         limit: Int
     ): List<Int> {
-        if (sorted.size <= limit || limit <= 1) return sorted
+        if (sorted.isEmpty() || limit <= 0) return emptyList()
+        if (sorted.size <= limit || limit == 1) {
+            return if (limit == 1) listOf(sorted.first()) else sorted
+        }
 
         val out = ArrayList<Int>(limit)
         val last = sorted.lastIndex.toLong()
@@ -794,7 +821,6 @@ object TwitchContentAnalyzer {
             if (out.lastOrNull() != value) out += value
         }
 
-        // Always preserve the last candidate so late-VOD videos cannot be cut off.
         if (out.lastOrNull() != sorted.last()) {
             if (out.size >= limit) out[out.lastIndex] = sorted.last()
             else out += sorted.last()
@@ -898,17 +924,24 @@ object TwitchContentAnalyzer {
         val probeByIndex = probes.associateBy { it.timelineIndex }
         val strongEvidence = BooleanArray(timeline.size)
         val moderateEvidence = BooleanArray(timeline.size)
+        val directPlayerEvidence = BooleanArray(timeline.size)
 
         for (probe in probes) {
-            if (probe.timelineIndex !in timeline.indices) continue
-            if (probe.score >= 6) strongEvidence[probe.timelineIndex] = true
-            if (probe.score >= 3) moderateEvidence[probe.timelineIndex] = true
+            val index = probe.timelineIndex
+            if (index !in timeline.indices) continue
 
-            // Explicit player evidence persists around the sampled point.
+            if (probe.score >= 6) strongEvidence[index] = true
+            if (probe.score >= 3) moderateEvidence[index] = true
+            if (probe.ocr.youtubeLike || probe.ocr.playerLike) {
+                directPlayerEvidence[index] = true
+            }
+
+            // A strong player hit can support its immediate neighbors, but do
+            // not spread it widely or separate videos start merging together.
             if (probe.score >= 6) {
-                for (offset in -2..2) {
-                    val idx = probe.timelineIndex + offset
-                    if (idx in timeline.indices) moderateEvidence[idx] = true
+                for (offset in -1..1) {
+                    val neighbor = index + offset
+                    if (neighbor in timeline.indices) moderateEvidence[neighbor] = true
                 }
             }
         }
@@ -918,22 +951,28 @@ object TwitchContentAnalyzer {
             val end = (index + 1).coerceAtMost(timeline.lastIndex)
             if (start > end) return false
 
-            val diffs = (start..end).map { timeline[it].diff }
-            val active = diffs.count { it >= 13 }
-            val average = diffs.average()
+            var active = 0
+            var total = 0
+            var sum = 0.0
+            for (i in start..end) {
+                val diff = timeline[i].diff
+                if (diff >= 13) active += 1
+                sum += diff
+                total += 1
+            }
+            val average = if (total > 0) sum / total else 0.0
             return active >= 2 && average >= 11.5
         }
 
-        fun likelyVideo(index: Int): Boolean {
+        fun canStartAt(index: Int): Boolean {
             if (index !in timeline.indices) return false
-            val marker = markerAt(markers, timeline[index].timeSec)
-            if (!isChatLike(marker)) return false
+            if (strongEvidence[index] || directPlayerEvidence[index]) return true
+            if (!moderateEvidence[index]) return false
 
-            if (strongEvidence[index]) return true
-            val motion = motionSignal(index)
-            // Beta 1.0.3: once OCR/player/image evidence says this is a video,
-            // do not require motion too. Quiet/fullscreen videos are still videos.
-            return moderateEvidence[index] || motion
+            // Game/category metadata is a weak negative hint only. We still
+            // allow video detection there when player evidence is strong.
+            val marker = markerAt(markers, timeline[index].timeSec)
+            return !isGameCategory(marker)
         }
 
         data class RawRange(val startIndex: Int, val endIndex: Int)
@@ -941,118 +980,125 @@ object TwitchContentAnalyzer {
         val rawRanges = mutableListOf<RawRange>()
         var activeStart: Int? = null
         var pendingStart: Int? = null
+        var pendingLastTime = -1
         var pendingHits = 0
         var misses = 0
-        var lastPositive = -1
+        var lastExplicit = -1
+
+        fun closeRange(currentIndex: Int) {
+            val startIndex = activeStart ?: return
+            val last = if (lastExplicit >= startIndex) lastExplicit else currentIndex
+            val endIndex = (last + 1)
+                .coerceAtLeast(startIndex)
+                .coerceAtMost(timeline.lastIndex)
+            if (endIndex > startIndex) {
+                rawRanges += RawRange(startIndex, endIndex)
+            }
+            activeStart = null
+            pendingStart = null
+            pendingLastTime = -1
+            pendingHits = 0
+            misses = 0
+            lastExplicit = -1
+        }
 
         for (i in timeline.indices) {
-            val marker = markerAt(markers, timeline[i].timeSec)
-            val chatLike = isChatLike(marker)
-
-            if (!chatLike) {
-                if (activeStart != null) {
-                    val end = i.coerceAtLeast(activeStart!!)
-                    rawRanges += RawRange(activeStart!!, end)
-                }
-                activeStart = null
-                pendingStart = null
-                pendingHits = 0
-                misses = 0
-                lastPositive = -1
-                continue
-            }
-
-            val positive = likelyVideo(i)
+            val explicitStrong = strongEvidence[i] || directPlayerEvidence[i]
+            val explicitModerate = moderateEvidence[i]
+            val explicit = explicitStrong || explicitModerate
+            val time = timeline[i].timeSec
 
             if (activeStart == null) {
-                if (strongEvidence[i]) {
+                if (explicitStrong) {
                     activeStart = (i - 1).coerceAtLeast(0)
-                    lastPositive = i
+                    lastExplicit = i
                     misses = 0
                     pendingStart = null
                     pendingHits = 0
                     continue
                 }
 
-                if (positive) {
-                    if (pendingStart == null) pendingStart = (i - 1).coerceAtLeast(0)
-                    pendingHits += 1
+                if (canStartAt(i)) {
+                    if (
+                        pendingStart == null ||
+                        pendingLastTime < 0 ||
+                        time - pendingLastTime > 45
+                    ) {
+                        pendingStart = (i - 1).coerceAtLeast(0)
+                        pendingHits = 1
+                    } else {
+                        pendingHits += 1
+                    }
+                    pendingLastTime = time
 
                     if (pendingHits >= 2) {
                         activeStart = pendingStart
-                        lastPositive = i
+                        lastExplicit = i
                         misses = 0
                         pendingStart = null
                         pendingHits = 0
                     }
-                } else {
+                } else if (pendingLastTime >= 0 && time - pendingLastTime > 45) {
                     pendingStart = null
                     pendingHits = 0
+                    pendingLastTime = -1
                 }
                 continue
             }
 
-            if (positive || moderateEvidence[i]) {
-                lastPositive = i
+            if (explicit) {
+                lastExplicit = i
                 misses = 0
-            } else {
-                misses += 1
-            }
-
-            // Hysteresis is the key difference from Beta 1.0.0:
-            // once a video starts, a calm/fullscreen section does NOT end it.
-            // We need several consecutive weak points before closing.
-            if (misses >= 3) {
-                val endIndex = (lastPositive + 2)
-                    .coerceAtLeast(activeStart!!)
-                    .coerceAtMost(i)
-                rawRanges += RawRange(activeStart!!, endIndex)
-                activeStart = null
-                pendingStart = null
-                pendingHits = 0
-                misses = 0
-                lastPositive = -1
-            }
-        }
-
-        activeStart?.let {
-            rawRanges += RawRange(it, timeline.lastIndex)
-        }
-
-        // Merge tiny gaps caused by temporarily static scenes inside a video.
-        val mergedRanges = mutableListOf<RawRange>()
-        for (range in rawRanges) {
-            val previous = mergedRanges.lastOrNull()
-            if (previous == null) {
-                mergedRanges += range
                 continue
             }
 
-            val gapSeconds =
-                timeline[range.startIndex].timeSec - timeline[previous.endIndex].timeSec
-
-            if (gapSeconds in 0..20) {
-                mergedRanges[mergedRanges.lastIndex] =
-                    RawRange(previous.startIndex, range.endIndex)
+            val sinceExplicit = if (lastExplicit >= 0) {
+                time - timeline[lastExplicit].timeSec
             } else {
-                mergedRanges += range
+                Int.MAX_VALUE
+            }
+
+            // Motion can bridge a short fullscreen/static-control section, but
+            // it cannot keep one giant chapter alive for minutes.
+            if (sinceExplicit <= 35 && motionSignal(i)) {
+                misses = max(0, misses - 1)
+                continue
+            }
+
+            val marker = markerAt(markers, time)
+            misses += if (isGameCategory(marker)) 2 else 1
+
+            if (misses >= 3) {
+                closeRange(i)
             }
         }
 
+        if (activeStart != null) {
+            closeRange(timeline.lastIndex)
+        }
+
+        // Do not merge raw ranges here. Separate evidence gaps are valuable:
+        // they usually represent streamer speech/browser navigation between
+        // two watched videos. Title-aware merging happens only at the end.
+        val separatedRanges = rawRanges
+
         fun snappedStart(range: RawRange): Int {
             val firstEvidence = (range.startIndex..range.endIndex)
-                .firstOrNull { strongEvidence[it] || moderateEvidence[it] || motionSignal(it) }
+                .firstOrNull {
+                    strongEvidence[it] ||
+                        moderateEvidence[it] ||
+                        directPlayerEvidence[it]
+                }
                 ?: range.startIndex
 
             val firstTime = timeline[firstEvidence].timeSec
-            val minTime = (firstTime - 75).coerceAtLeast(0)
+            val minTime = (firstTime - 90).coerceAtLeast(0)
             var bestIndex = range.startIndex
 
             var i = firstEvidence
             while (i > 0 && timeline[i].timeSec >= minTime) {
-                // A strong cut immediately before the first confirmed video
-                // frame is our best storyboard estimate of the real start.
-                if (timeline[i].diff >= 18) {
+                // Nearest meaningful cut before the first explicit video hit.
+                if (timeline[i].diff >= 14) {
                     bestIndex = (i - 1).coerceAtLeast(0)
                     break
                 }
@@ -1064,42 +1110,46 @@ object TwitchContentAnalyzer {
 
         fun snappedEnd(range: RawRange): Int {
             val lastEvidence = (range.endIndex downTo range.startIndex)
-                .firstOrNull { strongEvidence[it] || moderateEvidence[it] || motionSignal(it) }
+                .firstOrNull {
+                    strongEvidence[it] ||
+                        moderateEvidence[it] ||
+                        directPlayerEvidence[it]
+                }
                 ?: range.endIndex
 
             val lastTime = timeline[lastEvidence].timeSec
-            val maxTime = (lastTime + 75).coerceAtMost(durationSeconds)
+            val maxTime = if (durationSeconds > 0) {
+                (lastTime + 60).coerceAtMost(durationSeconds)
+            } else {
+                lastTime + 60
+            }
             var bestIndex = range.endIndex
 
             var i = (lastEvidence + 1).coerceAtMost(timeline.lastIndex)
             while (i <= timeline.lastIndex && timeline[i].timeSec <= maxTime) {
-                val marker = markerAt(markers, timeline[i].timeSec)
-                val explicitExit =
-                    !isChatLike(marker) ||
-                    (
-                        timeline[i].diff >= 18 &&
-                        !moderateEvidence[i] &&
-                        !strongEvidence[i] &&
-                        !motionSignal(i)
-                    )
+                val noVideoEvidence =
+                    !moderateEvidence[i] &&
+                    !strongEvidence[i] &&
+                    !directPlayerEvidence[i]
 
-                if (explicitExit) {
+                if (timeline[i].diff >= 14 && noVideoEvidence) {
                     bestIndex = i
                     break
                 }
                 i += 1
             }
 
-            return timeline[bestIndex].timeSec.coerceAtMost(durationSeconds)
+            val end = timeline[bestIndex].timeSec
+            return if (durationSeconds > 0) end.coerceAtMost(durationSeconds) else end
         }
 
         val chapters = mutableListOf<SmartChapter>()
 
-        for (range in mergedRanges) {
+        for (range in separatedRanges) {
             val startSec = snappedStart(range)
             val endSec = snappedEnd(range)
 
-            if (endSec - startSec < 35) continue
+            if (endSec - startSec < 15) continue
 
             val anchors = probes
                 .asSequence()
@@ -1132,11 +1182,11 @@ object TwitchContentAnalyzer {
                     endSeconds = endSec,
                     title = title?.let { "Смотрит: $it" } ?: "Смотрит видео",
                     detail = if (title != null) {
-                        "Название найдено по кадрам в начале/внутри ролика"
+                        "Название найдено по кадрам ролика"
                     } else {
-                        "Видео определено по непрерывной временной шкале"
+                        "Видео найдено по отдельному устойчивому фрагменту"
                     },
-                    confidence = if (title != null) 92 else 78
+                    confidence = if (title != null) 92 else 80
                 )
                 continue
             }
@@ -1149,7 +1199,7 @@ object TwitchContentAnalyzer {
             for (segmentIndex in 0 until boundaries.lastIndex) {
                 val segmentStart = boundaries[segmentIndex]
                 val segmentEnd = boundaries[segmentIndex + 1]
-                if (segmentEnd - segmentStart < 30) continue
+                if (segmentEnd - segmentStart < 15) continue
 
                 val segmentAnchors = anchors.filter {
                     it.timeSec in segmentStart..segmentEnd
@@ -1165,14 +1215,14 @@ object TwitchContentAnalyzer {
                     } else {
                         "Отдельный видео-фрагмент"
                     },
-                    confidence = if (title != null) 92 else 76
+                    confidence = if (title != null) 92 else 78
                 )
             }
         }
 
         return mergeVideoChapters(chapters)
-            .filter { it.endSeconds - it.startSeconds >= 30 }
-            .take(30)
+            .filter { it.endSeconds - it.startSeconds >= 15 }
+            .take(40)
     }
 
     private fun robustTitleSplits(
@@ -1264,10 +1314,15 @@ object TwitchContentAnalyzer {
                 continue
             }
 
-            val sameTitle = similarity(previous.title, chapter.title) >= 0.60
+            val previousSpecific = previous.title != "Смотрит видео"
+            val currentSpecific = chapter.title != "Смотрит видео"
+            val sameTitle =
+                previousSpecific &&
+                currentSpecific &&
+                similarity(previous.title, chapter.title) >= 0.72
             val gap = chapter.startSeconds - previous.endSeconds
 
-            if (sameTitle && gap in 0..30) {
+            if (sameTitle && gap in 0..8) {
                 out[out.lastIndex] = previous.copy(
                     endSeconds = chapter.endSeconds,
                     confidence = max(previous.confidence, chapter.confidence)
