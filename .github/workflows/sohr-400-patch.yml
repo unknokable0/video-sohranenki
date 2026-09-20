@@ -1,4 +1,4 @@
-name: SOHR local playback compile fix
+name: SOHR fullscreen and seek stability fix
 on:
   push:
     branches: [main]
@@ -10,20 +10,133 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Fix nullable stream prefetch
+      - name: Patch fullscreen and Telegram random seek
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
+
+          # 1) Fullscreen: never crash on a transient/non-LinearLayout layout params state.
+          p = Path('native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt')
+          s = p.read_text()
+          old = '''        val params = playerCard.layoutParams as LinearLayout.LayoutParams
+        if (enabled) {
+            params.height = 0
+            params.weight = 1f
+            params.marginStart = 0
+            params.marginEnd = 0
+            playerCard.background = rounded("#000000", 0)
+        } else {
+            val width = activity.resources.displayMetrics.widthPixels
+            params.height = (width * 9f / 16f).toInt()
+            params.weight = 0f
+            params.marginStart = dp(12)
+            params.marginEnd = dp(12)
+            playerCard.background = rounded("#000000", 18)
+        }
+        playerCard.layoutParams = params
+        playerCard.requestLayout()
+'''
+          new = '''        val params = playerCard.layoutParams as? LinearLayout.LayoutParams
+        if (params != null) {
+            if (enabled) {
+                params.height = 0
+                params.weight = 1f
+                params.marginStart = 0
+                params.marginEnd = 0
+                playerCard.background = rounded("#000000", 0)
+            } else {
+                val width = activity.resources.displayMetrics.widthPixels
+                params.height = (width * 9f / 16f).toInt()
+                params.weight = 0f
+                params.marginStart = dp(12)
+                params.marginEnd = dp(12)
+                playerCard.background = rounded("#000000", 18)
+            }
+            playerCard.layoutParams = params
+            playerCard.requestLayout()
+        }
+'''
+          if old not in s:
+              raise SystemExit('PlayerScreen fullscreen block not found')
+          s = s.replace(old, new, 1)
+
+          # Stop thumbnail extraction before committing a real seek. This prevents the
+          # preview reader from fighting the playback reader for TDLib's download range.
+          old_seek = '''                    if (!canceled) {
+                        player.seekTo(positionMs)
+                        currentTime.text = formatMs(positionMs)
+                    }
+'''
+          new_seek = '''                    if (!canceled) {
+                        previewRequestId++
+                        previewJob?.cancel()
+                        previewJob = null
+                        player.seekTo(positionMs)
+                        currentTime.text = formatMs(positionMs)
+                    }
+'''
+          if old_seek not in s:
+              raise SystemExit('PlayerScreen scrub stop block not found')
+          s = s.replace(old_seek, new_seek, 1)
+          p.write_text(s)
+
+          # 2) Activity orientation changes are best-effort. Some Android/OEM builds can
+          # reject an orientation request during an in-flight window transition.
           p = Path('native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt')
           s = p.read_text()
-          s = s.replace('        server.prefetch(item)\n', '        if (localFile == null) server?.prefetch(item)\n', 1)
-          s = s.replace('        nextItem?.let { server.prefetch(it) }\n', '        nextItem?.takeIf { it.localPath == null }?.let { server?.prefetch(it) }\n', 1)
+          s = s.replace(
+              '                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE\n',
+              '                runCatching { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE }\n',
+              1
+          )
+          s = s.replace(
+              '            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED\n',
+              '            runCatching { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }\n',
+              1
+          )
+          p.write_text(s)
+
+          # 3) TDLib keeps the range of an already-running DownloadFile request. After a
+          # large ExoPlayer seek we must cancel that stale range before requesting the new
+          # byte window, otherwise playback can buffer forever until the screen is reopened.
+          p = Path('native/app/src/main/java/com/unknokable/videosohranenki/TelegramStreamServer.kt')
+          s = p.read_text()
+          marker = '''        val result = runBlocking {
+            client.send(TdApi.DownloadFile(fileId, 32, windowStart, windowLimit, true))
+        }
+        applyLocalRange(result.local)
+'''
+          replacement = '''        val result = runBlocking {
+            runCatching { client.send(TdApi.CancelDownloadFile(fileId, false)) }
+            client.send(TdApi.DownloadFile(fileId, 32, windowStart, windowLimit, true))
+        }
+        applyLocalRange(result.local)
+'''
+          if marker not in s:
+              raise SystemExit('Telegram playback range block not found')
+          s = s.replace(marker, replacement, 1)
+
+          retry = '''            val retry = runBlocking {
+                client.send(TdApi.DownloadFile(fileId, 32, offset, retryLimit, true))
+            }
+'''
+          retry_new = '''            val retry = runBlocking {
+                runCatching { client.send(TdApi.CancelDownloadFile(fileId, false)) }
+                client.send(TdApi.DownloadFile(fileId, 32, offset, retryLimit, true))
+            }
+'''
+          if retry not in s:
+              raise SystemExit('Telegram playback retry block not found')
+          s = s.replace(retry, retry_new, 1)
           p.write_text(s)
           PY
+
           git config user.name "sohr-dev-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt
+          git add native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt \
+                  native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt \
+                  native/app/src/main/java/com/unknokable/videosohranenki/TelegramStreamServer.kt
           git diff --cached --check
-          git commit -m "Fix local and Telegram player prefetch"
+          git commit -m "Fix fullscreen crash and Telegram random seeking"
           git push
