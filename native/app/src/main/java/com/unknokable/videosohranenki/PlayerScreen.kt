@@ -27,6 +27,8 @@ import android.widget.TextView
 import android.widget.SeekBar
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import android.widget.Toast
+import coil.load
+import coil.transform.RoundedCornersTransformation
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
@@ -56,7 +58,7 @@ class PlayerScreen(
     private val activity: Activity,
     private val item: VideoItem,
     private val mediaUrl: String,
-    private val previewDataSourceFactory: () -> MediaDataSource,
+    private val previewDataSourceFactory: (() -> MediaDataSource)?,
     private val settings: AppSettings,
     private val startPositionMs: Long = 0L,
     private val nextItem: VideoItem? = null,
@@ -166,8 +168,10 @@ class PlayerScreen(
         posterImage = ImageView(activity).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
             setBackgroundColor(Color.BLACK)
-            item.thumbnailPath?.takeIf { it.isNotBlank() }?.let { path ->
-                runCatching { BitmapFactory.decodeFile(path) }.getOrNull()?.let { setImageBitmap(it) }
+            val localThumb = item.thumbnailPath?.takeIf { it.isNotBlank() }
+            when {
+                localThumb != null -> runCatching { BitmapFactory.decodeFile(localThumb) }.getOrNull()?.let { setImageBitmap(it) }
+                !item.thumbnailUrl.isNullOrBlank() -> load(item.thumbnailUrl) { crossfade(settings.animations) }
             }
         }
         playerCard.addView(
@@ -569,7 +573,8 @@ class PlayerScreen(
 
     private fun ensurePreviewRetriever() {
         if (previewRetriever != null) return
-        val dataSource = previewDataSourceFactory()
+        val factory = previewDataSourceFactory ?: return
+        val dataSource = factory()
         val retriever = MediaMetadataRetriever()
         try {
             retriever.setDataSource(dataSource)
@@ -725,9 +730,13 @@ class PlayerScreen(
             syncWatchedAction(animated = true)
         }
         syncWatchedAction()
-        val downloadButton = actionPill("↓  Скачать") { enqueueDownload() }
-        row.addView(watchedButton, LinearLayout.LayoutParams(0, dp(44), 1.35f).apply { marginEnd = dp(6) })
-        row.addView(downloadButton, LinearLayout.LayoutParams(0, dp(44), 0.85f))
+        if (item.source == "twitch") {
+            row.addView(watchedButton, LinearLayout.LayoutParams(0, dp(44), 1f))
+        } else {
+            val downloadButton = actionPill("↓  Скачать") { enqueueDownload() }
+            row.addView(watchedButton, LinearLayout.LayoutParams(0, dp(44), 1.35f).apply { marginEnd = dp(6) })
+            row.addView(downloadButton, LinearLayout.LayoutParams(0, dp(44), 0.85f))
+        }
         return row
     }
     private fun buildNextVideosBlock(): LinearLayout {
@@ -765,7 +774,11 @@ class PlayerScreen(
                     scaleType=ImageView.ScaleType.CENTER_CROP
                     background=roundedInt(palette.surface,12)
                     clipToOutline=true
-                    next.thumbnailPath?.takeIf{it.isNotBlank()}?.let{path->runCatching{BitmapFactory.decodeFile(path)}.getOrNull()?.let{setImageBitmap(it)}}
+                    val localThumb = next.thumbnailPath?.takeIf { it.isNotBlank() }
+                    when {
+                        localThumb != null -> runCatching { BitmapFactory.decodeFile(localThumb) }.getOrNull()?.let { setImageBitmap(it) }
+                        !next.thumbnailUrl.isNullOrBlank() -> load(next.thumbnailUrl) { crossfade(settings.animations) }
+                    }
                 }
                 addView(thumb,LinearLayout.LayoutParams(dp(96),dp(58)).apply{marginEnd=dp(12)})
 
@@ -1293,7 +1306,11 @@ class PlayerScreen(
     }
 
     private fun buildMeta(): String =
-        listOf(formatMs(item.durationSeconds * 1000L), buildSize(), "@t2x2_video").joinToString(" • ")
+        if (item.source == "twitch") {
+            listOf(formatMs(item.durationSeconds * 1000L), "Twitch", "@t2x2").joinToString(" • ")
+        } else {
+            listOf(formatMs(item.durationSeconds * 1000L), buildSize(), "@t2x2_video").joinToString(" • ")
+        }
 
     private fun buildSize(): String {
         val mb = item.fileSize / 1048576.0

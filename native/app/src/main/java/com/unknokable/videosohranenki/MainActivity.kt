@@ -2263,6 +2263,7 @@ class MainActivity : AppCompatActivity() {
         playerScreen?.destroy()
         playerScreen = null
         twitchPlayerScreen?.destroy()
+        twitchPlayerScreen = null
         currentStreamingItem?.let { streamed -> streamServer?.release(streamed) }
         currentStreamingItem = null
 
@@ -2275,21 +2276,43 @@ class MainActivity : AppCompatActivity() {
         val savedStartMs = settings.playbackPosition(item.messageId)
         val resumePositionMs = if (requestedStartMs > 0L) requestedStartMs else savedStartMs
 
-        twitchPlayerScreen = TwitchPlayerScreen(
-            activity = this,
-            item = item,
-            videoId = videoId,
-            palette = palette,
-            animationsEnabled = settings.animations,
-            settings = settings,
-            startPositionMs = resumePositionMs,
-            onBack = { onBackPressedDispatcher.onBackPressed() },
-            onFullscreen = { setFullscreen(it) }
-        )
+        showLoading("Открываем запись Twitch…")
+        lifecycleScope.launch {
+            try {
+                val hlsUrl = TwitchVodResolver.resolve(videoId)
+                val orderedForPlayback = (currentDay?.videos ?: currentVideos)
+                    .sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })
+                val currentIndex = orderedForPlayback.indexOfFirst { it.messageId == item.messageId }
+                val nextItem = if (currentIndex >= 0) orderedForPlayback.getOrNull(currentIndex + 1) else null
 
-        pendingRootSlide = 1
-        replaceRoot(twitchPlayerScreen!!.root)
-        streakTracker.markWatched()
+                playerScreen = PlayerScreen(
+                    activity = this@MainActivity,
+                    item = item,
+                    mediaUrl = hlsUrl,
+                    previewDataSourceFactory = null,
+                    settings = settings,
+                    startPositionMs = resumePositionMs,
+                    nextItem = nextItem,
+                    onPlayNext = { next -> openPlayer(next) },
+                    isWatched = isVideoWatched(item.messageId),
+                    onWatchedChange = { watched, shouldBeWatched ->
+                        if (shouldBeWatched) markVideoWatched(watched.messageId) else unmarkVideoWatched(watched.messageId)
+                    },
+                    onBack = { onBackPressedDispatcher.onBackPressed() },
+                    onFullscreen = { setFullscreen(it) },
+                    onPlaybackStarted = { streakTracker.markWatched() }
+                )
+
+                pendingRootSlide = 1
+                replaceRoot(playerScreen!!.root)
+            } catch (e: Exception) {
+                isPlayerScreen = false
+                showMessage(
+                    "Не удалось открыть запись Twitch",
+                    e.message ?: "Twitch не отдал видеопоток. Попробуй ещё раз."
+                )
+            }
+        }
     }
 
     private fun showSelectedVideoSource(forceRefresh: Boolean = false) {

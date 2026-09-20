@@ -55,6 +55,7 @@ dependencies {
     implementation("androidx.recyclerview:recyclerview:1.4.0")
     implementation("com.google.android.material:material:1.13.0")
     implementation("androidx.media3:media3-exoplayer:1.8.0")
+    implementation("androidx.media3:media3-exoplayer-hls:1.8.0")
     implementation("androidx.media3:media3-ui:1.8.0")
     implementation("io.coil-kt:coil:2.7.0")
     implementation("com.googlecode.libphonenumber:libphonenumber:8.13.55")
