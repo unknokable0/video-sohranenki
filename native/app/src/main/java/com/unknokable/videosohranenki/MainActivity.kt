@@ -426,15 +426,6 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
         }
 
-        val brand = TextView(this).apply {
-            text = "SOHR"
-            textSize = 17f
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            setTypeface(typeface, Typeface.BOLD)
-            background = roundedBg(purple, 16)
-        }
-
         val languageButton = TextView(this).apply {
             text = AppLanguages.byCode(settings.languageCode).shortLabel
             textSize = 13f
@@ -457,7 +448,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        topRow.addView(brand, LinearLayout.LayoutParams(dp(64), dp(52)))
         topRow.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
         topRow.addView(languageButton, LinearLayout.LayoutParams(dp(58), dp(44)))
 
@@ -651,7 +641,24 @@ class MainActivity : AppCompatActivity() {
         ))
 
         applyCountry()
+        if (settings.animations) {
+            card.alpha = 0f
+            card.translationY = dp(14).toFloat()
+        }
+
         replaceRoot(container)
+
+        if (settings.animations) {
+            card.post {
+                card.animate()
+                    .alpha(1f)
+                    .translationY(0f)
+                    .setDuration(280L)
+                    .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                    .start()
+            }
+        }
+
         input.requestFocus()
     }
 
@@ -1188,6 +1195,28 @@ class MainActivity : AppCompatActivity() {
                 .scaleY(1f)
                 .setDuration(300L)
                 .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                .withEndAction {
+                    val flight = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+                        duration = 1700L
+                        repeatCount = android.animation.ValueAnimator.INFINITE
+                        repeatMode = android.animation.ValueAnimator.REVERSE
+                        interpolator = android.view.animation.AccelerateDecelerateInterpolator()
+                        addUpdateListener { animator ->
+                            val value = animator.animatedValue as Float
+                            artwork.translationY = -dp(4) * value
+                            artwork.translationX = dp(2) * value
+                            artwork.rotation = -1.8f + (3.6f * value)
+                        }
+                    }
+                    artwork.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+                        override fun onViewAttachedToWindow(v: View) = Unit
+                        override fun onViewDetachedFromWindow(v: View) {
+                            flight.cancel()
+                            artwork.removeOnAttachStateChangeListener(this)
+                        }
+                    })
+                    flight.start()
+                }
                 .start()
 
             title.alpha = 0f
@@ -1352,14 +1381,6 @@ class MainActivity : AppCompatActivity() {
             background = roundedBg(panel, 24)
         }
 
-        val brand = TextView(this).apply {
-            text = "SOHR"
-            textSize = 18f
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            setTypeface(typeface, Typeface.BOLD)
-            background = roundedBg(purple, 16)
-        }
         if (showBack) {
             val back = TextView(this).apply {
                 text = "‹  Назад"
@@ -1484,7 +1505,6 @@ class MainActivity : AppCompatActivity() {
         }
         authSubmitButton = submit
 
-        card.addView(brand, LinearLayout.LayoutParams(dp(52), dp(52)))
         card.addView(titleView)
         card.addView(subtitleView)
         card.addView(inputContainer, LinearLayout.LayoutParams(
