@@ -102,6 +102,7 @@ class MainActivity : AppCompatActivity() {
     private var feedRefreshLabel: TextView? = null
     private var feedRefreshLoader: LoadingWaveView? = null
     private var feedRefreshCompletedFlash = false
+    private var startupUpdateCheckDone = false
 
     private val palette get() = settings.palette()
     private val bg get() = palette.background
@@ -1876,6 +1877,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showFeed(videos: List<VideoItem>) {
+        if (!startupUpdateCheckDone) {
+            startupUpdateCheckDone = true
+            root.postDelayed({ checkForUpdates(manual = false) }, 900L)
+        }
         completedUpdateNotice?.let { version ->
             completedUpdateNotice = null
             root.postDelayed({
@@ -3079,51 +3084,66 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun checkForUpdates() {
+    private fun checkForUpdates(manual: Boolean = true) {
         lifecycleScope.launch {
-            showLoading("Проверяем обновления…")
+            if (manual) showLoading("Проверяем обновления…")
             try {
                 val info = updateManager.check()
                 if (info == null) {
-                    showSettings()
-                    root.post {
-                        ModernDialogs.showChoices(
-                            context = this@MainActivity,
-                            palette = palette,
-                            title = "Обновлений нет",
-                            options = listOf("У тебя последняя версия • " + BuildConfig.VERSION_NAME),
-                            selected = 0
-                        ) { }
-                    }
-                } else {
-                    showSettings()
-                    val details = buildString {
-                        append("Доступна SOHR ")
-                        append(info.versionName)
-                        if (info.notes.isNotBlank()) {
-                            append("\n\n")
-                            append(info.notes)
+                    if (manual) {
+                        showSettings()
+                        root.post {
+                            ModernDialogs.showChoices(
+                                context = this@MainActivity,
+                                palette = palette,
+                                title = "Обновлений нет",
+                                options = listOf("У тебя последняя версия • " + BuildConfig.VERSION_NAME),
+                                selected = 0
+                            ) { }
                         }
                     }
-                    root.post {
-                        ModernDialogs.showConfirm(
-                            context = this@MainActivity,
-                            palette = palette,
-                            title = "Доступно обновление",
-                            message = details,
-                            confirm = "Обновить"
-                        ) {
-                            downloadAndInstallUpdate(info)
+                    return@launch
+                }
+
+                val runtimePrefs = getSharedPreferences("sohr_runtime", MODE_PRIVATE)
+                if (!manual && runtimePrefs.getInt("ignored_update_code", -1) == info.versionCode) return@launch
+                if (manual) showSettings()
+
+                val title = buildString {
+                    append("Доступна SOHR ")
+                    append(info.versionName)
+                    if (info.notes.isNotBlank()) {
+                        append("\n")
+                        append(info.notes)
+                    }
+                }
+                root.post {
+                    ModernDialogs.showChoices(
+                        context = this@MainActivity,
+                        palette = palette,
+                        title = title,
+                        options = listOf("Обновить сейчас", "Позже", "Больше не показывать эту версию"),
+                        selected = -1
+                    ) { which ->
+                        when (which) {
+                            0 -> downloadAndInstallUpdate(info)
+                            2 -> runtimePrefs.edit().putInt("ignored_update_code", info.versionCode).apply()
                         }
                     }
                 }
             } catch (e: Exception) {
-                showSettings()
-                Toast.makeText(
-                    this@MainActivity,
-                    "Не удалось проверить обновления: " + (e.message ?: "ошибка сети"),
-                    Toast.LENGTH_LONG
-                ).show()
+                if (manual) {
+                    showSettings()
+                    root.post {
+                        ModernDialogs.showNotice(
+                            context = this@MainActivity,
+                            palette = palette,
+                            title = "Не удалось проверить обновления",
+                            message = e.message ?: "Ошибка сети",
+                            button = "Понятно"
+                        )
+                    }
+                }
             }
         }
     }
