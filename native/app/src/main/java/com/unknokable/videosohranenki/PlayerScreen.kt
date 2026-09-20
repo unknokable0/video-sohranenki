@@ -1017,10 +1017,8 @@ class PlayerScreen(
             }
         }
 
-        var hasCachedResult = false
         settings.smartChaptersCache(cacheKey)?.let { cached ->
             SmartChaptersAnalyzer.decode(cached)?.takeIf { it.isNotEmpty() }?.let {
-                hasCachedResult = true
                 renderChapters(it, 0L, true)
             }
         }
@@ -1064,7 +1062,6 @@ class PlayerScreen(
 
                     val encoded = SmartChaptersAnalyzer.encode(result.chapters)
                     settings.saveSmartChaptersCache(cacheKey, encoded)
-                    hasCachedResult = true
                     renderChapters(
                         chapters = result.chapters,
                         elapsedMs = SystemClock.elapsedRealtime() - started,
