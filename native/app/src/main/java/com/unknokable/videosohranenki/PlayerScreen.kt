@@ -88,6 +88,13 @@ class PlayerScreen(
     private var speed = 1f
     private var sleepRunnable: Runnable? = null
     private var playbackCounted = false
+    private val showBufferingRunnable = Runnable {
+        if (::bufferingLoader.isInitialized && player.playbackState == Player.STATE_BUFFERING) {
+            bufferingLoader.visibility = View.VISIBLE
+            bufferingLoader.animate().cancel()
+            bufferingLoader.animate().alpha(0.92f).setDuration(90).start()
+        }
+    }
     private val palette get() = settings.palette()
 
     init {
@@ -180,10 +187,10 @@ class PlayerScreen(
 
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                6_000,
-                24_000,
-                350,
-                900
+                18_000,
+                75_000,
+                1_200,
+                4_000
             )
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
@@ -216,10 +223,12 @@ class PlayerScreen(
 
                 when (playbackState) {
                     Player.STATE_BUFFERING -> {
-                        bufferingLoader.visibility = View.VISIBLE
-                        bufferingLoader.animate().alpha(0.92f).setDuration(100).start()
+                        handler.removeCallbacks(showBufferingRunnable)
+                        handler.postDelayed(showBufferingRunnable, 220L)
                     }
                     Player.STATE_READY, Player.STATE_ENDED, Player.STATE_IDLE -> {
+                        handler.removeCallbacks(showBufferingRunnable)
+                        bufferingLoader.animate().cancel()
                         bufferingLoader.animate()
                             .alpha(0f)
                             .setDuration(120)
@@ -734,6 +743,7 @@ class PlayerScreen(
 
     fun destroy() {
         sleepRunnable?.let { handler.removeCallbacks(it) }
+        handler.removeCallbacks(showBufferingRunnable)
         handler.removeCallbacksAndMessages(null)
         previewJob?.cancel()
         previewScope.cancel()
