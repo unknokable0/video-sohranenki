@@ -3,7 +3,6 @@ package com.unknokable.videosohranenki
 import android.app.Activity
 import android.app.DownloadManager
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
 import android.os.Environment
 import android.graphics.Bitmap
@@ -717,40 +716,54 @@ class PlayerScreen(
     }
 
     private fun buildSocialActions(): LinearLayout {
-        val row=LinearLayout(activity).apply { orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(12),dp(2),dp(12),dp(10)) }
-        var watched=isWatched
-        lateinit var watchedButton:TextView
-        lateinit var restoreButton:TextView
-        fun syncWatchedActions() {
-            watchedButton.alpha = if (watched) .72f else 1f
-            restoreButton.visibility = if (watched) View.VISIBLE else View.GONE
-            restoreButton.alpha = if (watched) 1f else 0f
+        val row = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(2), dp(12), dp(10))
         }
-        watchedButton=actionPill("✓  Просмотрено") {
-            if(watched) {
-                Toast.makeText(activity,"Видео уже добавлено в просмотренное",Toast.LENGTH_SHORT).show()
-                watchedButton.animate().cancel(); watchedButton.animate().scaleX(1.03f).scaleY(1.03f).setDuration(if(settings.animations)90L else 0L).withEndAction { watchedButton.animate().scaleX(1f).scaleY(1f).setDuration(if(settings.animations)110L else 0L).start() }.start()
-                return@actionPill
-            }
-            ModernDialogs.showConfirm(activity,palette,"Отметить просмотренным?","Видео переместится в раздел «Просмотренное» и исчезнет из обычных сборников.","Да, просмотрено") {
-                watched=true; onWatchedChange?.invoke(item,true); syncWatchedActions()
+        var watched = isWatched
+        lateinit var watchedButton: TextView
+
+        fun syncWatchedAction(animated: Boolean = false) {
+            val nextText = if (watched) "↩  В сборники" else "✓  В просмотренные"
+            val nextBackground = if (watched) palette.accent else palette.surfaceAlt
+            val nextTextColor = if (watched) Color.WHITE else palette.text
+            watchedButton.animate().cancel()
+            if (animated && settings.animations) {
+                watchedButton.animate()
+                    .alpha(0.55f).scaleX(0.96f).scaleY(0.96f)
+                    .setDuration(70L)
+                    .withEndAction {
+                        watchedButton.text = nextText
+                        watchedButton.setTextColor(nextTextColor)
+                        watchedButton.background = roundedInt(nextBackground, 14)
+                        watchedButton.animate()
+                            .alpha(1f).scaleX(1f).scaleY(1f)
+                            .setDuration(130L)
+                            .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                            .start()
+                    }.start()
+            } else {
+                watchedButton.text = nextText
+                watchedButton.setTextColor(nextTextColor)
+                watchedButton.background = roundedInt(nextBackground, 14)
+                watchedButton.alpha = 1f
+                watchedButton.scaleX = 1f
+                watchedButton.scaleY = 1f
             }
         }
-        restoreButton=actionPill("↩  Вернуть") {
-            if(!watched) return@actionPill
-            ModernDialogs.showConfirm(activity,palette,"Вернуть в сборники?","Видео исчезнет из «Просмотренного» и снова появится в обычном сборнике.","Вернуть") {
-                watched=false; onWatchedChange?.invoke(item,false); syncWatchedActions()
-                Toast.makeText(activity,"Видео возвращено в сборники",Toast.LENGTH_SHORT).show()
-            }
+
+        watchedButton = actionPill("") {
+            watched = !watched
+            onWatchedChange?.invoke(item, watched)
+            syncWatchedAction(animated = true)
         }
-        syncWatchedActions()
-        val shareButton=actionPill("↗  Поделиться") { val send=Intent(Intent.ACTION_SEND).apply{type="text/plain";putExtra(Intent.EXTRA_SUBJECT,cleanTitle(item.title));putExtra(Intent.EXTRA_TEXT,"${cleanTitle(item.title)} • SOHR")};runCatching{activity.startActivity(Intent.createChooser(send,"Поделиться видео"))} }
-        val downloadButton=actionPill("↓  Скачать"){enqueueDownload()}
-        row.addView(watchedButton,LinearLayout.LayoutParams(0,dp(42),1f).apply{marginEnd=dp(5)})
-        row.addView(restoreButton,LinearLayout.LayoutParams(0,dp(44),1f).apply { marginStart=dp(8) });row.addView(shareButton,LinearLayout.LayoutParams(0,dp(42),1f).apply{marginEnd=dp(5)});row.addView(downloadButton,LinearLayout.LayoutParams(0,dp(42),1f))
+        syncWatchedAction()
+        val downloadButton = actionPill("↓  Скачать") { enqueueDownload() }
+        row.addView(watchedButton, LinearLayout.LayoutParams(0, dp(44), 1.35f).apply { marginEnd = dp(6) })
+        row.addView(downloadButton, LinearLayout.LayoutParams(0, dp(44), 0.85f))
         return row
     }
-
     private fun buildNextVideosBlock(): LinearLayout {
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL

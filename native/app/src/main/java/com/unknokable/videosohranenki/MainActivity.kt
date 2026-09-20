@@ -2128,8 +2128,15 @@ class MainActivity : AppCompatActivity() {
             isWatched = isVideoWatched(item.messageId),
             onWatchedChange = { watched, shouldBeWatched ->
                 if (shouldBeWatched) markVideoWatched(watched.messageId) else unmarkVideoWatched(watched.messageId)
-                val noLongerBelongsToOpenSection = (videoSection == 1 && shouldBeWatched) || (videoSection == 2 && !shouldBeWatched)
-                if (noLongerBelongsToOpenSection) currentDay = currentDay?.copy(videos = currentDay?.videos?.filterNot { it.messageId == watched.messageId } ?: emptyList())
+                val belongsToOpenSection = (videoSection == 1 && !shouldBeWatched) || (videoSection == 2 && shouldBeWatched)
+                currentDay = currentDay?.let { day ->
+                    if (belongsToOpenSection) {
+                        if (day.videos.any { it.messageId == watched.messageId }) day
+                        else day.copy(videos = (day.videos + watched).sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId }))
+                    } else {
+                        day.copy(videos = day.videos.filterNot { it.messageId == watched.messageId })
+                    }
+                }
             },
             onBack = { onBackPressedDispatcher.onBackPressed() },
             onFullscreen = { setFullscreen(it) },
