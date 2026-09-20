@@ -1,5 +1,6 @@
 package com.unknokable.videosohranenki
 
+import android.app.ActivityManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -114,6 +115,14 @@ object TwitchContentAnalyzer {
             "Некорректный Twitch Video ID"
         }
 
+        val activityManager =
+            context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        val lowRamDevice =
+            activityManager?.isLowRamDevice == true ||
+            (activityManager?.memoryClass ?: 256) <= 192
+        val timelineBudget = if (lowRamDevice) 1_000 else 1_600
+        val probeBudget = if (lowRamDevice) 280 else 480
+
         onProgress(5, "Получаем карту стрима…")
         val (markers, storyboardUrl) = fetchExtras(videoId)
         val normalizedMarkers = normalizeMarkers(markers, durationSeconds)
@@ -131,6 +140,7 @@ object TwitchContentAnalyzer {
         val timeline = scanTimeline(
             storyboard = storyboard,
             durationSeconds = durationSeconds,
+            targetPoints = timelineBudget,
             onProgress = { done, total ->
                 val percent = 12 + ((done * 34) / max(1, total))
                 onProgress(percent.coerceAtMost(46), "Ищем начало и конец видео…")
@@ -143,7 +153,8 @@ object TwitchContentAnalyzer {
 
         val probeIndices = buildProbeIndices(
             timeline = timeline,
-            markers = normalizedMarkers
+            markers = normalizedMarkers,
+            maxProbes = probeBudget
         )
 
         val probes = analyzeProbes(
@@ -339,10 +350,11 @@ object TwitchContentAnalyzer {
     private suspend fun scanTimeline(
         storyboard: Storyboard,
         durationSeconds: Int,
+        targetPoints: Int,
         onProgress: suspend (Int, Int) -> Unit
     ): List<TimelinePoint> {
-        val targetPoints = 1600
-        val step = max(1, ceil(storyboard.count / targetPoints.toDouble()).toInt())
+        val safeTargetPoints = targetPoints.coerceIn(600, 1_600)
+        val step = max(1, ceil(storyboard.count / safeTargetPoints.toDouble()).toInt())
         val indexes = mutableListOf<Int>()
 
         var index = 0
@@ -484,7 +496,8 @@ object TwitchContentAnalyzer {
 
     private fun buildProbeIndices(
         timeline: List<TimelinePoint>,
-        markers: List<Marker>
+        markers: List<Marker>,
+        maxProbes: Int
     ): List<Int> {
         if (timeline.isEmpty()) return emptyList()
         val wanted = linkedSetOf<Int>()
@@ -534,7 +547,7 @@ object TwitchContentAnalyzer {
             .filter { it in timeline.indices }
             .distinct()
             .sorted()
-            .take(480)
+            .take(maxProbes.coerceIn(180, 480))
     }
 
     private suspend fun analyzeProbes(
@@ -543,7 +556,7 @@ object TwitchContentAnalyzer {
         probeTimelineIndices: List<Int>,
         onProgress: suspend (Int, Int) -> Unit
     ): List<Probe> {
-        val cache = StripCache(3)
+        val cache = StripCache(2)
         val out = mutableListOf<Probe>()
 
         try {
