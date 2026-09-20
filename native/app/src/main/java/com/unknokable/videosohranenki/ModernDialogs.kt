@@ -50,6 +50,8 @@ object ModernDialogs {
             val row = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
+                alpha = 0f
+                translationY = dp(context, 6).toFloat()
                 setPadding(dp(context, 12), 0, dp(context, 12), 0)
                 background = rounded(
                     if (selectedNow) palette.accentSoft else palette.surfaceAlt,
@@ -99,6 +101,16 @@ object ModernDialogs {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(context, 48)
             ).apply { bottomMargin = dp(context, 6) })
+
+            row.post {
+                row.animate()
+                    .alpha(1f)
+                    .translationY(0f)
+                    .setStartDelay((35L * index).coerceAtMost(210L))
+                    .setDuration(150L)
+                    .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                    .start()
+            }
         }
 
         val scroll = ScrollView(context).apply {
