@@ -35,8 +35,8 @@ class TelegramStreamServer(
         if (item.fileSize <= 0L) return
         scope.launch {
             runCatching {
-                val limit = minOf(4L * 1024L * 1024L, item.fileSize)
-                client.send(TdApi.DownloadFile(item.fileId, 24, 0, limit, false))
+                val limit = minOf(12L * 1024L * 1024L, item.fileSize)
+                client.send(TdApi.DownloadFile(item.fileId, 30, 0, limit, false))
             }
         }
     }
@@ -106,9 +106,9 @@ private class TelegramFileInputStream(
     private var prefetchedStart = -1L
     private var prefetchedLimit = 0L
 
-    private val firstWindow = 4L * 1024L * 1024L
-    private val steadyWindow = 16L * 1024L * 1024L
-    private val prefetchThreshold = 2L * 1024L * 1024L
+    private val firstWindow = 8L * 1024L * 1024L
+    private val steadyWindow = 32L * 1024L * 1024L
+    private val prefetchThreshold = 8L * 1024L * 1024L
 
     override fun read(): Int {
         val one = ByteArray(1)
@@ -224,7 +224,7 @@ private class TelegramMediaDataSource(
     private var filePath: String? = null
     private var cachedStart = -1L
     private var cachedEndExclusive = -1L
-    private val chunkSize = 4L * 1024L * 1024L
+    private val chunkSize = 6L * 1024L * 1024L
 
     @Synchronized
     override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {

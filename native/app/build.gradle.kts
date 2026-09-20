@@ -1,4 +1,4 @@
-// Build marker: SOHR 3.0.10 player polish
+// Build marker: SOHR 3.0.11 ordering and playback polish
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -15,8 +15,8 @@ android {
         applicationId = "com.unknokable.videosohranenki"
         minSdk = 26
         targetSdk = 35
-        versionCode = 310
-        versionName = "3.0.10-beta"
+        versionCode = 311
+        versionName = "3.0.11-beta"
 
         buildConfigField("int", "TELEGRAM_API_ID", telegramApiId)
         buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")

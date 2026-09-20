@@ -1712,7 +1712,7 @@ class MainActivity : AppCompatActivity() {
 
                 val videos = collected.values
                     .filter { it.date.toLong() >= cutoffEpoch }
-                    .sortedByDescending { it.date }
+                    .sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })
 
                 val preparedVideos = if (settings.previews) {
                     videos.chunked(6).flatMap { batch ->
@@ -1857,7 +1857,7 @@ class MainActivity : AppCompatActivity() {
         val baseGroups = videos
             .groupBy { Instant.ofEpochSecond(it.date.toLong()).atZone(zone).toLocalDate() }
             .map { (date, dayVideos) ->
-                DayCollection(date, dayVideos.sortedBy { it.date })
+                DayCollection(date, dayVideos.sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId }))
             }
 
         val groups = baseGroups.sortedByDescending { it.date }
@@ -2011,7 +2011,7 @@ class MainActivity : AppCompatActivity() {
         setFullscreen(false)
         applySystemTheme()
 
-        val sortedVideos = collection.videos.sortedBy { it.date }
+        val sortedVideos = collection.videos.sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })
 
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -2098,7 +2098,8 @@ class MainActivity : AppCompatActivity() {
         feedRefreshLabel = null
         feedRefreshLoader = null
         server.prefetch(item)
-        val orderedForPlayback = (currentDay?.videos ?: currentVideos).sortedBy { it.date }
+        val orderedForPlayback = (currentDay?.videos ?: currentVideos)
+            .sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })
         val currentIndex = orderedForPlayback.indexOfFirst { it.messageId == item.messageId }
         val nextItem = if (currentIndex >= 0) orderedForPlayback.getOrNull(currentIndex + 1) else null
         nextItem?.let { server.prefetch(it) }

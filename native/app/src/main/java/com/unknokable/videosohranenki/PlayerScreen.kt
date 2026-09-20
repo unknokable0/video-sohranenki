@@ -74,6 +74,7 @@ class PlayerScreen(
     private lateinit var totalTime: TextView
     private lateinit var qualityButton: TextView
     private lateinit var speedBadge: TextView
+    private lateinit var seekFeedback: TextView
     private lateinit var bufferingLoader: LoadingWaveView
     private lateinit var actionsRow: LinearLayout
     private lateinit var previewBubble: LinearLayout
@@ -194,6 +195,28 @@ class PlayerScreen(
             ).apply { topMargin = dp(12) }
         )
 
+        seekFeedback = TextView(activity).apply {
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            setPadding(dp(16), dp(11), dp(16), dp(11))
+            background = rounded("#B5120F1A", 22)
+            alpha = 0f
+            visibility = View.GONE
+            isClickable = false
+            isFocusable = false
+            elevation = dp(10).toFloat()
+        }
+        playerCard.addView(
+            seekFeedback,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER
+            )
+        )
+
         val width = activity.resources.displayMetrics.widthPixels
         root.addView(
             playerCard,
@@ -230,10 +253,10 @@ class PlayerScreen(
 
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                15_000,
-                60_000,
-                900,
-                2_500
+                25_000,
+                120_000,
+                650,
+                1_500
             )
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
@@ -384,6 +407,7 @@ class PlayerScreen(
             listener = object : SohrTimeBar.Listener {
                 override fun onScrubStart(positionMs: Long) {
                     dragging = true
+                    player.setScrubbingModeEnabled(true)
                     showPreview()
                     updatePreviewUi(positionMs, 0f)
                 }
@@ -399,6 +423,7 @@ class PlayerScreen(
                         currentTime.text = formatMs(positionMs)
                     }
                     dragging = false
+                    player.setScrubbingModeEnabled(false)
                     handler.postDelayed({ hidePreview() }, 90L)
                 }
             }
@@ -701,13 +726,15 @@ class PlayerScreen(
             }
 
             override fun onDoubleTap(e: MotionEvent): Boolean {
-                val half = playerCard.width / 2f
-                if (e.x < half) {
-                    player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0))
+                val forward = e.x >= playerCard.width / 2f
+                val duration = player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+                val target = if (forward) {
+                    (player.currentPosition + 10_000L).coerceAtMost(duration)
                 } else {
-                    val duration = player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
-                    player.seekTo((player.currentPosition + 10_000).coerceAtMost(duration))
+                    (player.currentPosition - 10_000L).coerceAtLeast(0L)
                 }
+                player.seekTo(target)
+                showSeekFeedback(forward)
                 return true
             }
 
@@ -740,6 +767,37 @@ class PlayerScreen(
             }
             handled
         }
+    }
+
+
+    private fun showSeekFeedback(forward: Boolean) {
+        if (!::seekFeedback.isInitialized) return
+        seekFeedback.animate().cancel()
+        seekFeedback.text = if (forward) "+10 сек   ››" else "‹‹   −10 сек"
+        seekFeedback.translationX = if (forward) playerCard.width * 0.23f else -playerCard.width * 0.23f
+        seekFeedback.alpha = 0f
+        seekFeedback.scaleX = 0.78f
+        seekFeedback.scaleY = 0.78f
+        seekFeedback.visibility = View.VISIBLE
+
+        val duration = if (settings.animations) 170L else 0L
+        seekFeedback.animate()
+            .alpha(1f)
+            .scaleX(1.06f)
+            .scaleY(1.06f)
+            .setDuration(duration)
+            .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+            .withEndAction {
+                seekFeedback.animate()
+                    .alpha(0f)
+                    .scaleX(0.96f)
+                    .scaleY(0.96f)
+                    .setStartDelay(if (settings.animations) 250L else 0L)
+                    .setDuration(if (settings.animations) 170L else 0L)
+                    .withEndAction { seekFeedback.visibility = View.GONE }
+                    .start()
+            }
+            .start()
     }
 
 
