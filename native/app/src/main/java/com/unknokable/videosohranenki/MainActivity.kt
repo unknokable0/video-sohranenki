@@ -2185,7 +2185,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun openPlayer(item: VideoItem, startSeconds: Int = 0) {
         if (item.source == "twitch") {
-            openTwitchPlayer(item)
+            openTwitchPlayer(item, startSeconds)
             return
         }
         twitchPlayerScreen?.destroy()
@@ -2248,7 +2248,7 @@ class MainActivity : AppCompatActivity() {
 
 
 
-    private fun openTwitchPlayer(item: VideoItem) {
+    private fun openTwitchPlayer(item: VideoItem, startSeconds: Int = 0) {
         val videoId = item.externalUrl
             ?.let { runCatching { Uri.parse(it).lastPathSegment }.getOrNull() }
             ?.removePrefix("v")
@@ -2271,12 +2271,18 @@ class MainActivity : AppCompatActivity() {
         isStreakScreen = false
         isPlayerScreen = true
 
+        val requestedStartMs = startSeconds * 1000L
+        val savedStartMs = settings.playbackPosition(item.messageId)
+        val resumePositionMs = if (requestedStartMs > 0L) requestedStartMs else savedStartMs
+
         twitchPlayerScreen = TwitchPlayerScreen(
             activity = this,
             item = item,
             videoId = videoId,
             palette = palette,
             animationsEnabled = settings.animations,
+            settings = settings,
+            startPositionMs = resumePositionMs,
             onBack = { onBackPressedDispatcher.onBackPressed() },
             onFullscreen = { setFullscreen(it) }
         )
@@ -2429,8 +2435,7 @@ class MainActivity : AppCompatActivity() {
             onLanguageChanged = {
                 showSettings()
             },
-            onCheckUpdates = { checkForUpdates() },
-            onLogout = { confirmLogout() }
+            onCheckUpdates = { checkForUpdates() }
         )
         replaceRoot(withBottomNav(screen.build(), SohrTab.SETTINGS))
     }
@@ -2745,8 +2750,7 @@ class MainActivity : AppCompatActivity() {
                 animateThemeReveal(nextLight, nextSource)
             },
             onLanguageChanged = { showSettings() },
-            onCheckUpdates = { checkForUpdates() },
-            onLogout = { confirmLogout() }
+            onCheckUpdates = { checkForUpdates() }
         ).build()
 
         val nextHost = FrameLayout(this).apply {
@@ -3059,6 +3063,27 @@ class MainActivity : AppCompatActivity() {
             phoneRow,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 topMargin = dp(18)
+            }
+        )
+
+        val telegramLogout = TextView(this).apply {
+            text = "Выйти из Telegram"
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            background = roundedBg(Color.parseColor("#D9435F"), 15)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                animatePress(this)
+                confirmLogout()
+            }
+        }
+        telegramCard.addView(
+            telegramLogout,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply {
+                topMargin = dp(14)
             }
         )
         page.addView(telegramCard)
@@ -3502,7 +3527,7 @@ class MainActivity : AppCompatActivity() {
                     client.send(TdApi.LogOut())
                 } catch (e: Exception) {
                     Toast.makeText(this@MainActivity, e.message ?: "Не удалось выйти", Toast.LENGTH_LONG).show()
-                    showSettings()
+                    showAccount()
                 }
             }
         }
@@ -3511,10 +3536,12 @@ class MainActivity : AppCompatActivity() {
     private fun setFullscreen(enabled: Boolean) {
         if (fullScreen == enabled) {
             playerScreen?.setFullscreenMode(enabled)
+            twitchPlayerScreen?.setFullscreenMode(enabled)
             return
         }
         fullScreen = enabled
         playerScreen?.setFullscreenMode(enabled)
+        twitchPlayerScreen?.setFullscreenMode(enabled)
         ViewCompat.requestApplyInsets(root)
         if (enabled) {
             if (android.os.Build.VERSION.SDK_INT >= 30) {

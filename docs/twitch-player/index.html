@@ -6,32 +6,69 @@
   <meta name="color-scheme" content="dark">
   <title>SOHR • Twitch Player</title>
   <style>
-    html,body{margin:0;width:100%;height:100%;background:#000;overflow:hidden}
-    body{font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;color:#fff}
-    #wrap{position:fixed;inset:0;display:grid;place-items:center;background:#000}
-    iframe{display:block;width:100%;height:100%;min-width:400px;min-height:300px;border:0;background:#000}
-    #status{position:absolute;inset:0;display:grid;place-items:center;color:#b9afc9;font-size:14px;text-align:center;padding:24px;box-sizing:border-box}
+    html,body,#player{margin:0;width:100%;height:100%;min-width:400px;min-height:300px;background:#000;overflow:hidden}
+    body{font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif}
   </style>
 </head>
 <body>
-  <div id="wrap">
-    <div id="status">Загружаем Twitch…</div>
-    <iframe id="player" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>
-  </div>
+  <div id="player"></div>
+  <script src="https://player.twitch.tv/js/embed/v1.js"></script>
   <script>
     (() => {
-      const id = (new URLSearchParams(location.search).get("video") || "").replace(/\D/g, "");
-      const status = document.getElementById("status");
-      const player = document.getElementById("player");
-      if (!id) {
-        status.textContent = "Не удалось определить Twitch Video ID.";
-        player.remove();
-        return;
+      const query = new URLSearchParams(location.search);
+      const id = (query.get("video") || "").replace(/\D/g, "");
+      const start = Math.max(0, parseInt(query.get("start") || "0", 10) || 0);
+      let player = null;
+      let ready = false;
+
+      function safe(call, fallback) {
+        try { return call(); } catch (_) { return fallback; }
       }
-      player.src = "https://player.twitch.tv/?video=v" + encodeURIComponent(id) +
-        "&parent=unknokable0.github.io&autoplay=false&muted=false";
-      player.addEventListener("load", () => {
-        setTimeout(() => { status.style.display = "none"; }, 350);
+
+      window.sohr = {
+        play() { if (player && ready) safe(() => player.play(), null); },
+        pause() { if (player && ready) safe(() => player.pause(), null); },
+        seek(seconds) {
+          if (player && ready) safe(() => player.seek(Math.max(0, Number(seconds) || 0)), null);
+        },
+        setQuality(quality) {
+          if (player && ready && quality) safe(() => player.setQuality(String(quality)), null);
+        },
+        status() {
+          if (!player || !ready) {
+            return { ready:false, paused:true, current:0, duration:0, buffer:0, quality:"", qualities:[] };
+          }
+          const stats = safe(() => player.getPlaybackStats(), null);
+          const qualities = safe(() => player.getQualities(), []) || [];
+          return {
+            ready:true,
+            paused:!!safe(() => player.isPaused(), true),
+            current:Number(safe(() => player.getCurrentTime(), 0)) || 0,
+            duration:Number(safe(() => player.getDuration(), 0)) || 0,
+            buffer:Number(stats && stats.bufferSize || 0) || 0,
+            quality:String(safe(() => player.getQuality(), "") || ""),
+            qualities:Array.from(qualities).map(String)
+          };
+        }
+      };
+
+      if (!id) return;
+
+      player = new Twitch.Player("player", {
+        width:"100%",
+        height:"100%",
+        video:id,
+        parent:["unknokable0.github.io"],
+        autoplay:false,
+        muted:false,
+        time:start > 0 ? (start + "s") : "0s"
+      });
+
+      player.addEventListener(Twitch.Player.READY, () => {
+        ready = true;
+        if (start > 0) {
+          setTimeout(() => safe(() => player.seek(start), null), 250);
+        }
       });
     })();
   </script>

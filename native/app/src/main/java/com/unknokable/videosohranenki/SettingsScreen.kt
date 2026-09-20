@@ -21,8 +21,7 @@ class SettingsScreen(
     private val onBack: (Boolean) -> Unit,
     private val onThemeChanged: (Boolean, View) -> Unit,
     private val onLanguageChanged: () -> Unit,
-    private val onCheckUpdates: () -> Unit,
-    private val onLogout: () -> Unit
+    private val onCheckUpdates: () -> Unit
 ) {
     private var needsReload = false
     private lateinit var frameRoot: FrameLayout
@@ -124,24 +123,6 @@ class SettingsScreen(
         ) {
             onCheckUpdates()
         })
-
-        val logout = TextView(activity).apply {
-            text = t("logout")
-            textSize = 15f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            setPadding(dp(16), dp(14), dp(16), dp(14))
-            background = rounded(Color.parseColor("#D9435F"), 16)
-            setOnClickListener { animateTap(this); onLogout() }
-        }
-        root.addView(
-            logout,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(52)
-            ).apply { topMargin = dp(4); bottomMargin = dp(16) }
-        )
 
         val scroll = ScrollView(activity).apply {
             isVerticalScrollBarEnabled = false
