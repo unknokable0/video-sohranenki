@@ -1,4 +1,4 @@
-name: SOHR 5.0 watched action cleanup
+name: SOHR smooth player transitions
 on:
   push:
     branches: [main]
@@ -10,109 +10,99 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Unify watched action and remove share UI
+      - name: Remove player transition jank
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
-          import re
+
           player = Path('native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt')
           s = player.read_text()
-          start = s.find('    private fun buildSocialActions(): LinearLayout {')
-          end = s.find('    private fun buildNextVideosBlock(): LinearLayout {', start)
-          if start < 0 or end < 0:
-              raise SystemExit('buildSocialActions block not found')
-          lines = [
-              '    private fun buildSocialActions(): LinearLayout {',
-              '        val row = LinearLayout(activity).apply {',
-              '            orientation = LinearLayout.HORIZONTAL',
-              '            gravity = Gravity.CENTER_VERTICAL',
-              '            setPadding(dp(12), dp(2), dp(12), dp(10))',
-              '        }',
-              '        var watched = isWatched',
-              '        lateinit var watchedButton: TextView',
-              '',
-              '        fun syncWatchedAction(animated: Boolean = false) {',
-              '            val nextText = if (watched) "↩  В сборники" else "✓  В просмотренные"',
-              '            val nextBackground = if (watched) palette.accent else palette.surfaceAlt',
-              '            val nextTextColor = if (watched) Color.WHITE else palette.text',
-              '            watchedButton.animate().cancel()',
-              '            if (animated && settings.animations) {',
-              '                watchedButton.animate()',
-              '                    .alpha(0.55f).scaleX(0.96f).scaleY(0.96f)',
-              '                    .setDuration(70L)',
-              '                    .withEndAction {',
-              '                        watchedButton.text = nextText',
-              '                        watchedButton.setTextColor(nextTextColor)',
-              '                        watchedButton.background = roundedInt(nextBackground, 14)',
-              '                        watchedButton.animate()',
-              '                            .alpha(1f).scaleX(1f).scaleY(1f)',
-              '                            .setDuration(130L)',
-              '                            .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))',
-              '                            .start()',
-              '                    }.start()',
-              '            } else {',
-              '                watchedButton.text = nextText',
-              '                watchedButton.setTextColor(nextTextColor)',
-              '                watchedButton.background = roundedInt(nextBackground, 14)',
-              '                watchedButton.alpha = 1f',
-              '                watchedButton.scaleX = 1f',
-              '                watchedButton.scaleY = 1f',
-              '            }',
-              '        }',
-              '',
-              '        watchedButton = actionPill("") {',
-              '            watched = !watched',
-              '            onWatchedChange?.invoke(item, watched)',
-              '            syncWatchedAction(animated = true)',
-              '        }',
-              '        syncWatchedAction()',
-              '        val downloadButton = actionPill("↓  Скачать") { enqueueDownload() }',
-              '        row.addView(watchedButton, LinearLayout.LayoutParams(0, dp(44), 1.35f).apply { marginEnd = dp(6) })',
-              '        row.addView(downloadButton, LinearLayout.LayoutParams(0, dp(44), 0.85f))',
-              '        return row',
-              '    }',
-              '',
-          ]
-          s = s[:start] + '\n'.join(lines) + s[end:]
-          if 'Intent(' not in s and 'Intent.' not in s:
-              s = s.replace('import android.content.Intent\n', '')
+          old = '''        playerView = PlayerView(activity).apply {
+              useController = false
+              resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+              setBackgroundColor(Color.BLACK)
+          }
+'''
+          new = '''        playerView = activity.layoutInflater.inflate(
+              R.layout.view_sohr_player,
+              playerCard,
+              false
+          ) as PlayerView
+          playerView.apply {
+              useController = false
+              resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+              setBackgroundColor(Color.BLACK)
+          }
+'''
+          if old not in s:
+              raise SystemExit('PlayerView construction block not found')
+          s = s.replace(old, new, 1)
           player.write_text(s)
+
+          layout = Path('native/app/src/main/res/layout/view_sohr_player.xml')
+          layout.parent.mkdir(parents=True, exist_ok=True)
+          layout.write_text('''<?xml version="1.0" encoding="utf-8"?>
+          <androidx.media3.ui.PlayerView xmlns:android="http://schemas.android.com/apk/res/android"
+              xmlns:app="http://schemas.android.com/apk/res-auto"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+              android:background="#000000"
+              app:resize_mode="fit"
+              app:surface_type="texture_view"
+              app:use_controller="false" />
+          ''')
 
           main = Path('native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt')
           m = main.read_text()
-          pattern = re.compile(r'''            onWatchedChange = \{ watched, shouldBeWatched ->\n                if \(shouldBeWatched\) markVideoWatched\(watched\.messageId\) else unmarkVideoWatched\(watched\.messageId\)\n                val noLongerBelongsToOpenSection = .*?\n                if \(noLongerBelongsToOpenSection\) .*?\n            \},\n''')
-          replacement = '\n'.join([
-              '            onWatchedChange = { watched, shouldBeWatched ->',
-              '                if (shouldBeWatched) markVideoWatched(watched.messageId) else unmarkVideoWatched(watched.messageId)',
-              '                val belongsToOpenSection = (videoSection == 1 && !shouldBeWatched) || (videoSection == 2 && shouldBeWatched)',
-              '                currentDay = currentDay?.let { day ->',
-              '                    if (belongsToOpenSection) {',
-              '                        if (day.videos.any { it.messageId == watched.messageId }) day',
-              '                        else day.copy(videos = (day.videos + watched).sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId }))',
-              '                    } else {',
-              '                        day.copy(videos = day.videos.filterNot { it.messageId == watched.messageId })',
-              '                    }',
-              '                }',
-              '            },',
-              '',
-          ])
-          m, count = pattern.subn(replacement, m, count=1)
-          if count != 1:
-              raise SystemExit('onWatchedChange block not found')
-          main.write_text(m)
+          old_var = '    private var suppressNextRootAnimation = false\n'
+          new_var = old_var + '    private var suppressNextContentAnimation = false\n'
+          if 'private var suppressNextContentAnimation' not in m:
+              if old_var not in m:
+                  raise SystemExit('root animation state field not found')
+              m = m.replace(old_var, new_var, 1)
 
-          leftovers = []
-          for path in Path('native/app/src/main/java').rglob('*.kt'):
-              text = path.read_text()
-              if 'Поделиться' in text or 'Intent.ACTION_SEND' in text:
-                  leftovers.append(str(path))
-          if leftovers:
-              raise SystemExit('share UI still present in: ' + ', '.join(leftovers))
+          old_back = '''                    pendingRootSlide = -1
+                    val day = currentDay
+                    if (day != null && day.videos.isNotEmpty()) showDayCollection(day) else { currentDay = null; showFeed(currentVideos) }
+'''
+          new_back = '''                    pendingRootSlide = -1
+                    // The primary collection shell is rebuilt underneath the player.
+                    // Do not animate that hidden rebuild as well as the root pop: two
+                    // simultaneous transitions make thumbnails appear to jump.
+                    suppressNextContentAnimation = true
+                    val day = currentDay
+                    if (day != null && day.videos.isNotEmpty()) showDayCollection(day) else { currentDay = null; showFeed(currentVideos) }
+'''
+          if old_back not in m:
+              raise SystemExit('player back block not found')
+          m = m.replace(old_back, new_back, 1)
+
+          old_anim = '        val animateContent = settings.animations && old != null && old !== content\n'
+          new_anim = '''        val skipContentAnimation = suppressNextContentAnimation
+        suppressNextContentAnimation = false
+        val animateContent = settings.animations && !skipContentAnimation && old != null && old !== content
+'''
+          if old_anim not in m:
+              raise SystemExit('content animation gate not found')
+          m = m.replace(old_anim, new_anim, 1)
+
+          start = m.find('    private fun replaceRoot(view: View) {')
+          end = m.find('    private fun installPressAnimations(view: View) {', start)
+          if start < 0 or end < 0:
+              raise SystemExit('replaceRoot block not found')
+          block = m[start:end]
+          # TextureView makes the video part of normal view composition, so the
+          # whole player can move as one layer instead of the SurfaceView lagging.
+          block = block.replace('.translationX(dp(48).toFloat())\n                .setDuration(150L)', '.translationX(dp(36).toFloat())\n                .setDuration(210L)')
+          block = block.replace('view.translationX = dp(48).toFloat()\n            view.animate()', 'view.translationX = dp(36).toFloat()\n            view.animate()')
+          block = block.replace('.translationX(0f)\n                .setDuration(150L)', '.translationX(0f)\n                .setDuration(210L)')
+          m = m[:start] + block + m[end:]
+          main.write_text(m)
           PY
           git config user.name "sohr-dev-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt
+          git add native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt native/app/src/main/res/layout/view_sohr_player.xml
           git diff --cached --check
-          git commit -m "SOHR 5.0: unify watched toggle and remove share"
+          git commit -m "SOHR: smooth video open and back transitions"
           git push
