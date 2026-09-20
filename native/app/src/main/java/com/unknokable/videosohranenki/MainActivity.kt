@@ -103,6 +103,7 @@ class MainActivity : AppCompatActivity() {
     private var feedRefreshLoader: LoadingWaveView? = null
     private var feedRefreshCompletedFlash = false
     private var startupUpdateCheckDone = false
+    private var videoSection = 1 // 0 ordinary, 1 collections, 2 watched
 
     private val palette get() = settings.palette()
     private val bg get() = palette.background
@@ -153,7 +154,8 @@ class MainActivity : AppCompatActivity() {
                     playerScreen = null
                     isPlayerScreen = false
                     pendingRootSlide = -1
-                    currentDay?.let { showDayCollection(it) } ?: showFeed(currentVideos)
+                    val day = currentDay
+                    if (day != null && day.videos.isNotEmpty()) showDayCollection(day) else { currentDay = null; showFeed(currentVideos) }
                     return
                 }
                 if (isSettingsScreen) {
@@ -1876,6 +1878,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun watchedVideoIds(): Set<String> =
+    getSharedPreferences("sohr_watched", MODE_PRIVATE).getStringSet("ids", emptySet())?.toSet() ?: emptySet()
+
+    private fun isVideoWatched(messageId: Long): Boolean = watchedVideoIds().contains(messageId.toString())
+
+    private fun markVideoWatched(messageId: Long) {
+        val prefs = getSharedPreferences("sohr_watched", MODE_PRIVATE)
+        val ids = prefs.getStringSet("ids", emptySet())?.toMutableSet() ?: mutableSetOf()
+        ids.add(messageId.toString())
+        prefs.edit().putStringSet("ids", ids).apply()
+    }
+
     private fun showFeed(videos: List<VideoItem>) {
         if (!startupUpdateCheckDone) {
             startupUpdateCheckDone = true
@@ -1883,175 +1897,77 @@ class MainActivity : AppCompatActivity() {
         }
         completedUpdateNotice?.let { version ->
             completedUpdateNotice = null
-            root.postDelayed({
-                ModernDialogs.showNotice(
-                    context = this@MainActivity,
-                    palette = palette,
-                    title = "Обновление завершено",
-                    message = "SOHR обновлён до версии " + version + ". Всё готово к работе.",
-                    button = "Готово"
-                )
-            }, 420L)
+            root.postDelayed({ ModernDialogs.showNotice(this, palette, "Обновление завершено", "SOHR обновлён до версии $version. Всё готово к работе.", "Готово") }, 420L)
         }
+        startupPhase=false; startupStatusView=null; isPlayerScreen=false; isSettingsScreen=false; isAccountScreen=false; isStreakScreen=false
+        currentDay=null; setFullscreen(false); applySystemTheme()
 
-        startupPhase = false
-        startupStatusView = null
-        isPlayerScreen = false
-        isSettingsScreen = false
-        isAccountScreen = false
-        isStreakScreen = false
-        currentDay = null
-        setFullscreen(false)
-        applySystemTheme()
+        val zone=ZoneId.systemDefault()
+        val watched=watchedVideoIds()
+        val watchedVideos=videos.filter { watched.contains(it.messageId.toString()) }
+        val regularVideos=videos.filterNot { watched.contains(it.messageId.toString()) }
+        fun groups(source: List<VideoItem>) = source.groupBy { Instant.ofEpochSecond(it.date.toLong()).atZone(zone).toLocalDate() }
+            .map { (date,items) -> DayCollection(date,items.sortedWith(compareBy<VideoItem>{it.date}.thenBy{it.messageId})) }
+            .sortedByDescending { it.date }
+        val regularGroups=groups(regularVideos)
+        val watchedGroups=groups(watchedVideos)
+        val visibleGroups=if(videoSection==2) watchedGroups else regularGroups
 
-        val zone = ZoneId.systemDefault()
-        val baseGroups = videos
-            .groupBy { Instant.ofEpochSecond(it.date.toLong()).atZone(zone).toLocalDate() }
-            .map { (date, dayVideos) ->
-                DayCollection(date, dayVideos.sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId }))
-            }
+        val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(bg) }
+        val header=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(16),dp(16),dp(16),dp(10)); setBackgroundColor(bg) }
+        header.addView(TextView(this).apply { text="SOHR"; textSize=24f; setTextColor(this@MainActivity.text); setTypeface(typeface,Typeface.BOLD) })
+        header.addView(TextView(this).apply {
+            text=when(videoSection){0->"${regularVideos.size} непросмотренных видео";2->"${watchedVideos.size} просмотрено • ${watchedGroups.size} сборников";else->"Последние 7 дней • ${regularGroups.size} сборников • ${regularVideos.size} видео"}
+            textSize=12f; setTextColor(muted); setPadding(0,dp(5),0,dp(10))
+        })
 
-        val groups = baseGroups.sortedByDescending { it.date }
-
-        val page = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(bg)
-        }
-
-        val header = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(16), dp(16), dp(10))
-            setBackgroundColor(bg)
-        }
-
-        val titleView = TextView(this).apply {
-            text = "SOHR"
-            textSize = 24f
-            gravity = Gravity.START
-            maxLines = 1
-            setTextColor(this@MainActivity.text)
-            setTypeface(typeface, Typeface.BOLD)
-        }
-
-        val subtitle = TextView(this).apply {
-            text = "Последние 7 дней • ${groups.size} сборников • ${videos.size} видео"
-            textSize = 12f
-            gravity = Gravity.START
-            maxLines = 1
-            setTextColor(muted)
-            setPadding(0, dp(5), 0, dp(12))
-        }
-
-        val controlRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-
-        val sectionTitle = TextView(this).apply {
-            text = "Сборники по дням"
-            textSize = 14f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(muted)
-        }
-
-        val refreshLoader = LoadingWaveView(this, purple).apply {
-            visibility = View.GONE
-        }
-
-        val refreshLabel = TextView(this).apply {
-            text = if (feedRefreshCompletedFlash) "Готово" else "Проверить новые"
-            textSize = 12f
-            gravity = Gravity.CENTER_VERTICAL
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(purple)
-        }
-
-        val refresh = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(dp(12), 0, dp(12), 0)
-            background = roundedBg(palette.surfaceAlt, 16)
-            isClickable = true
-            isFocusable = true
-            contentDescription = "Проверить новые видео"
-            addView(
-                refreshLoader,
-                LinearLayout.LayoutParams(dp(24), dp(24)).apply {
-                    marginEnd = dp(7)
+        val tabs=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(dp(3),dp(3),dp(3),dp(3)); background=roundedBg(palette.surfaceAlt,18) }
+        listOf("Обычные","Сборники","Просмотренное").forEachIndexed { index,label ->
+            val selected=videoSection==index
+            val tab=TextView(this).apply {
+                text=label; textSize=12f; gravity=Gravity.CENTER; setTypeface(typeface,Typeface.BOLD)
+                setTextColor(if(selected) Color.WHITE else muted); background=roundedBg(if(selected) purple else Color.TRANSPARENT,15)
+                isClickable=true; isFocusable=true
+                setOnClickListener {
+                    if(videoSection==index) return@setOnClickListener
+                    animatePress(this); pendingRootSlide=if(index>videoSection) 1 else -1; videoSection=index; showFeed(currentVideos)
                 }
-            )
-            addView(
-                refreshLabel,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
-            )
-            setOnClickListener {
-                if (!isEnabled) return@setOnClickListener
-                animatePress(this)
-                loadVideos(inPlace = true)
             }
+            tabs.addView(tab,LinearLayout.LayoutParams(0,dp(40),1f).apply { if(index>0) marginStart=dp(3) })
         }
+        header.addView(tabs,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(46)))
 
-        feedRefreshButton = refresh
-        feedRefreshLabel = refreshLabel
-        feedRefreshLoader = refreshLoader
-
-        controlRow.addView(
-            sectionTitle,
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        )
-        controlRow.addView(
-            refresh,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44))
-        )
-
-        if (feedRefreshCompletedFlash) {
-            feedRefreshCompletedFlash = false
-            refresh.postDelayed({
-                if (feedRefreshButton === refresh && refresh.isEnabled) {
-                    refreshLabel.animate().cancel()
-                    refreshLabel.animate()
-                        .alpha(0f)
-                        .setDuration(80L)
-                        .withEndAction {
-                            refreshLabel.text = "Проверить новые"
-                            refreshLabel.animate().alpha(1f).setDuration(120L).start()
-                        }
-                        .start()
-                }
-            }, 1100L)
+        val controls=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(0,dp(10),0,0) }
+        controls.addView(TextView(this).apply {
+            text=when(videoSection){0->"Все непросмотренные";2->"Просмотрено по дням";else->"Сборники по дням"}; textSize=14f; setTypeface(typeface,Typeface.BOLD); setTextColor(muted)
+        },LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
+        val loader=LoadingWaveView(this,purple).apply { visibility=View.GONE }
+        val refreshText=TextView(this).apply { text=if(feedRefreshCompletedFlash) "Готово" else "Проверить новые"; textSize=12f; gravity=Gravity.CENTER_VERTICAL; setTypeface(typeface,Typeface.BOLD); setTextColor(purple) }
+        val refresh=LinearLayout(this).apply {
+            orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER; setPadding(dp(12),0,dp(12),0); background=roundedBg(palette.surfaceAlt,16); isClickable=true; isFocusable=true
+            addView(loader,LinearLayout.LayoutParams(dp(24),dp(24)).apply{marginEnd=dp(7)}); addView(refreshText)
+            setOnClickListener { if(isEnabled){ animatePress(this); loadVideos(inPlace=true) } }
         }
+        feedRefreshButton=refresh; feedRefreshLabel=refreshText; feedRefreshLoader=loader
+        controls.addView(refresh,LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,dp(44)))
+        header.addView(controls); page.addView(header)
 
-        header.addView(titleView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        header.addView(subtitle, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        header.addView(controlRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        page.addView(header)
+        if(feedRefreshCompletedFlash){ feedRefreshCompletedFlash=false; refresh.postDelayed({ if(feedRefreshButton===refresh&&refresh.isEnabled){ refreshText.animate().alpha(0f).setDuration(80L).withEndAction{refreshText.text="Проверить новые";refreshText.animate().alpha(1f).setDuration(120L).start()}.start() } },1100L) }
 
-        if (groups.isEmpty()) {
-            val empty = TextView(this).apply {
-                text = "За последние 7 дней видео не найдено."
-                setTextColor(muted)
-                textSize = 16f
-                gravity = Gravity.CENTER
+        if(videoSection==0){
+            if(regularVideos.isEmpty()) page.addView(TextView(this).apply{text="Все видео просмотрены";textSize=16f;gravity=Gravity.CENTER;setTextColor(muted)},LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
+            else {
+                val ordered=regularVideos.sortedWith(compareByDescending<VideoItem>{it.date}.thenByDescending{it.messageId})
+                val list=RecyclerView(this).apply { isVerticalScrollBarEnabled=false;isHorizontalScrollBarEnabled=false;overScrollMode=View.OVER_SCROLL_NEVER;layoutManager=LinearLayoutManager(this@MainActivity);adapter=VideoAdapter(ordered,palette,settings.animations){openPlayer(it)};setBackgroundColor(bg);setHasFixedSize(true);itemAnimator=if(settings.animations)itemAnimator else null }
+                page.addView(list,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
             }
-            page.addView(empty, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        } else if(visibleGroups.isEmpty()) {
+            page.addView(TextView(this).apply { text=if(videoSection==2) "Здесь появятся видео, которые ты отметил как просмотренные." else "Непросмотренных сборников пока нет.";textSize=15f;gravity=Gravity.CENTER;setTextColor(muted);setPadding(dp(28),0,dp(28),0) },LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
         } else {
-            val list = RecyclerView(this).apply {
-            isVerticalScrollBarEnabled = false
-            isHorizontalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_NEVER
-                layoutManager = LinearLayoutManager(this@MainActivity)
-                adapter = DayCollectionAdapter(groups, palette, settings.animations) { showDayCollection(it) }
-                setBackgroundColor(bg)
-                setHasFixedSize(true)
-                itemAnimator = if (settings.animations) itemAnimator else null
-            }
-            page.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+            val list=RecyclerView(this).apply { isVerticalScrollBarEnabled=false;isHorizontalScrollBarEnabled=false;overScrollMode=View.OVER_SCROLL_NEVER;layoutManager=LinearLayoutManager(this@MainActivity);adapter=DayCollectionAdapter(visibleGroups,palette,settings.animations){showDayCollection(it)};setBackgroundColor(bg);setHasFixedSize(true);itemAnimator=if(settings.animations)itemAnimator else null }
+            page.addView(list,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
         }
-
-        replaceRoot(withBottomNav(page, SohrTab.VIDEOS))
+        replaceRoot(withBottomNav(page,SohrTab.VIDEOS))
     }
 
     private fun showDayCollection(collection: DayCollection) {
@@ -2173,6 +2089,11 @@ class MainActivity : AppCompatActivity() {
             startPositionMs = resumePositionMs,
             nextItem = nextItem,
             onPlayNext = { next -> openPlayer(next) },
+            isWatched = isVideoWatched(item.messageId),
+            onMarkWatched = { watched ->
+                markVideoWatched(watched.messageId)
+                if (videoSection != 2) currentDay = currentDay?.copy(videos = currentDay?.videos?.filterNot { it.messageId == watched.messageId } ?: emptyList())
+            },
             onBack = { onBackPressedDispatcher.onBackPressed() },
             onFullscreen = { setFullscreen(it) },
             onPlaybackStarted = { streakTracker.markWatched() }
@@ -3054,6 +2975,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setFullscreen(enabled: Boolean) {
+        if (fullScreen == enabled) {
+            playerScreen?.setFullscreenMode(enabled)
+            return
+        }
         fullScreen = enabled
         playerScreen?.setFullscreenMode(enabled)
         ViewCompat.requestApplyInsets(root)

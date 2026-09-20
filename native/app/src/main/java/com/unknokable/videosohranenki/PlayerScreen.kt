@@ -62,6 +62,8 @@ class PlayerScreen(
     private val startPositionMs: Long = 0L,
     private val nextItem: VideoItem? = null,
     private val onPlayNext: ((VideoItem) -> Unit)? = null,
+    private val isWatched: Boolean = false,
+    private val onMarkWatched: ((VideoItem) -> Unit)? = null,
     private val onBack: () -> Unit,
     private val onFullscreen: (Boolean) -> Unit,
     private val onPlaybackStarted: () -> Unit
@@ -247,8 +249,6 @@ class PlayerScreen(
         root.addView(details)
         socialActionsRow = buildSocialActions()
         root.addView(socialActionsRow)
-        actionsRow = buildActions()
-        root.addView(actionsRow)
         nextVideosBlock = buildNextVideosBlock()
         root.addView(nextVideosBlock)
         miniBar = buildMiniPlayer()
@@ -495,7 +495,6 @@ class PlayerScreen(
         times.addView(currentTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)))
         times.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
         times.addView(totalTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)))
-        times.addView(qualityButton, LinearLayout.LayoutParams(dp(62), dp(32)).apply { marginStart = dp(4) })
         times.addView(settingsButton, LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginStart = dp(4) })
         times.addView(fullscreenButton, LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginStart = dp(4) })
 
@@ -718,35 +717,20 @@ class PlayerScreen(
     }
 
     private fun buildSocialActions(): LinearLayout {
-        val row = LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(2), dp(12), dp(10))
-        }
-
-        val prefs = activity.getSharedPreferences("sohr_player_actions", Context.MODE_PRIVATE)
-        var liked = prefs.getBoolean("liked_${item.messageId}", false)
-        lateinit var likeButton: TextView
-        likeButton = actionPill(if (liked) "♥  Нравится" else "♡  Нравится") {
-            liked = !liked
-            prefs.edit().putBoolean("liked_${item.messageId}", liked).apply()
-            likeButton.text = if (liked) "♥  Нравится" else "♡  Нравится"
-        }
-
-        val shareButton = actionPill("↗  Поделиться") {
-            val send = Intent(Intent.ACTION_SEND).apply {
-                type = "text/plain"
-                putExtra(Intent.EXTRA_SUBJECT, cleanTitle(item.title))
-                putExtra(Intent.EXTRA_TEXT, "${cleanTitle(item.title)} • SOHR")
+        val row=LinearLayout(activity).apply { orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(12),dp(2),dp(12),dp(10)) }
+        var watched=isWatched
+        lateinit var watchedButton:TextView
+        watchedButton=actionPill("✓  Просмотрено") {
+            if(watched) return@actionPill
+            ModernDialogs.showConfirm(activity,palette,"Отметить просмотренным?","Видео переместится в раздел «Просмотренное» и исчезнет из обычных сборников.","Да, просмотрено") {
+                watched=true;onMarkWatched?.invoke(item);watchedButton.alpha=.72f
+                watchedButton.animate().cancel();watchedButton.scaleX=.96f;watchedButton.scaleY=.96f;watchedButton.animate().scaleX(1f).scaleY(1f).setDuration(if(settings.animations)180L else 0L).start()
             }
-            runCatching { activity.startActivity(Intent.createChooser(send, "Поделиться видео")) }
         }
-
-        val downloadButton = actionPill("↓  Скачать") { enqueueDownload() }
-
-        row.addView(likeButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { marginEnd = dp(5) })
-        row.addView(shareButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { marginEnd = dp(5) })
-        row.addView(downloadButton, LinearLayout.LayoutParams(0, dp(42), 1f))
+        if(watched) watchedButton.alpha=.72f
+        val shareButton=actionPill("↗  Поделиться") { val send=Intent(Intent.ACTION_SEND).apply{type="text/plain";putExtra(Intent.EXTRA_SUBJECT,cleanTitle(item.title));putExtra(Intent.EXTRA_TEXT,"${cleanTitle(item.title)} • SOHR")};runCatching{activity.startActivity(Intent.createChooser(send,"Поделиться видео"))} }
+        val downloadButton=actionPill("↓  Скачать"){enqueueDownload()}
+        row.addView(watchedButton,LinearLayout.LayoutParams(0,dp(42),1f).apply{marginEnd=dp(5)});row.addView(shareButton,LinearLayout.LayoutParams(0,dp(42),1f).apply{marginEnd=dp(5)});row.addView(downloadButton,LinearLayout.LayoutParams(0,dp(42),1f))
         return row
     }
 
@@ -780,6 +764,14 @@ class PlayerScreen(
                     background = roundedInt(palette.surfaceAlt, 16)
                     isClickable = true
                     isFocusable = true
+
+                    val thumb = ImageView(activity).apply {
+                    scaleType=ImageView.ScaleType.CENTER_CROP
+                    background=roundedInt(palette.surface,12)
+                    clipToOutline=true
+                    next.thumbnailPath?.takeIf{it.isNotBlank()}?.let{path->runCatching{BitmapFactory.decodeFile(path)}.getOrNull()?.let{setImageBitmap(it)}}
+                }
+                addView(thumb,LinearLayout.LayoutParams(dp(96),dp(58)).apply{marginEnd=dp(12)})
 
                     val textBox = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
                     textBox.addView(TextView(activity).apply {
