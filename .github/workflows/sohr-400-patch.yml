@@ -17,68 +17,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Apply neutral phone login and 4.0.0 version
+      - name: Apply neutral login and version
         shell: bash
-        run: |
-          python <<'PY'
-          from pathlib import Path
-
-          p = Path('native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt')
-          s = p.read_text()
-
-          old = '''        var selected = detectCountry(regions)'''
-          new = '''        // Start neutrally: do not expose/infer a country code (for example +48)
-        // before the user explicitly chooses a country.
-        var selected = PhoneCountry(region = "ZZ", name = "", dialCode = 0, flag = "")'''
-          assert old in s, 'initial selected-country marker not found'
-          s = s.replace(old, new, 1)
-
-          old = '''        var formatter = phoneUtil.getAsYouTypeFormatter(selected.region)
-        var formatting = false
-
-        fun applyCountry() {
-            country.text = "${selected.flag}  ${selected.name}   +${selected.dialCode}"
-            prefix.text = "+${selected.dialCode}"
-            formatter = phoneUtil.getAsYouTypeFormatter(selected.region)'''
-          new = '''        var formatter = phoneUtil.getAsYouTypeFormatter("ZZ")
-        var formatting = false
-
-        fun applyCountry() {
-            val hasCountry = selected.dialCode > 0 && selected.region != "ZZ"
-            country.text = if (hasCountry) {
-                "${selected.flag}  ${selected.name}   +${selected.dialCode}"
-            } else {
-                if (settings.languageCode == "ru") "Выбрать страну" else t("choose_country")
-            }
-            prefix.text = if (hasCountry) "+${selected.dialCode}" else "+"
-            formatter = phoneUtil.getAsYouTypeFormatter(if (hasCountry) selected.region else "ZZ")'''
-          assert old in s, 'applyCountry marker not found'
-          s = s.replace(old, new, 1)
-
-          old = '''                val national = input.text.toString().filter { it.isDigit() }
-                if (national.isBlank()) {'''
-          new = '''                val national = input.text.toString().filter { it.isDigit() }
-                if (selected.dialCode <= 0 || selected.region == "ZZ") {
-                    error.text = if (settings.languageCode == "ru") "Сначала выбери страну" else t("choose_country")
-                    error.visibility = View.VISIBLE
-                    return@setOnClickListener
-                }
-                if (national.isBlank()) {'''
-          assert old in s, 'submit validation marker not found'
-          s = s.replace(old, new, 1)
-
-          p.write_text(s)
-
-          g = Path('native/app/build.gradle.kts')
-          t = g.read_text()
-          t = t.replace('// Build marker: SOHR 3.0.10 player polish', '// Build marker: SOHR 4.0.0 neutral login')
-          t = t.replace('versionCode = 310', 'versionCode = 400')
-          t = t.replace('versionName = "3.0.10-beta"', 'versionName = "4.0.0"')
-          # In case the prior patch already changed the version locally in a future rerun.
-          t = t.replace('versionCode = 311', 'versionCode = 400')
-          t = t.replace('versionName = "3.0.11-beta"', 'versionName = "4.0.0"')
-          g.write_text(t)
-          PY
+        run: echo 'ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCgpwID0gUGF0aCgibmF0aXZlL2FwcC9zcmMvbWFpbi9qYXZhL2NvbS91bmtub2thYmxlL3ZpZGVvc29ocmFuZW5raS9NYWluQWN0aXZpdHkua3QiKQpzID0gcC5yZWFkX3RleHQoKQoKb2xkID0gJyAgICAgICAgdmFyIHNlbGVjdGVkID0gZGV0ZWN0Q291bnRyeShyZWdpb25zKScKbmV3ID0gJyAgICAgICAgLy8gU3RhcnQgbmV1dHJhbGx5OiBkbyBub3QgZXhwb3NlL2luZmVyIGEgY291bnRyeSBjb2RlIChmb3IgZXhhbXBsZSArNDgpXG4gICAgICAgIC8vIGJlZm9yZSB0aGUgdXNlciBleHBsaWNpdGx5IGNob29zZXMgYSBjb3VudHJ5LlxuICAgICAgICB2YXIgc2VsZWN0ZWQgPSBQaG9uZUNvdW50cnkocmVnaW9uID0gIlpaIiwgbmFtZSA9ICIiLCBkaWFsQ29kZSA9IDAsIGZsYWcgPSAiIiknCmFzc2VydCBvbGQgaW4gcywgImluaXRpYWwgc2VsZWN0ZWQtY291bnRyeSBtYXJrZXIgbm90IGZvdW5kIgpzID0gcy5yZXBsYWNlKG9sZCwgbmV3LCAxKQoKb2xkID0gJycnICAgICAgICB2YXIgZm9ybWF0dGVyID0gcGhvbmVVdGlsLmdldEFzWW91VHlwZUZvcm1hdHRlcihzZWxlY3RlZC5yZWdpb24pCiAgICAgICAgdmFyIGZvcm1hdHRpbmcgPSBmYWxzZQoKICAgICAgICBmdW4gYXBwbHlDb3VudHJ5KCkgewogICAgICAgICAgICBjb3VudHJ5LnRleHQgPSAiJHtzZWxlY3RlZC5mbGFnfSAgJHtzZWxlY3RlZC5uYW1lfSAgICske3NlbGVjdGVkLmRpYWxDb2RlfSIKICAgICAgICAgICAgcHJlZml4LnRleHQgPSAiKyR7c2VsZWN0ZWQuZGlhbENvZGV9IgogICAgICAgICAgICBmb3JtYXR0ZXIgPSBwaG9uZVV0aWwuZ2V0QXNZb3VUeXBlRm9ybWF0dGVyKHNlbGVjdGVkLnJlZ2lvbiknJycKbmV3ID0gJycnICAgICAgICB2YXIgZm9ybWF0dGVyID0gcGhvbmVVdGlsLmdldEFzWW91VHlwZUZvcm1hdHRlcigiWloiKQogICAgICAgIHZhciBmb3JtYXR0aW5nID0gZmFsc2UKCiAgICAgICAgZnVuIGFwcGx5Q291bnRyeSgpIHsKICAgICAgICAgICAgdmFsIGhhc0NvdW50cnkgPSBzZWxlY3RlZC5kaWFsQ29kZSA+IDAgJiYgc2VsZWN0ZWQucmVnaW9uICE9ICJaWiIKICAgICAgICAgICAgY291bnRyeS50ZXh0ID0gaWYgKGhhc0NvdW50cnkpIHsKICAgICAgICAgICAgICAgICIke3NlbGVjdGVkLmZsYWd9ICAke3NlbGVjdGVkLm5hbWV9ICAgKyR7c2VsZWN0ZWQuZGlhbENvZGV9IgogICAgICAgICAgICB9IGVsc2UgewogICAgICAgICAgICAgICAgaWYgKHNldHRpbmdzLmxhbmd1YWdlQ29kZSA9PSAicnUiKSAi0JLRi9Cx0YDQsNGC0Ywg0YHRgtGA0LDQvdGDIiBlbHNlIHQoImNob29zZV9jb3VudHJ5IikKICAgICAgICAgICAgfQogICAgICAgICAgICBwcmVmaXgudGV4dCA9IGlmIChoYXNDb3VudHJ5KSAiKyR7c2VsZWN0ZWQuZGlhbENvZGV9IiBlbHNlICIrIgogICAgICAgICAgICBmb3JtYXR0ZXIgPSBwaG9uZVV0aWwuZ2V0QXNZb3VUeXBlRm9ybWF0dGVyKGlmIChoYXNDb3VudHJ5KSBzZWxlY3RlZC5yZWdpb24gZWxzZSAiWloiKScnJwphc3NlcnQgb2xkIGluIHMsICJhcHBseUNvdW50cnkgbWFya2VyIG5vdCBmb3VuZCIKcyA9IHMucmVwbGFjZShvbGQsIG5ldywgMSkKCm9sZCA9ICcnJyAgICAgICAgICAgICAgICB2YWwgbmF0aW9uYWwgPSBpbnB1dC50ZXh0LnRvU3RyaW5nKCkuZmlsdGVyIHsgaXQuaXNEaWdpdCgpIH0KICAgICAgICAgICAgICAgIGlmIChuYXRpb25hbC5pc0JsYW5rKCkpIHsnJycKbmV3ID0gJycnICAgICAgICAgICAgICAgIHZhbCBuYXRpb25hbCA9IGlucHV0LnRleHQudG9TdHJpbmcoKS5maWx0ZXIgeyBpdC5pc0RpZ2l0KCkgfQogICAgICAgICAgICAgICAgaWYgKHNlbGVjdGVkLmRpYWxDb2RlIDw9IDAgfHwgc2VsZWN0ZWQucmVnaW9uID09ICJaWiIpIHsKICAgICAgICAgICAgICAgICAgICBlcnJvci50ZXh0ID0gaWYgKHNldHRpbmdzLmxhbmd1YWdlQ29kZSA9PSAicnUiKSAi0KHQvdCw0YfQsNC70LAg0LLRi9Cx0LXRgNC4INGB0YLRgNCw0L3RgyIgZWxzZSB0KCJjaG9vc2VfY291bnRyeSIpCiAgICAgICAgICAgICAgICAgICAgZXJyb3IudmlzaWJpbGl0eSA9IFZpZXcuVklTSUJMRQogICAgICAgICAgICAgICAgICAgIHJldHVybkBzZXRPbkNsaWNrTGlzdGVuZXIKICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgIGlmIChuYXRpb25hbC5pc0JsYW5rKCkpIHsnJycKYXNzZXJ0IG9sZCBpbiBzLCAic3VibWl0IHZhbGlkYXRpb24gbWFya2VyIG5vdCBmb3VuZCIKcyA9IHMucmVwbGFjZShvbGQsIG5ldywgMSkKcC53cml0ZV90ZXh0KHMpCgpnID0gUGF0aCgibmF0aXZlL2FwcC9idWlsZC5ncmFkbGUua3RzIikKdCA9IGcucmVhZF90ZXh0KCkKdCA9IHQucmVwbGFjZSgiLy8gQnVpbGQgbWFya2VyOiBTT0hSIDMuMC4xMCBwbGF5ZXIgcG9saXNoIiwgIi8vIEJ1aWxkIG1hcmtlcjogU09IUiA0LjAuMCBuZXV0cmFsIGxvZ2luIikKdCA9IHQucmVwbGFjZSgidmVyc2lvbkNvZGUgPSAzMTAiLCAidmVyc2lvbkNvZGUgPSA0MDAiKQp0ID0gdC5yZXBsYWNlKCd2ZXJzaW9uTmFtZSA9ICIzLjAuMTAtYmV0YSInLCAndmVyc2lvbk5hbWUgPSAiNC4wLjAiJykKdCA9IHQucmVwbGFjZSgidmVyc2lvbkNvZGUgPSAzMTEiLCAidmVyc2lvbkNvZGUgPSA0MDAiKQp0ID0gdC5yZXBsYWNlKCd2ZXJzaW9uTmFtZSA9ICIzLjAuMTEtYmV0YSInLCAndmVyc2lvbk5hbWUgPSAiNC4wLjAiJykKZy53cml0ZV90ZXh0KHQpCg==' | base64 -d | python
       - name: Commit SOHR 4.0.0
         shell: bash
         run: |
