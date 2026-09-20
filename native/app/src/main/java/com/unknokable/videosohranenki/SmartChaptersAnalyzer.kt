@@ -512,6 +512,28 @@ object SmartChaptersAnalyzer {
         }
     }
 
+    private fun cleanOcrLine(raw: String): String =
+        raw.replace(Regex("\\s+"), " ")
+            .replace(Regex("[\\u0000-\\u001F]"), "")
+            .trim()
+            .trim('|', '•', '-', '—', ':', ';')
+
+    private fun isUsefulLine(text: String): Boolean {
+        if (text.length !in 7..100) return false
+        if (text.count { it.isLetter() } < 5) return false
+        if (text.count { it.isDigit() } > text.length * 0.45) return false
+
+        val lower = text.lowercase()
+        val banned = listOf(
+            "twitch", "t2x2", "t.me/", "telegram", "подписаться", "отслеживать",
+            "подарить подпис", "контент включает", "rub", "₽", "донат", "чат",
+            "зрителей", "онлайн", "авто", "качество", "настройки"
+        )
+        if (banned.any { it in lower }) return false
+        if ("http://" in lower || "https://" in lower || "www." in lower) return false
+        return true
+    }
+
     private data class TargetDetection(
         val mode: SceneMode,
         val title: String?,
