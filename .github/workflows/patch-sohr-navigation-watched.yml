@@ -11,7 +11,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Apply patch
-        run: python3 .github/patch_sohr_navigation.py
+        run: |
+          sed -i "s/row.addView(watchedButton,LinearLayout.LayoutParams(0,dp(44),1f))/row.addView(watchedButton,LinearLayout.LayoutParams(0,dp(42),1f).apply{marginEnd=dp(5)})/" .github/patch_sohr_navigation.py
+          sed -i "s/↩  Вернуть в сборники/↩  Вернуть/" .github/patch_sohr_navigation.py
+          python3 .github/patch_sohr_navigation.py
       - name: Commit patch
         run: |
           git config user.name "github-actions[bot]"
