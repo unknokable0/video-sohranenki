@@ -328,9 +328,10 @@ object TwitchContentAnalyzer {
                     continue
                 }
 
-                var earliestPositive = anchor
+                val anchorIndex = requireNotNull(anchor)
+                var earliestPositive = anchorIndex
                 var negativeStreak = 0
-                var i = anchor - 1
+                var i = anchorIndex - 1
 
                 while (i >= 0) {
                     if (positive(i)) {
