@@ -1,4 +1,4 @@
-// Build marker: SOHR polished update dialog + smooth video tabs
+// Build marker: SOHR smooth back + watched restore + swipe tabs
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
