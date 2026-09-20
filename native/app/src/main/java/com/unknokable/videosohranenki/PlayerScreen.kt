@@ -773,7 +773,7 @@ class PlayerScreen(
         }
 
         val badge = TextView(activity).apply {
-            text = if (item.source == "twitch") "MOBILE 1.1" else "BETA 1.0.4"
+            text = if (item.source == "twitch") "MOBILE 1.2" else "BETA 1.0.4"
             textSize = 9f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
@@ -1067,6 +1067,14 @@ class PlayerScreen(
                         elapsedMs = SystemClock.elapsedRealtime() - started,
                         cached = false
                     )
+                } catch (e: OutOfMemoryError) {
+                    progressTrack.visibility = View.GONE
+                    action.isEnabled = true
+                    action.alpha = 1f
+                    action.text = "Повторить"
+                    status.setTextColor(Color.parseColor("#FF7A90"))
+                    status.text = "Не хватило памяти для анализа • закрой тяжёлые приложения и повтори"
+                    runCatching { System.gc() }
                 } catch (e: Exception) {
                     progressTrack.visibility = View.GONE
                     action.isEnabled = true
