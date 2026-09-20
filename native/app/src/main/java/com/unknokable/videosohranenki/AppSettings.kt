@@ -102,14 +102,14 @@ class AppSettings(context: Context) {
     }
 
     fun smartChaptersCache(videoId: String): String? =
-        prefs.getString("smart_chapters_v12_" + videoId, null)
+        prefs.getString("smart_chapters_v13_" + videoId, null)
 
     fun saveSmartChaptersCache(videoId: String, json: String) {
-        prefs.edit().putString("smart_chapters_v12_" + videoId, json).apply()
+        prefs.edit().putString("smart_chapters_v13_" + videoId, json).apply()
     }
 
     fun clearSmartChaptersCache(videoId: String) {
-        prefs.edit().remove("smart_chapters_v12_" + videoId).apply()
+        prefs.edit().remove("smart_chapters_v13_" + videoId).apply()
     }
 
     fun palette(): ThemePalette = if (lightTheme) AppThemes.Light else AppThemes.Dark
