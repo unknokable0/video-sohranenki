@@ -1,4 +1,4 @@
-name: Apply SOHR 4.1.0 complete player
+name: Apply SOHR 4.1.0 PiP lifecycle
 
 on:
   push:
@@ -17,254 +17,62 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Patch complete player
+      - name: Patch PiP lifecycle
         shell: bash
         run: |
           python <<'PY'
           from pathlib import Path
-          import re
-          p=Path('native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt')
+          p=Path('native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt')
           s=p.read_text()
-          s=s.replace('import android.view.GestureDetector\n','')
-          s=s.replace('import android.widget.TextView\n','import android.widget.TextView\nimport android.widget.SeekBar\nimport com.google.android.material.bottomsheet.BottomSheetDialog\n')
-          s=s.replace('    private lateinit var playerCard: FrameLayout\n','    private lateinit var playerCard: FrameLayout\n    private lateinit var playerView: PlayerView\n')
-          s=s.replace('    private lateinit var endOverlay: LinearLayout\n','''    private lateinit var endOverlay: LinearLayout
-              private lateinit var miniBar: LinearLayout
-              private lateinit var miniVideoHost: FrameLayout
-              private var miniMode = false
-              private var gestureOverlay: PlayerGestureOverlay? = null
-              private val autoHideControls = Runnable { if (player.isPlaying && !dragging) hideOverlay() }
-          ''')
-          s=s.replace('        val playerView = PlayerView(activity).apply {','        playerView = PlayerView(activity).apply {')
-          s=s.replace('            text = "2×"','            text = "2x  ▶▶"')
-          s=s.replace('''        nextVideosBlock = buildNextVideosBlock()
-                  root.addView(nextVideosBlock)
-          ''','''        nextVideosBlock = buildNextVideosBlock()
-                  root.addView(nextVideosBlock)
-                  miniBar = buildMiniPlayer()
-                  root.addView(miniBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(76)))
-          ''')
-          s=s.replace('''        val fullscreenButton = iconButton(R.drawable.ic_fullscreen, "#66181322", 40).apply {
-          ''','''        val settingsButton = TextView(activity).apply {
-                      text = "⚙"
-                      textSize = 19f
-                      gravity = Gravity.CENTER
-                      setTextColor(Color.WHITE)
-                      background = rounded("#66181322", 20)
-                      setOnClickListener { pulse(this); showSettingsSheet() }
-                  }
-
-                  val fullscreenButton = iconButton(R.drawable.ic_fullscreen, "#66181322", 40).apply {
-          ''')
-          s=s.replace('''        times.addView(qualityButton, LinearLayout.LayoutParams(dp(62), dp(32)).apply { marginStart = dp(4) })
-                  times.addView(fullscreenButton''','''        times.addView(qualityButton, LinearLayout.LayoutParams(dp(62), dp(32)).apply { marginStart = dp(4) })
-                  times.addView(settingsButton, LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginStart = dp(4) })
-                  times.addView(fullscreenButton''')
-
-          start=s.index('    private fun installGestures() {')
-          end=s.index('\n\n    private fun showSeekFeedback',start)
-          gestures='''    private fun installGestures() {
-                  gestureOverlay = PlayerGestureOverlay(
-                      activity = activity,
-                      target = playerCard,
-                      player = player,
-                      durationProvider = { resolvedDurationMs() },
-                      progressZone = { y -> y >= playerCard.height - dp(72) },
-                      onSingleTap = { toggleOverlay() },
-                      onDoubleTap = { forward, seconds -> showSeekFeedback(forward, seconds) },
-                      onTemporarySpeed = { enabled ->
-                          if (enabled) { player.setPlaybackSpeed(2f); speedBadge.animate().alpha(1f).setDuration(220L).start() }
-                          else { player.setPlaybackSpeed(speed); speedBadge.animate().alpha(0f).setDuration(220L).start() }
-                      },
-                      onScrub = { positionMs, finished ->
-                          dragging = !finished
-                          if (!finished) {
-                              player.setScrubbingModeEnabled(true)
-                              player.seekTo(positionMs)
-                              showPreview()
-                              updatePreviewUi(positionMs, (positionMs.toFloat()/resolvedDurationMs().coerceAtLeast(1L)).coerceIn(0f,1f))
-                              requestPreview(positionMs)
-                          } else { player.setScrubbingModeEnabled(false); hidePreview() }
-                      },
-                      onBrightness = { showTransientIndicator("☀  $it%") },
-                      onVolume = { showTransientIndicator("♪  $it%") },
-                      onFillMode = { fill ->
-                          playerView.resizeMode = if (fill) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
-                          showTransientIndicator(if (fill) "Заполнить экран" else "Уменьшить")
-                      },
-                      onSwipeDown = { if (fullscreen) onFullscreen(false) else enterMiniPlayer() },
-                      onSwipeUp = { if (fullscreen) onFullscreen(false); exitMiniPlayer(); nextVideosBlock.visibility = View.VISIBLE }
-                  )
-                  playerCard.setOnTouchListener(gestureOverlay)
-              }
+          s=s.replace('import android.app.Dialog\n','import android.app.Dialog\nimport android.app.PictureInPictureParams\nimport android.content.Intent\n')
+          s=s.replace('import android.telephony.TelephonyManager\n','import android.telephony.TelephonyManager\nimport android.util.Rational\n')
+          marker='''    override fun onResume() {
+                  super.onResume()
           '''
-          s=s[:start]+gestures+s[end:]
-          s=s.replace('private fun showSeekFeedback(forward: Boolean) {','private fun showSeekFeedback(forward: Boolean, seconds: Int = 10) {')
-          s=s.replace('seekFeedback.text = if (forward) "+10 сек   ››" else "‹‹   −10 сек"','seekFeedback.text = if (forward) "+$seconds сек   ››" else "‹‹   −$seconds сек"')
-
-          start=s.index('    private fun showPlayerMenu() {')
-          end=s.index('\n\n    private fun showSpeedPicker()',start)
-          sheet='''    private fun showPlayerMenu() = showSettingsSheet()
-
-              private fun showSettingsSheet() {
-                  val disabledSubs = player.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
-                  val items = listOf(
-                      "Качество" to qualityButton.text.toString(),
-                      "Скорость воспроизведения" to if (speed == 1f) "Обычная" else "${speed}x",
-                      "Субтитры" to if (disabledSubs) "Выкл" else "Авто",
-                      "Таймер сна" to sleepLabel(),
-                      "Стабильная громкость" to if (settings.stableVolume) "Вкл" else "Выкл",
-                      "Автовоспроизведение" to if (settings.autoplay) "Вкл" else "Выкл"
-                  )
-                  val dialog = BottomSheetDialog(activity)
-                  val box = LinearLayout(activity).apply {
-                      orientation = LinearLayout.VERTICAL
-                      setPadding(dp(18),dp(10),dp(18),dp(24))
-                      background = roundedInt(palette.surface,24)
+          s=s.replace(marker,'''    override fun onResume() {
+                  super.onResume()
+                  if (android.os.Build.VERSION.SDK_INT >= 24 && !isInPictureInPictureMode) {
+                      stopService(Intent(this, PlaybackKeepAliveService::class.java))
                   }
-                  box.addView(TextView(activity).apply {
-                      text="Настройки видео"; textSize=20f; setTypeface(typeface,Typeface.BOLD); setTextColor(palette.text); setPadding(dp(6),dp(10),dp(6),dp(12))
-                  })
-                  items.forEachIndexed { index,pair ->
-                      box.addView(sheetRow(pair.first,pair.second) {
-                          dialog.dismiss()
-                          when(index) {
-                              0 -> showQualityPicker()
-                              1 -> showSpeedPicker()
-                              2 -> toggleSubtitles()
-                              3 -> showSleepPicker()
-                              4 -> { settings.stableVolume=!settings.stableVolume; showSettingsSheet() }
-                              5 -> { settings.autoplay=!settings.autoplay; showSettingsSheet() }
-                          }
-                      }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(54)).apply { bottomMargin=dp(5) })
-                  }
-                  dialog.setContentView(box); dialog.show()
-              }
-
-              private fun sheetRow(title:String,value:String,click:()->Unit): View = LinearLayout(activity).apply {
-                  orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(dp(14),0,dp(12),0); background=roundedInt(palette.surfaceAlt,16)
-                  addView(TextView(activity).apply { text=title; textSize=14f; setTypeface(typeface,Typeface.BOLD); setTextColor(palette.text) },LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
-                  addView(TextView(activity).apply { text="$value   ›"; textSize=13f; setTextColor(palette.muted) })
-                  setOnClickListener { pulse(this); click() }
-              }
-
-              private fun toggleSubtitles() {
-                  val params=player.trackSelectionParameters
-                  val disabled=params.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
-                  player.trackSelectionParameters=params.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT,!disabled).build()
-                  showSettingsSheet()
-              }
-
-              private fun sleepLabel():String = when(sleepSelection) { 1->"5 мин";2->"10 мин";3->"15 мин";4->"30 мин";5->"45 мин";6->"60 мин";7->"До конца видео";else->"Выкл" }
-          '''
-          s=s[:start]+sheet+s[end:]
-
-          s=s.replace('''        val labels = speeds.map { if (it == 1f) "Обычная • 1×" else "$it×" }
-          ''','''        val labels = speeds.map { if (it == 1f) "Обычная • 1×" else "$it×" }.toMutableList().apply { add("Точная настройка…") }
           ''')
-          old='''        ModernDialogs.showChoices(activity, palette, "Скорость воспроизведения", labels, selected) { which ->
-                      speed = speeds[which]
-                      settings.playbackSpeed = speed
-                      player.setPlaybackSpeed(speed)
-                      speedActionButton?.text =
-                          if (speed == 1f) "1×  Скорость" else speed.toString() + "×  Скорость"
-                  }
-          '''
-          new='''        ModernDialogs.showChoices(activity, palette, "Скорость воспроизведения", labels, selected) { which ->
-                      if (which == speeds.size) showPreciseSpeedSheet() else {
-                          speed=speeds[which]; settings.playbackSpeed=speed; player.setPlaybackSpeed(speed)
-                          speedActionButton?.text=if(speed==1f) "1×  Скорость" else speed.toString()+"×  Скорость"
+          insert='''
+              override fun onUserLeaveHint() {
+                  super.onUserLeaveHint()
+                  val activePlayer = playerScreen?.player
+                  if (!isPlayerScreen || activePlayer?.isPlaying != true) return
+                  val serviceIntent = Intent(this, PlaybackKeepAliveService::class.java)
+                  if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(serviceIntent) else startService(serviceIntent)
+                  if (android.os.Build.VERSION.SDK_INT >= 26 && !isInPictureInPictureMode) {
+                      runCatching {
+                          enterPictureInPictureMode(
+                              PictureInPictureParams.Builder()
+                                  .setAspectRatio(Rational(16, 9))
+                                  .build()
+                          )
                       }
                   }
-          '''
-          s=s.replace(old,new)
-          s=s.replace('    private fun showSleepPicker() {','''    private fun showPreciseSpeedSheet() {
-                  val dialog=BottomSheetDialog(activity)
-                  val box=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(20),dp(18),dp(20),dp(26)); background=roundedInt(palette.surface,24) }
-                  val value=TextView(activity).apply { text=String.format("%.2fx",speed); textSize=20f; gravity=Gravity.CENTER; setTypeface(typeface,Typeface.BOLD); setTextColor(palette.text) }
-                  val slider=SeekBar(activity).apply {
-                      max=175; progress=((speed-.25f)*100).toInt().coerceIn(0,175)
-                      setOnSeekBarChangeListener(object:SeekBar.OnSeekBarChangeListener {
-                          override fun onProgressChanged(b:SeekBar?,p:Int,user:Boolean) { if(user){ speed=(.25f+p/100f).coerceIn(.25f,2f); value.text=String.format("%.2fx",speed); player.setPlaybackSpeed(speed); settings.playbackSpeed=speed } }
-                          override fun onStartTrackingTouch(b:SeekBar?)=Unit
-                          override fun onStopTrackingTouch(b:SeekBar?)=Unit
-                      })
-                  }
-                  box.addView(TextView(activity).apply { text="Точная скорость"; textSize=17f; setTypeface(typeface,Typeface.BOLD); setTextColor(palette.text) }); box.addView(value); box.addView(slider)
-                  dialog.setContentView(box); dialog.show()
               }
 
-              private fun showSleepPicker() {''')
-          pattern=r'    private fun showSleepPicker\(\) \{.*?\n    \}\n\n    private fun showStats'
-          replacement='''    private fun showSleepPicker() {
-                  val labels=listOf("Выкл","5 минут","10 минут","15 минут","30 минут","45 минут","60 минут","До конца видео")
-                  ModernDialogs.showChoices(activity,palette,"Таймер сна",labels,sleepSelection) { which ->
-                      sleepRunnable?.let { handler.removeCallbacks(it) }; sleepRunnable=null; sleepSelection=which
-                      if(which in 1..6) { val minutes=listOf(0,5,10,15,30,45,60)[which]; val r=Runnable { player.pause(); showOverlay() }; sleepRunnable=r; handler.postDelayed(r,minutes*60_000L) }
+              override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+                  super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+                  if (isPlayerScreen) {
+                      playerScreen?.setFullscreenMode(isInPictureInPictureMode)
+                  }
+                  if (!isInPictureInPictureMode && playerScreen?.player?.isPlaying != true) {
+                      stopService(Intent(this, PlaybackKeepAliveService::class.java))
                   }
               }
 
-              private fun showStats'''
-          s,n=re.subn(pattern,replacement,s,flags=re.S)
-          assert n==1
-
-          mini='''    private fun buildMiniPlayer(): LinearLayout = LinearLayout(activity).apply {
-                  orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(dp(8),dp(4),dp(8),dp(4)); background=roundedInt(palette.surface,18); visibility=View.GONE; elevation=dp(12).toFloat()
-                  miniVideoHost=FrameLayout(activity).apply { setBackgroundColor(Color.BLACK) }; addView(miniVideoHost,LinearLayout.LayoutParams(dp(112),dp(63)))
-                  addView(TextView(activity).apply { text=cleanTitle(item.title); textSize=13f; maxLines=2; setTypeface(typeface,Typeface.BOLD); setTextColor(palette.text); setPadding(dp(10),0,dp(8),0); setOnClickListener { exitMiniPlayer() } },LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
-                  addView(TextView(activity).apply { text="Ⅱ"; textSize=18f; gravity=Gravity.CENTER; setTextColor(palette.text); setOnClickListener { if(player.isPlaying) player.pause() else player.play(); text=if(player.isPlaying) "Ⅱ" else "▶" } },LinearLayout.LayoutParams(dp(42),dp(56)))
-                  addView(TextView(activity).apply { text="×"; textSize=24f; gravity=Gravity.CENTER; setTextColor(palette.muted); setOnClickListener { player.pause(); onBack() } },LinearLayout.LayoutParams(dp(42),dp(56)))
-                  setOnClickListener { exitMiniPlayer() }
-                  setOnTouchListener(object:View.OnTouchListener { var x=0f; override fun onTouch(v:View,e:MotionEvent):Boolean { when(e.actionMasked){ MotionEvent.ACTION_DOWN->{x=e.x;return true}; MotionEvent.ACTION_MOVE->{v.translationX=e.x-x;v.alpha=(1f-kotlin.math.abs(v.translationX)/v.width).coerceIn(.25f,1f);return true}; MotionEvent.ACTION_UP->{if(kotlin.math.abs(v.translationX)>v.width*.35f){player.pause();onBack()}else v.animate().translationX(0f).alpha(1f).setDuration(220L).start();return true} };return false } })
-              }
-
-              private fun enterMiniPlayer() {
-                  if(miniMode||fullscreen)return; miniMode=true; persistPlaybackPosition(true)
-                  header.visibility=View.GONE; details.visibility=View.GONE; socialActionsRow.visibility=View.GONE; actionsRow.visibility=View.GONE; nextVideosBlock.visibility=View.GONE; overlay.visibility=View.GONE
-                  (playerView.parent as? ViewGroup)?.removeView(playerView); miniVideoHost.removeAllViews(); miniVideoHost.addView(playerView,FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.MATCH_PARENT)); playerCard.visibility=View.GONE
-                  root.gravity=Gravity.BOTTOM; miniBar.alpha=0f; miniBar.translationY=dp(76).toFloat(); miniBar.visibility=View.VISIBLE; miniBar.animate().alpha(1f).translationY(0f).setDuration(260L).start()
-              }
-
-              private fun exitMiniPlayer() {
-                  if(!miniMode)return; miniMode=false; (playerView.parent as? ViewGroup)?.removeView(playerView); playerCard.addView(playerView,0,FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.MATCH_PARENT)); miniBar.visibility=View.GONE; root.gravity=Gravity.TOP; playerCard.visibility=View.VISIBLE
-                  header.visibility=View.VISIBLE; details.visibility=View.VISIBLE; socialActionsRow.visibility=View.VISIBLE; actionsRow.visibility=View.VISIBLE; nextVideosBlock.visibility=View.VISIBLE; showOverlay()
-              }
-
-              private fun showTransientIndicator(value:String) {
-                  seekFeedback.animate().cancel(); seekFeedback.text=value; seekFeedback.translationX=0f; seekFeedback.alpha=0f; seekFeedback.visibility=View.VISIBLE
-                  seekFeedback.animate().alpha(1f).setDuration(180L).withEndAction { seekFeedback.animate().alpha(0f).setStartDelay(450L).setDuration(220L).withEndAction { seekFeedback.visibility=View.GONE }.start() }.start()
-              }
-
           '''
-          s=s.replace('    fun setFullscreenMode(enabled: Boolean) {',mini+'    fun setFullscreenMode(enabled: Boolean) {\n        if (enabled) exitMiniPlayer()')
-          s=s.replace('''    private fun showOverlay() {
-                  overlay.visibility = View.VISIBLE
-                  overlay.animate().alpha(1f).setDuration(if (settings.animations) 135 else 0).start()
-              }
-          ''','''    private fun showOverlay() {
-                  handler.removeCallbacks(autoHideControls); overlay.visibility=View.VISIBLE; overlay.animate().cancel(); overlay.animate().alpha(1f).setDuration(if(settings.animations)240 else 0).start()
-                  if(player.isPlaying) handler.postDelayed(autoHideControls,3_000L)
-              }
-          ''')
-          s=s.replace('''    private fun hideOverlay() {
-                  overlay.animate()
-                      .alpha(0f)
-                      .setDuration(if (settings.animations) 135 else 0)
-          ''','''    private fun hideOverlay() {
-                  handler.removeCallbacks(autoHideControls); overlay.animate().cancel(); overlay.animate()
-                      .alpha(0f)
-                      .setDuration(if (settings.animations) 240 else 0)
-          ''')
-          s=s.replace('                if (isPlaying && ::endOverlay.isInitialized) endOverlay.visibility = View.GONE','                if (isPlaying && ::endOverlay.isInitialized) endOverlay.visibility = View.GONE\n                if (isPlaying) { handler.removeCallbacks(autoHideControls); handler.postDelayed(autoHideControls, 3_000L) } else handler.removeCallbacks(autoHideControls)')
-          s=s.replace('                    showEndOverlay()\n                } else if','                    if (settings.autoplay && nextItem != null && onPlayNext != null) onPlayNext.invoke(nextItem) else showEndOverlay()\n                } else if')
+          anchor='    private fun showStartupSplash() {'
+          s=s.replace(anchor,insert+anchor)
           p.write_text(s)
-          print('patched PlayerScreen',len(s))
           PY
-      - name: Commit complete player
+      - name: Commit PiP lifecycle
         shell: bash
         run: |
           git config user.name "sohr-dev-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt
-          git commit -m "SOHR 4.1.0: complete player gestures settings mini-player"
+          git add native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt
+          git commit -m "SOHR 4.1.0: PiP and background playback lifecycle"
           git push
