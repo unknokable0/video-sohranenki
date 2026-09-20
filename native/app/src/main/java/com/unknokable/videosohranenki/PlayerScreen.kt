@@ -87,7 +87,7 @@ class PlayerScreen(
 
     private var fullscreen = false
     private var dragging = false
-    private var speed = 1f
+    private var speed = settings.playbackSpeed
     private var sleepRunnable: Runnable? = null
     private var playbackCounted = false
     private var lastProgressPersistAt = 0L
@@ -213,6 +213,7 @@ class PlayerScreen(
         player.setMediaItem(MediaItem.fromUri(mediaUrl))
         if (startPositionMs > 0) player.seekTo(startPositionMs)
         player.repeatMode = Player.REPEAT_MODE_OFF
+        player.playbackParameters = PlaybackParameters(speed)
         player.playWhenReady = settings.autoplay
         player.prepare()
 
@@ -284,14 +285,11 @@ class PlayerScreen(
             setPadding(dp(9), 0, dp(9), 0)
         }
 
-        val menu = textCircle("⋮", "#B89AFF").apply {
-            textSize = 22f
-            setOnClickListener { showPlayerMenu() }
-        }
+        val spacer = View(activity)
 
         row.addView(back, LinearLayout.LayoutParams(dp(42), dp(42)))
         row.addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row.addView(menu, LinearLayout.LayoutParams(dp(42), dp(42)))
+        row.addView(spacer, LinearLayout.LayoutParams(dp(42), dp(42)))
         return row
     }
 
@@ -305,31 +303,14 @@ class PlayerScreen(
             gravity = Gravity.CENTER
         }
 
-        val rewind = textCircle("−10", "#7CFFB2").apply {
-            setOnClickListener {
-                player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0))
-                pulse(this)
-            }
-        }
-
         playPause = iconButton(R.drawable.ic_play, "#8B5CF6", 54).apply {
             setOnClickListener {
-                if (player.playWhenReady) player.pause() else player.play()
+                if (player.isPlaying) player.pause() else player.play()
                 pulse(this)
             }
         }
 
-        val forward = textCircle("+10", "#7CFFB2").apply {
-            setOnClickListener {
-                val duration = player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
-                player.seekTo((player.currentPosition + 10_000).coerceAtMost(duration))
-                pulse(this)
-            }
-        }
-
-        center.addView(rewind, LinearLayout.LayoutParams(dp(46), dp(46)).apply { marginEnd = dp(16) })
         center.addView(playPause, LinearLayout.LayoutParams(dp(56), dp(56)))
-        center.addView(forward, LinearLayout.LayoutParams(dp(46), dp(46)).apply { marginStart = dp(16) })
 
         frame.addView(
             center,
@@ -574,7 +555,8 @@ class PlayerScreen(
             setPadding(dp(12), 0, dp(12), dp(14))
         }
 
-        val speedBtn = actionPill("1×  Скорость") { showSpeedPicker() }
+        val speedLabel = if (speed == 1f) "1×  Скорость" else speed.toString() + "×  Скорость"
+        val speedBtn = actionPill(speedLabel) { showSpeedPicker() }
         val sleepBtn = actionPill("◷  Таймер") { showSleepPicker() }
 
         row.addView(
@@ -623,7 +605,7 @@ class PlayerScreen(
             }
 
             override fun onLongPress(e: MotionEvent) {
-                player.playbackParameters = PlaybackParameters(2f)
+                player.setPlaybackSpeed(2f)
                 speedBadge.animate().alpha(1f).setDuration(120).start()
             }
 
@@ -642,7 +624,7 @@ class PlayerScreen(
             val handled = detector.onTouchEvent(event)
             if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
                 if (speedBadge.alpha > 0f) {
-                    player.playbackParameters = PlaybackParameters(speed)
+                    player.setPlaybackSpeed(speed)
                     speedBadge.animate().alpha(0f).setDuration(120).start()
                 }
             }
@@ -677,8 +659,9 @@ class PlayerScreen(
         val selected = speeds.indexOfFirst { it == speed }.coerceAtLeast(3)
         ModernDialogs.showChoices(activity, palette, "Скорость воспроизведения", labels, selected) { which ->
             speed = speeds[which]
-            player.playbackParameters = PlaybackParameters(speed)
-            Toast.makeText(activity, "Скорость ${labels[which]}", Toast.LENGTH_SHORT).show()
+            settings.playbackSpeed = speed
+            player.setPlaybackSpeed(speed)
+            Toast.makeText(activity, "Скорость " + labels[which], Toast.LENGTH_SHORT).show()
         }
     }
 
