@@ -41,6 +41,17 @@ jobs:
         run: |
           python -m py_compile analyzer/main.py analyzer/engine.py
 
+      - name: Runtime dependency check
+        shell: pwsh
+        run: |
+          $errorFile = Join-Path $env:LOCALAPPDATA "SOHR Analyzer\last-error.txt"
+          if (Test-Path $errorFile) { Remove-Item $errorFile -Force }
+          python analyzer/main.py --self-test
+          if ($LASTEXITCODE -ne 0) {
+            if (Test-Path $errorFile) { Get-Content $errorFile }
+            throw "Analyzer Python self-test failed"
+          }
+
       - name: Build portable Analyzer
         shell: pwsh
         run: |
@@ -139,11 +150,21 @@ jobs:
           if (!(Test-Path $portable)) { throw "Portable EXE not created" }
           if (!(Test-Path $single)) { throw "Single-file EXE not created" }
 
-          & $portable --self-test
-          if ($LASTEXITCODE -ne 0) { throw "Portable Analyzer self-test failed" }
+          $errorFile = Join-Path $env:LOCALAPPDATA "SOHR Analyzer\last-error.txt"
 
+          if (Test-Path $errorFile) { Remove-Item $errorFile -Force }
+          & $portable --self-test
+          if ($LASTEXITCODE -ne 0) {
+            if (Test-Path $errorFile) { Get-Content $errorFile }
+            throw "Portable Analyzer self-test failed"
+          }
+
+          if (Test-Path $errorFile) { Remove-Item $errorFile -Force }
           & $single --self-test
-          if ($LASTEXITCODE -ne 0) { throw "Single-file Analyzer self-test failed" }
+          if ($LASTEXITCODE -ne 0) {
+            if (Test-Path $errorFile) { Get-Content $errorFile }
+            throw "Single-file Analyzer self-test failed"
+          }
 
           $singleSize = (Get-Item $single).Length
           if ($singleSize -lt 10000000) {
