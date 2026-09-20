@@ -1,4 +1,3 @@
-# SOHR 4.0.0 player step 1 build
 name: Build Android APK
 
 on:
@@ -43,6 +42,12 @@ jobs:
         with:
           gradle-version: 8.11.1
 
+      - name: Assign unique app version
+        shell: bash
+        run: |
+          echo "SOHR_BUILD_NUMBER=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=4.1.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+
       - name: Build installable APK
         shell: bash
         run: |
@@ -58,16 +63,14 @@ jobs:
       - name: Generate updater manifest
         shell: bash
         run: |
-          VERSION_CODE=$(grep -oP 'versionCode\s*=\s*\K[0-9]+' native/app/build.gradle.kts | head -1)
-          VERSION_NAME=$(grep -oP 'versionName\s*=\s*"\K[^"]+' native/app/build.gradle.kts | head -1)
           SHA256=$(sha256sum SOHR.apk | awk '{print $1}')
           cat > update.json <<EOF
           {
-            "versionCode": $VERSION_CODE,
-            "versionName": "$VERSION_NAME",
+            "versionCode": $SOHR_BUILD_NUMBER,
+            "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/SOHR.apk",
             "sha256": "$SHA256",
-            "notes": "Новая версия SOHR готова к установке."
+            "notes": "Обновление SOHR $SOHR_VERSION_NAME: улучшения плеера и исправления."
           }
           EOF
           cat update.json
@@ -75,13 +78,12 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: SOHR-4.0.0-STEP1
+          name: SOHR-${{ github.run_number }}
           path: SOHR.apk
           if-no-files-found: error
           retention-days: 30
 
       - name: Publish updater channel
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
