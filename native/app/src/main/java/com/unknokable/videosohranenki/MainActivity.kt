@@ -2522,7 +2522,7 @@ class MainActivity : AppCompatActivity() {
                             palette = palette,
                             title = "Доступно обновление",
                             message = details,
-                            confirm = "Скачать и установить"
+                            confirm = "Обновить"
                         ) {
                             downloadAndInstallUpdate(info)
                         }
@@ -2550,6 +2550,21 @@ class MainActivity : AppCompatActivity() {
                 }
                 pendingUpdateApk = apk
                 updateProgressLabel?.text = "Обновление готово"
+
+                if (!updateManager.isSignatureCompatible(apk)) {
+                    pendingUpdateApk = null
+                    showSettings()
+                    root.post {
+                        ModernDialogs.showNotice(
+                            context = this@MainActivity,
+                            palette = palette,
+                            title = "Нужна одноразовая переустановка",
+                            message = "Текущая версия SOHR была подписана старым временным ключом. Android не разрешит обновить её поверх новой версии. Один раз установи первую версию с постоянной подписью после удаления старой — дальше обновления будут ставиться поверх без этого конфликта.",
+                            button = "Понятно"
+                        )
+                    }
+                    return@launch
+                }
 
                 if (updateManager.canRequestInstall()) {
                     root.postDelayed({ launchUpdateInstaller(apk) }, 260L)
