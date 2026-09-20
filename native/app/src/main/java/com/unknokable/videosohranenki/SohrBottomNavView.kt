@@ -39,8 +39,9 @@ class SohrBottomNavView(
         R.drawable.ic_nav_account
     )
     private val labels = listOf("Видео", "Настройки", "Стрик", "Аккаунт")
+
     private val columns = mutableListOf<LinearLayout>()
-    private val iconViews = mutableListOf<ImageView>()
+    private val iconViews = mutableListOf<View>()
     private val labelViews = mutableListOf<TextView>()
 
     private var selectedIndex = tabs.indexOf(selected).coerceAtLeast(0)
@@ -48,6 +49,7 @@ class SohrBottomNavView(
     private var indicatorAnimator: ValueAnimator? = null
 
     private val smoothInterpolator = PathInterpolator(0.22f, 1f, 0.36f, 1f)
+    private val streakColor = StreakFireView.colorForStreak(StreakTracker(context).currentStreak())
 
     private val indicator = View(context).apply {
         background = GradientDrawable().apply {
@@ -76,6 +78,8 @@ class SohrBottomNavView(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             setBackgroundColor(Color.TRANSPARENT)
+            clipChildren = true
+            clipToPadding = true
         }
 
         tabs.forEachIndexed { index, tab ->
@@ -126,11 +130,19 @@ class SohrBottomNavView(
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(dp(8), dp(5), dp(8), dp(5))
+            clipChildren = true
+            clipToPadding = true
         }
 
-        val icon = ImageView(context).apply {
-            setImageResource(icons[index])
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
+        val icon: View = if (tab == SohrTab.STREAK) {
+            StreakFireView(context, streakColor).apply {
+                contentDescription = "Стрик"
+            }
+        } else {
+            ImageView(context).apply {
+                setImageResource(icons[index])
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+            }
         }
 
         val label = TextView(context).apply {
@@ -141,7 +153,8 @@ class SohrBottomNavView(
             setPadding(0, dp(2), 0, 0)
         }
 
-        column.addView(icon, LinearLayout.LayoutParams(dp(23), dp(23)))
+        val iconSize = if (tab == SohrTab.STREAK) dp(25) else dp(23)
+        column.addView(icon, LinearLayout.LayoutParams(iconSize, iconSize))
         column.addView(label)
 
         slot.addView(
@@ -201,59 +214,55 @@ class SohrBottomNavView(
 
         column.animate().cancel()
         icon.animate().cancel()
+        column.scaleX = 1f
+        column.scaleY = 1f
+        icon.rotation = 0f
 
-        // Same soft "alive" feel as the reference, but bounded inside the nav item.
         column.animate()
-            .scaleX(0.965f)
-            .scaleY(0.965f)
-            .setDuration(70L)
+            .scaleX(0.955f)
+            .scaleY(0.955f)
+            .setDuration(65L)
             .setInterpolator(smoothInterpolator)
             .withEndAction {
                 column.animate()
-                    .scaleX(1.035f)
-                    .scaleY(1.035f)
-                    .setDuration(115L)
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(125L)
                     .setInterpolator(smoothInterpolator)
-                    .withEndAction {
-                        column.animate()
-                            .scaleX(1f)
-                            .scaleY(1f)
-                            .setDuration(120L)
-                            .setInterpolator(smoothInterpolator)
-                            .start()
-                    }
                     .start()
             }
             .start()
 
-        icon.rotation = 0f
-        icon.animate()
-            .rotation(-4f)
-            .setDuration(75L)
-            .setInterpolator(smoothInterpolator)
-            .withEndAction {
-                icon.animate()
-                    .rotation(2f)
-                    .setDuration(90L)
-                    .setInterpolator(smoothInterpolator)
-                    .withEndAction {
-                        icon.animate()
-                            .rotation(0f)
-                            .setDuration(110L)
-                            .setInterpolator(smoothInterpolator)
-                            .start()
-                    }
-                    .start()
-            }
-            .start()
+        if (icon !is StreakFireView) {
+            icon.animate()
+                .rotation(-2.5f)
+                .setDuration(70L)
+                .setInterpolator(smoothInterpolator)
+                .withEndAction {
+                    icon.animate()
+                        .rotation(0f)
+                        .setDuration(115L)
+                        .setInterpolator(smoothInterpolator)
+                        .start()
+                }
+                .start()
+        }
     }
 
     private fun updateStates(active: Int) {
         columns.forEachIndexed { index, column ->
             val selected = index == active
-            iconViews[index].imageTintList = ColorStateList.valueOf(
-                if (selected) palette.accent else withAlpha(palette.muted, 220)
-            )
+            val icon = iconViews[index]
+
+            if (icon is ImageView) {
+                icon.imageTintList = ColorStateList.valueOf(
+                    if (selected) palette.accent else withAlpha(palette.muted, 220)
+                )
+            } else if (icon is StreakFireView) {
+                icon.setFlameColor(streakColor)
+                icon.alpha = if (selected) 1f else 0.58f
+            }
+
             labelViews[index].setTextColor(if (selected) palette.text else palette.muted)
             labelViews[index].setTypeface(
                 labelViews[index].typeface,
@@ -263,7 +272,7 @@ class SohrBottomNavView(
             if (!selected) {
                 column.scaleX = 1f
                 column.scaleY = 1f
-                iconViews[index].rotation = 0f
+                icon.rotation = 0f
             }
         }
     }
