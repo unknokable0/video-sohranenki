@@ -1,0 +1,124 @@
+name: Apply SOHR 3.0.11 patch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/sohr-311-patch.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          main = Path('native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt')
+          s = main.read_text()
+
+          s = s.replace(
+              '.sortedByDescending { it.date }',
+              '.sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })',
+              1
+          )
+          s = s.replace(
+              'DayCollection(date, dayVideos.sortedBy { it.date })',
+              'DayCollection(date, dayVideos.sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId }))'
+          )
+          s = s.replace(
+              'val sortedVideos = collection.videos.sortedBy { it.date }',
+              'val sortedVideos = collection.videos.sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })'
+          )
+          s = s.replace(
+              'val orderedForPlayback = (currentDay?.videos ?: currentVideos).sortedBy { it.date }',
+              'val orderedForPlayback = (currentDay?.videos ?: currentVideos)\n            .sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })'
+          )
+          main.write_text(s)
+
+          stream = Path('native/app/src/main/java/com/unknokable/videosohranenki/TelegramStreamServer.kt')
+          s = stream.read_text()
+          s = s.replace(
+              'val limit = minOf(4L * 1024L * 1024L, item.fileSize)',
+              'val limit = minOf(12L * 1024L * 1024L, item.fileSize)'
+          )
+          s = s.replace(
+              'client.send(TdApi.DownloadFile(item.fileId, 24, 0, limit, false))',
+              'client.send(TdApi.DownloadFile(item.fileId, 30, 0, limit, false))'
+          )
+          s = s.replace('private val firstWindow = 4L * 1024L * 1024L', 'private val firstWindow = 8L * 1024L * 1024L')
+          s = s.replace('private val steadyWindow = 16L * 1024L * 1024L', 'private val steadyWindow = 32L * 1024L * 1024L')
+          s = s.replace('private val prefetchThreshold = 2L * 1024L * 1024L', 'private val prefetchThreshold = 8L * 1024L * 1024L')
+          s = s.replace('private val chunkSize = 4L * 1024L * 1024L', 'private val chunkSize = 6L * 1024L * 1024L')
+          stream.write_text(s)
+
+          player = Path('native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt')
+          s = player.read_text()
+
+          s = s.replace(
+              'private lateinit var speedBadge: TextView\n',
+              'private lateinit var speedBadge: TextView\n    private lateinit var seekFeedback: TextView\n'
+          )
+
+          anchor = '''        playerCard.addView(\n            speedBadge,\n            FrameLayout.LayoutParams(\n                ViewGroup.LayoutParams.WRAP_CONTENT,\n                ViewGroup.LayoutParams.WRAP_CONTENT,\n                Gravity.TOP or Gravity.CENTER_HORIZONTAL\n            ).apply { topMargin = dp(12) }\n        )\n'''
+          insert = anchor + '''\n        seekFeedback = TextView(activity).apply {\n            textSize = 14f\n            gravity = Gravity.CENTER\n            setTypeface(typeface, Typeface.BOLD)\n            setTextColor(Color.WHITE)\n            setPadding(dp(16), dp(11), dp(16), dp(11))\n            background = rounded("#B5120F1A", 22)\n            alpha = 0f\n            visibility = View.GONE\n            isClickable = false\n            isFocusable = false\n            elevation = dp(10).toFloat()\n        }\n        playerCard.addView(\n            seekFeedback,\n            FrameLayout.LayoutParams(\n                ViewGroup.LayoutParams.WRAP_CONTENT,\n                ViewGroup.LayoutParams.WRAP_CONTENT,\n                Gravity.CENTER\n            )\n        )\n'''
+          if anchor not in s:
+              raise SystemExit('speedBadge anchor not found')
+          s = s.replace(anchor, insert, 1)
+
+          s = s.replace(
+              '''            .setBufferDurationsMs(\n                15_000,\n                60_000,\n                900,\n                2_500\n            )''',
+              '''            .setBufferDurationsMs(\n                25_000,\n                120_000,\n                650,\n                1_500\n            )'''
+          )
+
+          s = s.replace(
+              '''                override fun onScrubStart(positionMs: Long) {\n                    dragging = true\n                    showPreview()''',
+              '''                override fun onScrubStart(positionMs: Long) {\n                    dragging = true\n                    player.setScrubbingModeEnabled(true)\n                    showPreview()'''
+          )
+          s = s.replace(
+              '''                    dragging = false\n                    handler.postDelayed({ hidePreview() }, 90L)''',
+              '''                    dragging = false\n                    player.setScrubbingModeEnabled(false)\n                    handler.postDelayed({ hidePreview() }, 90L)'''
+          )
+
+          old_double = '''            override fun onDoubleTap(e: MotionEvent): Boolean {\n                val half = playerCard.width / 2f\n                if (e.x < half) {\n                    player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0))\n                } else {\n                    val duration = player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE\n                    player.seekTo((player.currentPosition + 10_000).coerceAtMost(duration))\n                }\n                return true\n            }'''
+          new_double = '''            override fun onDoubleTap(e: MotionEvent): Boolean {\n                val forward = e.x >= playerCard.width / 2f\n                val duration = player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE\n                val target = if (forward) {\n                    (player.currentPosition + 10_000L).coerceAtMost(duration)\n                } else {\n                    (player.currentPosition - 10_000L).coerceAtLeast(0L)\n                }\n                player.seekTo(target)\n                showSeekFeedback(forward)\n                return true\n            }'''
+          if old_double not in s:
+              raise SystemExit('double tap block not found')
+          s = s.replace(old_double, new_double, 1)
+
+          marker = '''\n\n    private fun showPlayerMenu() {'''
+          helper = '''\n\n    private fun showSeekFeedback(forward: Boolean) {\n        if (!::seekFeedback.isInitialized) return\n        seekFeedback.animate().cancel()\n        seekFeedback.text = if (forward) "+10 сек   ››" else "‹‹   −10 сек"\n        seekFeedback.translationX = if (forward) playerCard.width * 0.23f else -playerCard.width * 0.23f\n        seekFeedback.alpha = 0f\n        seekFeedback.scaleX = 0.78f\n        seekFeedback.scaleY = 0.78f\n        seekFeedback.visibility = View.VISIBLE\n\n        val duration = if (settings.animations) 170L else 0L\n        seekFeedback.animate()\n            .alpha(1f)\n            .scaleX(1.06f)\n            .scaleY(1.06f)\n            .setDuration(duration)\n            .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))\n            .withEndAction {\n                seekFeedback.animate()\n                    .alpha(0f)\n                    .scaleX(0.96f)\n                    .scaleY(0.96f)\n                    .setStartDelay(if (settings.animations) 250L else 0L)\n                    .setDuration(if (settings.animations) 170L else 0L)\n                    .withEndAction { seekFeedback.visibility = View.GONE }\n                    .start()\n            }\n            .start()\n    }\n'''
+          if marker not in s:
+              raise SystemExit('player menu marker not found')
+          s = s.replace(marker, helper + marker, 1)
+
+          player.write_text(s)
+
+          gradle = Path('native/app/build.gradle.kts')
+          s = gradle.read_text()
+          s = s.replace('// Build marker: SOHR 3.0.10 player polish', '// Build marker: SOHR 3.0.11 ordering and playback polish')
+          s = s.replace('versionCode = 310', 'versionCode = 311')
+          s = s.replace('versionName = "3.0.10-beta"', 'versionName = "3.0.11-beta"')
+          gradle.write_text(s)
+          PY
+
+      - name: Commit patched app
+        shell: bash
+        run: |
+          git config user.name "sohr-dev-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt \
+                  native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt \
+                  native/app/src/main/java/com/unknokable/videosohranenki/TelegramStreamServer.kt \
+                  native/app/build.gradle.kts
+          git commit -m "SOHR 3.0.11 ordering and playback polish"
+          git push
