@@ -183,16 +183,26 @@ object TwitchContentAnalyzer {
             durationSeconds = durationSeconds
         )
 
-        onProgress(91, "Собираем результат…")
+        val watchVideos = videos
+            .filter { it.title.startsWith("Смотрит") }
+            .sortedBy { it.startSeconds }
+
+        onProgress(88, "Уточняем начало каждого ролика…")
+        val startRefined = refineStartsWithStoryboard(
+            storyboard = storyboard,
+            chapters = watchVideos,
+            durationSeconds = durationSeconds,
+            allowImageLabels = !lowRamDevice,
+            onProgress = { done, total ->
+                val percent = 88 + ((done * 8) / max(1, total))
+                onProgress(percent.coerceAtMost(96), "Проверяем начала роликов…")
+            }
+        )
 
         // Mobile mode intentionally finishes from Twitch storyboard + OCR only.
-        // Starting a second HLS decoder here caused native MediaCodec/FrameExtractor
-        // crashes on some phones around 92%, especially while the player and ML Kit
-        // were already using memory. The storyboard pass already covered the whole VOD.
+        // It never starts a second HLS decoder, which keeps the 92% crash fixed.
         val stable = finalizeMobileChapters(
-            chapters = videos
-                .filter { it.title.startsWith("Смотрит") }
-                .sortedBy { it.startSeconds },
+            chapters = startRefined,
             durationSeconds = durationSeconds
         )
 
@@ -205,6 +215,191 @@ object TwitchContentAnalyzer {
             scannedFrames = timeline.size,
             usedOcr = probes.isNotEmpty()
         )
+    }
+
+    private data class BoundaryProbe(
+        val timeSec: Int,
+        val score: Int,
+        val title: String?
+    )
+
+    private suspend fun refineStartsWithStoryboard(
+        storyboard: Storyboard,
+        chapters: List<SmartChapter>,
+        durationSeconds: Int,
+        allowImageLabels: Boolean,
+        onProgress: suspend (Int, Int) -> Unit
+    ): List<SmartChapter> {
+        if (chapters.isEmpty()) return chapters
+
+        val out = ArrayList<SmartChapter>(chapters.size)
+        val cache = StripCache(1)
+
+        try {
+            for ((chapterIndex, chapter) in chapters.withIndex()) {
+                coroutineContext.ensureActive()
+
+                val previousEnd = out.lastOrNull()?.endSeconds ?: 0
+                val windowStart = max(
+                    previousEnd,
+                    (chapter.startSeconds - 90).coerceAtLeast(0)
+                )
+                val windowEnd = minOf(
+                    chapter.endSeconds,
+                    chapter.startSeconds + 60,
+                    durationSeconds.takeIf { it > 0 } ?: Int.MAX_VALUE
+                )
+
+                if (windowEnd <= windowStart || storyboard.intervalSec <= 0.0) {
+                    out += chapter
+                    onProgress(chapterIndex + 1, chapters.size)
+                    continue
+                }
+
+                val firstIndex = (windowStart / storyboard.intervalSec)
+                    .toInt()
+                    .coerceIn(0, storyboard.count - 1)
+                val lastIndex = kotlin.math.ceil(windowEnd / storyboard.intervalSec)
+                    .toInt()
+                    .coerceIn(firstIndex, storyboard.count - 1)
+
+                val probes = mutableListOf<BoundaryProbe>()
+
+                for (storyboardIndex in firstIndex..lastIndex) {
+                    coroutineContext.ensureActive()
+                    val frame = storyboardFrame(
+                        storyboard = storyboard,
+                        index = storyboardIndex,
+                        cache = cache,
+                        targetWidth = if (allowImageLabels) 480 else 400
+                    ) ?: continue
+
+                    val crop = mainAnalysisCrop(frame)
+                    try {
+                        val ocr = recognize(crop)
+                        val ocrScore = videoEvidenceScore(ocr, emptyList(), 0)
+                        val labels = if (
+                            allowImageLabels &&
+                            !ocr.youtubeLike &&
+                            !ocr.playerLike &&
+                            ocrScore < 4
+                        ) {
+                            recognizeLabels(crop)
+                        } else {
+                            emptyList()
+                        }
+
+                        val score = videoEvidenceScore(ocr, labels, 0)
+                        probes += BoundaryProbe(
+                            timeSec = (storyboardIndex * storyboard.intervalSec)
+                                .toInt()
+                                .coerceIn(0, durationSeconds.coerceAtLeast(0)),
+                            score = score,
+                            title = ocr.title?.takeIf(::isStrongTitle)
+                        )
+                    } finally {
+                        if (crop !== frame && !crop.isRecycled) crop.recycle()
+                        if (!frame.isRecycled) frame.recycle()
+                    }
+                }
+
+                if (probes.isEmpty()) {
+                    out += chapter
+                    onProgress(chapterIndex + 1, chapters.size)
+                    continue
+                }
+
+                fun positive(index: Int): Boolean =
+                    probes[index].score >= 3
+
+                val anchor = probes.indices
+                    .filter { positive(it) }
+                    .minByOrNull { index ->
+                        val delta = kotlin.math.abs(
+                            probes[index].timeSec - chapter.startSeconds
+                        )
+                        // Slightly prefer evidence at/after the old boundary.
+                        delta * 2 + if (probes[index].timeSec < chapter.startSeconds) 1 else 0
+                    }
+
+                if (anchor == null) {
+                    out += chapter
+                    onProgress(chapterIndex + 1, chapters.size)
+                    continue
+                }
+
+                var earliestPositive = anchor
+                var negativeStreak = 0
+                var i = anchor - 1
+
+                while (i >= 0) {
+                    if (positive(i)) {
+                        earliestPositive = i
+                        negativeStreak = 0
+                    } else {
+                        negativeStreak += 1
+                        if (negativeStreak >= 2) break
+                    }
+                    i -= 1
+                }
+
+                // Storyboard thumbnails are discrete samples. If the frame before
+                // the first confirmed video is non-video, the real transition is
+                // somewhere between them. Starting from that previous thumbnail
+                // avoids cutting off the opening seconds.
+                val boundaryIndex = if (
+                    earliestPositive > 0 &&
+                    !positive(earliestPositive - 1)
+                ) {
+                    earliestPositive - 1
+                } else {
+                    earliestPositive
+                }
+
+                val refinedStart = probes[boundaryIndex].timeSec
+                    .coerceAtLeast(previousEnd)
+                    .coerceAtMost(chapter.startSeconds)
+
+                val titleNearStart = probes
+                    .asSequence()
+                    .filter { it.timeSec in refinedStart..(refinedStart + 50) }
+                    .filter { it.score >= 4 }
+                    .mapNotNull { probe ->
+                        probe.title?.let {
+                            TitleAnchor(
+                                timeSec = probe.timeSec,
+                                title = it,
+                                confidence = if (probe.score >= 6) 92 else 82
+                            )
+                        }
+                    }
+                    .toList()
+                    .let(::bestTitle)
+
+                out += chapter.copy(
+                    startSeconds = refinedStart,
+                    title = if (
+                        chapter.title == "Смотрит видео" &&
+                        titleNearStart != null
+                    ) {
+                        "Смотрит: $titleNearStart"
+                    } else {
+                        chapter.title
+                    },
+                    detail = if (refinedStart < chapter.startSeconds) {
+                        "Начало уточнено по плотным Twitch-превью"
+                    } else {
+                        chapter.detail
+                    }
+                )
+
+                onProgress(chapterIndex + 1, chapters.size)
+            }
+        } finally {
+            cache.recycleAll()
+        }
+
+        return out
     }
 
     private fun finalizeMobileChapters(
