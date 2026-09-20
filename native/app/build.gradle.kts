@@ -1,4 +1,4 @@
-// Build marker: SOHR player + automatic updater verified build
+// Build marker: SOHR watched library + cleaner player + smooth back navigation
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
