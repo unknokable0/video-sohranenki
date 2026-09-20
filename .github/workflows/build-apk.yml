@@ -47,7 +47,7 @@ jobs:
       - name: Assign SOHR 5.0.32 rollback version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=500032" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=500037" >> "$GITHUB_ENV"
           echo "SOHR_VERSION_NAME=5.0.32" >> "$GITHUB_ENV"
 
       - name: Build installable APK
