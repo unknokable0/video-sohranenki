@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 import subprocess
 import threading
@@ -11,9 +12,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable, Optional
 
+CPU_THREADS = max(1, min(2, max(1, (os.cpu_count() or 2) // 2)))
+for _name in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+    os.environ.setdefault(_name, str(CPU_THREADS))
+
 import cv2
 import imageio_ffmpeg
 import numpy as np
+
+try:
+    cv2.setNumThreads(CPU_THREADS)
+except Exception:
+    pass
 
 try:
     from rapidocr import RapidOCR
@@ -304,7 +314,15 @@ class VideoOnlyAnalyzer:
         duration: Optional[float] = None,
         cancel_event: Optional[threading.Event] = None,
     ):
-        cmd = [self._ffmpeg(), "-hide_banner", "-loglevel", "error"]
+        cmd = [
+            self._ffmpeg(),
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-nostdin",
+            "-threads",
+            str(CPU_THREADS),
+        ]
         if start is not None:
             cmd += ["-ss", f"{max(0.0, start):.3f}"]
         cmd += ["-hwaccel", "auto", "-i", hls_url]
@@ -316,14 +334,15 @@ class VideoOnlyAnalyzer:
             f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2"
         )
         cmd += ["-an", "-vf", vf, "-pix_fmt", "bgr24", "-f", "rawvideo", "pipe:1"]
+        frame_bytes = width * height * 3
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            bufsize=frame_bytes * 2,
         )
-        frame_bytes = width * height * 3
         idx = 0
         try:
             while True:
@@ -350,14 +369,14 @@ class VideoOnlyAnalyzer:
         progress: Callable[[int, str], None],
         cancel_event: Optional[threading.Event],
     ) -> list[ScanPoint]:
-        fps = 0.5
+        fps = 1.0 / 3.0
         points: list[ScanPoint] = []
         prev_hash = 0
         total = max(int(duration_seconds * fps), 1)
 
-        progress(8, "Читаем весь VOD одним проходом…")
+        progress(8, "Быстрый проход по VOD…")
         for idx, (t, frame) in enumerate(
-            self._iter_frames(hls_url, fps, 480, 270, cancel_event=cancel_event)
+            self._iter_frames(hls_url, fps, 432, 243, cancel_event=cancel_event)
         ):
             h = difference_hash(frame)
             change = hamming(prev_hash, h) if points else 0
@@ -367,7 +386,9 @@ class VideoOnlyAnalyzer:
                 hash64=h,
                 change=change,
             )
-            if idx % 2 == 0 or change >= 20:
+            # OCR is the expensive part. Sample it sparsely and immediately on
+            # strong scene changes; boundary refinement later uses denser OCR.
+            if idx % 3 == 0 or change >= 20:
                 try:
                     text, lines = self.ocr.run(frame)
                     score, title = player_evidence(text, lines)
@@ -379,7 +400,7 @@ class VideoOnlyAnalyzer:
                     pass
             points.append(point)
             prev_hash = h
-            if idx % 12 == 0:
+            if idx % 10 == 0:
                 pct = 8 + min(58, int((idx / total) * 58))
                 progress(pct, f"Просмотрено {int(t // 60)} мин из {max(1, duration_seconds // 60)}")
 
@@ -575,7 +596,7 @@ class VideoOnlyAnalyzer:
         self._cancelled(cancel_event)
         progress(2, "Получаем Twitch VOD…")
         master = TwitchResolver.resolve_master(video_id)
-        low = TwitchResolver.choose_variant(master, 480)
+        low = TwitchResolver.choose_variant(master, 360)
         high = TwitchResolver.choose_variant(master, 720)
 
         points = self._coarse_scan(low, duration_seconds, progress, cancel_event)
