@@ -100,6 +100,7 @@ class PlayerScreen(
     init {
         root.orientation = LinearLayout.VERTICAL
         root.setBackgroundColor(palette.background)
+        root.keepScreenOn = true
 
         header = buildHeader()
         root.addView(header)
