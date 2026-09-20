@@ -773,7 +773,7 @@ class PlayerScreen(
         }
 
         val badge = TextView(activity).apply {
-            text = if (item.source == "twitch") "MOBILE 1.2" else "BETA 1.0.4"
+            text = if (item.source == "twitch") "MOBILE 1.3" else "BETA 1.0.4"
             textSize = 9f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
