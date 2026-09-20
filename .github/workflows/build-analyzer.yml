@@ -14,6 +14,10 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
+    env:
+      SOHR_WINDOWS_CERT_BASE64: ${{ secrets.SOHR_WINDOWS_CERT_BASE64 }}
+      SOHR_WINDOWS_CERT_PASSWORD: ${{ secrets.SOHR_WINDOWS_CERT_PASSWORD }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,15 +36,27 @@ jobs:
           pip install -r analyzer/requirements.txt
           pip install pyinstaller
 
-      - name: Build analyzer EXE
+      - name: Syntax check
+        shell: pwsh
+        run: |
+          python -m py_compile analyzer/main.py analyzer/engine.py
+
+      - name: Build portable Analyzer
         shell: pwsh
         run: |
           pyinstaller `
             --noconfirm `
             --clean `
-            --onefile `
+            --onedir `
             --windowed `
+            --optimize 2 `
             --name "SOHR-Analyzer" `
+            --distpath "dist/portable" `
+            --workpath "build/portable" `
+            --specpath "build/spec-portable" `
+            --contents-directory "_runtime" `
+            --manifest "analyzer/app.manifest" `
+            --version-file "analyzer/version_info.txt" `
             --paths analyzer `
             --collect-all rapidocr `
             --collect-all imageio_ffmpeg `
@@ -48,13 +64,103 @@ jobs:
             --hidden-import cv2 `
             analyzer/main.py
 
-      - name: Smoke test EXE
+      - name: Build single-file Analyzer
         shell: pwsh
         run: |
-          if (!(Test-Path "dist/SOHR-Analyzer.exe")) { throw "EXE not created" }
-          $size=(Get-Item "dist/SOHR-Analyzer.exe").Length
-          if ($size -lt 10000000) { throw "EXE is unexpectedly small" }
-          Write-Host "SOHR Analyzer size: $size bytes"
+          pyinstaller `
+            --noconfirm `
+            --clean `
+            --onefile `
+            --windowed `
+            --optimize 2 `
+            --name "SOHR-Analyzer" `
+            --distpath "dist/single" `
+            --workpath "build/single" `
+            --specpath "build/spec-single" `
+            --manifest "analyzer/app.manifest" `
+            --version-file "analyzer/version_info.txt" `
+            --paths analyzer `
+            --collect-all rapidocr `
+            --collect-all imageio_ffmpeg `
+            --collect-all onnxruntime `
+            --hidden-import cv2 `
+            analyzer/main.py
+
+      - name: Sign Windows binaries
+        if: ${{ env.SOHR_WINDOWS_CERT_BASE64 != '' && env.SOHR_WINDOWS_CERT_PASSWORD != '' }}
+        shell: pwsh
+        run: |
+          $certPath = Join-Path $env:RUNNER_TEMP "sohr-signing.pfx"
+          [IO.File]::WriteAllBytes(
+            $certPath,
+            [Convert]::FromBase64String($env:SOHR_WINDOWS_CERT_BASE64)
+          )
+
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" |
+            Sort-Object FullName |
+            Select-Object -Last 1
+
+          if (-not $signtool) {
+            throw "signtool.exe not found"
+          }
+
+          $targets = @(
+            Get-ChildItem "dist/portable/SOHR-Analyzer" -Recurse -File |
+              Where-Object { $_.Extension -in ".exe", ".dll", ".pyd" }
+          )
+          $targets += Get-Item "dist/single/SOHR-Analyzer.exe"
+
+          foreach ($file in $targets) {
+            $existing = Get-AuthenticodeSignature $file.FullName
+            if ($existing.Status -eq "Valid") {
+              Write-Host "Already signed: $($file.Name)"
+              continue
+            }
+
+            & $signtool.FullName sign               /f $certPath               /p $env:SOHR_WINDOWS_CERT_PASSWORD               /fd SHA256               /tr http://timestamp.digicert.com               /td SHA256               $file.FullName
+
+            if ($LASTEXITCODE -ne 0) {
+              throw "Signing failed: $($file.FullName)"
+            }
+          }
+
+          Remove-Item $certPath -Force
+
+      - name: Verify package
+        shell: pwsh
+        run: |
+          $portable = "dist/portable/SOHR-Analyzer/SOHR-Analyzer.exe"
+          $single = "dist/single/SOHR-Analyzer.exe"
+
+          if (!(Test-Path $portable)) { throw "Portable EXE not created" }
+          if (!(Test-Path $single)) { throw "Single-file EXE not created" }
+
+          & $portable --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Portable Analyzer self-test failed" }
+
+          & $single --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Single-file Analyzer self-test failed" }
+
+          $singleSize = (Get-Item $single).Length
+          if ($singleSize -lt 10000000) {
+            throw "Single-file EXE is unexpectedly small"
+          }
+
+          if ($env:SOHR_WINDOWS_CERT_BASE64 -ne "") {
+            $signature = Get-AuthenticodeSignature $single
+            Write-Host "Signature status: $($signature.Status)"
+            Write-Host "Publisher: $($signature.SignerCertificate.Subject)"
+            if ($signature.Status -ne "Valid") {
+              throw "Signed build does not have a valid Authenticode signature"
+            }
+          } else {
+            Write-Warning "No trusted code-signing certificate configured. Windows Smart App Control may block this build."
+          }
+
+      - name: Create portable ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive             -Path "dist/portable/SOHR-Analyzer/*"             -DestinationPath "dist/SOHR-Analyzer-Portable.zip"             -CompressionLevel Optimal
 
       - name: Publish SOHR Analyzer
         shell: pwsh
@@ -63,6 +169,9 @@ jobs:
         run: |
           gh release view sohr-analyzer-latest *> $null
           if ($LASTEXITCODE -ne 0) {
-            gh release create sohr-analyzer-latest --title "SOHR Analyzer Latest" --prerelease --notes "SOHR PC Analyzer automatic channel."
+            gh release create sohr-analyzer-latest               --title "SOHR Analyzer Latest"               --prerelease               --notes "SOHR PC Analyzer automatic channel."
           }
-          gh release upload sohr-analyzer-latest "dist/SOHR-Analyzer.exe" --clobber
+
+          Copy-Item "dist/single/SOHR-Analyzer.exe" "dist/SOHR-Analyzer.exe" -Force
+
+          gh release upload sohr-analyzer-latest             "dist/SOHR-Analyzer.exe"             "dist/SOHR-Analyzer-Portable.zip"             --clobber
