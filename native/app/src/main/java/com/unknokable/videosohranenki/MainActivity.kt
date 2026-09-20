@@ -1616,6 +1616,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        server.prefetch(item)
         playerScreen?.destroy()
         isSettingsScreen = false
         isAccountScreen = false
