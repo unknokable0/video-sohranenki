@@ -147,6 +147,7 @@ class MainActivity : AppCompatActivity() {
                     playerScreen?.destroy()
                     playerScreen = null
                     isPlayerScreen = false
+                    pendingRootSlide = -1
                     currentDay?.let { showDayCollection(it) } ?: showFeed(currentVideos)
                     return
                 }
@@ -2107,6 +2108,7 @@ class MainActivity : AppCompatActivity() {
             onPlaybackStarted = { streakTracker.markWatched() }
         )
 
+        pendingRootSlide = 1
         replaceRoot(playerScreen!!.root)
     }
 
@@ -2432,7 +2434,7 @@ class MainActivity : AppCompatActivity() {
 
         settings.lightTheme = light
         val newSystemColor = bg
-        animateSystemChrome(oldSystemColor, newSystemColor, light, 430L)
+        animateSystemChrome(oldSystemColor, newSystemColor, light, 230L)
 
         val nextContent = SettingsScreen(
             this,
@@ -2531,7 +2533,7 @@ class MainActivity : AppCompatActivity() {
                 0f,
                 finalRadius
             ).apply {
-                duration = 430L
+                duration = 230L
                 interpolator = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
                 addListener(object : android.animation.AnimatorListenerAdapter() {
                     override fun onAnimationEnd(animation: android.animation.Animator) {
@@ -2870,8 +2872,10 @@ class MainActivity : AppCompatActivity() {
 
         val old = if (host.childCount > 0) host.getChildAt(host.childCount - 1) else null
 
-        content.alpha = if (settings.animations && slide != 0) 0.88f else 1f
-        content.translationX = if (settings.animations && slide != 0) dp(16).toFloat() * slide else 0f
+        val animateContent = settings.animations && old != null && old !== content
+        content.alpha = if (animateContent) 0f else 1f
+        content.translationX = if (animateContent && slide != 0) dp(14).toFloat() * slide else 0f
+        content.translationY = if (animateContent && slide == 0) dp(4).toFloat() else 0f
 
         host.addView(
             content,
@@ -2882,21 +2886,23 @@ class MainActivity : AppCompatActivity() {
         )
 
         if (old != null && old !== content) {
-            if (settings.animations && slide != 0) {
+            if (animateContent) {
                 old.animate().cancel()
                 content.animate().cancel()
 
                 old.animate()
-                    .alpha(0.72f)
-                    .translationX(-dp(8).toFloat() * slide)
-                    .setDuration(120L)
+                    .alpha(0f)
+                    .translationX(if (slide != 0) -dp(7).toFloat() * slide else 0f)
+                    .translationY(if (slide == 0) -dp(2).toFloat() else 0f)
+                    .setDuration(if (slide != 0) 115L else 95L)
                     .setInterpolator(android.view.animation.PathInterpolator(0.4f, 0f, 1f, 1f))
                     .start()
 
                 content.animate()
                     .alpha(1f)
                     .translationX(0f)
-                    .setDuration(220L)
+                    .translationY(0f)
+                    .setDuration(if (slide != 0) 190L else 155L)
                     .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
                     .withEndAction {
                         if (old.parent === host) host.removeView(old)
@@ -3174,15 +3180,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun replaceRoot(view: View) {
-        if (view === primaryShell) {
+        val requestedSlide = pendingRootSlide
+        pendingRootSlide = 0
+
+        if (root.childCount == 1 && root.getChildAt(0) === view) {
             suppressNextRootAnimation = false
-            pendingRootSlide = 0
+            return
+        }
 
-            if (root.childCount == 1 && root.getChildAt(0) === view) {
-                return
-            }
+        val animate = settings.animations && !suppressNextRootAnimation
+        suppressNextRootAnimation = false
 
-            (view.parent as? ViewGroup)?.removeView(view)
+        (view.parent as? ViewGroup)?.removeView(view)
+        val old = if (root.childCount > 0) root.getChildAt(root.childCount - 1) else null
+
+        if (!animate || old == null || old === view) {
             root.removeAllViews()
             view.alpha = 1f
             view.translationX = 0f
@@ -3197,33 +3209,40 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val animate = settings.animations && !suppressNextRootAnimation
-        suppressNextRootAnimation = false
+        val slide = if (requestedSlide != 0) requestedSlide else if (view === primaryShell) -1 else 0
+        view.alpha = 0f
+        view.translationX = if (slide != 0) dp(16).toFloat() * slide else 0f
+        view.translationY = if (slide == 0) dp(5).toFloat() else 0f
 
-        val slide = pendingRootSlide
-        pendingRootSlide = 0
+        root.addView(
+            view,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
 
-        root.removeAllViews()
-        if (animate) {
-            view.alpha = if (slide != 0) 0.84f else 0f
-            view.translationX = if (slide != 0) dp(14).toFloat() * slide else 0f
-            view.translationY = if (slide == 0) dp(5).toFloat() else 0f
-        }
+        old.animate().cancel()
+        view.animate().cancel()
 
-        root.addView(view, FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        ))
+        old.animate()
+            .alpha(0f)
+            .translationX(if (slide != 0) -dp(9).toFloat() * slide else 0f)
+            .translationY(if (slide == 0) -dp(3).toFloat() else 0f)
+            .setDuration(if (slide != 0) 115L else 95L)
+            .setInterpolator(android.view.animation.PathInterpolator(0.4f, 0f, 1f, 1f))
+            .start()
 
-        if (animate) {
-            view.animate()
-                .alpha(1f)
-                .translationX(0f)
-                .translationY(0f)
-                .setDuration(if (slide != 0) 210L else 175L)
-                .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
-                .start()
-        }
+        view.animate()
+            .alpha(1f)
+            .translationX(0f)
+            .translationY(0f)
+            .setDuration(if (slide != 0) 195L else 160L)
+            .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+            .withEndAction {
+                if (old.parent === root) root.removeView(old)
+            }
+            .start()
     }
 
     private fun roundedBg(color: Int, radiusDp: Int): android.graphics.drawable.GradientDrawable =
