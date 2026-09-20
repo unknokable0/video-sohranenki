@@ -1,4 +1,4 @@
-name: Fix SOHR gesture compiler
+name: Fix SOHR automatic updater UX
 on:
   push:
     branches: [main]
@@ -10,18 +10,139 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Fix gesture declarations
+      - name: Patch updater behavior
         run: |
           python - <<'PY'
           from pathlib import Path
-          p=Path('native/app/src/main/java/com/unknokable/videosohranenki/PlayerGestureOverlay.kt')
+          p=Path('native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt')
           s=p.read_text()
-          s=s.replace('private val longPress = Runnable {','private val longPress: Runnable = Runnable {')
-          s=s.replace('private val scaleDetector = ScaleGestureDetector(activity,','private val scaleDetector: ScaleGestureDetector = ScaleGestureDetector(activity,')
+          s=s.replace('    private var feedRefreshCompletedFlash = false\n','    private var feedRefreshCompletedFlash = false\n    private var startupUpdateCheckDone = false\n')
+          s=s.replace('    private fun showFeed(videos: List<VideoItem>) {\n','''    private fun showFeed(videos: List<VideoItem>) {
+                  if (!startupUpdateCheckDone) {
+                      startupUpdateCheckDone = true
+                      root.postDelayed({ checkForUpdates(manual = false) }, 900L)
+                  }
+          ''')
+          old='''    private fun checkForUpdates() {
+                  lifecycleScope.launch {
+                      showLoading("Проверяем обновления…")
+                      try {
+                          val info = updateManager.check()
+                          if (info == null) {
+                              showSettings()
+                              root.post {
+                                  ModernDialogs.showChoices(
+                                      context = this@MainActivity,
+                                      palette = palette,
+                                      title = "Обновлений нет",
+                                      options = listOf("У тебя последняя версия • " + BuildConfig.VERSION_NAME),
+                                      selected = 0
+                                  ) { }
+                              }
+                          } else {
+                              showSettings()
+                              val details = buildString {
+                                  append("Доступна SOHR ")
+                                  append(info.versionName)
+                                  if (info.notes.isNotBlank()) {
+                                      append("\\n\\n")
+                                      append(info.notes)
+                                  }
+                              }
+                              root.post {
+                                  ModernDialogs.showConfirm(
+                                      context = this@MainActivity,
+                                      palette = palette,
+                                      title = "Доступно обновление",
+                                      message = details,
+                                      confirm = "Обновить"
+                                  ) {
+                                      downloadAndInstallUpdate(info)
+                                  }
+                              }
+                          }
+                      } catch (e: Exception) {
+                          showSettings()
+                          Toast.makeText(
+                              this@MainActivity,
+                              "Не удалось проверить обновления: " + (e.message ?: "ошибка сети"),
+                              Toast.LENGTH_LONG
+                          ).show()
+                      }
+                  }
+              }
+          '''
+          new='''    private fun checkForUpdates(manual: Boolean = true) {
+                  lifecycleScope.launch {
+                      if (manual) showLoading("Проверяем обновления…")
+                      try {
+                          val info = updateManager.check()
+                          if (info == null) {
+                              if (manual) {
+                                  showSettings()
+                                  root.post {
+                                      ModernDialogs.showChoices(
+                                          context = this@MainActivity,
+                                          palette = palette,
+                                          title = "Обновлений нет",
+                                          options = listOf("У тебя последняя версия • " + BuildConfig.VERSION_NAME),
+                                          selected = 0
+                                      ) { }
+                                  }
+                              }
+                              return@launch
+                          }
+
+                          val runtimePrefs = getSharedPreferences("sohr_runtime", MODE_PRIVATE)
+                          if (!manual && runtimePrefs.getInt("ignored_update_code", -1) == info.versionCode) return@launch
+                          if (manual) showSettings()
+
+                          val title = buildString {
+                              append("Доступна SOHR ")
+                              append(info.versionName)
+                              if (info.notes.isNotBlank()) {
+                                  append("\\n")
+                                  append(info.notes)
+                              }
+                          }
+                          root.post {
+                              ModernDialogs.showChoices(
+                                  context = this@MainActivity,
+                                  palette = palette,
+                                  title = title,
+                                  options = listOf("Обновить сейчас", "Позже", "Больше не показывать эту версию"),
+                                  selected = -1
+                              ) { which ->
+                                  when (which) {
+                                      0 -> downloadAndInstallUpdate(info)
+                                      2 -> runtimePrefs.edit().putInt("ignored_update_code", info.versionCode).apply()
+                                  }
+                              }
+                          }
+                      } catch (e: Exception) {
+                          if (manual) {
+                              showSettings()
+                              root.post {
+                                  ModernDialogs.showNotice(
+                                      context = this@MainActivity,
+                                      palette = palette,
+                                      title = "Не удалось проверить обновления",
+                                      message = e.message ?: "Ошибка сети",
+                                      button = "Понятно"
+                                  )
+                              }
+                          }
+                      }
+                  }
+              }
+          '''
+          if old not in s:
+              raise SystemExit('old updater function not found')
+          s=s.replace(old,new)
           p.write_text(s)
           PY
           git config user.name "sohr-dev-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add native/app/src/main/java/com/unknokable/videosohranenki/PlayerGestureOverlay.kt
-          git commit -m "Fix gesture type inference"
+          git add native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt
+          git commit -m "SOHR: automatic update checks and per-version ignore"
           git push
