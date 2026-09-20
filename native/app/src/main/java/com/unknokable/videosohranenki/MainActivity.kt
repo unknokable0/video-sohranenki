@@ -2890,8 +2890,8 @@ class MainActivity : AppCompatActivity() {
 
         val animateContent = settings.animations && old != null && old !== content
         content.alpha = if (animateContent) 0f else 1f
-        content.translationX = if (animateContent && slide != 0) dp(14).toFloat() * slide else 0f
-        content.translationY = if (animateContent && slide == 0) dp(4).toFloat() else 0f
+        content.translationX = if (animateContent) dp(48).toFloat() * if (slide < 0) -1f else 1f else 0f
+        content.translationY = 0f
 
         installPressAnimations(content)
         host.addView(
@@ -2907,36 +2907,27 @@ class MainActivity : AppCompatActivity() {
                 old.animate().cancel()
                 content.animate().cancel()
 
-                old.cameraDistance = dp(1200).toFloat()
-                content.cameraDistance = dp(1200).toFloat()
-                old.pivotX = if (slide >= 0) old.width.toFloat() else 0f
-                content.pivotX = if (slide >= 0) 0f else content.width.toFloat()
-                content.rotationY = if (slide != 0) 2.2f * slide else 0.8f * slide
+                val telegramInterpolator = android.view.animation.DecelerateInterpolator(1.5f)
+                val direction = if (slide < 0) -1f else 1f
 
+                // Telegram-style push/pop: the new screen travels only 48dp,
+                // while alpha does most of the visual work.
                 old.animate()
-                    .alpha(0f)
-                    .translationX(if (slide != 0) -dp(10).toFloat() * slide else 0f)
-                    .translationY(if (slide == 0) -dp(2).toFloat() else 0f)
-                    .rotationY(if (slide != 0) -2.0f * slide else 0f)
-                    .scaleX(0.992f)
-                    .scaleY(0.992f)
-                    .setDuration(if (slide != 0) 145L else 110L)
-                    .setInterpolator(android.view.animation.PathInterpolator(0.4f, 0f, 1f, 1f))
+                    .alpha(if (slide < 0) 1f else 0.92f)
+                    .translationX(if (slide < 0) dp(48).toFloat() else -dp(8).toFloat())
+                    .setDuration(150L)
+                    .setInterpolator(telegramInterpolator)
                     .start()
 
+                content.translationX = dp(48).toFloat() * direction
                 content.animate()
                     .alpha(1f)
                     .translationX(0f)
-                    .translationY(0f)
-                    .rotationY(0f)
-                    .scaleX(1f)
-                    .scaleY(1f)
-                    .setDuration(if (slide != 0) 215L else 175L)
-                    .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                    .setDuration(150L)
+                    .setInterpolator(telegramInterpolator)
                     .withEndAction {
-                        content.rotationY = 0f
-                        content.scaleX = 1f
-                        content.scaleY = 1f
+                        old.alpha = 1f
+                        old.translationX = 0f
                         if (old.parent === host) host.removeView(old)
                     }
                     .start()
@@ -3244,8 +3235,8 @@ class MainActivity : AppCompatActivity() {
 
         val slide = if (requestedSlide != 0) requestedSlide else if (view === primaryShell) -1 else 0
         view.alpha = 0f
-        view.translationX = if (slide != 0) dp(16).toFloat() * slide else 0f
-        view.translationY = if (slide == 0) dp(5).toFloat() else 0f
+        view.translationX = dp(48).toFloat() * if (slide < 0) -1f else 1f
+        view.translationY = 0f
 
         installPressAnimations(view)
         root.addView(
@@ -3259,38 +3250,25 @@ class MainActivity : AppCompatActivity() {
         old.animate().cancel()
         view.animate().cancel()
 
-        old.cameraDistance = dp(1200).toFloat()
-        view.cameraDistance = dp(1200).toFloat()
-        old.pivotX = if (slide >= 0) old.width.toFloat() else 0f
-        view.pivotX = if (slide >= 0) 0f else view.width.toFloat()
-        view.rotationY = if (slide != 0) 2.4f * slide else 0f
-        view.scaleX = 0.994f
-        view.scaleY = 0.994f
+        val telegramInterpolator = android.view.animation.DecelerateInterpolator(1.5f)
+        val direction = if (slide < 0) -1f else 1f
 
         old.animate()
-            .alpha(0f)
-            .translationX(if (slide != 0) -dp(12).toFloat() * slide else 0f)
-            .translationY(if (slide == 0) -dp(3).toFloat() else 0f)
-            .rotationY(if (slide != 0) -2.2f * slide else 0f)
-            .scaleX(0.99f)
-            .scaleY(0.99f)
-            .setDuration(if (slide != 0) 150L else 115L)
-            .setInterpolator(android.view.animation.PathInterpolator(0.4f, 0f, 1f, 1f))
+            .alpha(if (slide < 0) 1f else 0.92f)
+            .translationX(if (slide < 0) dp(48).toFloat() else -dp(8).toFloat())
+            .setDuration(150L)
+            .setInterpolator(telegramInterpolator)
             .start()
 
+        view.translationX = dp(48).toFloat() * direction
         view.animate()
             .alpha(1f)
             .translationX(0f)
-            .translationY(0f)
-            .rotationY(0f)
-            .scaleX(1f)
-            .scaleY(1f)
-            .setDuration(if (slide != 0) 225L else 180L)
-            .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+            .setDuration(150L)
+            .setInterpolator(telegramInterpolator)
             .withEndAction {
-                view.rotationY = 0f
-                view.scaleX = 1f
-                view.scaleY = 1f
+                old.alpha = 1f
+                old.translationX = 0f
                 if (old.parent === root) root.removeView(old)
             }
             .start()
