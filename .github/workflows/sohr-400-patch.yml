@@ -1,78 +1,27 @@
-name: Apply SOHR 4.1.0 PiP lifecycle
-
+name: Fix SOHR gesture compiler
 on:
   push:
     branches: [main]
-    paths:
-      - ".github/workflows/sohr-400-patch.yml"
-
+    paths: [".github/workflows/sohr-400-patch.yml"]
 permissions:
   contents: write
-
 jobs:
   patch:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Patch PiP lifecycle
-        shell: bash
+      - name: Fix gesture declarations
         run: |
-          python <<'PY'
+          python - <<'PY'
           from pathlib import Path
-          p=Path('native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt')
+          p=Path('native/app/src/main/java/com/unknokable/videosohranenki/PlayerGestureOverlay.kt')
           s=p.read_text()
-          s=s.replace('import android.app.Dialog\n','import android.app.Dialog\nimport android.app.PictureInPictureParams\nimport android.content.Intent\n')
-          s=s.replace('import android.telephony.TelephonyManager\n','import android.telephony.TelephonyManager\nimport android.util.Rational\n')
-          marker='''    override fun onResume() {
-                  super.onResume()
-          '''
-          s=s.replace(marker,'''    override fun onResume() {
-                  super.onResume()
-                  if (android.os.Build.VERSION.SDK_INT >= 24 && !isInPictureInPictureMode) {
-                      stopService(Intent(this, PlaybackKeepAliveService::class.java))
-                  }
-          ''')
-          insert='''
-              override fun onUserLeaveHint() {
-                  super.onUserLeaveHint()
-                  val activePlayer = playerScreen?.player
-                  if (!isPlayerScreen || activePlayer?.isPlaying != true) return
-                  val serviceIntent = Intent(this, PlaybackKeepAliveService::class.java)
-                  if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(serviceIntent) else startService(serviceIntent)
-                  if (android.os.Build.VERSION.SDK_INT >= 26 && !isInPictureInPictureMode) {
-                      runCatching {
-                          enterPictureInPictureMode(
-                              PictureInPictureParams.Builder()
-                                  .setAspectRatio(Rational(16, 9))
-                                  .build()
-                          )
-                      }
-                  }
-              }
-
-              override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
-                  super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
-                  if (isPlayerScreen) {
-                      playerScreen?.setFullscreenMode(isInPictureInPictureMode)
-                  }
-                  if (!isInPictureInPictureMode && playerScreen?.player?.isPlaying != true) {
-                      stopService(Intent(this, PlaybackKeepAliveService::class.java))
-                  }
-              }
-
-          '''
-          anchor='    private fun showStartupSplash() {'
-          s=s.replace(anchor,insert+anchor)
+          s=s.replace('private val longPress = Runnable {','private val longPress: Runnable = Runnable {')
+          s=s.replace('private val scaleDetector = ScaleGestureDetector(activity,','private val scaleDetector: ScaleGestureDetector = ScaleGestureDetector(activity,')
           p.write_text(s)
           PY
-      - name: Commit PiP lifecycle
-        shell: bash
-        run: |
           git config user.name "sohr-dev-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt
-          git commit -m "SOHR 4.1.0: PiP and background playback lifecycle"
+          git add native/app/src/main/java/com/unknokable/videosohranenki/PlayerGestureOverlay.kt
+          git commit -m "Fix gesture type inference"
           git push
