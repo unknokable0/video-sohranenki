@@ -51,7 +51,6 @@ function strip(s='') {
   },null,2));
   console.log(`Telegram HTML bytes: ${html.length}; message blocks: ${blocks.length}; playable videos: ${videos.length}`);
   if(!videos.length){
-    fs.writeFileSync('data/telegram-debug.html',html);
-    console.log('No direct playable videos found; wrote debug HTML for inspection.');
+    console.log('No direct playable videos found; debug HTML is intentionally not persisted.');
   }
 })();
