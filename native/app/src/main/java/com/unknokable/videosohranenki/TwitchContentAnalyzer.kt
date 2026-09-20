@@ -117,23 +117,29 @@ object TwitchContentAnalyzer {
 
         val activityManager =
             context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        val runtime = Runtime.getRuntime()
+        val freeHeap =
+            runtime.maxMemory() - (runtime.totalMemory() - runtime.freeMemory())
         val lowRamDevice =
             activityManager?.isLowRamDevice == true ||
-            (activityManager?.memoryClass ?: 256) <= 192
-        val timelineBudget = if (lowRamDevice) 1_000 else 1_600
-        val probeBudget = if (lowRamDevice) 280 else 480
+            (activityManager?.memoryClass ?: 256) <= 192 ||
+            freeHeap < 160L * 1024L * 1024L
+        val timelineBudget = if (lowRamDevice) 900 else 1_600
+        val probeBudget = if (lowRamDevice) 240 else 480
 
         onProgress(5, "Получаем карту стрима…")
         val (markers, storyboardUrl) = fetchExtras(videoId)
         val normalizedMarkers = normalizeMarkers(markers, durationSeconds)
 
         if (storyboardUrl.isNullOrBlank()) {
-            val games = gameChapters(normalizedMarkers, durationSeconds)
-            onProgress(100, "Готово")
-            return@withContext SmartAnalysisResult(games, 0, false)
+            onProgress(100, "Готово • Twitch не отдал превью для анализа")
+            return@withContext SmartAnalysisResult(emptyList(), 0, false)
         }
 
-        val storyboard = fetchStoryboard(storyboardUrl)
+        val storyboard = fetchStoryboard(
+            url = storyboardUrl,
+            preferLowMemory = lowRamDevice
+        )
         coroutineContext.ensureActive()
 
         onProgress(12, "Сканируем весь стрим по превью…")
@@ -304,10 +310,14 @@ object TwitchContentAnalyzer {
         return out
     }
 
-    private fun fetchStoryboard(url: String): Storyboard {
+    private fun fetchStoryboard(
+        url: String,
+        preferLowMemory: Boolean
+    ): Storyboard {
         val text = getText(url)
         val root = JSONArray(text)
         var best: Storyboard? = null
+        var smallest: Storyboard? = null
 
         for (i in 0 until root.length()) {
             val entry = root.optJSONObject(i) ?: continue
@@ -342,9 +352,13 @@ object TwitchContentAnalyzer {
             )
 
             if (best == null || candidate.width > best!!.width) best = candidate
+            if (smallest == null || candidate.width < smallest!!.width) {
+                smallest = candidate
+            }
         }
 
-        return best ?: throw IOException("Twitch не отдал storyboard")
+        return (if (preferLowMemory) smallest ?: best else best)
+            ?: throw IOException("Twitch не отдал storyboard")
     }
 
     private suspend fun scanTimeline(
