@@ -251,25 +251,102 @@ class SettingsScreen(
             setPadding(0, dp(3), 0, dp(12))
         }
 
-        val row = LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
+        val selector = FrameLayout(activity).apply {
             background = rounded(palette.surfaceAlt, 16)
             setPadding(dp(4), dp(4), dp(4), dp(4))
+            clipChildren = true
+            clipToPadding = true
         }
 
-        val dark = themeOption(R.drawable.ic_theme_moon, !settings.lightTheme, "Тёмная") { source ->
-            if (settings.lightTheme) onThemeChanged(false, source)
-        }
-        val light = themeOption(R.drawable.ic_theme_sun, settings.lightTheme, "Светлая") { source ->
-            if (!settings.lightTheme) onThemeChanged(true, source)
+        val indicator = View(activity).apply {
+            background = rounded(palette.accent, 13)
         }
 
-        row.addView(dark, LinearLayout.LayoutParams(0, dp(46), 1f))
-        row.addView(light, LinearLayout.LayoutParams(0, dp(46), 1f).apply { marginStart = dp(4) })
+        val buttons = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+
+        val dark = themeOption(R.drawable.ic_theme_moon, !settings.lightTheme, "Тёмная")
+        val light = themeOption(R.drawable.ic_theme_sun, settings.lightTheme, "Светлая")
+
+        buttons.addView(dark, LinearLayout.LayoutParams(0, dp(46), 1f))
+        buttons.addView(light, LinearLayout.LayoutParams(0, dp(46), 1f))
+
+        selector.addView(
+            indicator,
+            FrameLayout.LayoutParams(0, dp(46), Gravity.START or Gravity.CENTER_VERTICAL)
+        )
+        selector.addView(
+            buttons,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(46),
+                Gravity.CENTER
+            )
+        )
+
+        fun updateThemeIcons(lightSelected: Boolean) {
+            dark.imageTintList = ColorStateList.valueOf(if (!lightSelected) Color.WHITE else palette.muted)
+            light.imageTintList = ColorStateList.valueOf(if (lightSelected) Color.WHITE else palette.muted)
+        }
+
+        fun moveIndicator(toLight: Boolean, source: View, notify: Boolean) {
+            val slot = ((selector.width - selector.paddingLeft - selector.paddingRight) / 2f).coerceAtLeast(0f)
+            if (slot <= 0f) return
+
+            val params = indicator.layoutParams as FrameLayout.LayoutParams
+            params.width = slot.toInt()
+            params.height = dp(46)
+            indicator.layoutParams = params
+
+            val target = if (toLight) slot else 0f
+            updateThemeIcons(toLight)
+
+            indicator.animate().cancel()
+            indicator.animate()
+                .translationX(target)
+                .setDuration(if (settings.animations) 220L else 0L)
+                .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                .withEndAction {
+                    if (notify && settings.lightTheme != toLight) {
+                        onThemeChanged(toLight, source)
+                    }
+                }
+                .start()
+        }
+
+        dark.setOnClickListener {
+            if (!settings.lightTheme) return@setOnClickListener
+            animateTap(dark)
+            moveIndicator(false, dark, true)
+        }
+
+        light.setOnClickListener {
+            if (settings.lightTheme) return@setOnClickListener
+            animateTap(light)
+            moveIndicator(true, light, true)
+        }
+
+        selector.post {
+            val slot = ((selector.width - selector.paddingLeft - selector.paddingRight) / 2f).coerceAtLeast(0f)
+            val params = indicator.layoutParams as FrameLayout.LayoutParams
+            params.width = slot.toInt()
+            params.height = dp(46)
+            indicator.layoutParams = params
+            indicator.translationX = if (settings.lightTheme) slot else 0f
+            updateThemeIcons(settings.lightTheme)
+        }
 
         box.addView(title)
         box.addView(subtitle)
-        box.addView(row)
+        box.addView(
+            selector,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(54)
+            )
+        )
 
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
@@ -284,8 +361,7 @@ class SettingsScreen(
     private fun themeOption(
         iconRes: Int,
         selected: Boolean,
-        description: String,
-        onClick: (View) -> Unit
+        description: String
     ): ImageButton =
         ImageButton(activity).apply {
             setImageResource(iconRes)
@@ -295,15 +371,9 @@ class SettingsScreen(
                 if (selected) Color.WHITE else palette.muted
             )
             setPadding(dp(11), dp(11), dp(11), dp(11))
-            background = rounded(
-                if (selected) palette.accent else Color.TRANSPARENT,
-                13
-            )
-            setOnClickListener {
-                animateTap(this)
-                onClick(this)
-            }
+            background = null
         }
+
 
     private fun animateTap(view: View) {
         if (!settings.animations) return
@@ -445,7 +515,36 @@ class SettingsScreen(
 
         val toggle = SwitchMaterial(activity).apply {
             isChecked = checked
-            setOnCheckedChangeListener { _, value -> onChange(value) }
+            showText = false
+            minWidth = dp(52)
+            thumbTintList = ColorStateList(
+                arrayOf(
+                    intArrayOf(android.R.attr.state_checked),
+                    intArrayOf()
+                ),
+                intArrayOf(Color.WHITE, palette.muted)
+            )
+            trackTintList = ColorStateList(
+                arrayOf(
+                    intArrayOf(android.R.attr.state_checked),
+                    intArrayOf()
+                ),
+                intArrayOf(palette.accent, palette.surfaceAlt)
+            )
+            setOnCheckedChangeListener { button, value ->
+                button.animate().cancel()
+                if (settings.animations) {
+                    button.scaleX = 0.94f
+                    button.scaleY = 0.94f
+                    button.animate()
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setDuration(150L)
+                        .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                        .start()
+                }
+                onChange(value)
+            }
         }
 
         row.addView(iconView, LinearLayout.LayoutParams(dp(46), dp(46)))
