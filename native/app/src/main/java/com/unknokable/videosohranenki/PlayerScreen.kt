@@ -89,6 +89,8 @@ class PlayerScreen(
     private var dragging = false
     private var speed = settings.playbackSpeed
     private var sleepRunnable: Runnable? = null
+    private var sleepSelection = 0
+    private var qualitySelection = 0
     private var playbackCounted = false
     private var lastProgressPersistAt = 0L
     private var speedActionButton: TextView? = null
@@ -658,7 +660,8 @@ class PlayerScreen(
     private fun showSpeedPicker() {
         val speeds = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
         val labels = speeds.map { if (it == 1f) "Обычная • 1×" else "$it×" }
-        val selected = speeds.indexOfFirst { it == speed }.coerceAtLeast(3)
+        val selected = speeds.indexOfFirst { kotlin.math.abs(it - speed) < 0.001f }
+            .let { if (it >= 0) it else 3 }
         ModernDialogs.showChoices(activity, palette, "Скорость воспроизведения", labels, selected) { which ->
             speed = speeds[which]
             settings.playbackSpeed = speed
@@ -670,9 +673,10 @@ class PlayerScreen(
 
     private fun showSleepPicker() {
         val labels = listOf("Выкл", "10 минут", "20 минут", "30 минут", "45 минут", "1 час", "В конце видео")
-        ModernDialogs.showChoices(activity, palette, "Таймер сна", labels, 0) { which ->
+        ModernDialogs.showChoices(activity, palette, "Таймер сна", labels, sleepSelection) { which ->
             sleepRunnable?.let { handler.removeCallbacks(it) }
             sleepRunnable = null
+            sleepSelection = which
             when (which) {
                 1,2,3,4,5 -> {
                     val minutes = listOf(0,10,20,30,45,60)[which]
@@ -789,7 +793,8 @@ class PlayerScreen(
         val labels = mutableListOf("Авто • лучшее доступное")
         labels.addAll(options.map { it.label })
 
-        ModernDialogs.showChoices(activity, palette, "Качество видео", labels, 0) { which ->
+        ModernDialogs.showChoices(activity, palette, "Качество видео", labels, qualitySelection) { which ->
+            qualitySelection = which
             if (which == 0) {
                 player.trackSelectionParameters = player.trackSelectionParameters
                     .buildUpon()
