@@ -773,7 +773,7 @@ class PlayerScreen(
         }
 
         val badge = TextView(activity).apply {
-            text = "BETA 1.0.4"
+            text = if (item.source == "twitch") "PC BETA 1.0.0" else "BETA 1.0.4"
             textSize = 9f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
@@ -787,7 +787,7 @@ class PlayerScreen(
 
         val subtitle = TextView(activity).apply {
             text = if (item.source == "twitch") {
-                "VIDEO-ONLY • ролик от реального начала до конца"
+                "PC Analyzer • только видео • результат сохраняется в SOHR"
             } else {
                 "Полный локальный проход • видео + игры • начало → конец"
             }
@@ -815,13 +815,13 @@ class PlayerScreen(
         }
 
         val status = TextView(activity).apply {
-            text = "Готово к быстрому анализу"
+            text = if (item.source == "twitch") "Запусти SOHR Analyzer на ПК" else "Готово к быстрому анализу"
             textSize = 12f
             setTextColor(palette.muted)
         }
 
         val action = TextView(activity).apply {
-            text = "Анализировать"
+            text = if (item.source == "twitch") "Анализ на ПК" else "Анализировать"
             textSize = 13f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
@@ -911,13 +911,13 @@ class PlayerScreen(
         fun renderChapters(chapters: List<SmartChapter>, elapsedMs: Long, cached: Boolean) {
             results.removeAllViews()
             progressTrack.visibility = View.GONE
-            action.text = "Обновить"
+            action.text = if (item.source == "twitch") "Обновить на ПК" else "Обновить"
             action.isEnabled = true
             action.alpha = 1f
 
             if (chapters.isEmpty()) {
                 resultsScroll.visibility = View.GONE
-                status.text = "Не найдено уверенных фрагментов «видео» или «игра»"
+                status.text = if (item.source == "twitch") "ПК не нашёл уверенных фрагментов просмотра видео" else "Не найдено уверенных фрагментов"
                 status.setTextColor(palette.muted)
                 return
             }
@@ -1017,8 +1017,10 @@ class PlayerScreen(
             }
         }
 
+        var hasCachedResult = false
         settings.smartChaptersCache(cacheKey)?.let { cached ->
             SmartChaptersAnalyzer.decode(cached)?.takeIf { it.isNotEmpty() }?.let {
+                hasCachedResult = true
                 renderChapters(it, 0L, true)
             }
         }
@@ -1036,10 +1038,10 @@ class PlayerScreen(
             smartChapterScope.launch {
                 try {
                     val result = if (item.source == "twitch") {
-                        SmartChaptersAnalyzer.analyzeTwitch(
-                            context = activity.applicationContext,
+                        SohrPcAnalyzerClient.analyze(
                             videoId = twitchId!!,
                             durationSeconds = item.durationSeconds.coerceAtLeast(0),
+                            force = hasCachedResult,
                             onProgress = { percent, message ->
                                 withContext(Dispatchers.Main.immediate) {
                                     setProgress(percent, message)
@@ -1062,6 +1064,7 @@ class PlayerScreen(
 
                     val encoded = SmartChaptersAnalyzer.encode(result.chapters)
                     settings.saveSmartChaptersCache(cacheKey, encoded)
+                    hasCachedResult = true
                     renderChapters(
                         chapters = result.chapters,
                         elapsedMs = SystemClock.elapsedRealtime() - started,
