@@ -81,7 +81,7 @@ private class TelegramFileInputStream(
     private var raf: RandomAccessFile? = null
     private var bufferedStart = -1L
     private var bufferedEndExclusive = -1L
-    private val chunkSize = 8L * 1024L * 1024L
+    private val chunkSize = 2L * 1024L * 1024L
 
     override fun read(): Int {
         val one = ByteArray(1)
@@ -143,7 +143,7 @@ private class TelegramMediaDataSource(
     private var filePath: String? = null
     private var cachedStart = -1L
     private var cachedEndExclusive = -1L
-    private val chunkSize = 4L * 1024L * 1024L
+    private val chunkSize = 2L * 1024L * 1024L
 
     @Synchronized
     override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {
@@ -172,7 +172,7 @@ private class TelegramMediaDataSource(
 
         val path = result.local.path
         if (path.isBlank()) {
-            throw IllegalStateException("Telegram file is not ready for AI analysis")
+            throw IllegalStateException("Telegram file is not ready")
         }
 
         if (path != filePath) {
