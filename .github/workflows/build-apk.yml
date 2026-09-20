@@ -1,3 +1,4 @@
+# SOHR 3.0.10 verified build trigger
 name: Build Android APK
 
 on:
