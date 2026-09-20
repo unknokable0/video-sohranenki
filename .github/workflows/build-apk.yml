@@ -42,11 +42,13 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign unique app version
+      - name: Assign SOHR 5.x version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=4.1.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+          PATCH=$((GITHUB_RUN_NUMBER - 246))
+          if [ "$PATCH" -lt 0 ]; then PATCH=0; fi
+          echo "SOHR_BUILD_NUMBER=$((500000 + PATCH))" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=5.0.${PATCH}" >> "$GITHUB_ENV"
 
       - name: Build installable APK
         shell: bash
@@ -70,7 +72,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/SOHR.apk",
             "sha256": "$SHA256",
-            "notes": "Обновление SOHR $SOHR_VERSION_NAME: улучшения плеера и исправления."
+            "notes": "SOHR $SOHR_VERSION_NAME"
           }
           EOF
           cat update.json
