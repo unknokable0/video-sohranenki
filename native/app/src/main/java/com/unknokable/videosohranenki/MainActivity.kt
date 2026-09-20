@@ -2837,6 +2837,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
+            installPressAnimations(content)
             host.addView(
                 content,
                 FrameLayout.LayoutParams(
@@ -2892,6 +2893,7 @@ class MainActivity : AppCompatActivity() {
         content.translationX = if (animateContent && slide != 0) dp(14).toFloat() * slide else 0f
         content.translationY = if (animateContent && slide == 0) dp(4).toFloat() else 0f
 
+        installPressAnimations(content)
         host.addView(
             content,
             FrameLayout.LayoutParams(
