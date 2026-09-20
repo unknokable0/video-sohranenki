@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 5.x: fast Telegram playback, efficient buffering and stable seeking
+# SOHR 5.x: fullscreen stability, reliable seeking, bounded temporary video cache
 on:
   push:
     branches: [main]
