@@ -55,7 +55,7 @@ class PlayerGestureOverlay(
     private var fillMode = false
     private var scaleAccum = 1f
 
-    private val longPress = Runnable {
+    private val longPress: Runnable = Runnable {
         if (moved || scaleDetector.isInProgress) return@Runnable
         target.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
         if (player.isPlaying && !progressZone(downY)) {
@@ -68,7 +68,7 @@ class PlayerGestureOverlay(
         }
     }
 
-    private val scaleDetector = ScaleGestureDetector(activity,
+    private val scaleDetector: ScaleGestureDetector = ScaleGestureDetector(activity,
         object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
                 target.removeCallbacks(longPress)
