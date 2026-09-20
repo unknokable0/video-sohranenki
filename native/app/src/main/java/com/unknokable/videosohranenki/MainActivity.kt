@@ -698,6 +698,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         val scroll = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+            isHorizontalScrollBarEnabled = false
             isFillViewport = true
             addView(list)
         }
@@ -1606,6 +1608,8 @@ class MainActivity : AppCompatActivity() {
             page.addView(empty, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         } else {
             val list = RecyclerView(this).apply {
+            isVerticalScrollBarEnabled = false
+            isHorizontalScrollBarEnabled = false
                 layoutManager = LinearLayoutManager(this@MainActivity)
                 adapter = DayCollectionAdapter(groups, palette, settings.animations) { showDayCollection(it) }
                 setBackgroundColor(bg)
@@ -1678,6 +1682,8 @@ class MainActivity : AppCompatActivity() {
         page.addView(header)
 
         val list = RecyclerView(this).apply {
+            isVerticalScrollBarEnabled = false
+            isHorizontalScrollBarEnabled = false
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = VideoAdapter(sortedVideos, palette, settings.animations) { openPlayer(it) }
             setBackgroundColor(bg)
@@ -1716,13 +1722,17 @@ class MainActivity : AppCompatActivity() {
         isStreakScreen = false
         isPlayerScreen = true
 
+        val requestedStartMs = startSeconds * 1000L
+        val savedStartMs = settings.playbackPosition(item.messageId)
+        val resumePositionMs = if (requestedStartMs > 0L) requestedStartMs else savedStartMs
+
         playerScreen = PlayerScreen(
             activity = this,
             item = item,
             mediaUrl = server.url(item),
             previewDataSourceFactory = { server.mediaDataSource(item) },
             settings = settings,
-            startPositionMs = startSeconds * 1000L,
+            startPositionMs = resumePositionMs,
             onBack = { onBackPressedDispatcher.onBackPressed() },
             onFullscreen = { setFullscreen(it) },
             onPlaybackStarted = { streakTracker.markWatched() }
@@ -1772,6 +1782,8 @@ class MainActivity : AppCompatActivity() {
         val next = nextStreakMilestone(streak)
 
         val scroll = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+            isHorizontalScrollBarEnabled = false
             isFillViewport = true
             setBackgroundColor(bg)
         }
