@@ -1003,7 +1003,7 @@ object SmartChaptersAnalyzer {
 
     fun encode(chapters: List<SmartChapter>): String {
         val root = JSONObject()
-        root.put("version", 11)
+        root.put("version", 12)
         val array = JSONArray()
         chapters.forEach { chapter ->
             array.put(JSONObject().apply {
@@ -1020,7 +1020,7 @@ object SmartChaptersAnalyzer {
 
     fun decode(json: String): List<SmartChapter>? = runCatching {
         val root = JSONObject(json)
-        if (root.optInt("version", 0) != 11) return@runCatching null
+        if (root.optInt("version", 0) != 12) return@runCatching null
         val array = root.getJSONArray("chapters")
         val chapters = mutableListOf<SmartChapter>()
         for (i in 0 until array.length()) {
