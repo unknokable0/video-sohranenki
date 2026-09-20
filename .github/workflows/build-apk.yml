@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 5.x: smart local-first sync, cached previews, stats, Share -> SOHR (compile-fixed)
+# SOHR 5.x: fullscreen crash + Telegram random seek stability fix
 on:
   push:
     branches: [main]
