@@ -65,6 +65,10 @@ class MainActivity : AppCompatActivity() {
     private var playerScreen: PlayerScreen? = null
     private lateinit var settings: AppSettings
     private lateinit var streakTracker: StreakTracker
+    private lateinit var updateManager: SohrUpdateManager
+    private var pendingUpdateApk: File? = null
+    private var waitingForInstallPermission = false
+    private var updateProgressLabel: TextView? = null
     private var currentVideos: List<VideoItem> = emptyList()
     private var currentDay: DayCollection? = null
     private var isPlayerScreen = false
@@ -103,6 +107,7 @@ class MainActivity : AppCompatActivity() {
 
         settings = AppSettings(this)
         streakTracker = StreakTracker(this)
+        updateManager = SohrUpdateManager(this)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         root = FrameLayout(this).apply { setBackgroundColor(bg) }
         setContentView(root)
@@ -196,6 +201,16 @@ class MainActivity : AppCompatActivity() {
             showLoading("Подключаем Telegram…")
             client.init()
         }, 620L)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (waitingForInstallPermission && updateManager.canRequestInstall()) {
+            waitingForInstallPermission = false
+            pendingUpdateApk?.takeIf { it.exists() }?.let { apk ->
+                root.postDelayed({ launchUpdateInstaller(apk) }, 220L)
+            }
+        }
     }
 
     private fun showStartupSplash() {
@@ -1641,6 +1656,7 @@ class MainActivity : AppCompatActivity() {
             onLanguageChanged = {
                 showSettings()
             },
+            onCheckUpdates = { checkForUpdates() },
             onLogout = { confirmLogout() }
         )
         replaceRoot(withBottomNav(screen.build(), SohrTab.SETTINGS))
@@ -1953,6 +1969,7 @@ class MainActivity : AppCompatActivity() {
                 animateThemeReveal(nextLight, nextSource)
             },
             onLanguageChanged = { showSettings() },
+            onCheckUpdates = { checkForUpdates() },
             onLogout = { confirmLogout() }
         ).build()
 
@@ -2469,6 +2486,141 @@ class MainActivity : AppCompatActivity() {
                 @Suppress("DEPRECATION")
                 run { window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE }
             }
+        }
+    }
+
+    private fun checkForUpdates() {
+        lifecycleScope.launch {
+            showLoading("Проверяем обновления…")
+            try {
+                val info = updateManager.check()
+                if (info == null) {
+                    showSettings()
+                    root.post {
+                        ModernDialogs.showChoices(
+                            context = this@MainActivity,
+                            palette = palette,
+                            title = "Обновлений нет",
+                            options = listOf("У тебя последняя версия • " + BuildConfig.VERSION_NAME),
+                            selected = 0
+                        ) { }
+                    }
+                } else {
+                    showSettings()
+                    val details = buildString {
+                        append("Доступна SOHR ")
+                        append(info.versionName)
+                        if (info.notes.isNotBlank()) {
+                            append("\n\n")
+                            append(info.notes)
+                        }
+                    }
+                    root.post {
+                        ModernDialogs.showConfirm(
+                            context = this@MainActivity,
+                            palette = palette,
+                            title = "Доступно обновление",
+                            message = details,
+                            confirm = "Скачать и установить"
+                        ) {
+                            downloadAndInstallUpdate(info)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                showSettings()
+                Toast.makeText(
+                    this@MainActivity,
+                    "Не удалось проверить обновления: " + (e.message ?: "ошибка сети"),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+    private fun downloadAndInstallUpdate(info: UpdateInfo) {
+        lifecycleScope.launch {
+            showUpdateProgress(0)
+            try {
+                val apk = updateManager.download(info) { progress ->
+                    runOnUiThread {
+                        updateProgressLabel?.text = "Скачиваем SOHR " + info.versionName + " • " + progress + "%"
+                    }
+                }
+                pendingUpdateApk = apk
+                updateProgressLabel?.text = "Обновление готово"
+
+                if (updateManager.canRequestInstall()) {
+                    root.postDelayed({ launchUpdateInstaller(apk) }, 260L)
+                } else {
+                    waitingForInstallPermission = true
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Разреши SOHR устанавливать обновления — после возврата установка продолжится сама.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    startActivity(updateManager.unknownSourcesIntent())
+                }
+            } catch (e: Exception) {
+                pendingUpdateApk = null
+                showSettings()
+                Toast.makeText(
+                    this@MainActivity,
+                    "Не удалось скачать обновление: " + (e.message ?: "ошибка"),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+    private fun showUpdateProgress(progress: Int) {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(24), dp(24), dp(24), dp(24))
+            setBackgroundColor(bg)
+        }
+
+        val spinner = LoadingWaveView(this, purple)
+        val title = TextView(this).apply {
+            text = "Обновление SOHR"
+            textSize = 22f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+            setPadding(0, dp(18), 0, 0)
+        }
+        val label = TextView(this).apply {
+            text = "Скачиваем… " + progress + "%"
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTextColor(muted)
+            setPadding(0, dp(7), 0, 0)
+        }
+        updateProgressLabel = label
+
+        box.addView(spinner, LinearLayout.LayoutParams(dp(72), dp(72)))
+        box.addView(title)
+        box.addView(label)
+        replaceRoot(box)
+    }
+
+    private fun launchUpdateInstaller(apk: File) {
+        if (!apk.exists()) {
+            showSettings()
+            Toast.makeText(this, "Файл обновления не найден", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        try {
+            startActivity(updateManager.installerIntent(apk))
+        } catch (e: Exception) {
+            showSettings()
+            Toast.makeText(
+                this,
+                "Не удалось открыть установку: " + (e.message ?: "ошибка"),
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
