@@ -95,6 +95,92 @@ object ModernDialogs {
             .start()
     }
 
+    fun showNotice(
+        context: Context,
+        palette: ThemePalette,
+        title: String,
+        message: String,
+        button: String = "Готово",
+        onClose: () -> Unit = {}
+    ) {
+        val dialog = Dialog(context)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+
+        val box = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(context, 20), dp(context, 20), dp(context, 20), dp(context, 18))
+            background = rounded(palette.surface, dp(context, 24).toFloat())
+        }
+
+        box.addView(TextView(context).apply {
+            text = title
+            textSize = 20f
+            setTextColor(palette.text)
+            setTypeface(typeface, Typeface.BOLD)
+        })
+
+        box.addView(TextView(context).apply {
+            text = message
+            textSize = 14f
+            setTextColor(palette.muted)
+            setLineSpacing(0f, 1.08f)
+            setPadding(0, dp(context, 9), 0, dp(context, 18))
+        })
+
+        val ok = TextView(context).apply {
+            text = button
+            gravity = Gravity.CENTER
+            textSize = 15f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            background = rounded(palette.accent, dp(context, 15).toFloat())
+            setOnClickListener {
+                if (!isEnabled) return@setOnClickListener
+                isEnabled = false
+                animate().cancel()
+                animate()
+                    .scaleX(0.97f)
+                    .scaleY(0.97f)
+                    .setDuration(60L)
+                    .withEndAction {
+                        dialog.dismiss()
+                        onClose()
+                    }
+                    .start()
+            }
+        }
+
+        box.addView(
+            ok,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(context, 50)
+            )
+        )
+
+        dialog.setContentView(box)
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        dialog.setCanceledOnTouchOutside(true)
+        dialog.show()
+        dialog.window?.setLayout(
+            (context.resources.displayMetrics.widthPixels * 0.86f).toInt(),
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+
+        box.alpha = 0f
+        box.scaleX = 0.965f
+        box.scaleY = 0.965f
+        box.translationY = dp(context, 10).toFloat()
+        box.animate()
+            .alpha(1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .translationY(0f)
+            .setDuration(190L)
+            .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+            .start()
+    }
+
     fun showConfirm(
         context: Context,
         palette: ThemePalette,
