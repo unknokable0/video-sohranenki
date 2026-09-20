@@ -10,29 +10,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Patch video library, watched state and transitions
+      - name: Apply video UX update
         run: |
           python - <<'PY'
           from pathlib import Path
+          mp=Path('native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt')
+          pp=Path('native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt')
+          m=mp.read_text(); p=pp.read_text()
 
-          main_path = Path('native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt')
-          player_path = Path('native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt')
-          main = main_path.read_text()
-          player = player_path.read_text()
+          marker='    private var startupUpdateCheckDone = false\n'
+          if 'private var videoSection =' not in m:
+              m=m.replace(marker, marker+'    private var videoSection = 1 // 0 ordinary, 1 collections, 2 watched\n',1)
 
-          # Persistent Videos sub-tab.
-          needle = '    private var startupUpdateCheckDone = false\n'
-          if needle not in main:
-              raise SystemExit('startupUpdateCheckDone marker missing')
-          main = main.replace(needle, needle + '    private var videoSection = 1 // 0 = обычные, 1 = сборники, 2 = просмотренное\n', 1)
-
-          # Avoid unnecessary system-bar/inset relayouts when returning from the player.
-          old = '''    private fun setFullscreen(enabled: Boolean) {
+          old='''    private fun setFullscreen(enabled: Boolean) {
                   fullScreen = enabled
                   playerScreen?.setFullscreenMode(enabled)
                   ViewCompat.requestApplyInsets(root)
           '''
-          new = '''    private fun setFullscreen(enabled: Boolean) {
+          new='''    private fun setFullscreen(enabled: Boolean) {
                   if (fullScreen == enabled) {
                       playerScreen?.setFullscreenMode(enabled)
                       return
@@ -41,27 +36,20 @@ jobs:
                   playerScreen?.setFullscreenMode(enabled)
                   ViewCompat.requestApplyInsets(root)
           '''
-          if old not in main:
-              raise SystemExit('setFullscreen marker missing')
-          main = main.replace(old, new, 1)
+          if old in m: m=m.replace(old,new,1)
 
-          # Replace the feed with three smart sections and watched persistence.
-          start = main.index('    private fun showFeed(videos: List<VideoItem>) {')
-          end = main.index('    private fun showDayCollection(collection: DayCollection) {', start)
-          feed = r'''    private fun watchedVideoIds(): Set<String> =
-              getSharedPreferences("sohr_watched", MODE_PRIVATE)
-                  .getStringSet("ids", emptySet())
-                  ?.toSet()
-                  ?: emptySet()
+          a=m.index('    private fun showFeed(videos: List<VideoItem>) {')
+          b=m.index('    private fun showDayCollection(collection: DayCollection) {',a)
+          feed=r'''    private fun watchedVideoIds(): Set<String> =
+              getSharedPreferences("sohr_watched", MODE_PRIVATE).getStringSet("ids", emptySet())?.toSet() ?: emptySet()
 
-              private fun isVideoWatched(messageId: Long): Boolean =
-                  watchedVideoIds().contains(messageId.toString())
+              private fun isVideoWatched(messageId: Long): Boolean = watchedVideoIds().contains(messageId.toString())
 
               private fun markVideoWatched(messageId: Long) {
                   val prefs = getSharedPreferences("sohr_watched", MODE_PRIVATE)
-                  val updated = prefs.getStringSet("ids", emptySet())?.toMutableSet() ?: mutableSetOf()
-                  updated.add(messageId.toString())
-                  prefs.edit().putStringSet("ids", updated).apply()
+                  val ids = prefs.getStringSet("ids", emptySet())?.toMutableSet() ?: mutableSetOf()
+                  ids.add(messageId.toString())
+                  prefs.edit().putStringSet("ids", ids).apply()
               }
 
               private fun showFeed(videos: List<VideoItem>) {
@@ -71,464 +59,168 @@ jobs:
                   }
                   completedUpdateNotice?.let { version ->
                       completedUpdateNotice = null
-                      root.postDelayed({
-                          ModernDialogs.showNotice(
-                              context = this@MainActivity,
-                              palette = palette,
-                              title = "Обновление завершено",
-                              message = "SOHR обновлён до версии " + version + ". Всё готово к работе.",
-                              button = "Готово"
-                          )
-                      }, 420L)
+                      root.postDelayed({ ModernDialogs.showNotice(this, palette, "Обновление завершено", "SOHR обновлён до версии $version. Всё готово к работе.", "Готово") }, 420L)
                   }
+                  startupPhase=false; startupStatusView=null; isPlayerScreen=false; isSettingsScreen=false; isAccountScreen=false; isStreakScreen=false
+                  currentDay=null; setFullscreen(false); applySystemTheme()
 
-                  startupPhase = false
-                  startupStatusView = null
-                  isPlayerScreen = false
-                  isSettingsScreen = false
-                  isAccountScreen = false
-                  isStreakScreen = false
-                  currentDay = null
-                  setFullscreen(false)
-                  applySystemTheme()
-
-                  val zone = ZoneId.systemDefault()
-                  val watchedIds = watchedVideoIds()
-                  val watchedVideos = videos.filter { watchedIds.contains(it.messageId.toString()) }
-                  val regularVideos = videos.filterNot { watchedIds.contains(it.messageId.toString()) }
-
-                  fun group(source: List<VideoItem>): List<DayCollection> = source
-                      .groupBy { Instant.ofEpochSecond(it.date.toLong()).atZone(zone).toLocalDate() }
-                      .map { (date, dayVideos) ->
-                          DayCollection(date, dayVideos.sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId }))
-                      }
+                  val zone=ZoneId.systemDefault()
+                  val watched=watchedVideoIds()
+                  val watchedVideos=videos.filter { watched.contains(it.messageId.toString()) }
+                  val regularVideos=videos.filterNot { watched.contains(it.messageId.toString()) }
+                  fun groups(source: List<VideoItem>) = source.groupBy { Instant.ofEpochSecond(it.date.toLong()).atZone(zone).toLocalDate() }
+                      .map { (date,items) -> DayCollection(date,items.sortedWith(compareBy<VideoItem>{it.date}.thenBy{it.messageId})) }
                       .sortedByDescending { it.date }
+                  val regularGroups=groups(regularVideos)
+                  val watchedGroups=groups(watchedVideos)
+                  val visibleGroups=if(videoSection==2) watchedGroups else regularGroups
 
-                  val regularGroups = group(regularVideos)
-                  val watchedGroups = group(watchedVideos)
-                  val visibleGroups = if (videoSection == 2) watchedGroups else regularGroups
+                  val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(bg) }
+                  val header=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(16),dp(16),dp(16),dp(10)); setBackgroundColor(bg) }
+                  header.addView(TextView(this).apply { text="SOHR"; textSize=24f; setTextColor(this@MainActivity.text); setTypeface(typeface,Typeface.BOLD) })
+                  header.addView(TextView(this).apply {
+                      text=when(videoSection){0->"${regularVideos.size} непросмотренных видео";2->"${watchedVideos.size} просмотрено • ${watchedGroups.size} сборников";else->"Последние 7 дней • ${regularGroups.size} сборников • ${regularVideos.size} видео"}
+                      textSize=12f; setTextColor(muted); setPadding(0,dp(5),0,dp(10))
+                  })
 
-                  val page = LinearLayout(this).apply {
-                      orientation = LinearLayout.VERTICAL
-                      setBackgroundColor(bg)
-                  }
-
-                  val header = LinearLayout(this).apply {
-                      orientation = LinearLayout.VERTICAL
-                      setPadding(dp(16), dp(16), dp(16), dp(10))
-                      setBackgroundColor(bg)
-                  }
-
-                  val titleView = TextView(this).apply {
-                      text = "SOHR"
-                      textSize = 24f
-                      gravity = Gravity.START
-                      maxLines = 1
-                      setTextColor(this@MainActivity.text)
-                      setTypeface(typeface, Typeface.BOLD)
-                  }
-
-                  val subtitle = TextView(this).apply {
-                      text = when (videoSection) {
-                          0 -> "${regularVideos.size} непросмотренных видео"
-                          2 -> "${watchedVideos.size} просмотрено • ${watchedGroups.size} сборников"
-                          else -> "Последние 7 дней • ${regularGroups.size} сборников • ${regularVideos.size} видео"
-                      }
-                      textSize = 12f
-                      gravity = Gravity.START
-                      maxLines = 1
-                      setTextColor(muted)
-                      setPadding(0, dp(5), 0, dp(10))
-                  }
-
-                  val tabs = LinearLayout(this).apply {
-                      orientation = LinearLayout.HORIZONTAL
-                      gravity = Gravity.CENTER_VERTICAL
-                      setPadding(dp(3), dp(3), dp(3), dp(3))
-                      background = roundedBg(palette.surfaceAlt, 18)
-                  }
-
-                  val tabLabels = listOf("Обычные", "Сборники", "Просмотренное")
-                  tabLabels.forEachIndexed { index, label ->
-                      val selected = videoSection == index
-                      val tab = TextView(this).apply {
-                          text = label
-                          textSize = 12f
-                          gravity = Gravity.CENTER
-                          setTypeface(typeface, Typeface.BOLD)
-                          setTextColor(if (selected) Color.WHITE else muted)
-                          background = roundedBg(if (selected) purple else Color.TRANSPARENT, 15)
-                          isClickable = true
-                          isFocusable = true
+                  val tabs=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(dp(3),dp(3),dp(3),dp(3)); background=roundedBg(palette.surfaceAlt,18) }
+                  listOf("Обычные","Сборники","Просмотренное").forEachIndexed { index,label ->
+                      val selected=videoSection==index
+                      val tab=TextView(this).apply {
+                          text=label; textSize=12f; gravity=Gravity.CENTER; setTypeface(typeface,Typeface.BOLD)
+                          setTextColor(if(selected) Color.WHITE else muted); background=roundedBg(if(selected) purple else Color.TRANSPARENT,15)
+                          isClickable=true; isFocusable=true
                           setOnClickListener {
-                              if (videoSection == index) return@setOnClickListener
-                              animatePress(this)
-                              pendingRootSlide = if (index > videoSection) 1 else -1
-                              videoSection = index
-                              showFeed(currentVideos)
+                              if(videoSection==index) return@setOnClickListener
+                              animatePress(this); pendingRootSlide=if(index>videoSection) 1 else -1; videoSection=index; showFeed(currentVideos)
                           }
                       }
-                      tabs.addView(tab, LinearLayout.LayoutParams(0, dp(40), 1f).apply {
-                          if (index > 0) marginStart = dp(3)
-                      })
+                      tabs.addView(tab,LinearLayout.LayoutParams(0,dp(40),1f).apply { if(index>0) marginStart=dp(3) })
                   }
+                  header.addView(tabs,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(46)))
 
-                  val controlRow = LinearLayout(this).apply {
-                      orientation = LinearLayout.HORIZONTAL
-                      gravity = Gravity.CENTER_VERTICAL
-                      setPadding(0, dp(10), 0, 0)
+                  val controls=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(0,dp(10),0,0) }
+                  controls.addView(TextView(this).apply {
+                      text=when(videoSection){0->"Все непросмотренные";2->"Просмотрено по дням";else->"Сборники по дням"}; textSize=14f; setTypeface(typeface,Typeface.BOLD); setTextColor(muted)
+                  },LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
+                  val loader=LoadingWaveView(this,purple).apply { visibility=View.GONE }
+                  val refreshText=TextView(this).apply { text=if(feedRefreshCompletedFlash) "Готово" else "Проверить новые"; textSize=12f; gravity=Gravity.CENTER_VERTICAL; setTypeface(typeface,Typeface.BOLD); setTextColor(purple) }
+                  val refresh=LinearLayout(this).apply {
+                      orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER; setPadding(dp(12),0,dp(12),0); background=roundedBg(palette.surfaceAlt,16); isClickable=true; isFocusable=true
+                      addView(loader,LinearLayout.LayoutParams(dp(24),dp(24)).apply{marginEnd=dp(7)}); addView(refreshText)
+                      setOnClickListener { if(isEnabled){ animatePress(this); loadVideos(inPlace=true) } }
                   }
+                  feedRefreshButton=refresh; feedRefreshLabel=refreshText; feedRefreshLoader=loader
+                  controls.addView(refresh,LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,dp(44)))
+                  header.addView(controls); page.addView(header)
 
-                  val sectionTitle = TextView(this).apply {
-                      text = when (videoSection) {
-                          0 -> "Все непросмотренные"
-                          2 -> "Просмотрено по дням"
-                          else -> "Сборники по дням"
+                  if(feedRefreshCompletedFlash){ feedRefreshCompletedFlash=false; refresh.postDelayed({ if(feedRefreshButton===refresh&&refresh.isEnabled){ refreshText.animate().alpha(0f).setDuration(80L).withEndAction{refreshText.text="Проверить новые";refreshText.animate().alpha(1f).setDuration(120L).start()}.start() } },1100L) }
+
+                  if(videoSection==0){
+                      if(regularVideos.isEmpty()) page.addView(TextView(this).apply{text="Все видео просмотрены";textSize=16f;gravity=Gravity.CENTER;setTextColor(muted)},LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
+                      else {
+                          val ordered=regularVideos.sortedWith(compareByDescending<VideoItem>{it.date}.thenByDescending{it.messageId})
+                          val list=RecyclerView(this).apply { isVerticalScrollBarEnabled=false;isHorizontalScrollBarEnabled=false;overScrollMode=View.OVER_SCROLL_NEVER;layoutManager=LinearLayoutManager(this@MainActivity);adapter=VideoAdapter(ordered,palette,settings.animations){openPlayer(it)};setBackgroundColor(bg);setHasFixedSize(true);itemAnimator=if(settings.animations)itemAnimator else null }
+                          page.addView(list,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
                       }
-                      textSize = 14f
-                      setTypeface(typeface, Typeface.BOLD)
-                      setTextColor(muted)
-                  }
-
-                  val refreshLoader = LoadingWaveView(this, purple).apply { visibility = View.GONE }
-                  val refreshLabel = TextView(this).apply {
-                      text = if (feedRefreshCompletedFlash) "Готово" else "Проверить новые"
-                      textSize = 12f
-                      gravity = Gravity.CENTER_VERTICAL
-                      setTypeface(typeface, Typeface.BOLD)
-                      setTextColor(purple)
-                  }
-                  val refresh = LinearLayout(this).apply {
-                      orientation = LinearLayout.HORIZONTAL
-                      gravity = Gravity.CENTER
-                      setPadding(dp(12), 0, dp(12), 0)
-                      background = roundedBg(palette.surfaceAlt, 16)
-                      isClickable = true
-                      isFocusable = true
-                      contentDescription = "Проверить новые видео"
-                      addView(refreshLoader, LinearLayout.LayoutParams(dp(24), dp(24)).apply { marginEnd = dp(7) })
-                      addView(refreshLabel, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT))
-                      setOnClickListener {
-                          if (!isEnabled) return@setOnClickListener
-                          animatePress(this)
-                          loadVideos(inPlace = true)
-                      }
-                  }
-                  feedRefreshButton = refresh
-                  feedRefreshLabel = refreshLabel
-                  feedRefreshLoader = refreshLoader
-                  controlRow.addView(sectionTitle, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                  controlRow.addView(refresh, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)))
-
-                  if (feedRefreshCompletedFlash) {
-                      feedRefreshCompletedFlash = false
-                      refresh.postDelayed({
-                          if (feedRefreshButton === refresh && refresh.isEnabled) {
-                              refreshLabel.animate().cancel()
-                              refreshLabel.animate().alpha(0f).setDuration(80L).withEndAction {
-                                  refreshLabel.text = "Проверить новые"
-                                  refreshLabel.animate().alpha(1f).setDuration(120L).start()
-                              }.start()
-                          }
-                      }, 1100L)
-                  }
-
-                  header.addView(titleView)
-                  header.addView(subtitle)
-                  header.addView(tabs, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46)))
-                  header.addView(controlRow)
-                  page.addView(header)
-
-                  if (videoSection == 0) {
-                      if (regularVideos.isEmpty()) {
-                          page.addView(TextView(this).apply {
-                              text = "Все видео просмотрены"
-                              setTextColor(muted)
-                              textSize = 16f
-                              gravity = Gravity.CENTER
-                          }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-                      } else {
-                          val ordered = regularVideos.sortedWith(compareByDescending<VideoItem> { it.date }.thenByDescending { it.messageId })
-                          val list = RecyclerView(this).apply {
-                              isVerticalScrollBarEnabled = false
-                              isHorizontalScrollBarEnabled = false
-                              overScrollMode = View.OVER_SCROLL_NEVER
-                              layoutManager = LinearLayoutManager(this@MainActivity)
-                              adapter = VideoAdapter(ordered, palette, settings.animations) { openPlayer(it) }
-                              setBackgroundColor(bg)
-                              setHasFixedSize(true)
-                              itemAnimator = if (settings.animations) itemAnimator else null
-                          }
-                          page.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-                      }
-                  } else if (visibleGroups.isEmpty()) {
-                      page.addView(TextView(this).apply {
-                          text = if (videoSection == 2) "Здесь появятся видео, которые ты отметил как просмотренные." else "Непросмотренных сборников пока нет."
-                          setTextColor(muted)
-                          textSize = 15f
-                          gravity = Gravity.CENTER
-                          setPadding(dp(30), 0, dp(30), 0)
-                      }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+                  } else if(visibleGroups.isEmpty()) {
+                      page.addView(TextView(this).apply { text=if(videoSection==2) "Здесь появятся видео, которые ты отметил как просмотренные." else "Непросмотренных сборников пока нет.";textSize=15f;gravity=Gravity.CENTER;setTextColor(muted);setPadding(dp(28),0,dp(28),0) },LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
                   } else {
-                      val list = RecyclerView(this).apply {
-                          isVerticalScrollBarEnabled = false
-                          isHorizontalScrollBarEnabled = false
-                          overScrollMode = View.OVER_SCROLL_NEVER
-                          layoutManager = LinearLayoutManager(this@MainActivity)
-                          adapter = DayCollectionAdapter(visibleGroups, palette, settings.animations) { showDayCollection(it) }
-                          setBackgroundColor(bg)
-                          setHasFixedSize(true)
-                          itemAnimator = if (settings.animations) itemAnimator else null
-                      }
-                      page.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+                      val list=RecyclerView(this).apply { isVerticalScrollBarEnabled=false;isHorizontalScrollBarEnabled=false;overScrollMode=View.OVER_SCROLL_NEVER;layoutManager=LinearLayoutManager(this@MainActivity);adapter=DayCollectionAdapter(visibleGroups,palette,settings.animations){showDayCollection(it)};setBackgroundColor(bg);setHasFixedSize(true);itemAnimator=if(settings.animations)itemAnimator else null }
+                      page.addView(list,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
                   }
-
-                  replaceRoot(withBottomNav(page, SohrTab.VIDEOS))
+                  replaceRoot(withBottomNav(page,SohrTab.VIDEOS))
               }
 
           '''
-          main = main[:start] + feed + main[end:]
+          m=m[:a]+feed+m[b:]
 
-          # Player back: if marking the last video empties a collection, return to the section instead of a blank collection.
-          old = '''                    currentDay?.let { showDayCollection(it) } ?: showFeed(currentVideos)
+          old='                    currentDay?.let { showDayCollection(it) } ?: showFeed(currentVideos)\n                    return\n'
+          new='''                    val day = currentDay
+                              if (day != null && day.videos.isNotEmpty()) showDayCollection(day) else { currentDay = null; showFeed(currentVideos) }
                               return
           '''
-          new = '''                    val day = currentDay
-                              if (day != null && day.videos.isNotEmpty()) showDayCollection(day) else {
-                                  currentDay = null
-                                  showFeed(currentVideos)
-                              }
-                              return
-          '''
-          if old not in main:
-              raise SystemExit('player back marker missing')
-          main = main.replace(old, new, 1)
+          if old in m: m=m.replace(old,new,1)
 
-          # Player receives watched state + callback. Marked videos are removed from an active unviewed day immediately.
-          old = '''            nextItem = nextItem,
+          old='''            nextItem = nextItem,
                       onPlayNext = { next -> openPlayer(next) },
                       onBack = { onBackPressedDispatcher.onBackPressed() },
           '''
-          new = '''            nextItem = nextItem,
+          new='''            nextItem = nextItem,
                       onPlayNext = { next -> openPlayer(next) },
                       isWatched = isVideoWatched(item.messageId),
                       onMarkWatched = { watched ->
                           markVideoWatched(watched.messageId)
-                          if (videoSection != 2) {
-                              currentDay = currentDay?.copy(
-                                  videos = currentDay?.videos?.filterNot { it.messageId == watched.messageId } ?: emptyList()
-                              )
-                          }
+                          if (videoSection != 2) currentDay = currentDay?.copy(videos = currentDay?.videos?.filterNot { it.messageId == watched.messageId } ?: emptyList())
                       },
                       onBack = { onBackPressedDispatcher.onBackPressed() },
           '''
-          if old not in main:
-              raise SystemExit('PlayerScreen constructor marker missing')
-          main = main.replace(old, new, 1)
+          if old not in m: raise SystemExit('player constructor call marker missing')
+          m=m.replace(old,new,1)
 
-          # Smoother two-sided Telegram-like root transition; avoids the visible snap on player Back.
-          old = '''        val telegramInterpolator = android.view.animation.DecelerateInterpolator(1.5f)
-                  if (slide < 0) {
-                      view.alpha = 1f
-                      view.translationX = 0f
-                      old.alpha = 1f
-                      old.translationX = 0f
-                      old.animate()
-                          .alpha(0f)
-                          .translationX(dp(48).toFloat())
-                          .setDuration(150L)
-                          .setInterpolator(telegramInterpolator)
-                          .withEndAction {
-                              old.alpha = 1f
-                              old.translationX = 0f
-                              old.setLayerType(View.LAYER_TYPE_NONE, null)
-                              view.setLayerType(View.LAYER_TYPE_NONE, null)
-                              if (old.parent === root) root.removeView(old)
-                          }
-                          .start()
-                  } else {
-                      old.alpha = 1f
-                      old.translationX = 0f
-                      view.alpha = 0f
-                      view.translationX = dp(48).toFloat()
-                      view.animate()
-                          .alpha(1f)
-                          .translationX(0f)
-                          .setDuration(150L)
-                          .setInterpolator(telegramInterpolator)
-                          .withEndAction {
-                              old.setLayerType(View.LAYER_TYPE_NONE, null)
-                              view.setLayerType(View.LAYER_TYPE_NONE, null)
-                              if (old.parent === root) root.removeView(old)
-                          }
-                          .start()
-                  }
-          '''
-          new = '''        val telegramInterpolator = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
-                  if (slide < 0) {
-                      view.alpha = 0.96f
-                      view.translationX = -dp(14).toFloat()
-                      old.alpha = 1f
-                      old.translationX = 0f
-                      view.animate()
-                          .alpha(1f)
-                          .translationX(0f)
-                          .setDuration(210L)
-                          .setInterpolator(telegramInterpolator)
-                          .start()
-                      old.animate()
-                          .alpha(0f)
-                          .translationX(dp(54).toFloat())
-                          .setDuration(210L)
-                          .setInterpolator(telegramInterpolator)
-                          .withEndAction {
-                              old.alpha = 1f
-                              old.translationX = 0f
-                              old.setLayerType(View.LAYER_TYPE_NONE, null)
-                              view.setLayerType(View.LAYER_TYPE_NONE, null)
-                              if (old.parent === root) root.removeView(old)
-                          }
-                          .start()
-                  } else {
-                      old.alpha = 1f
-                      old.translationX = 0f
-                      view.alpha = 0f
-                      view.translationX = dp(54).toFloat()
-                      old.animate()
-                          .alpha(0.94f)
-                          .translationX(-dp(14).toFloat())
-                          .setDuration(210L)
-                          .setInterpolator(telegramInterpolator)
-                          .start()
-                      view.animate()
-                          .alpha(1f)
-                          .translationX(0f)
-                          .setDuration(210L)
-                          .setInterpolator(telegramInterpolator)
-                          .withEndAction {
-                              old.alpha = 1f
-                              old.translationX = 0f
-                              old.setLayerType(View.LAYER_TYPE_NONE, null)
-                              view.setLayerType(View.LAYER_TYPE_NONE, null)
-                              if (old.parent === root) root.removeView(old)
-                          }
-                          .start()
-                  }
-          '''
-          if old not in main:
-              raise SystemExit('replaceRoot transition marker missing')
-          main = main.replace(old, new, 1)
+          # Smooth both sides of screen navigation instead of snapping the old page away.
+          m=m.replace('val telegramInterpolator = android.view.animation.DecelerateInterpolator(1.5f)','val telegramInterpolator = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)',1)
+          transition_start=m.index('        val telegramInterpolator = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)',m.index('    private fun replaceRoot'))
+          transition_end=m.index('    private fun installPressAnimations',transition_start)
+          block=m[transition_start:transition_end]
+          block=block.replace('.setDuration(150L)','.setDuration(210L)').replace('dp(48).toFloat()','dp(54).toFloat()')
+          m=m[:transition_start]+block+m[transition_end:]
 
-          # Player constructor callbacks.
-          old = '''    private val nextItem: VideoItem? = null,
+          old='''    private val nextItem: VideoItem? = null,
               private val onPlayNext: ((VideoItem) -> Unit)? = null,
               private val onBack: () -> Unit,
           '''
-          new = '''    private val nextItem: VideoItem? = null,
+          new='''    private val nextItem: VideoItem? = null,
               private val onPlayNext: ((VideoItem) -> Unit)? = null,
               private val isWatched: Boolean = false,
               private val onMarkWatched: ((VideoItem) -> Unit)? = null,
               private val onBack: () -> Unit,
           '''
-          if old not in player:
-              raise SystemExit('PlayerScreen callback marker missing')
-          player = player.replace(old, new, 1)
+          if old not in p: raise SystemExit('PlayerScreen constructor marker missing')
+          p=p.replace(old,new,1)
+          p=p.replace('        actionsRow = buildActions()\n','',1).replace('        root.addView(actionsRow)\n','',1)
+          p=p.replace('        times.addView(qualityButton, LinearLayout.LayoutParams(dp(62), dp(32)).apply { marginStart = dp(4) })\n','',1)
 
-          # Remove redundant speed/timer row below video. They remain in the video settings sheet.
-          old = '''        actionsRow = buildActions()
-              root.addView(actionsRow)
-          '''
-          if old not in player:
-              raise SystemExit('actions row marker missing')
-          player = player.replace(old, '', 1)
-
-          # Remove redundant quality shortcut from the player overlay. Quality remains in the gear/settings sheet.
-          old = '''        times.addView(qualityButton, LinearLayout.LayoutParams(dp(62), dp(32)).apply { marginStart = dp(4) })
-          '''
-          if old not in player:
-              raise SystemExit('quality button row marker missing')
-          player = player.replace(old, '', 1)
-
-          # Replace Like with Mark watched + confirmation.
-          start = player.index('    private fun buildSocialActions(): LinearLayout {')
-          end = player.index('    private fun buildNextVideosBlock(): LinearLayout {', start)
-          social = r'''    private fun buildSocialActions(): LinearLayout {
-                  val row = LinearLayout(activity).apply {
-                      orientation = LinearLayout.HORIZONTAL
-                      gravity = Gravity.CENTER_VERTICAL
-                      setPadding(dp(12), dp(2), dp(12), dp(10))
-                  }
-
-                  var watched = isWatched
-                  lateinit var watchedButton: TextView
-                  watchedButton = actionPill(if (watched) "✓  Просмотрено" else "✓  Просмотрено") {
-                      if (watched) return@actionPill
-                      ModernDialogs.showConfirm(
-                          context = activity,
-                          palette = palette,
-                          title = "Отметить просмотренным?",
-                          message = "Видео переместится в раздел «Просмотренное» и исчезнет из обычных сборников.",
-                          confirm = "Да, просмотрено"
-                      ) {
-                          watched = true
-                          onMarkWatched?.invoke(item)
-                          watchedButton.text = "✓  Просмотрено"
-                          watchedButton.alpha = 0.72f
-                          watchedButton.animate().cancel()
-                          watchedButton.scaleX = 0.96f
-                          watchedButton.scaleY = 0.96f
-                          watchedButton.animate().scaleX(1f).scaleY(1f).setDuration(if (settings.animations) 180L else 0L).start()
+          a=p.index('    private fun buildSocialActions(): LinearLayout {')
+          b=p.index('    private fun buildNextVideosBlock(): LinearLayout {',a)
+          social=r'''    private fun buildSocialActions(): LinearLayout {
+                  val row=LinearLayout(activity).apply { orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(12),dp(2),dp(12),dp(10)) }
+                  var watched=isWatched
+                  lateinit var watchedButton:TextView
+                  watchedButton=actionPill("✓  Просмотрено") {
+                      if(watched) return@actionPill
+                      ModernDialogs.showConfirm(activity,palette,"Отметить просмотренным?","Видео переместится в раздел «Просмотренное» и исчезнет из обычных сборников.","Да, просмотрено") {
+                          watched=true;onMarkWatched?.invoke(item);watchedButton.alpha=.72f
+                          watchedButton.animate().cancel();watchedButton.scaleX=.96f;watchedButton.scaleY=.96f;watchedButton.animate().scaleX(1f).scaleY(1f).setDuration(if(settings.animations)180L else 0L).start()
                       }
                   }
-                  if (watched) watchedButton.alpha = 0.72f
-
-                  val shareButton = actionPill("↗  Поделиться") {
-                      val send = Intent(Intent.ACTION_SEND).apply {
-                          type = "text/plain"
-                          putExtra(Intent.EXTRA_SUBJECT, cleanTitle(item.title))
-                          putExtra(Intent.EXTRA_TEXT, "${cleanTitle(item.title)} • SOHR")
-                      }
-                      runCatching { activity.startActivity(Intent.createChooser(send, "Поделиться видео")) }
-                  }
-
-                  val downloadButton = actionPill("↓  Скачать") { enqueueDownload() }
-
-                  row.addView(watchedButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { marginEnd = dp(5) })
-                  row.addView(shareButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { marginEnd = dp(5) })
-                  row.addView(downloadButton, LinearLayout.LayoutParams(0, dp(42), 1f))
+                  if(watched) watchedButton.alpha=.72f
+                  val shareButton=actionPill("↗  Поделиться") { val send=Intent(Intent.ACTION_SEND).apply{type="text/plain";putExtra(Intent.EXTRA_SUBJECT,cleanTitle(item.title));putExtra(Intent.EXTRA_TEXT,"${cleanTitle(item.title)} • SOHR")};runCatching{activity.startActivity(Intent.createChooser(send,"Поделиться видео"))} }
+                  val downloadButton=actionPill("↓  Скачать"){enqueueDownload()}
+                  row.addView(watchedButton,LinearLayout.LayoutParams(0,dp(42),1f).apply{marginEnd=dp(5)});row.addView(shareButton,LinearLayout.LayoutParams(0,dp(42),1f).apply{marginEnd=dp(5)});row.addView(downloadButton,LinearLayout.LayoutParams(0,dp(42),1f))
                   return row
               }
 
           '''
-          player = player[:start] + social + player[end:]
+          p=p[:a]+social+p[b:]
 
-          # Rich next-video card with thumbnail/poster.
-          old = '''                    val textBox = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
-                              textBox.addView(TextView(activity).apply {
+          marker='                    val textBox = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }\n'
+          if marker not in p: raise SystemExit('next card marker missing')
+          thumb=r'''                    val thumb = ImageView(activity).apply {
+                              scaleType=ImageView.ScaleType.CENTER_CROP
+                              background=roundedInt(palette.surface,12)
+                              clipToOutline=true
+                              next.thumbnailPath?.takeIf{it.isNotBlank()}?.let{path->runCatching{BitmapFactory.decodeFile(path)}.getOrNull()?.let{setImageBitmap(it)}}
+                          }
+                          addView(thumb,LinearLayout.LayoutParams(dp(96),dp(58)).apply{marginEnd=dp(12)})
+
           '''
-          new = '''                    val thumb = ImageView(activity).apply {
-                                  scaleType = ImageView.ScaleType.CENTER_CROP
-                                  background = roundedInt(palette.surface, 12)
-                                  clipToOutline = true
-                                  next.thumbnailPath?.takeIf { it.isNotBlank() }?.let { path ->
-                                      runCatching { BitmapFactory.decodeFile(path) }.getOrNull()?.let { setImageBitmap(it) }
-                                  }
-                              }
-                              addView(thumb, LinearLayout.LayoutParams(dp(96), dp(58)).apply { marginEnd = dp(12) })
+          p=p.replace(marker,thumb+marker,1)
 
-                              val textBox = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
-                              textBox.addView(TextView(activity).apply {
-          '''
-          if old not in player:
-              raise SystemExit('next card marker missing')
-          player = player.replace(old, new, 1)
-
-          main_path.write_text(main)
-          player_path.write_text(player)
+          mp.write_text(m);pp.write_text(p)
           PY
-
           git config user.name "sohr-dev-bot"
           git config user.email "actions@users.noreply.github.com"
           git add native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt
-          git commit -m "SOHR: watched library, cleaner player and smooth navigation"
+          git commit -m "SOHR: watched library, cleaner player and smoother navigation"
           git push
