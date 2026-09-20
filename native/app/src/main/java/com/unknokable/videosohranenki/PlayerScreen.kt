@@ -851,7 +851,6 @@ class PlayerScreen(
     }
 
     private fun persistPlaybackPosition(force: Boolean = false) {
-        if (!::player.isInitialized) return
         val now = SystemClock.elapsedRealtime()
         if (!force && now - lastProgressPersistAt < 2_000L) return
         lastProgressPersistAt = now
