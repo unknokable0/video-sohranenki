@@ -138,6 +138,7 @@ object TwitchContentAnalyzer {
 
         val storyboard = fetchStoryboard(
             url = storyboardUrl,
+            durationSeconds = durationSeconds,
             preferLowMemory = lowRamDevice
         )
         coroutineContext.ensureActive()
@@ -312,6 +313,7 @@ object TwitchContentAnalyzer {
 
     private fun fetchStoryboard(
         url: String,
+        durationSeconds: Int,
         preferLowMemory: Boolean
     ): Storyboard {
         val text = getText(url)
@@ -341,12 +343,24 @@ object TwitchContentAnalyzer {
             }
             if (images.isEmpty()) continue
 
+            // Twitch storyboard timing is more reliable when derived from the
+            // VOD duration and total frame count. This matches yt-dlp's logic.
+            val derivedInterval =
+                if (durationSeconds > 0 && count > 1) {
+                    durationSeconds.toDouble() / count.toDouble()
+                } else {
+                    interval
+                }
+            val effectiveInterval = derivedInterval
+                .takeIf { it in 0.25..120.0 }
+                ?: interval
+
             val candidate = Storyboard(
                 width = width,
                 height = height,
                 cols = cols,
                 rows = rows,
-                intervalSec = interval,
+                intervalSec = effectiveInterval,
                 count = count,
                 imageUrls = images
             )
@@ -557,11 +571,39 @@ object TwitchContentAnalyzer {
             if (isChatLike(markerAt(markers, timeline[i0].timeSec))) wanted += i0
         }
 
-        return wanted
+        val sorted = wanted
             .filter { it in timeline.indices }
             .distinct()
             .sorted()
-            .take(maxProbes.coerceIn(180, 480))
+
+        return evenlySampleIndices(
+            sorted = sorted,
+            limit = maxProbes.coerceIn(180, 480)
+        )
+    }
+
+    private fun evenlySampleIndices(
+        sorted: List<Int>,
+        limit: Int
+    ): List<Int> {
+        if (sorted.size <= limit || limit <= 1) return sorted
+
+        val out = ArrayList<Int>(limit)
+        val last = sorted.lastIndex.toLong()
+        val denominator = (limit - 1).toLong()
+
+        for (i in 0 until limit) {
+            val position = ((i.toLong() * last) / denominator).toInt()
+            val value = sorted[position]
+            if (out.lastOrNull() != value) out += value
+        }
+
+        // Always preserve the last candidate so late-VOD videos cannot be cut off.
+        if (out.lastOrNull() != sorted.last()) {
+            if (out.size >= limit) out[out.lastIndex] = sorted.last()
+            else out += sorted.last()
+        }
+        return out
     }
 
     private suspend fun analyzeProbes(
@@ -764,7 +806,7 @@ object TwitchContentAnalyzer {
             // Hysteresis is the key difference from Beta 1.0.0:
             // once a video starts, a calm/fullscreen section does NOT end it.
             // We need several consecutive weak points before closing.
-            if (misses >= 5) {
+            if (misses >= 3) {
                 val endIndex = (lastPositive + 2)
                     .coerceAtLeast(activeStart!!)
                     .coerceAtMost(i)
@@ -793,7 +835,7 @@ object TwitchContentAnalyzer {
             val gapSeconds =
                 timeline[range.startIndex].timeSec - timeline[previous.endIndex].timeSec
 
-            if (gapSeconds in 0..75) {
+            if (gapSeconds in 0..20) {
                 mergedRanges[mergedRanges.lastIndex] =
                     RawRange(previous.startIndex, range.endIndex)
             } else {
