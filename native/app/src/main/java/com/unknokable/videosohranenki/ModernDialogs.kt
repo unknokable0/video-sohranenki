@@ -26,71 +26,112 @@ object ModernDialogs {
 
         val box = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(context, 18), dp(context, 18), dp(context, 18), dp(context, 14))
-            background = rounded(palette.surface, dp(context, 24).toFloat())
+            setPadding(dp(context, 14), dp(context, 14), dp(context, 14), dp(context, 12))
+            background = rounded(palette.surface, dp(context, 22).toFloat())
         }
 
         box.addView(TextView(context).apply {
             text = title
-            textSize = 20f
+            textSize = 18f
             setTextColor(palette.text)
             setTypeface(typeface, Typeface.BOLD)
-            setPadding(dp(context, 2), 0, dp(context, 2), dp(context, 12))
+            setPadding(dp(context, 4), dp(context, 2), dp(context, 4), dp(context, 10))
         })
 
         options.forEachIndexed { index, label ->
             val selectedNow = index == selected
-            val row = TextView(context).apply {
-                text = if (selectedNow) "●   $label" else "○   $label"
-                textSize = 16f
+
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(context, 12), 0, dp(context, 12), 0)
+                background = rounded(
+                    if (selectedNow) palette.accentSoft else palette.surfaceAlt,
+                    dp(context, 14).toFloat()
+                )
+                isClickable = true
+                isFocusable = true
+            }
+
+            val dot = TextView(context).apply {
+                text = if (selectedNow) "●" else "○"
+                textSize = if (selectedNow) 17f else 18f
+                gravity = Gravity.CENTER
+                setTextColor(if (selectedNow) palette.accent else palette.muted)
+            }
+
+            val labelView = TextView(context).apply {
+                text = label
+                textSize = 14.5f
                 gravity = Gravity.CENTER_VERTICAL
                 setTextColor(if (selectedNow) palette.accent else palette.text)
                 setTypeface(typeface, if (selectedNow) Typeface.BOLD else Typeface.NORMAL)
-                setPadding(dp(context, 16), dp(context, 14), dp(context, 16), dp(context, 14))
-                background = rounded(
-                    if (selectedNow) palette.accentSoft else palette.surfaceAlt,
-                    dp(context, 16).toFloat()
-                )
-                setOnClickListener {
-                    if (!isEnabled) return@setOnClickListener
-                    isEnabled = false
-                    animate()
-                        .scaleX(0.97f)
-                        .scaleY(0.97f)
-                        .alpha(0.82f)
-                        .setDuration(65L)
-                        .withEndAction {
-                            dialog.dismiss()
-                            onSelect(index)
-                        }
-                        .start()
-                }
+                setPadding(dp(context, 10), 0, 0, 0)
             }
-            box.addView(row, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(context, 8) })
+
+            row.addView(dot, LinearLayout.LayoutParams(dp(context, 22), dp(context, 46)))
+            row.addView(
+                labelView,
+                LinearLayout.LayoutParams(0, dp(context, 46), 1f)
+            )
+
+            row.setOnClickListener {
+                if (!row.isEnabled) return@setOnClickListener
+                row.isEnabled = false
+                row.animate().cancel()
+                row.animate()
+                    .scaleX(0.975f)
+                    .scaleY(0.975f)
+                    .alpha(0.84f)
+                    .setDuration(55L)
+                    .withEndAction {
+                        row.animate()
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .alpha(1f)
+                            .setDuration(90L)
+                            .withEndAction {
+                                dialog.dismiss()
+                                onSelect(index)
+                            }
+                            .start()
+                    }
+                    .start()
+            }
+
+            box.addView(
+                row,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dp(context, 46)
+                ).apply {
+                    if (index < options.lastIndex) bottomMargin = dp(context, 6)
+                }
+            )
         }
 
         dialog.setContentView(box)
-        dialog.window?.apply {
-            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-            setDimAmount(0.58f)
-            addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            attributes = attributes.apply { width = (context.resources.displayMetrics.widthPixels * 0.88f).toInt() }
-        }
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        dialog.setCanceledOnTouchOutside(true)
         dialog.show()
-        dialog.window?.setLayout((context.resources.displayMetrics.widthPixels * 0.88f).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
+
+        val width = (context.resources.displayMetrics.widthPixels * 0.82f).toInt()
+        dialog.window?.apply {
+            setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT)
+            setDimAmount(0.52f)
+            addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        }
+
         box.alpha = 0f
-        box.scaleX = 0.96f
-        box.scaleY = 0.96f
-        box.translationY = dp(context, 10).toFloat()
+        box.scaleX = 0.94f
+        box.scaleY = 0.94f
+        box.translationY = dp(context, 12).toFloat()
         box.animate()
             .alpha(1f)
             .scaleX(1f)
             .scaleY(1f)
             .translationY(0f)
-            .setDuration(190L)
+            .setDuration(175L)
             .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
             .start()
     }
