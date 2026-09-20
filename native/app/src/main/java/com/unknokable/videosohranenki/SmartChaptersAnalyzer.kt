@@ -121,8 +121,8 @@ object SmartChaptersAnalyzer {
         coroutineContext.ensureActive()
 
         onProgress(45, "Ищем крупные смены сцены…")
-        val ocrIndexes = chooseOcrIndexes(samples, baseMarkers, maxOcr = 22)
-        val semanticIndexes = chooseSemanticIndexes(samples, baseMarkers, maxItems = 26)
+        val ocrIndexes = chooseOcrIndexes(samples, baseMarkers, maxOcr = 36)
+        val semanticIndexes = chooseSemanticIndexes(samples, baseMarkers, maxItems = 36)
         val analysisIndexes = (ocrIndexes + semanticIndexes).distinct().sorted()
 
         var analysisDone = 0
@@ -130,11 +130,11 @@ object SmartChaptersAnalyzer {
             coroutineContext.ensureActive()
             val sample = samples.getOrNull(idx) ?: continue
             val bitmap = sample.bitmap ?: continue
-            if (idx in ocrIndexes) sample.ocr = recognize(bitmap)
+            sample.ocr = recognize(bitmap)
             sample.labels = recognizeLabels(bitmap)
             analysisDone++
             val p = 48 + ((analysisDone * 38) / max(1, analysisIndexes.size))
-            onProgress(p.coerceAtMost(86), "Понимаем, что происходит на экране…")
+            onProgress(p.coerceAtMost(86), "Ищем только видео и игры…")
         }
 
         onProgress(90, "Объединяем найденные фрагменты…")
@@ -172,7 +172,7 @@ object SmartChaptersAnalyzer {
                 retriever.setDataSource(mediaUrl, emptyMap())
             }
 
-            val times = sampleTimes(durationSeconds, maxSamples = 42)
+            val times = sampleTimes(durationSeconds, maxSamples = 72)
             val samples = ArrayList<FrameSample>(times.size)
 
             for ((index, sec) in times.withIndex()) {
@@ -188,8 +188,8 @@ object SmartChaptersAnalyzer {
                 onProgress(p.coerceAtMost(50), "Ищем крупные смены в видео…")
             }
 
-            val ocrIndexes = chooseTelegramOcrIndexes(samples, maxOcr = 20)
-            val semanticIndexes = chooseSemanticIndexes(samples, emptyList(), maxItems = 24)
+            val ocrIndexes = chooseTelegramOcrIndexes(samples, maxOcr = 32)
+            val semanticIndexes = chooseSemanticIndexes(samples, emptyList(), maxItems = 32)
             val analysisIndexes = (ocrIndexes + semanticIndexes).distinct().sorted()
 
             var analysisDone = 0
@@ -197,11 +197,11 @@ object SmartChaptersAnalyzer {
                 coroutineContext.ensureActive()
                 val sample = samples.getOrNull(idx) ?: continue
                 val bitmap = sample.bitmap ?: continue
-                if (idx in ocrIndexes) sample.ocr = recognize(bitmap)
+                sample.ocr = recognize(bitmap)
                 sample.labels = recognizeLabels(bitmap)
                 analysisDone++
                 val p = 52 + ((analysisDone * 34) / max(1, analysisIndexes.size))
-                onProgress(p.coerceAtMost(86), "Определяем просмотр, игру и другие сцены…")
+                onProgress(p.coerceAtMost(86), "Ищем только видео и игры…")
             }
 
             onProgress(90, "Собираем понятные таймкоды…")
@@ -303,7 +303,7 @@ object SmartChaptersAnalyzer {
         durationSeconds: Int
     ): MutableList<FrameSample> {
         val wanted = linkedSetOf<Int>()
-        val target = 72
+        val target = 180
         val step = max(1, ceil(sb.count / target.toDouble()).toInt())
         var i = 0
         while (i < sb.count) {
@@ -322,7 +322,7 @@ object SmartChaptersAnalyzer {
         val samples = mutableListOf<FrameSample>()
         var previousHash: Long? = null
 
-        for (idx in wanted.sorted().take(96)) {
+        for (idx in wanted.sorted().take(220)) {
             val frame = storyboardFrame(sb, idx, stripCache) ?: continue
             val time = (idx * sb.intervalSec).toInt().coerceIn(0, durationSeconds.coerceAtLeast(0))
             val hash = differenceHash(frame)
@@ -512,178 +512,312 @@ object SmartChaptersAnalyzer {
         }
     }
 
+    private data class TargetDetection(
+        val mode: SceneMode,
+        val title: String?,
+        val confidence: Int
+    )
+
+    private data class ActiveTarget(
+        var mode: SceneMode,
+        var start: Int,
+        var lastSeen: Int,
+        var confidenceTotal: Int = 0,
+        var observations: Int = 0,
+        val titleVotes: MutableList<Pair<String, Int>> = mutableListOf()
+    )
+
     private fun sceneMode(sample: FrameSample, markerRaw: String = ""): SceneMode {
+        return detectTarget(sample, markerRaw)?.mode ?: SceneMode.OTHER
+    }
+
+    private fun detectTarget(sample: FrameSample, markerRaw: String = ""): TargetDetection? {
         val labels = sample.labels.map { it.first }
         val labelText = labels.joinToString(" ")
         val ocr = sample.ocr
-        val marker = markerRaw.lowercase()
+        val marker = markerRaw.trim()
+        val markerLower = marker.lowercase()
 
-        val watchingByText = ocr?.youtubeLike == true ||
-            listOf("youtube", "youtu.be", "просмотров", "смотреть позже", "comments", "подписаться")
-                .any { it in (ocr?.fullText?.lowercase().orEmpty()) }
+        val youtubeText = ocr?.youtubeLike == true ||
+            listOf(
+                "youtube", "youtu.be", "просмотров", "смотреть позже",
+                "comments", "подписаться", "ютуб"
+            ).any { it in ocr?.fullText?.lowercase().orEmpty() }
 
-        val watchingByLabels = listOf(
-            "television", "screen", "display device", "multimedia", "media",
-            "movie", "film", "video", "computer monitor"
-        ).any { it in labelText }
+        val videoLabels = listOf(
+            "movie", "film", "video", "television", "multimedia", "media"
+        ).count { it in labelText }
 
-        val gameByLabels = listOf(
-            "video game", "pc game", "gaming", "game", "computer game"
-        ).any { it in labelText }
+        val gameLabels = listOf(
+            "video game", "pc game", "gaming", "computer game", "game"
+        ).count { it in labelText }
 
-        val personByLabels = listOf(
-            "person", "face", "human", "conversation", "speech"
-        ).any { it in labelText }
+        val markerIsGame = marker.isNotBlank() &&
+            !isChatCategory(marker) &&
+            !markerLower.contains("music") &&
+            !markerLower.contains("special events") &&
+            !markerLower.contains("irl") &&
+            !markerLower.contains("talk")
+
+        val title = bestWatchTitle(sample, SceneMode.WATCHING)
 
         return when {
-            watchingByText -> SceneMode.WATCHING
-            gameByLabels -> SceneMode.GAME
-            watchingByLabels && !gameByLabels -> SceneMode.WATCHING
-            marker.isNotBlank() && !isChatCategory(marker) &&
-                !marker.contains("music") && !marker.contains("special events") -> SceneMode.GAME
-            isChatCategory(marker) && personByLabels -> SceneMode.TALKING
-            isChatCategory(marker) -> SceneMode.TALKING
-            personByLabels -> SceneMode.TALKING
-            else -> SceneMode.OTHER
-        }
-    }
+            youtubeText -> TargetDetection(
+                SceneMode.WATCHING,
+                title,
+                (ocr?.confidence ?: 76).coerceAtLeast(78)
+            )
 
-    private fun bestWatchTitle(sample: FrameSample, mode: SceneMode): String? {
-        val ocr = sample.ocr ?: return null
-        val candidate = ocr.titleCandidate?.takeIf { it.length in 8..100 } ?: return null
-        return when {
-            ocr.youtubeLike -> candidate
-            mode == SceneMode.WATCHING && ocr.confidence >= 58 -> candidate
+            markerIsGame -> TargetDetection(
+                SceneMode.GAME,
+                marker,
+                94
+            )
+
+            gameLabels >= 1 -> TargetDetection(
+                SceneMode.GAME,
+                null,
+                76
+            )
+
+            isChatCategory(marker) && videoLabels >= 2 -> TargetDetection(
+                SceneMode.WATCHING,
+                title,
+                if (title != null) 78 else 68
+            )
+
             else -> null
         }
     }
 
-    private fun modeTitle(mode: SceneMode): String = when (mode) {
-        SceneMode.WATCHING -> "Смотрит видео"
-        SceneMode.GAME -> "Игра"
-        SceneMode.TALKING -> "Общение / реакция"
-        SceneMode.OTHER -> "Новый эпизод"
+    private fun bestWatchTitle(sample: FrameSample, mode: SceneMode): String? {
+        if (mode != SceneMode.WATCHING) return null
+        val ocr = sample.ocr ?: return null
+        val candidate = ocr.titleCandidate?.takeIf { isStrongTitle(it) } ?: return null
+        return when {
+            ocr.youtubeLike -> candidate
+            ocr.confidence >= 72 -> candidate
+            else -> null
+        }
     }
 
-    private fun modeDetail(mode: SceneMode): String = when (mode) {
-        SceneMode.WATCHING -> "Определено по кадру и интерфейсу видео"
-        SceneMode.GAME -> "Определено по изображению / категории"
-        SceneMode.TALKING -> "Общение или реакция"
-        SceneMode.OTHER -> "Крупная смена происходящего"
-    }
-
-    private fun cleanOcrLine(raw: String): String =
-        raw.replace(Regex("\\s+"), " ")
-            .replace(Regex("[\\u0000-\\u001F]"), "")
-            .trim()
-            .trim('|', '•', '-', '—', ':', ';')
-
-    private fun isUsefulLine(text: String): Boolean {
-        if (text.length !in 7..100) return false
-        if (text.count { it.isLetter() } < 5) return false
-        if (text.count { it.isDigit() } > text.length * 0.45) return false
-
+    private fun isStrongTitle(value: String): Boolean {
+        val text = value.trim()
+        if (text.length !in 10..92) return false
+        if (text.count { it.isLetter() } < 7) return false
         val lower = text.lowercase()
-        val banned = listOf(
-            "twitch", "t2x2", "t.me/", "telegram", "подписаться", "отслеживать",
-            "подарить подпис", "контент включает", "rub", "₽", "донат", "чат",
-            "зрителей", "онлайн", "авто", "качество", "настройки"
+        val noise = listOf(
+            "подписаться", "отслеживать", "подарить подпис", "контент включает",
+            "просмотров", "комментар", "youtube", "twitch", "t2x2", "t.me/",
+            "авто", "качество", "чат", "донат"
         )
-        if (banned.any { it in lower }) return false
-        if ("http://" in lower || "https://" in lower || "www." in lower) return false
+        return noise.none { it in lower }
+    }
+
+    private fun targetCompatible(
+        active: ActiveTarget,
+        detection: TargetDetection
+    ): Boolean {
+        if (active.mode != detection.mode) return false
+        if (active.mode == SceneMode.GAME) {
+            val current = bestActiveTitle(active)
+            val next = detection.title
+            if (current != null && next != null) {
+                return similarity(current, next) >= 0.58
+            }
+            return true
+        }
+
+        val current = bestActiveTitle(active)
+        val next = detection.title
+        if (current != null && next != null && similarity(current, next) < 0.48) {
+            return false
+        }
         return true
     }
+
+    private fun bestActiveTitle(active: ActiveTarget): String? {
+        if (active.titleVotes.isEmpty()) return null
+        val candidates = active.titleVotes
+            .filter { isStrongTitle(it.first) || active.mode == SceneMode.GAME }
+        if (candidates.isEmpty()) return null
+
+        var best: Pair<String, Int>? = null
+        for ((title, score) in candidates) {
+            var clusterScore = score
+            for ((other, otherScore) in candidates) {
+                if (other !== title && similarity(title, other) >= 0.58) {
+                    clusterScore += otherScore / 2
+                }
+            }
+            if (best == null || clusterScore > best!!.second) {
+                best = title to clusterScore
+            }
+        }
+        return best?.first
+    }
+
+    private fun addObservation(active: ActiveTarget, detection: TargetDetection, time: Int) {
+        active.lastSeen = time
+        active.confidenceTotal += detection.confidence
+        active.observations += 1
+        detection.title?.trim()?.takeIf { it.isNotBlank() }?.let {
+            active.titleVotes += it to detection.confidence
+        }
+    }
+
+    private fun finalizeTarget(
+        active: ActiveTarget,
+        endSeconds: Int,
+        out: MutableList<SmartChapter>
+    ) {
+        val safeEnd = endSeconds.coerceAtLeast(active.start)
+        val duration = safeEnd - active.start
+        val averageConfidence = if (active.observations > 0) {
+            active.confidenceTotal / active.observations
+        } else 0
+
+        // Ignore tiny / one-frame guesses. These were the empty junk chapters in V2.
+        val minimumDuration = if (active.mode == SceneMode.GAME) 55 else 45
+        val minimumObservations = if (duration >= 240) 1 else 2
+        if (duration < minimumDuration || active.observations < minimumObservations) return
+        if (averageConfidence < 66) return
+
+        val rawTitle = bestActiveTitle(active)
+        val title = when (active.mode) {
+            SceneMode.WATCHING -> rawTitle?.let { "Смотрит: " + it } ?: "Смотрит видео"
+            SceneMode.GAME -> rawTitle?.let { "Играет: " + it } ?: "Играет"
+            else -> return
+        }
+
+        val detail = when (active.mode) {
+            SceneMode.WATCHING -> if (rawTitle != null) {
+                "Название найдено на кадрах"
+            } else {
+                "Видео найдено уверенно • название на кадрах не видно"
+            }
+            SceneMode.GAME -> if (rawTitle != null) {
+                "Игра определена по Twitch / кадрам"
+            } else {
+                "Игровой фрагмент"
+            }
+            else -> return
+        }
+
+        out += SmartChapter(
+            startSeconds = active.start.coerceAtLeast(0),
+            endSeconds = safeEnd,
+            title = title,
+            detail = detail,
+            confidence = averageConfidence.coerceIn(0, 100)
+        )
+    }
+
+    private fun buildStrictSegments(
+        samples: List<FrameSample>,
+        durationSeconds: Int,
+        markerAt: (Int) -> String
+    ): List<SmartChapter> {
+        if (samples.isEmpty() || durationSeconds <= 0) return emptyList()
+
+        val sorted = samples.sortedBy { it.timeSec }
+        val out = mutableListOf<SmartChapter>()
+        var active: ActiveTarget? = null
+
+        for (index in sorted.indices) {
+            val sample = sorted[index]
+            val detection = detectTarget(sample, markerAt(sample.timeSec))
+            val previousTime = sorted.getOrNull(index - 1)?.timeSec ?: 0
+
+            if (detection == null) {
+                val current = active
+                if (current != null) {
+                    val end = sample.timeSec
+                    finalizeTarget(current, end, out)
+                    active = null
+                }
+                continue
+            }
+
+            val current = active
+            if (current == null) {
+                val start = if (index == 0) 0 else previousTime
+                active = ActiveTarget(
+                    mode = detection.mode,
+                    start = start,
+                    lastSeen = sample.timeSec
+                ).also { addObservation(it, detection, sample.timeSec) }
+                continue
+            }
+
+            if (!targetCompatible(current, detection)) {
+                val boundary = sample.timeSec
+                finalizeTarget(current, boundary, out)
+                active = ActiveTarget(
+                    mode = detection.mode,
+                    start = boundary,
+                    lastSeen = sample.timeSec
+                ).also { addObservation(it, detection, sample.timeSec) }
+            } else {
+                addObservation(current, detection, sample.timeSec)
+            }
+        }
+
+        active?.let { finalizeTarget(it, durationSeconds, out) }
+
+        return mergeAdjacentTargets(out)
+            .filter {
+                it.title.startsWith("Смотрит") || it.title.startsWith("Игра")
+            }
+            .take(20)
+    }
+
+    private fun mergeAdjacentTargets(input: List<SmartChapter>): List<SmartChapter> {
+        if (input.isEmpty()) return emptyList()
+        val out = mutableListOf<SmartChapter>()
+
+        for (chapter in input.sortedBy { it.startSeconds }) {
+            val previous = out.lastOrNull()
+            if (previous == null) {
+                out += chapter
+                continue
+            }
+
+            val sameKind =
+                (previous.title.startsWith("Смотрит") && chapter.title.startsWith("Смотрит")) ||
+                (previous.title.startsWith("Игра") && chapter.title.startsWith("Игра"))
+
+            val sameNamedThing = similarity(previous.title, chapter.title) >= 0.58
+            val gap = chapter.startSeconds - previous.endSeconds
+
+            if (sameKind && sameNamedThing && gap in 0..45) {
+                out[out.lastIndex] = previous.copy(
+                    endSeconds = chapter.endSeconds,
+                    confidence = max(previous.confidence, chapter.confidence)
+                )
+            } else {
+                out += chapter
+            }
+        }
+
+        return out
+    }
+
+    private fun midpoint(a: Int, b: Int): Int =
+        if (b <= a) a else a + ((b - a) / 2)
 
     private fun buildTwitchChapters(
         markers: List<Marker>,
         samples: List<FrameSample>,
         durationSeconds: Int
     ): List<SmartChapter> {
-        val boundaries = mutableListOf<Boundary>()
-
-        // Twitch chapters are hints, not the final segmentation.
-        for ((index, marker) in markers.withIndex()) {
-            val nearest = samples.minByOrNull { kotlin.math.abs(it.timeSec - marker.start) }
-            val mode = nearest?.let { sceneMode(it, marker.raw) }
-            val title = nearest?.let { bestWatchTitle(it, mode ?: SceneMode.OTHER) }
-
-            val boundary = when {
-                !title.isNullOrBlank() -> Boundary(
-                    marker.start,
-                    "Смотрит: " + title,
-                    "Название распознано на экране",
-                    91
-                )
-                mode == SceneMode.GAME -> Boundary(
-                    marker.start,
-                    marker.raw.takeIf { it.isNotBlank() }?.let { "Играет: " + it } ?: "Игра",
-                    markerDetail(marker.raw),
-                    88
-                )
-                else -> Boundary(
-                    marker.start,
-                    markerTitle(marker.raw, index, marker.start),
-                    markerDetail(marker.raw),
-                    74
-                )
+        return buildStrictSegments(
+            samples = samples,
+            durationSeconds = durationSeconds,
+            markerAt = { time ->
+                markers.lastOrNull { it.start <= time }?.raw.orEmpty()
             }
-            boundaries += boundary
-        }
-
-        var lastMode: SceneMode? = null
-        var lastTitle = ""
-        var lastBoundaryTime = -10_000
-
-        for (sample in samples) {
-            val marker = markers.lastOrNull { it.start <= sample.timeSec }
-            val mode = sceneMode(sample, marker?.raw.orEmpty())
-            val watchTitle = bestWatchTitle(sample, mode)
-            val normalizedTitle = watchTitle?.let(::normalizeForCompare).orEmpty()
-
-            val titleChanged = normalizedTitle.isNotBlank() &&
-                (lastTitle.isBlank() || similarity(lastTitle, normalizedTitle) < 0.58)
-
-            val modeChanged = lastMode != null && mode != lastMode
-            val majorVisualChange = sample.diffFromPrevious >= 30
-
-            if (titleChanged && sample.timeSec - lastBoundaryTime >= 45) {
-                boundaries += Boundary(
-                    sample.timeSec,
-                    "Смотрит: " + watchTitle,
-                    "Новый ролик / экран распознан OCR",
-                    sample.ocr?.confidence?.coerceAtLeast(78) ?: 78
-                )
-                lastTitle = normalizedTitle
-                lastBoundaryTime = sample.timeSec
-            } else if (modeChanged && sample.timeSec - lastBoundaryTime >= 55) {
-                val title = if (mode == SceneMode.GAME && !marker?.raw.isNullOrBlank() && !isChatCategory(marker!!.raw)) {
-                    "Играет: " + marker.raw
-                } else {
-                    modeTitle(mode)
-                }
-                boundaries += Boundary(
-                    sample.timeSec,
-                    title,
-                    modeDetail(mode),
-                    76
-                )
-                lastBoundaryTime = sample.timeSec
-            } else if (majorVisualChange && sample.timeSec - lastBoundaryTime >= 150) {
-                boundaries += Boundary(
-                    sample.timeSec,
-                    modeTitle(mode),
-                    "Обнаружена крупная смена сцены",
-                    62
-                )
-                lastBoundaryTime = sample.timeSec
-            }
-
-            lastMode = mode
-            if (normalizedTitle.isNotBlank()) lastTitle = normalizedTitle
-        }
-
-        return finalizeBoundaries(boundaries, durationSeconds, "Начало стрима")
-            .take(32)
+        )
     }
 
     private fun buildTelegramChapters(
@@ -691,148 +825,73 @@ object SmartChaptersAnalyzer {
         durationSeconds: Int,
         videoTitle: String
     ): List<SmartChapter> {
-        val boundaries = mutableListOf<Boundary>()
-        boundaries += Boundary(0, "Начало видео", "Telegram • умный анализ", 82)
+        val strict = buildStrictSegments(
+            samples = samples,
+            durationSeconds = durationSeconds,
+            markerAt = { "" }
+        )
 
-        var lastMode: SceneMode? = null
-        var lastTitle = ""
-        var lastBoundaryTime = 0
-
-        for (sample in samples) {
-            if (sample.timeSec == 0) {
-                lastMode = sceneMode(sample)
-                continue
-            }
-
-            val mode = sceneMode(sample)
-            val watchTitle = bestWatchTitle(sample, mode)
-            val normalizedTitle = watchTitle?.let(::normalizeForCompare).orEmpty()
-
-            val titleChanged = normalizedTitle.isNotBlank() &&
-                (lastTitle.isBlank() || similarity(lastTitle, normalizedTitle) < 0.58)
-            val modeChanged = lastMode != null && mode != lastMode
-            val majorVisualChange = sample.diffFromPrevious >= 30
-
-            if (titleChanged && sample.timeSec - lastBoundaryTime >= 45) {
-                boundaries += Boundary(
-                    sample.timeSec,
-                    "Смотрит: " + watchTitle,
-                    "Название распознано локально на кадре",
-                    sample.ocr?.confidence?.coerceAtLeast(78) ?: 78
-                )
-                lastTitle = normalizedTitle
-                lastBoundaryTime = sample.timeSec
-            } else if (modeChanged && sample.timeSec - lastBoundaryTime >= 55) {
-                boundaries += Boundary(
-                    sample.timeSec,
-                    modeTitle(mode),
-                    modeDetail(mode),
-                    74
-                )
-                lastBoundaryTime = sample.timeSec
-            } else if (majorVisualChange && sample.timeSec - lastBoundaryTime >= 150) {
-                boundaries += Boundary(
-                    sample.timeSec,
-                    modeTitle(mode),
-                    "Крупная смена сцены",
-                    60
-                )
-                lastBoundaryTime = sample.timeSec
-            }
-
-            lastMode = mode
-            if (normalizedTitle.isNotBlank()) lastTitle = normalizedTitle
-        }
-
-        if (boundaries.size == 1 && videoTitle.isNotBlank() && !videoTitle.equals("Запись стрима", true)) {
-            boundaries[0] = Boundary(0, videoTitle.take(72), "Telegram • название видео", 72)
-        }
-
-        return finalizeBoundaries(boundaries, durationSeconds, "Начало видео")
-            .take(32)
-    }
-
-    private fun finalizeBoundaries(
-        input: List<Boundary>,
-        durationSeconds: Int,
-        fallbackTitle: String
-    ): List<SmartChapter> {
-        val sorted = input.sortedBy { it.time }
-        val merged = mutableListOf<Boundary>()
-
-        for (boundary in sorted) {
-            val time = boundary.time.coerceIn(0, durationSeconds.coerceAtLeast(0))
-            val b = boundary.copy(time = time)
-            val previous = merged.lastOrNull()
-
-            if (previous != null && time - previous.time < 35) {
-                if (b.confidence > previous.confidence) {
-                    merged[merged.lastIndex] = b.copy(time = previous.time)
-                }
-                continue
-            }
-
-            if (previous != null &&
-                normalizeForCompare(previous.title) == normalizeForCompare(b.title)
+        // Do not invent a generic "beginning" chapter anymore. Only actual video/game segments.
+        return strict.map { chapter ->
+            if (chapter.title == "Играет" &&
+                videoTitle.isNotBlank() &&
+                !videoTitle.equals("Запись стрима", true)
             ) {
-                continue
+                chapter.copy(
+                    title = "Играет",
+                    detail = chapter.detail
+                )
+            } else {
+                chapter
             }
-
-            merged += b
-        }
-
-        if (merged.isEmpty() || merged.first().time > 0) {
-            merged.add(0, Boundary(0, fallbackTitle, "Автоматический анализ", 60))
-        }
-
-        return merged.mapIndexed { index, b ->
-            val end = merged.getOrNull(index + 1)?.time ?: durationSeconds.coerceAtLeast(b.time)
-            SmartChapter(
-                startSeconds = b.time,
-                endSeconds = end.coerceAtLeast(b.time),
-                title = b.title,
-                detail = b.detail,
-                confidence = b.confidence
-            )
         }
     }
 
     private fun buildFromMarkers(markers: List<Marker>, durationSeconds: Int): List<SmartChapter> {
-        if (markers.isEmpty()) {
-            return listOf(SmartChapter(0, durationSeconds.coerceAtLeast(0), "Начало стрима", "Twitch", 60))
-        }
-        return markers.mapIndexed { index, marker ->
-            val end = markers.getOrNull(index + 1)?.start ?: durationSeconds.coerceAtLeast(marker.start)
-            SmartChapter(
-                marker.start,
-                end,
-                markerTitle(marker.raw, index, marker.start),
-                markerDetail(marker.raw),
-                82
+        val out = mutableListOf<SmartChapter>()
+        for (index in markers.indices) {
+            val marker = markers[index]
+            val lower = marker.raw.lowercase()
+            val isGame = marker.raw.isNotBlank() &&
+                !isChatCategory(marker.raw) &&
+                !lower.contains("music") &&
+                !lower.contains("special events") &&
+                !lower.contains("irl")
+            if (!isGame) continue
+
+            val end = markers.getOrNull(index + 1)?.start ?: durationSeconds
+            if (end - marker.start < 60) continue
+
+            out += SmartChapter(
+                startSeconds = marker.start,
+                endSeconds = end,
+                title = "Играет: " + marker.raw,
+                detail = "Игра определена по Twitch",
+                confidence = 90
             )
         }
+        return out.take(20)
     }
 
     private fun markerTitle(raw: String, index: Int, start: Int): String {
         val value = raw.trim()
-        val lower = value.lowercase()
-        if (index == 0 && start <= 30) return "Начало стрима"
-        return when {
-            isChatCategory(value) -> "Общение / реакции"
-            lower == "irl" || "irl" in lower -> "IRL / общение"
-            "music" in lower -> "Музыка / общение"
-            "special events" in lower -> "Событие / просмотр"
-            value.isBlank() -> "Фрагмент стрима"
-            else -> "Играет: " + value
+        if (value.isBlank()) return "Играет"
+        return if (index == 0 && start <= 30 && isChatCategory(value)) {
+            "Смотрит видео"
+        } else {
+            "Играет: " + value
         }
     }
 
     private fun markerDetail(raw: String): String =
-        raw.takeIf { it.isNotBlank() }?.let { "Категория Twitch: " + it } ?: "Раздел стрима"
+        raw.takeIf { it.isNotBlank() }?.let { "Twitch: " + it } ?: "Фрагмент"
 
     private fun isChatCategory(raw: String): Boolean {
         val lower = raw.lowercase()
-        return "just chatting" in lower || "общение" in lower || "talk" in lower
+        return "just chatting" in lower ||
+            "общение" in lower ||
+            "talk" in lower ||
+            "special events" in lower
     }
 
     private fun sampleTimes(durationSeconds: Int, maxSamples: Int): List<Int> {
@@ -955,7 +1014,7 @@ object SmartChaptersAnalyzer {
 
     fun encode(chapters: List<SmartChapter>): String {
         val root = JSONObject()
-        root.put("version", 2)
+        root.put("version", 3)
         val array = JSONArray()
         chapters.forEach { chapter ->
             array.put(JSONObject().apply {
@@ -972,7 +1031,7 @@ object SmartChaptersAnalyzer {
 
     fun decode(json: String): List<SmartChapter>? = runCatching {
         val root = JSONObject(json)
-        if (root.optInt("version", 0) != 2) return@runCatching null
+        if (root.optInt("version", 0) != 3) return@runCatching null
         val array = root.getJSONArray("chapters")
         val chapters = mutableListOf<SmartChapter>()
         for (i in 0 until array.length()) {

@@ -769,7 +769,7 @@ class PlayerScreen(
         }
 
         val badge = TextView(activity).apply {
-            text = "V2"
+            text = "V3"
             textSize = 9.5f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
@@ -783,9 +783,9 @@ class PlayerScreen(
 
         val subtitle = TextView(activity).apply {
             text = if (item.source == "twitch") {
-                "Twitch-превью + главы + OCR • без скачивания всего стрима"
+                "Только видео и игры • начало → конец • без пустых глав"
             } else {
-                "Редкие кадры + локальный OCR • экономно для батареи"
+                "Только видео и игры • локальный анализ • начало → конец"
             }
             textSize = 12f
             setTextColor(palette.muted)
@@ -836,10 +836,13 @@ class PlayerScreen(
         statusRow.addView(action, LinearLayout.LayoutParams(dp(122), dp(42)).apply { marginStart = dp(10) })
 
         val resultsScroll = ScrollView(activity).apply {
-            isVerticalScrollBarEnabled = false
+            isVerticalScrollBarEnabled = true
+            isScrollbarFadingEnabled = false
             isFillViewport = false
-            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            isNestedScrollingEnabled = true
+            overScrollMode = View.OVER_SCROLL_ALWAYS
             clipToPadding = false
+            setPadding(0, 0, dp(2), dp(10))
             visibility = View.GONE
             addView(
                 results,
@@ -858,8 +861,8 @@ class PlayerScreen(
             resultsScroll,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(330)
-            ).apply { topMargin = dp(2) }
+                dp(184)
+            ).apply { topMargin = dp(6) }
         )
         outer.addView(card)
 
@@ -903,18 +906,26 @@ class PlayerScreen(
 
         fun renderChapters(chapters: List<SmartChapter>, elapsedMs: Long, cached: Boolean) {
             results.removeAllViews()
-            resultsScroll.visibility = View.VISIBLE
             progressTrack.visibility = View.GONE
-            status.text = if (cached) {
-                "Готово • " + chapters.size + " глав • сохранено"
-            } else {
-                val seconds = elapsedMs / 1000.0
-                "Готово • " + chapters.size + " глав • %.1f с".format(seconds)
-            }
-            status.setTextColor(palette.accent)
             action.text = "Обновить"
             action.isEnabled = true
             action.alpha = 1f
+
+            if (chapters.isEmpty()) {
+                resultsScroll.visibility = View.GONE
+                status.text = "Не найдено уверенных фрагментов «видео» или «игра»"
+                status.setTextColor(palette.muted)
+                return
+            }
+
+            resultsScroll.visibility = View.VISIBLE
+            status.text = if (cached) {
+                "Готово • " + chapters.size + " фрагм. • сохранено"
+            } else {
+                val seconds = elapsedMs / 1000.0
+                "Готово • " + chapters.size + " фрагм. • %.1f с".format(seconds)
+            }
+            status.setTextColor(palette.accent)
 
             chapters.forEachIndexed { index, chapter ->
                 val row = LinearLayout(activity).apply {
@@ -927,13 +938,15 @@ class PlayerScreen(
                 }
 
                 val time = TextView(activity).apply {
-                    text = formatMs(chapter.startSeconds * 1000L)
-                    textSize = 11.5f
+                    text = formatMs(chapter.startSeconds * 1000L) + "\n→ " +
+                        formatMs(chapter.endSeconds * 1000L)
+                    textSize = 10.5f
                     gravity = Gravity.CENTER
                     setTypeface(typeface, Typeface.BOLD)
                     setTextColor(Color.WHITE)
                     setPadding(dp(8), dp(5), dp(8), dp(5))
                     background = rounded("#8B5CF6", 10)
+                    minWidth = dp(92)
                 }
 
                 val textBox = LinearLayout(activity).apply {
@@ -952,7 +965,7 @@ class PlayerScreen(
 
                 textBox.addView(TextView(activity).apply {
                     val duration = (chapter.endSeconds - chapter.startSeconds).coerceAtLeast(0)
-                    text = chapter.detail + " • " + formatMs(duration * 1000L)
+                    text = chapter.detail + " • длительность " + formatMs(duration * 1000L)
                     textSize = 11f
                     setTextColor(palette.muted)
                     setPadding(0, dp(3), 0, 0)
