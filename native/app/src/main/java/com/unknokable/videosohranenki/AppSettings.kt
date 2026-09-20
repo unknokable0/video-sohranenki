@@ -21,6 +21,10 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean("auto_rotate_fullscreen", true)
         set(value) = prefs.edit().putBoolean("auto_rotate_fullscreen", value).apply()
 
+    var playbackSpeed: Float
+        get() = prefs.getFloat("playback_speed", 1f).coerceIn(0.25f, 2f)
+        set(value) = prefs.edit().putFloat("playback_speed", value.coerceIn(0.25f, 2f)).apply()
+
     var authPhone: String?
         get() = prefs.getString("auth_phone", null)
         set(value) = prefs.edit().apply {
