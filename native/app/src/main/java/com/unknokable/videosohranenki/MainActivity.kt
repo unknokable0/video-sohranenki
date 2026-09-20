@@ -2899,7 +2899,7 @@ class MainActivity : AppCompatActivity() {
                 val user = client.send(TdApi.GetMe())
                 val token = settings.twitchAccessToken
 
-                val telegramAvatar = kotlinx.coroutines.async(Dispatchers.IO) {
+                val telegramAvatar = async(Dispatchers.IO) {
                     val photoId = user.profilePhoto?.small?.id ?: return@async null
                     runCatching {
                         val file = client.send(TdApi.DownloadFile(photoId, 2, 0, 0, true))
@@ -3136,7 +3136,7 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
-            background = rounded(
+            background = roundedBg(
                 if (connected) Color.parseColor("#D9435F") else Color.parseColor("#9147FF"),
                 15
             )
