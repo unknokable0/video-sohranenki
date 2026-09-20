@@ -142,6 +142,9 @@ class SettingsScreen(
         )
 
         val scroll = ScrollView(activity).apply {
+            isVerticalScrollBarEnabled = false
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
             isFillViewport = true
             clipToPadding = false
             setBackgroundColor(Color.TRANSPARENT)
