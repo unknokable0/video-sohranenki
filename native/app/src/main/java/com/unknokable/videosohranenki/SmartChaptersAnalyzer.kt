@@ -9,6 +9,8 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.google.mlkit.vision.label.ImageLabeling
+import com.google.mlkit.vision.label.defaults.ImageLabelerOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -45,6 +47,14 @@ object SmartChaptersAnalyzer {
         TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     }
 
+    private val labeler by lazy {
+        ImageLabeling.getClient(
+            ImageLabelerOptions.Builder()
+                .setConfidenceThreshold(0.55f)
+                .build()
+        )
+    }
+
     private const val TWITCH_QUERY =
         "query(\$id: ID!) { video(id: \$id) { id seekPreviewsURL moments(first: 100, momentRequestType: VIDEO_CHAPTER_MARKERS) { edges { node { positionMilliseconds description details { ... on GameChangeMomentDetails { game { displayName } } } } } } } }"
 
@@ -65,8 +75,16 @@ object SmartChaptersAnalyzer {
         val hash: Long,
         val bitmap: Bitmap? = null,
         val diffFromPrevious: Int = 0,
-        var ocr: OcrSnapshot? = null
+        var ocr: OcrSnapshot? = null,
+        var labels: List<Pair<String, Float>> = emptyList()
     )
+
+    private enum class SceneMode {
+        WATCHING,
+        GAME,
+        TALKING,
+        OTHER
+    }
     private data class OcrSnapshot(
         val fullText: String,
         val titleCandidate: String?,
@@ -103,17 +121,20 @@ object SmartChaptersAnalyzer {
         coroutineContext.ensureActive()
 
         onProgress(45, "Ищем крупные смены сцены…")
-        val ocrIndexes = chooseOcrIndexes(samples, baseMarkers, maxOcr = 16)
+        val ocrIndexes = chooseOcrIndexes(samples, baseMarkers, maxOcr = 22)
+        val semanticIndexes = chooseSemanticIndexes(samples, baseMarkers, maxItems = 26)
+        val analysisIndexes = (ocrIndexes + semanticIndexes).distinct().sorted()
 
-        var ocrDone = 0
-        for (idx in ocrIndexes) {
+        var analysisDone = 0
+        for (idx in analysisIndexes) {
             coroutineContext.ensureActive()
             val sample = samples.getOrNull(idx) ?: continue
             val bitmap = sample.bitmap ?: continue
-            sample.ocr = recognize(bitmap)
-            ocrDone++
-            val p = 48 + ((ocrDone * 38) / max(1, ocrIndexes.size))
-            onProgress(p.coerceAtMost(86), "Читаем текст на ключевых кадрах…")
+            if (idx in ocrIndexes) sample.ocr = recognize(bitmap)
+            sample.labels = recognizeLabels(bitmap)
+            analysisDone++
+            val p = 48 + ((analysisDone * 38) / max(1, analysisIndexes.size))
+            onProgress(p.coerceAtMost(86), "Понимаем, что происходит на экране…")
         }
 
         onProgress(90, "Объединяем найденные фрагменты…")
@@ -121,7 +142,7 @@ object SmartChaptersAnalyzer {
         samples.forEach { it.bitmap?.takeIf { b -> !b.isRecycled }?.recycle() }
 
         onProgress(100, "Готово")
-        SmartAnalysisResult(chapters, samples.size, ocrDone > 0)
+        SmartAnalysisResult(chapters, samples.size, ocrIndexes.isNotEmpty())
     }
 
     suspend fun analyzeTelegram(
@@ -151,7 +172,7 @@ object SmartChaptersAnalyzer {
                 retriever.setDataSource(mediaUrl, emptyMap())
             }
 
-            val times = sampleTimes(durationSeconds, maxSamples = 30)
+            val times = sampleTimes(durationSeconds, maxSamples = 42)
             val samples = ArrayList<FrameSample>(times.size)
 
             for ((index, sec) in times.withIndex()) {
@@ -167,16 +188,20 @@ object SmartChaptersAnalyzer {
                 onProgress(p.coerceAtMost(50), "Ищем крупные смены в видео…")
             }
 
-            val ocrIndexes = chooseTelegramOcrIndexes(samples, maxOcr = 14)
-            var ocrDone = 0
-            for (idx in ocrIndexes) {
+            val ocrIndexes = chooseTelegramOcrIndexes(samples, maxOcr = 20)
+            val semanticIndexes = chooseSemanticIndexes(samples, emptyList(), maxItems = 24)
+            val analysisIndexes = (ocrIndexes + semanticIndexes).distinct().sorted()
+
+            var analysisDone = 0
+            for (idx in analysisIndexes) {
                 coroutineContext.ensureActive()
                 val sample = samples.getOrNull(idx) ?: continue
                 val bitmap = sample.bitmap ?: continue
-                sample.ocr = recognize(bitmap)
-                ocrDone++
-                val p = 52 + ((ocrDone * 34) / max(1, ocrIndexes.size))
-                onProgress(p.coerceAtMost(86), "Распознаём названия на экране…")
+                if (idx in ocrIndexes) sample.ocr = recognize(bitmap)
+                sample.labels = recognizeLabels(bitmap)
+                analysisDone++
+                val p = 52 + ((analysisDone * 34) / max(1, analysisIndexes.size))
+                onProgress(p.coerceAtMost(86), "Определяем просмотр, игру и другие сцены…")
             }
 
             onProgress(90, "Собираем понятные таймкоды…")
@@ -184,7 +209,7 @@ object SmartChaptersAnalyzer {
             samples.forEach { it.bitmap?.takeIf { b -> !b.isRecycled }?.recycle() }
 
             onProgress(100, "Готово")
-            SmartAnalysisResult(chapters, samples.size, ocrDone > 0)
+            SmartAnalysisResult(chapters, samples.size, ocrIndexes.isNotEmpty())
         } finally {
             runCatching { retriever.release() }
             runCatching { dataSource?.close() }
@@ -278,7 +303,7 @@ object SmartChaptersAnalyzer {
         durationSeconds: Int
     ): MutableList<FrameSample> {
         val wanted = linkedSetOf<Int>()
-        val target = 40
+        val target = 72
         val step = max(1, ceil(sb.count / target.toDouble()).toInt())
         var i = 0
         while (i < sb.count) {
@@ -297,7 +322,7 @@ object SmartChaptersAnalyzer {
         val samples = mutableListOf<FrameSample>()
         var previousHash: Long? = null
 
-        for (idx in wanted.sorted().take(52)) {
+        for (idx in wanted.sorted().take(96)) {
             val frame = storyboardFrame(sb, idx, stripCache) ?: continue
             val time = (idx * sb.intervalSec).toInt().coerceIn(0, durationSeconds.coerceAtLeast(0))
             val hash = differenceHash(frame)
@@ -359,6 +384,44 @@ object SmartChaptersAnalyzer {
         return scores.entries
             .sortedWith(compareByDescending<Map.Entry<Int, Int>> { it.value }.thenBy { it.key })
             .take(maxOcr)
+            .map { it.key }
+            .sorted()
+    }
+
+    private fun chooseSemanticIndexes(
+        samples: List<FrameSample>,
+        markers: List<Marker>,
+        maxItems: Int
+    ): List<Int> {
+        if (samples.isEmpty()) return emptyList()
+        val scores = HashMap<Int, Int>()
+        scores[0] = 100
+        if (samples.size > 1) scores[samples.lastIndex] = 58
+
+        for (i in 1 until samples.size) {
+            val diff = samples[i].diffFromPrevious
+            scores[i] = max(scores[i] ?: 0, 20 + diff)
+            if (diff >= 24 && i + 1 < samples.size) {
+                scores[i + 1] = max(scores[i + 1] ?: 0, 38 + diff / 2)
+            }
+        }
+
+        for (marker in markers) {
+            val idx = samples.indices.minByOrNull { kotlin.math.abs(samples[it].timeSec - marker.start) } ?: continue
+            scores[idx] = max(scores[idx] ?: 0, 92)
+        }
+
+        // Keep a few evenly spread samples even when the screen is visually stable.
+        val stride = max(1, samples.size / 8)
+        var i = stride
+        while (i < samples.size) {
+            scores[i] = max(scores[i] ?: 0, 48)
+            i += stride
+        }
+
+        return scores.entries
+            .sortedWith(compareByDescending<Map.Entry<Int, Int>> { it.value }.thenBy { it.key })
+            .take(maxItems)
             .map { it.key }
             .sorted()
     }
@@ -429,6 +492,86 @@ object SmartChaptersAnalyzer {
         return OcrSnapshot(full, best?.text, youtubeLike, confidence)
     }
 
+    private suspend fun recognizeLabels(bitmap: Bitmap): List<Pair<String, Float>> {
+        return suspendCancellableCoroutine { continuation ->
+            labeler.process(InputImage.fromBitmap(bitmap, 0))
+                .addOnSuccessListener { labels ->
+                    if (continuation.isActive) {
+                        continuation.resume(
+                            labels
+                                .filter { it.confidence >= 0.55f }
+                                .sortedByDescending { it.confidence }
+                                .take(8)
+                                .map { it.text.lowercase() to it.confidence }
+                        )
+                    }
+                }
+                .addOnFailureListener {
+                    if (continuation.isActive) continuation.resume(emptyList())
+                }
+        }
+    }
+
+    private fun sceneMode(sample: FrameSample, markerRaw: String = ""): SceneMode {
+        val labels = sample.labels.map { it.first }
+        val labelText = labels.joinToString(" ")
+        val ocr = sample.ocr
+        val marker = markerRaw.lowercase()
+
+        val watchingByText = ocr?.youtubeLike == true ||
+            listOf("youtube", "youtu.be", "просмотров", "смотреть позже", "comments", "подписаться")
+                .any { it in (ocr?.fullText?.lowercase().orEmpty()) }
+
+        val watchingByLabels = listOf(
+            "television", "screen", "display device", "multimedia", "media",
+            "movie", "film", "video", "computer monitor"
+        ).any { it in labelText }
+
+        val gameByLabels = listOf(
+            "video game", "pc game", "gaming", "game", "computer game"
+        ).any { it in labelText }
+
+        val personByLabels = listOf(
+            "person", "face", "human", "conversation", "speech"
+        ).any { it in labelText }
+
+        return when {
+            watchingByText -> SceneMode.WATCHING
+            gameByLabels -> SceneMode.GAME
+            watchingByLabels && !gameByLabels -> SceneMode.WATCHING
+            marker.isNotBlank() && !isChatCategory(marker) &&
+                !marker.contains("music") && !marker.contains("special events") -> SceneMode.GAME
+            isChatCategory(marker) && personByLabels -> SceneMode.TALKING
+            isChatCategory(marker) -> SceneMode.TALKING
+            personByLabels -> SceneMode.TALKING
+            else -> SceneMode.OTHER
+        }
+    }
+
+    private fun bestWatchTitle(sample: FrameSample, mode: SceneMode): String? {
+        val ocr = sample.ocr ?: return null
+        val candidate = ocr.titleCandidate?.takeIf { it.length in 8..100 } ?: return null
+        return when {
+            ocr.youtubeLike -> candidate
+            mode == SceneMode.WATCHING && ocr.confidence >= 58 -> candidate
+            else -> null
+        }
+    }
+
+    private fun modeTitle(mode: SceneMode): String = when (mode) {
+        SceneMode.WATCHING -> "Смотрит видео"
+        SceneMode.GAME -> "Игра"
+        SceneMode.TALKING -> "Общение / реакция"
+        SceneMode.OTHER -> "Новый эпизод"
+    }
+
+    private fun modeDetail(mode: SceneMode): String = when (mode) {
+        SceneMode.WATCHING -> "Определено по кадру и интерфейсу видео"
+        SceneMode.GAME -> "Определено по изображению / категории"
+        SceneMode.TALKING -> "Общение или реакция"
+        SceneMode.OTHER -> "Крупная смена происходящего"
+    }
+
     private fun cleanOcrLine(raw: String): String =
         raw.replace(Regex("\\s+"), " ")
             .replace(Regex("[\\u0000-\\u001F]"), "")
@@ -458,43 +601,89 @@ object SmartChaptersAnalyzer {
     ): List<SmartChapter> {
         val boundaries = mutableListOf<Boundary>()
 
+        // Twitch chapters are hints, not the final segmentation.
         for ((index, marker) in markers.withIndex()) {
             val nearest = samples.minByOrNull { kotlin.math.abs(it.timeSec - marker.start) }
-            val ocr = nearest?.ocr
-            val baseline = markerTitle(marker.raw, index, marker.start)
-            val useOcr = ocr?.watchTitle?.takeIf { marker.raw.isBlank() || isChatCategory(marker.raw) }
+            val mode = nearest?.let { sceneMode(it, marker.raw) }
+            val title = nearest?.let { bestWatchTitle(it, mode ?: SceneMode.OTHER) }
 
-            boundaries += if (!useOcr.isNullOrBlank()) {
-                Boundary(marker.start, "Смотрит: " + useOcr, "Распознано по кадру • Twitch", ocr.confidence)
-            } else {
-                Boundary(marker.start, baseline, markerDetail(marker.raw), 84)
+            val boundary = when {
+                !title.isNullOrBlank() -> Boundary(
+                    marker.start,
+                    "Смотрит: " + title,
+                    "Название распознано на экране",
+                    91
+                )
+                mode == SceneMode.GAME -> Boundary(
+                    marker.start,
+                    marker.raw.takeIf { it.isNotBlank() }?.let { "Играет: " + it } ?: "Игра",
+                    markerDetail(marker.raw),
+                    88
+                )
+                else -> Boundary(
+                    marker.start,
+                    markerTitle(marker.raw, index, marker.start),
+                    markerDetail(marker.raw),
+                    74
+                )
             }
+            boundaries += boundary
         }
 
-        var lastWatch: String? = null
-        var lastWatchTime = -10_000
+        var lastMode: SceneMode? = null
+        var lastTitle = ""
+        var lastBoundaryTime = -10_000
+
         for (sample in samples) {
-            val title = sample.ocr?.watchTitle ?: continue
-            val normalized = normalizeForCompare(title)
-            if (normalized.isBlank()) continue
-            if (lastWatch == null || similarity(lastWatch, normalized) < 0.55) {
-                val insideMarker = markers.lastOrNull { it.start <= sample.timeSec }
-                if (insideMarker == null || isChatCategory(insideMarker.raw) || insideMarker.raw.isBlank()) {
-                    if (sample.timeSec - lastWatchTime >= 90) {
-                        boundaries += Boundary(
-                            sample.timeSec,
-                            "Смотрит: " + title,
-                            "Название найдено OCR по превью",
-                            sample.ocr?.confidence ?: 76
-                        )
-                        lastWatch = normalized
-                        lastWatchTime = sample.timeSec
-                    }
+            val marker = markers.lastOrNull { it.start <= sample.timeSec }
+            val mode = sceneMode(sample, marker?.raw.orEmpty())
+            val watchTitle = bestWatchTitle(sample, mode)
+            val normalizedTitle = watchTitle?.let(::normalizeForCompare).orEmpty()
+
+            val titleChanged = normalizedTitle.isNotBlank() &&
+                (lastTitle.isBlank() || similarity(lastTitle, normalizedTitle) < 0.58)
+
+            val modeChanged = lastMode != null && mode != lastMode
+            val majorVisualChange = sample.diffFromPrevious >= 30
+
+            if (titleChanged && sample.timeSec - lastBoundaryTime >= 45) {
+                boundaries += Boundary(
+                    sample.timeSec,
+                    "Смотрит: " + watchTitle,
+                    "Новый ролик / экран распознан OCR",
+                    sample.ocr?.confidence?.coerceAtLeast(78) ?: 78
+                )
+                lastTitle = normalizedTitle
+                lastBoundaryTime = sample.timeSec
+            } else if (modeChanged && sample.timeSec - lastBoundaryTime >= 55) {
+                val title = if (mode == SceneMode.GAME && !marker?.raw.isNullOrBlank() && !isChatCategory(marker!!.raw)) {
+                    "Играет: " + marker.raw
+                } else {
+                    modeTitle(mode)
                 }
+                boundaries += Boundary(
+                    sample.timeSec,
+                    title,
+                    modeDetail(mode),
+                    76
+                )
+                lastBoundaryTime = sample.timeSec
+            } else if (majorVisualChange && sample.timeSec - lastBoundaryTime >= 150) {
+                boundaries += Boundary(
+                    sample.timeSec,
+                    modeTitle(mode),
+                    "Обнаружена крупная смена сцены",
+                    62
+                )
+                lastBoundaryTime = sample.timeSec
             }
+
+            lastMode = mode
+            if (normalizedTitle.isNotBlank()) lastTitle = normalizedTitle
         }
 
         return finalizeBoundaries(boundaries, durationSeconds, "Начало стрима")
+            .take(32)
     }
 
     private fun buildTelegramChapters(
@@ -503,41 +692,56 @@ object SmartChaptersAnalyzer {
         videoTitle: String
     ): List<SmartChapter> {
         val boundaries = mutableListOf<Boundary>()
-        boundaries += Boundary(0, "Начало видео", "Telegram • быстрый анализ", 82)
+        boundaries += Boundary(0, "Начало видео", "Telegram • умный анализ", 82)
 
-        var lastMeaningful = ""
+        var lastMode: SceneMode? = null
+        var lastTitle = ""
         var lastBoundaryTime = 0
 
         for (sample in samples) {
-            if (sample.timeSec == 0) continue
-            val ocr = sample.ocr
-            val watch = ocr?.watchTitle
-            if (!watch.isNullOrBlank()) {
-                val normalized = normalizeForCompare(watch)
-                if (lastMeaningful.isBlank() || similarity(lastMeaningful, normalized) < 0.55) {
-                    if (sample.timeSec - lastBoundaryTime >= 75) {
-                        boundaries += Boundary(
-                            sample.timeSec,
-                            "Смотрит: " + watch,
-                            "Название распознано на экране",
-                            ocr.confidence
-                        )
-                        lastMeaningful = normalized
-                        lastBoundaryTime = sample.timeSec
-                        continue
-                    }
-                }
+            if (sample.timeSec == 0) {
+                lastMode = sceneMode(sample)
+                continue
             }
 
-            if (sample.diffFromPrevious >= 32 && sample.timeSec - lastBoundaryTime >= 300) {
+            val mode = sceneMode(sample)
+            val watchTitle = bestWatchTitle(sample, mode)
+            val normalizedTitle = watchTitle?.let(::normalizeForCompare).orEmpty()
+
+            val titleChanged = normalizedTitle.isNotBlank() &&
+                (lastTitle.isBlank() || similarity(lastTitle, normalizedTitle) < 0.58)
+            val modeChanged = lastMode != null && mode != lastMode
+            val majorVisualChange = sample.diffFromPrevious >= 30
+
+            if (titleChanged && sample.timeSec - lastBoundaryTime >= 45) {
                 boundaries += Boundary(
                     sample.timeSec,
-                    "Новый фрагмент",
-                    "Обнаружена крупная смена сцены",
-                    58
+                    "Смотрит: " + watchTitle,
+                    "Название распознано локально на кадре",
+                    sample.ocr?.confidence?.coerceAtLeast(78) ?: 78
+                )
+                lastTitle = normalizedTitle
+                lastBoundaryTime = sample.timeSec
+            } else if (modeChanged && sample.timeSec - lastBoundaryTime >= 55) {
+                boundaries += Boundary(
+                    sample.timeSec,
+                    modeTitle(mode),
+                    modeDetail(mode),
+                    74
+                )
+                lastBoundaryTime = sample.timeSec
+            } else if (majorVisualChange && sample.timeSec - lastBoundaryTime >= 150) {
+                boundaries += Boundary(
+                    sample.timeSec,
+                    modeTitle(mode),
+                    "Крупная смена сцены",
+                    60
                 )
                 lastBoundaryTime = sample.timeSec
             }
+
+            lastMode = mode
+            if (normalizedTitle.isNotBlank()) lastTitle = normalizedTitle
         }
 
         if (boundaries.size == 1 && videoTitle.isNotBlank() && !videoTitle.equals("Запись стрима", true)) {
@@ -545,6 +749,7 @@ object SmartChaptersAnalyzer {
         }
 
         return finalizeBoundaries(boundaries, durationSeconds, "Начало видео")
+            .take(32)
     }
 
     private fun finalizeBoundaries(

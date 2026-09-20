@@ -25,6 +25,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.SeekBar
+import android.widget.ScrollView
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import android.widget.Toast
 import coil.load
@@ -828,17 +829,38 @@ class PlayerScreen(
 
         val results = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, dp(10), 0, 0)
+            setPadding(0, dp(10), 0, dp(6))
         }
 
         statusRow.addView(status, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         statusRow.addView(action, LinearLayout.LayoutParams(dp(122), dp(42)).apply { marginStart = dp(10) })
 
+        val resultsScroll = ScrollView(activity).apply {
+            isVerticalScrollBarEnabled = false
+            isFillViewport = false
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            clipToPadding = false
+            visibility = View.GONE
+            addView(
+                results,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+
         card.addView(titleRow)
         card.addView(subtitle)
         card.addView(progressTrack, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(4)))
         card.addView(statusRow)
-        card.addView(results)
+        card.addView(
+            resultsScroll,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(330)
+            ).apply { topMargin = dp(2) }
+        )
         outer.addView(card)
 
         val twitchId = if (item.source == "twitch") twitchVideoId() else null
@@ -881,6 +903,7 @@ class PlayerScreen(
 
         fun renderChapters(chapters: List<SmartChapter>, elapsedMs: Long, cached: Boolean) {
             results.removeAllViews()
+            resultsScroll.visibility = View.VISIBLE
             progressTrack.visibility = View.GONE
             status.text = if (cached) {
                 "Готово • " + chapters.size + " глав • сохранено"
@@ -989,6 +1012,7 @@ class PlayerScreen(
             action.alpha = 0.78f
             status.setTextColor(palette.muted)
             results.removeAllViews()
+            resultsScroll.visibility = View.GONE
             setProgress(2, "Запускаем анализ…")
 
             val started = SystemClock.elapsedRealtime()
