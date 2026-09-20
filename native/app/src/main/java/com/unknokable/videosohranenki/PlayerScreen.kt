@@ -89,6 +89,7 @@ class PlayerScreen(
     private lateinit var actionsRow: LinearLayout
     private lateinit var socialActionsRow: LinearLayout
     private lateinit var nextVideosBlock: LinearLayout
+    private var smartChaptersBlock: LinearLayout? = null
     private lateinit var previewBubble: LinearLayout
     private lateinit var previewImage: ImageView
     private lateinit var previewTime: TextView
@@ -100,6 +101,7 @@ class PlayerScreen(
     private var gestureOverlay: PlayerGestureOverlay? = null
     private val autoHideControls = Runnable { if (player.isPlaying && !dragging) hideOverlay() }
     private val previewScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val smartChapterScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val previewMutex = Mutex()
     private var previewRetriever: MediaMetadataRetriever? = null
     private var previewDataSource: MediaDataSource? = null
@@ -257,6 +259,10 @@ class PlayerScreen(
         root.addView(details)
         socialActionsRow = buildSocialActions()
         root.addView(socialActionsRow)
+        if (item.source == "twitch") {
+            smartChaptersBlock = buildSmartChaptersBlock()
+            root.addView(smartChaptersBlock)
+        }
         nextVideosBlock = buildNextVideosBlock()
         root.addView(nextVideosBlock)
         miniBar = buildMiniPlayer()
@@ -739,6 +745,240 @@ class PlayerScreen(
         }
         return row
     }
+    private fun buildSmartChaptersBlock(): LinearLayout {
+        val outer = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(2), dp(12), dp(14))
+        }
+
+        val card = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            background = roundedInt(palette.surfaceAlt, 18)
+        }
+
+        val titleRow = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        val title = TextView(activity).apply {
+            text = "Умные главы"
+            textSize = 16f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(palette.text)
+        }
+
+        val beta = TextView(activity).apply {
+            text = "BETA"
+            textSize = 9.5f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+            background = rounded("#8B5CF6", 11)
+        }
+
+        titleRow.addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        titleRow.addView(beta)
+
+        val subtitle = TextView(activity).apply {
+            text = "Быстрый анализ структуры стрима без скачивания всего видео"
+            textSize = 12f
+            setTextColor(palette.muted)
+            setPadding(0, dp(5), 0, dp(10))
+        }
+
+        val statusRow = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        val status = TextView(activity).apply {
+            text = "Нажми «Анализировать» — обычно это занимает секунды"
+            textSize = 12f
+            setTextColor(palette.muted)
+        }
+
+        val action = TextView(activity).apply {
+            text = "Анализировать"
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            background = rounded("#8B5CF6", 14)
+            isClickable = true
+            isFocusable = true
+        }
+
+        val results = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(10), 0, 0)
+        }
+
+        statusRow.addView(status, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        statusRow.addView(action, LinearLayout.LayoutParams(dp(122), dp(42)).apply { marginStart = dp(10) })
+
+        card.addView(titleRow)
+        card.addView(subtitle)
+        card.addView(statusRow)
+        card.addView(results)
+        outer.addView(card)
+
+        val videoId = twitchVideoId()
+        if (videoId == null) {
+            status.text = "Не удалось определить Twitch Video ID"
+            action.isEnabled = false
+            action.alpha = 0.45f
+            return outer
+        }
+
+        fun renderChapters(chapters: List<SmartChapter>, elapsedMs: Long, cached: Boolean) {
+            results.removeAllViews()
+            status.text = if (cached) {
+                "Готово • ${chapters.size} глав • из кеша"
+            } else {
+                val seconds = elapsedMs / 1000.0
+                "Готово • ${chapters.size} глав • %.1f с".format(seconds)
+            }
+            status.setTextColor(palette.accent)
+            action.text = "Обновить"
+            action.isEnabled = true
+            action.alpha = 1f
+
+            chapters.forEachIndexed { index, chapter ->
+                val row = LinearLayout(activity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(10), dp(10), dp(10), dp(10))
+                    background = roundedInt(palette.surface, 14)
+                    isClickable = true
+                    isFocusable = true
+                }
+
+                val time = TextView(activity).apply {
+                    text = formatMs(chapter.startSeconds * 1000L)
+                    textSize = 11.5f
+                    gravity = Gravity.CENTER
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(Color.WHITE)
+                    setPadding(dp(8), dp(5), dp(8), dp(5))
+                    background = rounded("#8B5CF6", 10)
+                }
+
+                val textBox = LinearLayout(activity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(10), 0, dp(4), 0)
+                }
+
+                textBox.addView(TextView(activity).apply {
+                    text = chapter.title
+                    textSize = 13.5f
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(palette.text)
+                    maxLines = 2
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                })
+
+                textBox.addView(TextView(activity).apply {
+                    val duration = (chapter.endSeconds - chapter.startSeconds).coerceAtLeast(0)
+                    text = chapter.detail + " • " + formatMs(duration * 1000L)
+                    textSize = 11f
+                    setTextColor(palette.muted)
+                    setPadding(0, dp(3), 0, 0)
+                })
+
+                row.addView(time, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                row.addView(textBox, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                row.addView(TextView(activity).apply {
+                    text = "›"
+                    textSize = 24f
+                    gravity = Gravity.CENTER
+                    setTextColor(palette.muted)
+                }, LinearLayout.LayoutParams(dp(28), dp(42)))
+
+                row.setOnClickListener {
+                    pulse(row)
+                    val targetMs = chapter.startSeconds * 1000L
+                    player.seekTo(targetMs)
+                    player.play()
+                    currentTime.text = formatMs(targetMs)
+                    showOverlay()
+                }
+
+                results.addView(
+                    row,
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                        if (index > 0) topMargin = dp(7)
+                    }
+                )
+
+                if (settings.animations && !cached) {
+                    row.alpha = 0f
+                    row.translationY = dp(7).toFloat()
+                    row.postDelayed({
+                        row.animate()
+                            .alpha(1f)
+                            .translationY(0f)
+                            .setDuration(210L)
+                            .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                            .start()
+                    }, (index.coerceAtMost(8) * 35L))
+                }
+            }
+        }
+
+        settings.smartChaptersCache(videoId)?.let { cached ->
+            SmartChaptersAnalyzer.decode(cached)?.takeIf { it.isNotEmpty() }?.let {
+                renderChapters(it, 0L, true)
+            }
+        }
+
+        action.setOnClickListener {
+            pulse(action)
+            action.isEnabled = false
+            action.alpha = 0.72f
+            action.text = "Анализ…"
+            status.setTextColor(palette.muted)
+            status.text = "Проверяем структуру Twitch…"
+
+            val started = SystemClock.elapsedRealtime()
+            smartChapterScope.launch {
+                try {
+                    val chapters = SmartChaptersAnalyzer.analyze(
+                        videoId = videoId,
+                        durationSeconds = item.durationSeconds.coerceAtLeast(0)
+                    )
+                    status.text = "Группируем найденные фрагменты…"
+                    val encoded = SmartChaptersAnalyzer.encode(chapters)
+                    settings.saveSmartChaptersCache(videoId, encoded)
+                    renderChapters(
+                        chapters = chapters,
+                        elapsedMs = SystemClock.elapsedRealtime() - started,
+                        cached = false
+                    )
+                } catch (e: Exception) {
+                    action.isEnabled = true
+                    action.alpha = 1f
+                    action.text = "Повторить"
+                    status.setTextColor(Color.parseColor("#FF7A90"))
+                    status.text = e.message ?: "Не удалось проанализировать стрим"
+                }
+            }
+        }
+
+        return outer
+    }
+
+    private fun twitchVideoId(): String? {
+        val raw = item.externalUrl ?: return null
+        return runCatching { Uri.parse(raw).lastPathSegment }
+            .getOrNull()
+            ?.removePrefix("v")
+            ?.filter { it.isDigit() }
+            ?.takeIf { it.isNotBlank() }
+    }
+
     private fun buildNextVideosBlock(): LinearLayout {
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
@@ -1121,6 +1361,7 @@ class PlayerScreen(
         handler.removeCallbacksAndMessages(null)
         previewJob?.cancel()
         previewScope.cancel()
+        smartChapterScope.cancel()
         previewImage.setImageDrawable(null)
         previewCache.values.toSet().forEach { bitmap -> if (!bitmap.isRecycled) bitmap.recycle() }
         previewCache.clear()

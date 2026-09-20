@@ -101,5 +101,16 @@ class AppSettings(context: Context) {
         prefs.edit().remove("playback_position_" + messageId).apply()
     }
 
+    fun smartChaptersCache(videoId: String): String? =
+        prefs.getString("smart_chapters_" + videoId, null)
+
+    fun saveSmartChaptersCache(videoId: String, json: String) {
+        prefs.edit().putString("smart_chapters_" + videoId, json).apply()
+    }
+
+    fun clearSmartChaptersCache(videoId: String) {
+        prefs.edit().remove("smart_chapters_" + videoId).apply()
+    }
+
     fun palette(): ThemePalette = if (lightTheme) AppThemes.Light else AppThemes.Dark
 }
