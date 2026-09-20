@@ -59,8 +59,6 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.11.1")
     implementation("androidx.media3:media3-exoplayer-hls:1.11.1")
     implementation("androidx.media3:media3-ui:1.11.1")
-    implementation("androidx.media3:media3-inspector:1.11.1")
-    implementation("androidx.media3:media3-inspector-frame:1.11.1")
     implementation("io.coil-kt:coil:2.7.0")
     implementation("com.googlecode.libphonenumber:libphonenumber:8.13.55")
     implementation("org.nanohttpd:nanohttpd:2.3.1")
