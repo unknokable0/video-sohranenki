@@ -121,6 +121,8 @@ class PlayerScreen(
     private var fullscreen = false
     private var fullscreenTransition = false
     private var fullscreenHost: FrameLayout? = null
+    private var settingsOverlay: FrameLayout? = null
+    private var settingsPanel: View? = null
     private var fullscreenOriginalIndex = -1
     private var fullscreenOriginalLayoutParams: LinearLayout.LayoutParams? = null
     private var dragging = false
@@ -1253,8 +1255,6 @@ class PlayerScreen(
                     hidePreview()
                 }
             },
-            onBrightness = { showTransientIndicator("☀  $it%") },
-            onVolume = { showTransientIndicator("♪  $it%") },
             onFillMode = { fill ->
                 playerView.resizeMode = if (fill) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
                 showTransientIndicator(if (fill) "Заполнить экран" else "Уменьшить")
@@ -1300,38 +1300,237 @@ class PlayerScreen(
     private fun showPlayerMenu() = showSettingsSheet()
 
     private fun showSettingsSheet() {
-        val disabledSubs = player.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
+        if (fullscreen && fullscreenHost != null) {
+            showFullscreenSettingsPanel()
+            return
+        }
+
+        val dialog = BottomSheetDialog(activity)
+        val scroll = ScrollView(activity).apply {
+            isFillViewport = true
+            clipToPadding = false
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            background = roundedInt(palette.surface, 24)
+        }
+        scroll.addView(
+            buildSettingsContent { index ->
+                dialog.dismiss()
+                handleSettingsAction(index)
+            },
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        dialog.setContentView(scroll)
+        dialog.show()
+
+        val maxHeight = (activity.resources.displayMetrics.heightPixels * 0.82f).toInt()
+        val comfortableHeight = minOf(maxHeight, dp(430))
+        dialog.findViewById<FrameLayout>(
+            com.google.android.material.R.id.design_bottom_sheet
+        )?.let { sheet ->
+            sheet.layoutParams = sheet.layoutParams.apply {
+                height = comfortableHeight
+            }
+            sheet.requestLayout()
+        }
+        dialog.behavior.apply {
+            isFitToContents = true
+            skipCollapsed = true
+            state = com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED
+        }
+    }
+
+    private fun buildSettingsContent(onItemClick: (Int) -> Unit): LinearLayout {
+        val disabledSubs =
+            player.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
         val items = listOf(
             "Качество" to qualityButton.text.toString(),
             "Скорость воспроизведения" to if (speed == 1f) "Обычная" else "${speed}x",
             "Субтитры" to if (disabledSubs) "Выкл" else "Авто",
             "Таймер сна" to sleepLabel(),
-            "Стабильная громкость" to if (settings.stableVolume) "Вкл" else "Выкл",
             "Автовоспроизведение" to if (settings.autoplay) "Вкл" else "Выкл"
         )
-        val dialog = BottomSheetDialog(activity)
-        val box = LinearLayout(activity).apply {
+
+        return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18),dp(10),dp(18),dp(24))
-            background = roundedInt(palette.surface,24)
+            setPadding(dp(18), dp(12), dp(18), dp(22))
+            background = roundedInt(palette.surface, 24)
+
+            addView(TextView(activity).apply {
+                text = "Настройки видео"
+                textSize = 20f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(palette.text)
+                setPadding(dp(6), dp(6), dp(6), dp(14))
+            })
+
+            items.forEachIndexed { index, pair ->
+                addView(
+                    sheetRow(pair.first, pair.second) {
+                        onItemClick(index)
+                    },
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        dp(56)
+                    ).apply {
+                        bottomMargin = dp(6)
+                    }
+                )
+            }
         }
-        box.addView(TextView(activity).apply {
-            text="Настройки видео"; textSize=20f; setTypeface(typeface,Typeface.BOLD); setTextColor(palette.text); setPadding(dp(6),dp(10),dp(6),dp(12))
-        })
-        items.forEachIndexed { index,pair ->
-            box.addView(sheetRow(pair.first,pair.second) {
-                dialog.dismiss()
-                when(index) {
-                    0 -> showQualityPicker()
-                    1 -> showSpeedPicker()
-                    2 -> toggleSubtitles()
-                    3 -> showSleepPicker()
-                    4 -> { settings.stableVolume=!settings.stableVolume; showSettingsSheet() }
-                    5 -> { settings.autoplay=!settings.autoplay; showSettingsSheet() }
-                }
-            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(54)).apply { bottomMargin=dp(5) })
+    }
+
+    private fun handleSettingsAction(index: Int) {
+        when (index) {
+            0 -> showQualityPicker()
+            1 -> showSpeedPicker()
+            2 -> toggleSubtitles()
+            3 -> showSleepPicker()
+            4 -> {
+                settings.autoplay = !settings.autoplay
+                showSettingsSheet()
+            }
         }
-        dialog.setContentView(box); dialog.show()
+    }
+
+    private fun showFullscreenSettingsPanel() {
+        val host = fullscreenHost ?: return
+        dismissFullscreenSettings(animated = false)
+
+        val scrim = FrameLayout(activity).apply {
+            setBackgroundColor(Color.parseColor("#99000000"))
+            isClickable = true
+            isFocusable = true
+            elevation = dp(140).toFloat()
+        }
+
+        val screenWidth = activity.resources.displayMetrics.widthPixels
+        val panelWidth = minOf(
+            dp(420),
+            (screenWidth * 0.50f).toInt()
+        ).coerceAtLeast(dp(300))
+            .coerceAtMost((screenWidth - dp(24)).coerceAtLeast(dp(280)))
+
+        val panel = FrameLayout(activity).apply {
+            background = roundedInt(palette.surface, 24)
+            isClickable = true
+            elevation = dp(18).toFloat()
+        }
+
+        val scroll = ScrollView(activity).apply {
+            isFillViewport = true
+            clipToPadding = false
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            addView(
+                buildSettingsContent { index ->
+                    dismissFullscreenSettings {
+                        handleSettingsAction(index)
+                    }
+                },
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+        panel.addView(
+            scroll,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        scrim.addView(
+            panel,
+            FrameLayout.LayoutParams(
+                panelWidth,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                Gravity.END
+            ).apply {
+                topMargin = dp(10)
+                bottomMargin = dp(10)
+                marginEnd = dp(10)
+            }
+        )
+
+        scrim.setOnClickListener {
+            dismissFullscreenSettings()
+        }
+        panel.setOnClickListener { /* consume clicks inside panel */ }
+
+        host.addView(
+            scrim,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        settingsOverlay = scrim
+        settingsPanel = panel
+
+        if (settings.animations) {
+            scrim.alpha = 0f
+            panel.translationX = panelWidth.toFloat() + dp(24)
+            scrim.animate()
+                .alpha(1f)
+                .setDuration(160L)
+                .start()
+            panel.animate()
+                .translationX(0f)
+                .setDuration(220L)
+                .setInterpolator(
+                    android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
+                )
+                .start()
+        }
+    }
+
+    private fun dismissFullscreenSettings(
+        animated: Boolean = true,
+        after: (() -> Unit)? = null
+    ) {
+        val scrim = settingsOverlay
+        val panel = settingsPanel
+
+        if (scrim == null) {
+            after?.invoke()
+            return
+        }
+
+        settingsOverlay = null
+        settingsPanel = null
+
+        fun removeNow() {
+            runCatching { (scrim.parent as? ViewGroup)?.removeView(scrim) }
+            after?.invoke()
+        }
+
+        if (
+            animated &&
+            settings.animations &&
+            panel != null &&
+            panel.width > 0
+        ) {
+            scrim.animate()
+                .alpha(0f)
+                .setDuration(140L)
+                .start()
+            panel.animate()
+                .translationX(panel.width.toFloat() + dp(24))
+                .setDuration(170L)
+                .setInterpolator(
+                    android.view.animation.PathInterpolator(0.4f, 0f, 1f, 1f)
+                )
+                .withEndAction { removeNow() }
+                .start()
+        } else {
+            removeNow()
+        }
     }
 
     private fun sheetRow(title:String,value:String,click:()->Unit): View = LinearLayout(activity).apply {
@@ -1563,6 +1762,7 @@ class PlayerScreen(
     }
 
     fun destroy() {
+        dismissFullscreenSettings(animated = false)
         runCatching { if (fullscreen || fullscreenHost != null) setFullscreenMode(false) }
         persistPlaybackPosition(force = true)
         root.keepScreenOn = false
