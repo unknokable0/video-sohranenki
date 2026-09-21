@@ -107,14 +107,6 @@ class SettingsScreen(
             checked = settings.animations
         ) { settings.animations = it })
 
-        root.addView(settingRow(
-            icon = "↻",
-            iconColor = "#FF83BE",
-            title = t("rotate"),
-            description = t("rotate_desc"),
-            checked = settings.autoRotateFullscreen
-        ) { settings.autoRotateFullscreen = it })
-
         root.addView(actionRow(
             icon = "↓",
             iconColor = "#8B5CF6",
