@@ -909,6 +909,7 @@ class PlayerScreen(
                     hidePreview()
                 }
             },
+            onVolume = { showTransientIndicator("♪  $it%") },
             onFillMode = { fill ->
                 playerView.resizeMode = if (fill) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
                 showTransientIndicator(if (fill) "Заполнить экран" else "Уменьшить")
@@ -1061,7 +1062,9 @@ class PlayerScreen(
             elevation = dp(140).toFloat()
         }
 
-        val screenWidth = activity.resources.displayMetrics.widthPixels
+        val screenWidth =
+            host.width.takeIf { it > 0 }
+                ?: activity.resources.displayMetrics.widthPixels
         val panelWidth = minOf(
             dp(420),
             (screenWidth * 0.50f).toInt()
@@ -1344,6 +1347,7 @@ class PlayerScreen(
                 playerCard.requestLayout()
                 showOverlay()
             } else {
+                dismissFullscreenSettings(animated = false)
                 val host = fullscreenHost
 
                 if (host != null) {
