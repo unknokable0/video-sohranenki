@@ -1147,6 +1147,12 @@ class PlayerScreen(
         }
     }
 
+    fun dismissFullscreenSettingsIfOpen(): Boolean {
+        if (settingsOverlay == null) return false
+        dismissFullscreenSettings()
+        return true
+    }
+
     private fun dismissFullscreenSettings(
         animated: Boolean = true,
         after: (() -> Unit)? = null
@@ -1164,6 +1170,10 @@ class PlayerScreen(
 
         fun removeNow() {
             runCatching { (scrim.parent as? ViewGroup)?.removeView(scrim) }
+            if (fullscreen && player.isPlaying) {
+                handler.removeCallbacks(autoHideControls)
+                handler.postDelayed(autoHideControls, 3_000L)
+            }
             after?.invoke()
         }
 
