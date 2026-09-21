@@ -160,6 +160,9 @@ class MainActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (fullScreen) {
+                    if (playerScreen?.dismissFullscreenSettingsIfOpen() == true) {
+                        return
+                    }
                     if (twitchPlayerScreen?.isFullscreen == true) {
                         twitchPlayerScreen?.exitFullscreen()
                     } else {
