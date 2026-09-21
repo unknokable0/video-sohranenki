@@ -1317,7 +1317,7 @@ class PlayerScreen(
                 dialog.dismiss()
                 handleSettingsAction(index)
             },
-            ScrollView.LayoutParams(
+            FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
@@ -1327,11 +1327,12 @@ class PlayerScreen(
         dialog.show()
 
         val maxHeight = (activity.resources.displayMetrics.heightPixels * 0.82f).toInt()
+        val comfortableHeight = minOf(maxHeight, dp(430))
         dialog.findViewById<FrameLayout>(
             com.google.android.material.R.id.design_bottom_sheet
         )?.let { sheet ->
             sheet.layoutParams = sheet.layoutParams.apply {
-                height = maxHeight
+                height = comfortableHeight
             }
             sheet.requestLayout()
         }
@@ -1429,7 +1430,7 @@ class PlayerScreen(
                         handleSettingsAction(index)
                     }
                 },
-                ScrollView.LayoutParams(
+                FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 )
