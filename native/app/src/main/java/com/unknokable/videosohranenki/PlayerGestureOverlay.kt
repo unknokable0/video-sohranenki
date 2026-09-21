@@ -21,7 +21,6 @@ class PlayerGestureOverlay(
     private val onDoubleTap: (Boolean, Int) -> Unit,
     private val onTemporarySpeed: (Boolean) -> Unit,
     private val onScrub: (Long, Boolean) -> Unit,
-    private val onBrightness: (Int) -> Unit,
     private val onVolume: (Int) -> Unit,
     private val onFillMode: (Boolean) -> Unit,
     private val onSwipeDown: () -> Unit,
@@ -50,7 +49,6 @@ class PlayerGestureOverlay(
     private var chainAt = 0L
     private var chainDirection = 0
     private var chainSeconds = 0
-    private var brightnessStart = 0.5f
     private var volumeStart = 0
     private var fillMode = false
     private var scaleAccum = 1f
@@ -104,7 +102,6 @@ class PlayerGestureOverlay(
                 moved = false
                 verticalMode = 0
                 longMode = 0
-                brightnessStart = activity.window.attributes.screenBrightness.let { if (it < 0f) 0.5f else it }
                 volumeStart = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
                 v.postDelayed(longPress, LONG_PRESS_MS)
                 return true
@@ -127,25 +124,22 @@ class PlayerGestureOverlay(
                     return true
                 }
                 if (longMode == 1) return true
-                if (verticalMode == 0 && absY > VERTICAL_CONTROL_DP * density && absY > absX * 1.2f) {
-                    verticalMode = if (downX < target.width / 2f) -1 else 1
+                if (
+                    verticalMode == 0 &&
+                    downX >= target.width / 2f &&
+                    absY > VERTICAL_CONTROL_DP * density &&
+                    absY > absX * 1.2f
+                ) {
+                    verticalMode = 1
                     moved = true
                     v.removeCallbacks(longPress)
                 }
-                if (verticalMode != 0) {
+                if (verticalMode == 1) {
                     val delta = -dy / target.height.coerceAtLeast(1)
-                    if (verticalMode < 0) {
-                        val value = (brightnessStart + delta).coerceIn(0.02f, 1f)
-                        val attrs = activity.window.attributes
-                        attrs.screenBrightness = value
-                        activity.window.attributes = attrs
-                        onBrightness((value * 100).toInt())
-                    } else {
-                        val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
-                        val value = (volumeStart + delta * max).toInt().coerceIn(0, max)
-                        audio.setStreamVolume(AudioManager.STREAM_MUSIC, value, 0)
-                        onVolume((value * 100f / max).toInt())
-                    }
+                    val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+                    val value = (volumeStart + delta * max).toInt().coerceIn(0, max)
+                    audio.setStreamVolume(AudioManager.STREAM_MUSIC, value, 0)
+                    onVolume((value * 100f / max).toInt())
                     return true
                 }
                 if (absX > 18f * density || absY > 18f * density) {
