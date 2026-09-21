@@ -1255,7 +1255,6 @@ class PlayerScreen(
                     hidePreview()
                 }
             },
-            onVolume = { showTransientIndicator("♪  $it%") },
             onFillMode = { fill ->
                 playerView.resizeMode = if (fill) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
                 showTransientIndicator(if (fill) "Заполнить экран" else "Уменьшить")
@@ -1352,7 +1351,6 @@ class PlayerScreen(
             "Скорость воспроизведения" to if (speed == 1f) "Обычная" else "${speed}x",
             "Субтитры" to if (disabledSubs) "Выкл" else "Авто",
             "Таймер сна" to sleepLabel(),
-            "Стабильная громкость" to if (settings.stableVolume) "Вкл" else "Выкл",
             "Автовоспроизведение" to if (settings.autoplay) "Вкл" else "Выкл"
         )
 
@@ -1392,10 +1390,6 @@ class PlayerScreen(
             2 -> toggleSubtitles()
             3 -> showSleepPicker()
             4 -> {
-                settings.stableVolume = !settings.stableVolume
-                showSettingsSheet()
-            }
-            5 -> {
                 settings.autoplay = !settings.autoplay
                 showSettingsSheet()
             }
