@@ -17,21 +17,9 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean("animations", true)
         set(value) = prefs.edit().putBoolean("animations", value).apply()
 
-    var autoRotateFullscreen: Boolean
-        get() = prefs.getBoolean("auto_rotate_fullscreen", true)
-        set(value) = prefs.edit().putBoolean("auto_rotate_fullscreen", value).apply()
-
     var playbackSpeed: Float
         get() = prefs.getFloat("playback_speed", 1f).coerceIn(0.25f, 2f)
         set(value) = prefs.edit().putFloat("playback_speed", value.coerceIn(0.25f, 2f)).apply()
-
-    var stableVolume: Boolean
-        get() = prefs.getBoolean("stable_volume", false)
-        set(value) = prefs.edit().putBoolean("stable_volume", value).apply()
-
-    var preferredQuality: Int
-        get() = prefs.getInt("preferred_quality", 0)
-        set(value) = prefs.edit().putInt("preferred_quality", value).apply()
 
     var authPhone: String?
         get() = prefs.getString("auth_phone", null)
