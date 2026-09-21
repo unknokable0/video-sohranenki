@@ -90,7 +90,6 @@ class PlayerScreen(
     private lateinit var actionsRow: LinearLayout
     private lateinit var socialActionsRow: LinearLayout
     private lateinit var nextVideosBlock: LinearLayout
-    private var smartChaptersBlock: LinearLayout? = null
     private lateinit var previewBubble: LinearLayout
     private lateinit var previewImage: ImageView
     private lateinit var previewTime: TextView
@@ -102,7 +101,6 @@ class PlayerScreen(
     private var gestureOverlay: PlayerGestureOverlay? = null
     private val autoHideControls = Runnable { if (player.isPlaying && !dragging) hideOverlay() }
     private val previewScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val smartChapterScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val previewMutex = Mutex()
     private var previewRetriever: MediaMetadataRetriever? = null
     private var previewDataSource: MediaDataSource? = null
@@ -266,8 +264,6 @@ class PlayerScreen(
         root.addView(details)
         socialActionsRow = buildSocialActions()
         root.addView(socialActionsRow)
-        smartChaptersBlock = buildSmartChaptersBlock()
-        root.addView(smartChaptersBlock)
         nextVideosBlock = buildNextVideosBlock()
         root.addView(nextVideosBlock)
         miniBar = buildMiniPlayer()
@@ -750,348 +746,6 @@ class PlayerScreen(
         }
         return row
     }
-    private fun buildSmartChaptersBlock(): LinearLayout {
-        val outer = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(2), dp(12), dp(14))
-        }
-
-        val card = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(14), dp(14), dp(14))
-            background = roundedInt(palette.surfaceAlt, 18)
-        }
-
-        val titleRow = LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-
-        val title = TextView(activity).apply {
-            text = "Умные главы"
-            textSize = 16f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(palette.text)
-        }
-
-        val badge = TextView(activity).apply {
-            text = if (item.source == "twitch") "MOBILE 1.1" else "BETA 1.0.4"
-            textSize = 9f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            setPadding(dp(9), dp(4), dp(9), dp(4))
-            background = rounded("#8B5CF6", 11)
-        }
-
-        titleRow.addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        titleRow.addView(badge)
-
-        val subtitle = TextView(activity).apply {
-            text = if (item.source == "twitch") {
-                "На телефоне • только видео • без ПК и скачивания всего VOD"
-            } else {
-                "Полный локальный проход • видео + игры • начало → конец"
-            }
-            textSize = 12f
-            setTextColor(palette.muted)
-            setPadding(0, dp(5), 0, dp(10))
-        }
-
-        val progressTrack = FrameLayout(activity).apply {
-            background = roundedInt(palette.surface, 4)
-            visibility = View.GONE
-        }
-        val progressFill = View(activity).apply {
-            background = rounded("#8B5CF6", 4)
-        }
-        progressTrack.addView(
-            progressFill,
-            FrameLayout.LayoutParams(0, dp(4), Gravity.START)
-        )
-
-        val statusRow = LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(8), 0, 0)
-        }
-
-        val status = TextView(activity).apply {
-            text = if (item.source == "twitch") "Готово к анализу на телефоне" else "Готово к быстрому анализу"
-            textSize = 12f
-            setTextColor(palette.muted)
-        }
-
-        val action = TextView(activity).apply {
-            text = "Анализировать"
-            textSize = 13f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            background = rounded("#8B5CF6", 14)
-            isClickable = true
-            isFocusable = true
-        }
-
-        val results = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(0, dp(10), 0, dp(6))
-        }
-
-        statusRow.addView(status, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        statusRow.addView(action, LinearLayout.LayoutParams(dp(122), dp(42)).apply { marginStart = dp(10) })
-
-        val resultsScroll = ScrollView(activity).apply {
-            isVerticalScrollBarEnabled = true
-            isScrollbarFadingEnabled = false
-            isFillViewport = false
-            isNestedScrollingEnabled = true
-            overScrollMode = View.OVER_SCROLL_ALWAYS
-            clipToPadding = false
-            setPadding(0, 0, dp(2), dp(10))
-            visibility = View.GONE
-            addView(
-                results,
-                ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-            )
-        }
-
-        card.addView(titleRow)
-        card.addView(subtitle)
-        card.addView(progressTrack, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(4)))
-        card.addView(statusRow)
-        card.addView(
-            resultsScroll,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(184)
-            ).apply { topMargin = dp(6) }
-        )
-        outer.addView(card)
-
-        val twitchId = if (item.source == "twitch") twitchVideoId() else null
-        val cacheKey = if (item.source == "twitch") {
-            val id = twitchId
-            if (id == null) {
-                status.text = "Не удалось определить Twitch Video ID"
-                action.isEnabled = false
-                action.alpha = 0.45f
-                return outer
-            }
-            "twitch-" + id
-        } else {
-            "telegram-" + item.messageId + "-" + item.fileSize + "-" + item.durationSeconds
-        }
-
-        fun setProgress(percent: Int, message: String) {
-            val safe = percent.coerceIn(0, 100)
-            status.text = message
-            action.text = if (safe in 1..99) safe.toString() + "%" else "Анализ…"
-            progressTrack.visibility = View.VISIBLE
-            progressTrack.post {
-                val target = (progressTrack.width * (safe / 100f)).toInt()
-                val lp = progressFill.layoutParams as FrameLayout.LayoutParams
-                val duration = if (settings.animations) 180L else 0L
-                progressFill.animate().cancel()
-                progressFill.animate()
-                    .setDuration(duration)
-                    .withEndAction {
-                        lp.width = target
-                        progressFill.layoutParams = lp
-                    }
-                    .start()
-                if (!settings.animations) {
-                    lp.width = target
-                    progressFill.layoutParams = lp
-                }
-            }
-        }
-
-        fun renderChapters(chapters: List<SmartChapter>, elapsedMs: Long, cached: Boolean) {
-            results.removeAllViews()
-            progressTrack.visibility = View.GONE
-            action.text = "Обновить"
-            action.isEnabled = true
-            action.alpha = 1f
-
-            if (chapters.isEmpty()) {
-                resultsScroll.visibility = View.GONE
-                status.text = if (item.source == "twitch") "Не найдено уверенных фрагментов просмотра видео" else "Не найдено уверенных фрагментов"
-                status.setTextColor(palette.muted)
-                return
-            }
-
-            resultsScroll.visibility = View.VISIBLE
-            status.text = if (cached) {
-                "Готово • " + chapters.size + " фрагм. • сохранено"
-            } else {
-                val seconds = elapsedMs / 1000.0
-                "Готово • " + chapters.size + " фрагм. • %.1f с".format(seconds)
-            }
-            status.setTextColor(palette.accent)
-
-            chapters.forEachIndexed { index, chapter ->
-                val row = LinearLayout(activity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(dp(10), dp(10), dp(10), dp(10))
-                    background = roundedInt(palette.surface, 14)
-                    isClickable = true
-                    isFocusable = true
-                }
-
-                val time = TextView(activity).apply {
-                    text = formatMs(chapter.startSeconds * 1000L) + "\n→ " +
-                        formatMs(chapter.endSeconds * 1000L)
-                    textSize = 10.5f
-                    gravity = Gravity.CENTER
-                    setTypeface(typeface, Typeface.BOLD)
-                    setTextColor(Color.WHITE)
-                    setPadding(dp(8), dp(5), dp(8), dp(5))
-                    background = rounded("#8B5CF6", 10)
-                    minWidth = dp(92)
-                }
-
-                val textBox = LinearLayout(activity).apply {
-                    orientation = LinearLayout.VERTICAL
-                    setPadding(dp(10), 0, dp(4), 0)
-                }
-
-                textBox.addView(TextView(activity).apply {
-                    text = chapter.title
-                    textSize = 13.5f
-                    setTypeface(typeface, Typeface.BOLD)
-                    setTextColor(palette.text)
-                    maxLines = 2
-                    ellipsize = android.text.TextUtils.TruncateAt.END
-                })
-
-                textBox.addView(TextView(activity).apply {
-                    val duration = (chapter.endSeconds - chapter.startSeconds).coerceAtLeast(0)
-                    text = chapter.detail + " • длительность " + formatMs(duration * 1000L)
-                    textSize = 11f
-                    setTextColor(palette.muted)
-                    setPadding(0, dp(3), 0, 0)
-                    maxLines = 2
-                    ellipsize = android.text.TextUtils.TruncateAt.END
-                })
-
-                row.addView(time, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-                row.addView(textBox, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                row.addView(TextView(activity).apply {
-                    text = "›"
-                    textSize = 24f
-                    gravity = Gravity.CENTER
-                    setTextColor(palette.muted)
-                }, LinearLayout.LayoutParams(dp(28), dp(42)))
-
-                row.setOnClickListener {
-                    pulse(row)
-                    val targetMs = chapter.startSeconds * 1000L
-                    player.seekTo(targetMs)
-                    player.play()
-                    currentTime.text = formatMs(targetMs)
-                    showOverlay()
-                }
-
-                results.addView(
-                    row,
-                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                        if (index > 0) topMargin = dp(7)
-                    }
-                )
-
-                if (settings.animations && !cached) {
-                    row.alpha = 0f
-                    row.translationY = dp(7).toFloat()
-                    row.postDelayed({
-                        row.animate()
-                            .alpha(1f)
-                            .translationY(0f)
-                            .setDuration(210L)
-                            .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
-                            .start()
-                    }, (index.coerceAtMost(10) * 32L))
-                }
-            }
-        }
-
-        settings.smartChaptersCache(cacheKey)?.let { cached ->
-            SmartChaptersAnalyzer.decode(cached)?.takeIf { it.isNotEmpty() }?.let {
-                renderChapters(it, 0L, true)
-            }
-        }
-
-        action.setOnClickListener {
-            pulse(action)
-            action.isEnabled = false
-            action.alpha = 0.78f
-            status.setTextColor(palette.muted)
-            results.removeAllViews()
-            resultsScroll.visibility = View.GONE
-            setProgress(2, "Запускаем анализ…")
-
-            val started = SystemClock.elapsedRealtime()
-            smartChapterScope.launch {
-                try {
-                    val result = if (item.source == "twitch") {
-                        SmartChaptersAnalyzer.analyzeTwitch(
-                            context = activity.applicationContext,
-                            videoId = twitchId!!,
-                            durationSeconds = item.durationSeconds.coerceAtLeast(0),
-                            onProgress = { percent, message ->
-                                withContext(Dispatchers.Main.immediate) {
-                                    setProgress(percent, message)
-                                }
-                            }
-                        )
-                    } else {
-                        SmartChaptersAnalyzer.analyzeTelegram(
-                            durationSeconds = item.durationSeconds.coerceAtLeast(0),
-                            sourceFactory = previewDataSourceFactory,
-                            mediaUrl = mediaUrl,
-                            videoTitle = cleanTitle(item.title),
-                            onProgress = { percent, message ->
-                                withContext(Dispatchers.Main.immediate) {
-                                    setProgress(percent, message)
-                                }
-                            }
-                        )
-                    }
-
-                    val encoded = SmartChaptersAnalyzer.encode(result.chapters)
-                    settings.saveSmartChaptersCache(cacheKey, encoded)
-                    renderChapters(
-                        chapters = result.chapters,
-                        elapsedMs = SystemClock.elapsedRealtime() - started,
-                        cached = false
-                    )
-                } catch (e: Exception) {
-                    progressTrack.visibility = View.GONE
-                    action.isEnabled = true
-                    action.alpha = 1f
-                    action.text = "Повторить"
-                    status.setTextColor(Color.parseColor("#FF7A90"))
-                    status.text = e.message ?: "Не удалось проанализировать видео"
-                }
-            }
-        }
-
-        return outer
-    }
-
-    private fun twitchVideoId(): String? {
-        val raw = item.externalUrl ?: return null
-        return runCatching { Uri.parse(raw).lastPathSegment }
-            .getOrNull()
-            ?.removePrefix("v")
-            ?.filter { it.isDigit() }
-            ?.takeIf { it.isNotBlank() }
-    }
-
     private fun buildNextVideosBlock(): LinearLayout {
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
@@ -1255,6 +909,7 @@ class PlayerScreen(
                     hidePreview()
                 }
             },
+            onVolume = { showTransientIndicator("♪  $it%") },
             onFillMode = { fill ->
                 playerView.resizeMode = if (fill) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
                 showTransientIndicator(if (fill) "Заполнить экран" else "Уменьшить")
@@ -1407,7 +1062,9 @@ class PlayerScreen(
             elevation = dp(140).toFloat()
         }
 
-        val screenWidth = activity.resources.displayMetrics.widthPixels
+        val screenWidth =
+            host.width.takeIf { it > 0 }
+                ?: activity.resources.displayMetrics.widthPixels
         val panelWidth = minOf(
             dp(420),
             (screenWidth * 0.50f).toInt()
@@ -1490,6 +1147,12 @@ class PlayerScreen(
         }
     }
 
+    fun dismissFullscreenSettingsIfOpen(): Boolean {
+        if (settingsOverlay == null) return false
+        dismissFullscreenSettings()
+        return true
+    }
+
     private fun dismissFullscreenSettings(
         animated: Boolean = true,
         after: (() -> Unit)? = null
@@ -1507,6 +1170,10 @@ class PlayerScreen(
 
         fun removeNow() {
             runCatching { (scrim.parent as? ViewGroup)?.removeView(scrim) }
+            if (fullscreen && player.isPlaying) {
+                handler.removeCallbacks(autoHideControls)
+                handler.postDelayed(autoHideControls, 3_000L)
+            }
             after?.invoke()
         }
 
@@ -1617,14 +1284,14 @@ class PlayerScreen(
 
     private fun enterMiniPlayer() {
         if(miniMode||fullscreen)return; miniMode=true; persistPlaybackPosition(true)
-        header.visibility=View.GONE; details.visibility=View.GONE; socialActionsRow.visibility=View.GONE; actionsRow.visibility=View.GONE; smartChaptersBlock?.visibility=View.GONE; nextVideosBlock.visibility=View.GONE; overlay.visibility=View.GONE
+        header.visibility=View.GONE; details.visibility=View.GONE; socialActionsRow.visibility=View.GONE; actionsRow.visibility=View.GONE; nextVideosBlock.visibility=View.GONE; overlay.visibility=View.GONE
         (playerView.parent as? ViewGroup)?.removeView(playerView); miniVideoHost.removeAllViews(); miniVideoHost.addView(playerView,FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.MATCH_PARENT)); playerCard.visibility=View.GONE
         root.gravity=Gravity.BOTTOM; miniBar.alpha=0f; miniBar.translationY=dp(76).toFloat(); miniBar.visibility=View.VISIBLE; miniBar.animate().alpha(1f).translationY(0f).setDuration(260L).start()
     }
 
     private fun exitMiniPlayer() {
         if(!miniMode)return; miniMode=false; (playerView.parent as? ViewGroup)?.removeView(playerView); playerCard.addView(playerView,0,FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.MATCH_PARENT)); miniBar.visibility=View.GONE; root.gravity=Gravity.TOP; playerCard.visibility=View.VISIBLE
-        header.visibility=View.VISIBLE; details.visibility=View.VISIBLE; socialActionsRow.visibility=View.VISIBLE; actionsRow.visibility=View.VISIBLE; smartChaptersBlock?.visibility=View.VISIBLE; nextVideosBlock.visibility=View.VISIBLE; showOverlay()
+        header.visibility=View.VISIBLE; details.visibility=View.VISIBLE; socialActionsRow.visibility=View.VISIBLE; actionsRow.visibility=View.VISIBLE; nextVideosBlock.visibility=View.VISIBLE; showOverlay()
     }
 
     private fun showTransientIndicator(value:String) {
@@ -1690,6 +1357,7 @@ class PlayerScreen(
                 playerCard.requestLayout()
                 showOverlay()
             } else {
+                dismissFullscreenSettings(animated = false)
                 val host = fullscreenHost
 
                 if (host != null) {
@@ -1771,7 +1439,6 @@ class PlayerScreen(
         handler.removeCallbacksAndMessages(null)
         previewJob?.cancel()
         previewScope.cancel()
-        smartChapterScope.cancel()
         previewImage.setImageDrawable(null)
         previewCache.values.toSet().forEach { bitmap -> if (!bitmap.isRecycled) bitmap.recycle() }
         previewCache.clear()

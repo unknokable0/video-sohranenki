@@ -17,21 +17,9 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean("animations", true)
         set(value) = prefs.edit().putBoolean("animations", value).apply()
 
-    var autoRotateFullscreen: Boolean
-        get() = prefs.getBoolean("auto_rotate_fullscreen", true)
-        set(value) = prefs.edit().putBoolean("auto_rotate_fullscreen", value).apply()
-
     var playbackSpeed: Float
         get() = prefs.getFloat("playback_speed", 1f).coerceIn(0.25f, 2f)
         set(value) = prefs.edit().putFloat("playback_speed", value.coerceIn(0.25f, 2f)).apply()
-
-    var stableVolume: Boolean
-        get() = prefs.getBoolean("stable_volume", false)
-        set(value) = prefs.edit().putBoolean("stable_volume", value).apply()
-
-    var preferredQuality: Int
-        get() = prefs.getInt("preferred_quality", 0)
-        set(value) = prefs.edit().putInt("preferred_quality", value).apply()
 
     var authPhone: String?
         get() = prefs.getString("auth_phone", null)
@@ -99,17 +87,6 @@ class AppSettings(context: Context) {
 
     fun clearPlaybackPosition(messageId: Long) {
         prefs.edit().remove("playback_position_" + messageId).apply()
-    }
-
-    fun smartChaptersCache(videoId: String): String? =
-        prefs.getString("smart_chapters_v10_" + videoId, null)
-
-    fun saveSmartChaptersCache(videoId: String, json: String) {
-        prefs.edit().putString("smart_chapters_v10_" + videoId, json).apply()
-    }
-
-    fun clearSmartChaptersCache(videoId: String) {
-        prefs.edit().remove("smart_chapters_v10_" + videoId).apply()
     }
 
     fun palette(): ThemePalette = if (lightTheme) AppThemes.Light else AppThemes.Dark
