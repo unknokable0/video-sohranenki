@@ -1,6 +1,8 @@
 package com.unknokable.videosohranenki
 
 import android.app.Activity
+import android.content.Context
+import android.media.AudioManager
 import android.os.SystemClock
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
@@ -19,6 +21,7 @@ class PlayerGestureOverlay(
     private val onDoubleTap: (Boolean, Int) -> Unit,
     private val onTemporarySpeed: (Boolean) -> Unit,
     private val onScrub: (Long, Boolean) -> Unit,
+    private val onVolume: (Int) -> Unit,
     private val onFillMode: (Boolean) -> Unit,
     private val onSwipeDown: () -> Unit,
     private val onSwipeUp: () -> Unit
@@ -28,21 +31,25 @@ class PlayerGestureOverlay(
         const val DOUBLE_TAP_CHAIN_MS = 720L
         const val LONG_PRESS_MS = 420L
         const val SWIPE_TRIGGER_DP = 86f
+        const val VERTICAL_CONTROL_DP = 22f
         const val SCRUB_RANGE_FRACTION = 0.72f
     }
 
     private val density = activity.resources.displayMetrics.density
+    private val audio = activity.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var downX = 0f
     private var downY = 0f
     private var downAt = 0L
     private var downPosition = 0L
     private var moved = false
+    private var verticalMode = 0
     private var longMode = 0
     private var lastTapAt = 0L
     private var lastTapX = 0f
     private var chainAt = 0L
     private var chainDirection = 0
     private var chainSeconds = 0
+    private var volumeStart = 0
     private var fillMode = false
     private var scaleAccum = 1f
 
@@ -93,7 +100,9 @@ class PlayerGestureOverlay(
                 downAt = SystemClock.uptimeMillis()
                 downPosition = player.currentPosition
                 moved = false
+                verticalMode = 0
                 longMode = 0
+                volumeStart = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
                 v.postDelayed(longPress, LONG_PRESS_MS)
                 return true
             }
@@ -115,6 +124,24 @@ class PlayerGestureOverlay(
                     return true
                 }
                 if (longMode == 1) return true
+                if (
+                    verticalMode == 0 &&
+                    downX >= target.width / 2f &&
+                    absY > VERTICAL_CONTROL_DP * density &&
+                    absY > absX * 1.2f
+                ) {
+                    verticalMode = 1
+                    moved = true
+                    v.removeCallbacks(longPress)
+                }
+                if (verticalMode == 1) {
+                    val delta = -dy / target.height.coerceAtLeast(1)
+                    val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+                    val value = (volumeStart + delta * max).toInt().coerceIn(0, max)
+                    audio.setStreamVolume(AudioManager.STREAM_MUSIC, value, 0)
+                    onVolume((value * 100f / max).toInt())
+                    return true
+                }
                 if (absX > 18f * density || absY > 18f * density) {
                     moved = true
                     v.removeCallbacks(longPress)
@@ -128,7 +155,7 @@ class PlayerGestureOverlay(
                 if (event.actionMasked == MotionEvent.ACTION_CANCEL) return true
                 val dx = event.x - downX
                 val dy = event.y - downY
-                if (longMode == 0 && !scaleDetector.isInProgress) {
+                if (verticalMode == 0 && longMode == 0 && !scaleDetector.isInProgress) {
                     if (abs(dy) > SWIPE_TRIGGER_DP * density && abs(dy) > abs(dx) * 1.25f) {
                         if (dy > 0) onSwipeDown() else onSwipeUp()
                         return true
@@ -157,6 +184,7 @@ class PlayerGestureOverlay(
                         }
                     }
                 }
+                verticalMode = 0
                 longMode = 0
                 return true
             }
