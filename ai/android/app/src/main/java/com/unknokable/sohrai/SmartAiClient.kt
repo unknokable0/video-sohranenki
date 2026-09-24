@@ -4,7 +4,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import okhttp3.Call
@@ -12,18 +11,12 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import okhttp3.Response
-import okhttp3.WebSocket
-import okhttp3.WebSocketListener
-import okio.ByteString
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.Collections
 import java.util.concurrent.TimeUnit
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
 data class SmartResult(
     val text: String,
@@ -38,35 +31,40 @@ private data class Opinion(
 class SmartAiClient {
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(25, TimeUnit.SECONDS)
-        .writeTimeout(45, TimeUnit.SECONDS)
-        .readTimeout(6, TimeUnit.MINUTES)
-        .pingInterval(20, TimeUnit.SECONDS)
+        .connectTimeout(12, TimeUnit.SECONDS)
+        .writeTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(75, TimeUnit.SECONDS)
+        .callTimeout(90, TimeUnit.SECONDS)
         .build()
 
     private val activeCalls = Collections.synchronizedSet(mutableSetOf<Call>())
-    @Volatile private var activeWebSocket: WebSocket? = null
 
     fun cancel() {
         synchronized(activeCalls) {
             activeCalls.toList().forEach { runCatching { it.cancel() } }
             activeCalls.clear()
         }
-        activeWebSocket?.cancel()
-        activeWebSocket = null
     }
 
     suspend fun verifyGemini(key: String): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val encoded = URLEncoder.encode(key, StandardCharsets.UTF_8.name())
-            val request = Request.Builder()
-                .url("https://generativelanguage.googleapis.com/v1beta/models?key=" + encoded)
-                .get()
-                .build()
-
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    error(readApiError(response, "Google AI отклонил ключ"))
+            withTimeout(15_000L) {
+                val encoded = URLEncoder.encode(key, StandardCharsets.UTF_8.name())
+                val call = client.newCall(
+                    Request.Builder()
+                        .url("https://generativelanguage.googleapis.com/v1beta/models?key=" + encoded)
+                        .get()
+                        .build()
+                )
+                activeCalls.add(call)
+                try {
+                    call.execute().use { response ->
+                        if (!response.isSuccessful) {
+                            error(readApiError(response, "Google AI отклонил ключ"))
+                        }
+                    }
+                } finally {
+                    activeCalls.remove(call)
                 }
             }
         }
@@ -74,15 +72,23 @@ class SmartAiClient {
 
     suspend fun verifyGroq(key: String): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val request = Request.Builder()
-                .url("https://api.groq.com/openai/v1/models")
-                .get()
-                .header("Authorization", "Bearer " + key)
-                .build()
-
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    error(readApiError(response, "Groq отклонил ключ"))
+            withTimeout(15_000L) {
+                val call = client.newCall(
+                    Request.Builder()
+                        .url("https://api.groq.com/openai/v1/models")
+                        .get()
+                        .header("Authorization", "Bearer " + key)
+                        .build()
+                )
+                activeCalls.add(call)
+                try {
+                    call.execute().use { response ->
+                        if (!response.isSuccessful) {
+                            error(readApiError(response, "Groq отклонил ключ"))
+                        }
+                    }
+                } finally {
+                    activeCalls.remove(call)
                 }
             }
         }
@@ -94,60 +100,110 @@ class SmartAiClient {
         messages: List<ChatMessage>,
         onStage: (String) -> Unit,
         onDelta: (String) -> Unit
-    ): SmartResult = coroutineScope {
+    ): SmartResult = withTimeout(95_000L) {
         val latest = messages.lastOrNull { it.role == "user" }?.text.orEmpty()
         if (latest.isBlank()) error("Пустой запрос")
 
         when {
             needsFreshWeb(latest) -> {
-                onStage("Проверяю свежую информацию в интернете…")
-                val searched = runCatching {
-                    withTimeout(120_000L) {
-                        geminiLiveSearch(geminiKey, messages, onDelta)
+                onStage("Ищу и проверяю свежую информацию…")
+                val web = runCatching {
+                    withTimeout(65_000L) {
+                        geminiStream(
+                            key = geminiKey,
+                            contents = normalGeminiContents(messages),
+                            system = baseSystem() + " Для этого запроса обязательно используй Google Search grounding и приложи проверяемые источники.",
+                            thinkingLevel = "medium",
+                            useSearch = true,
+                            onDelta = onDelta
+                        )
                     }
                 }
-                if (searched.isSuccess && !searched.getOrNull().isNullOrBlank()) {
-                    SmartResult(searched.getOrThrow(), "Web · Gemini Live")
+
+                if (web.isSuccess) {
+                    SmartResult(web.getOrThrow(), "Web · Gemini 3.8 Flash")
                 } else {
-                    onStage("Веб-поиск недоступен — включаю перекрёстную проверку…")
-                    smartFusion(geminiKey, groqKey, messages, onStage, onDelta)
+                    onStage("Поиск недоступен — отвечаю без веба через резерв…")
+                    val fallback = fallbackAnswer(
+                        geminiKey = geminiKey,
+                        groqKey = groqKey,
+                        messages = messages,
+                        onDelta = onDelta,
+                        thinkingLevel = "high"
+                    )
+                    SmartResult(fallback, "Fallback · без веба")
                 }
             }
 
             isComplex(latest) -> {
-                smartFusion(geminiKey, groqKey, messages, onStage, onDelta)
+                smartFusion(
+                    geminiKey = geminiKey,
+                    groqKey = groqKey,
+                    messages = messages,
+                    onStage = onStage,
+                    onDelta = onDelta
+                )
             }
 
             else -> {
                 onStage("Думаю…")
-                val answer = runCatching {
-                    geminiStream(
-                        key = geminiKey,
-                        contents = normalGeminiContents(messages),
-                        system = baseSystem(),
-                        onDelta = onDelta
-                    )
-                }.getOrElse {
-                    onStage("Gemini недоступен — переключаюсь на резерв…")
-                    val fallback = runCatching {
-                        groqCall(
-                            key = groqKey,
-                            model = "openai/gpt-oss-120b",
-                            messages = normalOpenAiMessages(messages)
-                        )
-                    }.getOrElse {
-                        groqCall(
-                            key = groqKey,
-                            model = "qwen/qwen3.8-27b",
-                            messages = normalOpenAiMessages(messages)
-                        )
-                    }
-                    onDelta(fallback)
-                    fallback
-                }
-                SmartResult(answer, "Smart")
+                val answer = fallbackAnswer(
+                    geminiKey = geminiKey,
+                    groqKey = groqKey,
+                    messages = messages,
+                    onDelta = onDelta,
+                    thinkingLevel = "low"
+                )
+                SmartResult(answer, "Gemini 3.8 Flash")
             }
         }
+    }
+
+    private suspend fun fallbackAnswer(
+        geminiKey: String,
+        groqKey: String,
+        messages: List<ChatMessage>,
+        onDelta: (String) -> Unit,
+        thinkingLevel: String
+    ): String {
+        val gemini = runCatching {
+            withTimeout(55_000L) {
+                geminiStream(
+                    key = geminiKey,
+                    contents = normalGeminiContents(messages),
+                    system = baseSystem(),
+                    thinkingLevel = thinkingLevel,
+                    useSearch = false,
+                    onDelta = onDelta
+                )
+            }
+        }
+        if (gemini.isSuccess) return gemini.getOrThrow()
+
+        val gptOss = runCatching {
+            withTimeout(28_000L) {
+                groqCall(
+                    key = groqKey,
+                    model = "openai/gpt-oss-120b",
+                    messages = normalOpenAiMessages(messages)
+                )
+            }
+        }
+        if (gptOss.isSuccess) {
+            val text = gptOss.getOrThrow()
+            onDelta(text)
+            return text
+        }
+
+        val qwen = withTimeout(28_000L) {
+            groqCall(
+                key = groqKey,
+                model = "qwen/qwen3.8-27b",
+                messages = normalOpenAiMessages(messages)
+            )
+        }
+        onDelta(qwen)
+        return qwen
     }
 
     private suspend fun smartFusion(
@@ -157,49 +213,56 @@ class SmartAiClient {
         onStage: (String) -> Unit,
         onDelta: (String) -> Unit
     ): SmartResult = coroutineScope {
-        onStage("Сверяю решение тремя моделями…")
+        onStage("Сверяю ответ тремя моделями…")
 
         val opinions = listOf(
             async(Dispatchers.IO) {
                 runCatching {
-                    Opinion(
-                        "Gemini 3.8 Flash",
-                        geminiGenerate(
-                            geminiKey,
-                            reviewerGeminiContents(messages),
-                            reviewerSystem("Gemini")
+                    withTimeout(32_000L) {
+                        Opinion(
+                            "Gemini",
+                            geminiGenerate(
+                                key = geminiKey,
+                                contents = reviewerGeminiContents(messages),
+                                system = reviewerSystem("Gemini"),
+                                thinkingLevel = "high"
+                            )
                         )
-                    )
+                    }
                 }.getOrNull()
             },
             async(Dispatchers.IO) {
                 runCatching {
-                    Opinion(
-                        "GPT-OSS 120B",
-                        groqCall(
-                            groqKey,
-                            "openai/gpt-oss-120b",
-                            reviewerOpenAiMessages(messages, "GPT-OSS")
+                    withTimeout(24_000L) {
+                        Opinion(
+                            "GPT-OSS",
+                            groqCall(
+                                key = groqKey,
+                                model = "openai/gpt-oss-120b",
+                                messages = reviewerOpenAiMessages(messages, "GPT-OSS")
+                            )
                         )
-                    )
+                    }
                 }.getOrNull()
             },
             async(Dispatchers.IO) {
                 runCatching {
-                    Opinion(
-                        "Qwen 3.8 27B",
-                        groqCall(
-                            groqKey,
-                            "qwen/qwen3.8-27b",
-                            reviewerOpenAiMessages(messages, "Qwen")
+                    withTimeout(24_000L) {
+                        Opinion(
+                            "Qwen",
+                            groqCall(
+                                key = groqKey,
+                                model = "qwen/qwen3.8-27b",
+                                messages = reviewerOpenAiMessages(messages, "Qwen")
+                            )
                         )
-                    )
+                    }
                 }.getOrNull()
             }
         ).awaitAll().filterNotNull()
 
         if (opinions.isEmpty()) {
-            error("Все подключённые бесплатные модели временно недоступны.")
+            error("Все модели временно недоступны. Повтори запрос.")
         }
 
         if (opinions.size == 1) {
@@ -210,25 +273,26 @@ class SmartAiClient {
             )
         }
 
-        onStage("Собираю один итоговый ответ…")
+        onStage("Собираю лучший итог…")
 
-        val finalAnswer = runCatching {
-            geminiStream(
-                key = geminiKey,
-                contents = synthesisGeminiContents(messages, opinions),
-                system = synthesisSystem(),
-                onDelta = onDelta
-            )
+        val final = runCatching {
+            withTimeout(45_000L) {
+                geminiStream(
+                    key = geminiKey,
+                    contents = synthesisGeminiContents(messages, opinions),
+                    system = synthesisSystem(),
+                    thinkingLevel = "high",
+                    useSearch = false,
+                    onDelta = onDelta
+                )
+            }
         }.getOrElse {
             val fallback = opinions.maxByOrNull { it.text.length }?.text.orEmpty()
             onDelta(fallback)
             fallback
         }
 
-        SmartResult(
-            finalAnswer,
-            "Smart 3×"
-        )
+        SmartResult(final, "Smart 3×")
     }
 
     private fun needsFreshWeb(text: String): Boolean {
@@ -244,7 +308,7 @@ class SmartAiClient {
 
     private fun isComplex(text: String): Boolean {
         val q = text.lowercase()
-        if (q.length >= 320) return true
+        if (q.length >= 280) return true
 
         val triggers = listOf(
             "подумай", "проанализ", "сравни", "проверь точно", "разбери",
@@ -258,7 +322,8 @@ class SmartAiClient {
 
     private fun baseSystem(): String =
         "Ты — SOHR AI, один постоянный умный чат. Отвечай на языке пользователя. " +
-            "Пиши естественно, ясно и аккуратно. Не выдумывай факты, версии, цены, даты или источники. " +
+            "Пиши естественно, ясно и аккуратно. Проверяй логику перед ответом. " +
+            "Не выдумывай факты, версии, цены, даты или источники. " +
             "Если чего-то не знаешь или не можешь подтвердить — скажи это прямо. " +
             "Не раскрывай скрытую цепочку рассуждений. Для простых вопросов отвечай компактно, " +
             "для сложных — структурировано, но без лишней воды."
@@ -279,28 +344,22 @@ class SmartAiClient {
 
     private fun normalGeminiContents(messages: List<ChatMessage>): JSONArray =
         JSONArray().apply {
-            messages.filter { it.text.isNotBlank() }.takeLast(30).forEach { message ->
+            messages.filter { it.text.isNotBlank() }.takeLast(24).forEach { message ->
                 put(
                     JSONObject()
                         .put("role", if (message.role == "assistant") "model" else "user")
-                        .put(
-                            "parts",
-                            JSONArray().put(JSONObject().put("text", message.text))
-                        )
+                        .put("parts", JSONArray().put(JSONObject().put("text", message.text)))
                 )
             }
         }
 
     private fun reviewerGeminiContents(messages: List<ChatMessage>): JSONArray =
         JSONArray().apply {
-            messages.filter { it.text.isNotBlank() }.takeLast(18).forEach { message ->
+            messages.filter { it.text.isNotBlank() }.takeLast(14).forEach { message ->
                 put(
                     JSONObject()
                         .put("role", if (message.role == "assistant") "model" else "user")
-                        .put(
-                            "parts",
-                            JSONArray().put(JSONObject().put("text", message.text))
-                        )
+                        .put("parts", JSONArray().put(JSONObject().put("text", message.text)))
                 )
             }
         }
@@ -309,41 +368,32 @@ class SmartAiClient {
         messages: List<ChatMessage>,
         opinions: List<Opinion>
     ): JSONArray {
-        val recent = messages.filter { it.text.isNotBlank() }.takeLast(10)
         val latest = messages.lastOrNull { it.role == "user" }?.text.orEmpty()
-
-        val context = buildString {
-            recent.forEach {
-                append(if (it.role == "user") "Пользователь: " else "Ассистент: ")
-                append(it.text.take(3500))
-                append("\\n")
-            }
-        }
-
         val panel = buildString {
             opinions.forEachIndexed { index, opinion ->
-                append("\\n--- Эксперт ")
+                append("\n--- Ответ ")
                 append(index + 1)
                 append(" · ")
                 append(opinion.label)
-                append(" ---\\n")
-                append(opinion.text.take(7000))
-                append("\\n")
+                append(" ---\n")
+                append(opinion.text.take(6000))
+                append("\n")
             }
         }
-
-        val prompt =
-            "Последний запрос пользователя:\\n" + latest +
-                "\\n\\nНедавний контекст:\\n" + context +
-                "\\nНезависимые ответы:\\n" + panel +
-                "\\nСобери финальный ответ."
 
         return JSONArray().put(
             JSONObject()
                 .put("role", "user")
                 .put(
                     "parts",
-                    JSONArray().put(JSONObject().put("text", prompt))
+                    JSONArray().put(
+                        JSONObject().put(
+                            "text",
+                            "Последний запрос:\n" + latest +
+                                "\n\nНезависимые ответы:" + panel +
+                                "\nСобери один лучший итоговый ответ."
+                        )
+                    )
                 )
         )
     }
@@ -351,7 +401,7 @@ class SmartAiClient {
     private fun normalOpenAiMessages(messages: List<ChatMessage>): JSONArray =
         JSONArray().apply {
             put(JSONObject().put("role", "system").put("content", baseSystem()))
-            messages.filter { it.text.isNotBlank() }.takeLast(28).forEach {
+            messages.filter { it.text.isNotBlank() }.takeLast(22).forEach {
                 put(
                     JSONObject()
                         .put("role", if (it.role == "assistant") "assistant" else "user")
@@ -366,7 +416,7 @@ class SmartAiClient {
     ): JSONArray =
         JSONArray().apply {
             put(JSONObject().put("role", "system").put("content", reviewerSystem(name)))
-            messages.filter { it.text.isNotBlank() }.takeLast(18).forEach {
+            messages.filter { it.text.isNotBlank() }.takeLast(14).forEach {
                 put(
                     JSONObject()
                         .put("role", if (it.role == "assistant") "assistant" else "user")
@@ -378,45 +428,44 @@ class SmartAiClient {
     private suspend fun geminiGenerate(
         key: String,
         contents: JSONArray,
-        system: String
+        system: String,
+        thinkingLevel: String
     ): String = withContext(Dispatchers.IO) {
         val encoded = URLEncoder.encode(key, StandardCharsets.UTF_8.name())
-        val payload = JSONObject()
-            .put(
-                "systemInstruction",
-                JSONObject().put(
-                    "parts",
-                    JSONArray().put(JSONObject().put("text", system))
+        val payload = geminiPayload(
+            contents = contents,
+            system = system,
+            thinkingLevel = thinkingLevel,
+            useSearch = false
+        )
+
+        val call = client.newCall(
+            Request.Builder()
+                .url(
+                    "https://generativelanguage.googleapis.com/v1beta/models/" +
+                        "gemini-3.8-flash:generateContent?key=" + encoded
                 )
-            )
-            .put("contents", contents)
-            .put(
-                "generationConfig",
-                JSONObject()
-                    .put("temperature", 0.35)
-                    .put("maxOutputTokens", 4096)
-            )
+                .post(
+                    payload.toString()
+                        .toRequestBody("application/json; charset=utf-8".toMediaType())
+                )
+                .build()
+        )
 
-        val request = Request.Builder()
-            .url(
-                "https://generativelanguage.googleapis.com/v1beta/models/" +
-                    "gemini-3.8-flash:generateContent?key=" + encoded
-            )
-            .post(
-                payload.toString()
-                    .toRequestBody("application/json; charset=utf-8".toMediaType())
-            )
-            .build()
+        activeCalls.add(call)
+        try {
+            call.execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    error(readJsonError(body, "Gemini ответил " + response.code))
+                }
 
-        client.newCall(request).execute().use { response ->
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) {
-                error(readJsonError(body, "Gemini ответил " + response.code))
+                val text = extractGeminiText(JSONObject(body))
+                if (text.isBlank()) error("Gemini вернул пустой ответ")
+                text
             }
-
-            val text = extractGeminiText(JSONObject(body))
-            if (text.isBlank()) error("Gemini вернул пустой ответ")
-            text
+        } finally {
+            activeCalls.remove(call)
         }
     }
 
@@ -424,39 +473,36 @@ class SmartAiClient {
         key: String,
         contents: JSONArray,
         system: String,
+        thinkingLevel: String,
+        useSearch: Boolean,
         onDelta: (String) -> Unit
     ): String = withContext(Dispatchers.IO) {
         val encoded = URLEncoder.encode(key, StandardCharsets.UTF_8.name())
-        val payload = JSONObject()
-            .put(
-                "systemInstruction",
-                JSONObject().put(
-                    "parts",
-                    JSONArray().put(JSONObject().put("text", system))
+        val payload = geminiPayload(
+            contents = contents,
+            system = system,
+            thinkingLevel = thinkingLevel,
+            useSearch = useSearch
+        )
+
+        val call = client.newCall(
+            Request.Builder()
+                .url(
+                    "https://generativelanguage.googleapis.com/v1beta/models/" +
+                        "gemini-3.8-flash:streamGenerateContent?alt=sse&key=" + encoded
                 )
-            )
-            .put("contents", contents)
-            .put(
-                "generationConfig",
-                JSONObject()
-                    .put("temperature", 0.35)
-                    .put("maxOutputTokens", 8192)
-            )
+                .post(
+                    payload.toString()
+                        .toRequestBody("application/json; charset=utf-8".toMediaType())
+                )
+                .header("Accept", "text/event-stream")
+                .build()
+        )
 
-        val request = Request.Builder()
-            .url(
-                "https://generativelanguage.googleapis.com/v1beta/models/" +
-                    "gemini-3.8-flash:streamGenerateContent?alt=sse&key=" + encoded
-            )
-            .post(
-                payload.toString()
-                    .toRequestBody("application/json; charset=utf-8".toMediaType())
-            )
-            .header("Accept", "text/event-stream")
-            .build()
-
-        val call = client.newCall(request)
         activeCalls.add(call)
+
+        val out = StringBuilder()
+        val sources = linkedMapOf<String, String>()
 
         try {
             call.execute().use { response ->
@@ -467,7 +513,6 @@ class SmartAiClient {
 
                 val source = response.body?.source()
                     ?: error("Gemini не вернул поток")
-                val out = StringBuilder()
 
                 while (!source.exhausted()) {
                     val line = source.readUtf8Line() ?: break
@@ -483,14 +528,68 @@ class SmartAiClient {
                         out.append(text)
                         onDelta(text)
                     }
-                }
 
-                if (out.isEmpty()) error("Gemini вернул пустой поток")
-                out.toString()
+                    collectGrounding(chunk, sources)
+                }
             }
+        } catch (t: Throwable) {
+            if (out.isEmpty()) throw t
         } finally {
             activeCalls.remove(call)
         }
+
+        if (out.isEmpty()) error("Gemini вернул пустой поток")
+
+        if (sources.isNotEmpty()) {
+            out.append("\n\n**Источники**")
+            sources.entries.take(8).forEach { entry ->
+                out.append("\n- [")
+                out.append(entry.value.replace("[", "").replace("]", ""))
+                out.append("](")
+                out.append(entry.key)
+                out.append(")")
+            }
+        }
+
+        out.toString()
+    }
+
+    private fun geminiPayload(
+        contents: JSONArray,
+        system: String,
+        thinkingLevel: String,
+        useSearch: Boolean
+    ): JSONObject {
+        val payload = JSONObject()
+            .put(
+                "systemInstruction",
+                JSONObject().put(
+                    "parts",
+                    JSONArray().put(JSONObject().put("text", system))
+                )
+            )
+            .put("contents", contents)
+            .put(
+                "generationConfig",
+                JSONObject()
+                    .put("temperature", 0.3)
+                    .put("maxOutputTokens", 8192)
+                    .put(
+                        "thinkingConfig",
+                        JSONObject().put("thinkingLevel", thinkingLevel)
+                    )
+            )
+
+        if (useSearch) {
+            payload.put(
+                "tools",
+                JSONArray().put(
+                    JSONObject().put("google_search", JSONObject())
+                )
+            )
+        }
+
+        return payload
     }
 
     private suspend fun groqCall(
@@ -501,269 +600,64 @@ class SmartAiClient {
         val payload = JSONObject()
             .put("model", model)
             .put("messages", messages)
-            .put("temperature", 0.35)
-            .put("max_completion_tokens", 4096)
+            .put("temperature", 0.3)
+            .put("max_completion_tokens", 3072)
 
-        val request = Request.Builder()
-            .url("https://api.groq.com/openai/v1/chat/completions")
-            .post(
-                payload.toString()
-                    .toRequestBody("application/json; charset=utf-8".toMediaType())
-            )
-            .header("Authorization", "Bearer " + key)
-            .header("Content-Type", "application/json")
-            .build()
-
-        client.newCall(request).execute().use { response ->
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) {
-                error(readJsonError(body, "Groq ответил " + response.code))
-            }
-
-            val text = JSONObject(body)
-                .optJSONArray("choices")
-                ?.optJSONObject(0)
-                ?.optJSONObject("message")
-                ?.optString("content")
-                ?.trim()
-                .orEmpty()
-
-            if (text.isBlank()) error("Groq вернул пустой ответ")
-            text
-        }
-    }
-
-    private suspend fun geminiLiveSearch(
-        key: String,
-        messages: List<ChatMessage>,
-        onDelta: (String) -> Unit
-    ): String = suspendCancellableCoroutine { continuation ->
-        val encoded = URLEncoder.encode(key, StandardCharsets.UTF_8.name())
-        val request = Request.Builder()
-            .url(
-                "wss://generativelanguage.googleapis.com/ws/" +
-                    "google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent" +
-                    "?key=" + encoded
-            )
-            .build()
-
-        val answer = StringBuilder()
-        val sources = linkedMapOf<String, String>()
-        var promptSent = false
-        var finished = false
-
-        fun finishSuccess() {
-            if (finished) return
-            finished = true
-            activeWebSocket = null
-
-            val finalText = buildString {
-                append(answer.toString().trim())
-                if (sources.isNotEmpty()) {
-                    append("\\n\\n**Источники**")
-                    sources.entries.take(8).forEach { entry ->
-                        append("\\n- [")
-                        append(entry.value.replace("[", "").replace("]", ""))
-                        append("](")
-                        append(entry.key)
-                        append(")")
-                    }
-                }
-            }
-
-            if (finalText.isBlank()) {
-                if (continuation.isActive) {
-                    continuation.resumeWithException(
-                        IllegalStateException("Веб-поиск не вернул текст")
-                    )
-                }
-            } else if (continuation.isActive) {
-                continuation.resume(finalText)
-            }
-        }
-
-        fun finishFailure(t: Throwable) {
-            if (finished) return
-            finished = true
-            activeWebSocket = null
-            if (continuation.isActive) continuation.resumeWithException(t)
-        }
-
-        val listener = object : WebSocketListener() {
-            override fun onOpen(webSocket: WebSocket, response: Response) {
-                activeWebSocket = webSocket
-
-                val setup = JSONObject().put(
-                    "setup",
-                    JSONObject()
-                        .put("model", "models/gemini-3.8-live")
-                        .put(
-                            "generationConfig",
-                            JSONObject().put(
-                                "responseModalities",
-                                JSONArray().put("AUDIO")
-                            )
-                        )
-                        .put(
-                            "systemInstruction",
-                            JSONObject().put(
-                                "parts",
-                                JSONArray().put(
-                                    JSONObject().put(
-                                        "text",
-                                        baseSystem() +
-                                            " Для этого запроса используй Google Search grounding. " +
-                                            "Учитывай текущую дату и не придумывай источники."
-                                    )
-                                )
-                            )
-                        )
-                        .put(
-                            "tools",
-                            JSONArray().put(
-                                JSONObject().put("googleSearch", JSONObject())
-                            )
-                        )
-                        .put("outputAudioTranscription", JSONObject())
+        val call = client.newCall(
+            Request.Builder()
+                .url("https://api.groq.com/openai/v1/chat/completions")
+                .post(
+                    payload.toString()
+                        .toRequestBody("application/json; charset=utf-8".toMediaType())
                 )
+                .header("Authorization", "Bearer " + key)
+                .header("Content-Type", "application/json")
+                .build()
+        )
 
-                webSocket.send(setup.toString())
-            }
-
-            override fun onMessage(webSocket: WebSocket, text: String) {
-                val json = runCatching { JSONObject(text) }.getOrNull() ?: return
-
-                if (json.has("setupComplete") && !promptSent) {
-                    promptSent = true
-
-                    val context = buildString {
-                        messages.filter { it.text.isNotBlank() }.takeLast(12).forEach {
-                            append(if (it.role == "user") "Пользователь: " else "Ассистент: ")
-                            append(it.text.take(2500))
-                            append("\\n")
-                        }
-                    }
-
-                    val clientContent = JSONObject().put(
-                        "clientContent",
-                        JSONObject()
-                            .put(
-                                "turns",
-                                JSONArray().put(
-                                    JSONObject()
-                                        .put("role", "user")
-                                        .put(
-                                            "parts",
-                                            JSONArray().put(
-                                                JSONObject().put(
-                                                    "text",
-                                                    "Контекст диалога:\\n" + context +
-                                                        "\\nОтветь на последний запрос. " +
-                                                        "Проверь свежие факты через Google Search."
-                                                )
-                                            )
-                                        )
-                                )
-                            )
-                            .put("turnComplete", true)
-                    )
-
-                    webSocket.send(clientContent.toString())
-                    return
+        activeCalls.add(call)
+        try {
+            call.execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    error(readJsonError(body, "Groq ответил " + response.code))
                 }
 
-                val server = json.optJSONObject("serverContent")
-                if (server != null) {
-                    val transcript = server
-                        .optJSONObject("outputTranscription")
-                        ?.optString("text")
-                        .orEmpty()
+                val text = JSONObject(body)
+                    .optJSONArray("choices")
+                    ?.optJSONObject(0)
+                    ?.optJSONObject("message")
+                    ?.optString("content")
+                    ?.trim()
+                    .orEmpty()
 
-                    if (transcript.isNotEmpty()) {
-                        answer.append(transcript)
-                        onDelta(transcript)
-                    } else {
-                        val parts = server
-                            .optJSONObject("modelTurn")
-                            ?.optJSONArray("parts")
-
-                        if (parts != null) {
-                            for (i in 0 until parts.length()) {
-                                val part = parts.optJSONObject(i) ?: continue
-                                val piece = part.optString("text")
-                                if (piece.isNotEmpty()) {
-                                    answer.append(piece)
-                                    onDelta(piece)
-                                }
-                            }
-                        }
-                    }
-
-                    collectGrounding(
-                        server.optJSONObject("groundingMetadata"),
-                        sources
-                    )
-
-                    if (server.optBoolean("turnComplete", false)) {
-                        webSocket.close(1000, "done")
-                        finishSuccess()
-                    }
-                }
+                if (text.isBlank()) error("Groq вернул пустой ответ")
+                text
             }
-
-            override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
-                // Audio bytes are ignored; the app uses the text transcript.
-            }
-
-            override fun onFailure(
-                webSocket: WebSocket,
-                t: Throwable,
-                response: Response?
-            ) {
-                finishFailure(t)
-            }
-
-            override fun onClosed(
-                webSocket: WebSocket,
-                code: Int,
-                reason: String
-            ) {
-                if (!finished) {
-                    if (answer.isNotEmpty()) {
-                        finishSuccess()
-                    } else {
-                        finishFailure(
-                            IllegalStateException(
-                                if (reason.isBlank()) "Gemini Live закрыл соединение" else reason
-                            )
-                        )
-                    }
-                }
-            }
-        }
-
-        val socket = client.newWebSocket(request, listener)
-        activeWebSocket = socket
-
-        continuation.invokeOnCancellation {
-            runCatching { socket.cancel() }
-            activeWebSocket = null
+        } finally {
+            activeCalls.remove(call)
         }
     }
 
     private fun collectGrounding(
-        metadata: JSONObject?,
+        chunk: JSONObject,
         out: MutableMap<String, String>
     ) {
-        if (metadata == null) return
-        val chunks = metadata.optJSONArray("groundingChunks") ?: return
+        val candidates = chunk.optJSONArray("candidates") ?: return
+        for (i in 0 until candidates.length()) {
+            val metadata = candidates
+                .optJSONObject(i)
+                ?.optJSONObject("groundingMetadata")
+                ?: continue
 
-        for (i in 0 until chunks.length()) {
-            val web = chunks.optJSONObject(i)?.optJSONObject("web") ?: continue
-            val url = web.optString("uri")
-            if (url.isBlank()) continue
-            val title = web.optString("title").ifBlank { url }
-            out.putIfAbsent(url, title)
+            val chunks = metadata.optJSONArray("groundingChunks") ?: continue
+            for (j in 0 until chunks.length()) {
+                val web = chunks.optJSONObject(j)?.optJSONObject("web") ?: continue
+                val url = web.optString("uri")
+                if (url.isBlank()) continue
+                val title = web.optString("title").ifBlank { url }
+                out.putIfAbsent(url, title)
+            }
         }
     }
 
@@ -780,7 +674,7 @@ class SmartAiClient {
         }
     }
 
-    private fun readApiError(response: Response, fallback: String): String {
+    private fun readApiError(response: okhttp3.Response, fallback: String): String {
         val body = response.body?.string().orEmpty()
         return readJsonError(body, fallback + " (" + response.code + ")")
     }
