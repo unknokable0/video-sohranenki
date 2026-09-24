@@ -1,0 +1,32 @@
+name: Build GPT Lavender APK
+
+on:
+  push:
+    branches: [gpt-lavender-apk-build]
+    paths:
+      - "gpt-lavender-standalone-src.zip"
+      - ".github/workflows/gpt-lavender-apk.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.6.0"
+      - name: Extract project
+        run: unzip -q -o gpt-lavender-standalone-src.zip
+      - name: Build debug APK
+        working-directory: gpt-lavender-standalone
+        run: gradle --no-daemon assembleDebug
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: GPT-Lavender-APK
+          path: gpt-lavender-standalone/app/build/outputs/apk/debug/app-debug.apk
