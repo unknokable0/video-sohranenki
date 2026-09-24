@@ -1,8 +1,8 @@
-name: Build SOHR AI Free Fusion v0.3
+name: Build SOHR AI Smart v0.4
 
 on:
   push:
-    branches: [sohr-ai-free-v03]
+    branches: [sohr-ai-smart-v04]
     paths:
       - "ai/android/**"
       - ".github/workflows/build-sohr-ai-fusion-v02.yml"
@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: sohr-ai-free-v03
+  group: sohr-ai-smart-v04
   cancel-in-progress: true
 
 jobs:
@@ -50,16 +50,16 @@ jobs:
             SOHR_KEY_ALIAS="$SOHR_KEY_ALIAS" \
             SOHR_KEY_PASSWORD="$SOHR_KEY_PASSWORD" \
             gradle -p ai/android :app:assembleRelease --no-daemon --stacktrace
-            cp ai/android/app/build/outputs/apk/release/app-release.apk SOHR-AI-Free-Fusion-v0.3.apk
+            cp ai/android/app/build/outputs/apk/release/app-release.apk SOHR-AI-Smart-v0.4.apk
           else
             gradle -p ai/android :app:assembleDebug --no-daemon --stacktrace
-            cp ai/android/app/build/outputs/apk/debug/app-debug.apk SOHR-AI-Free-Fusion-v0.3.apk
+            cp ai/android/app/build/outputs/apk/debug/app-debug.apk SOHR-AI-Smart-v0.4.apk
           fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: SOHR-AI-Free-Fusion-v0.3
-          path: SOHR-AI-Free-Fusion-v0.3.apk
+          name: SOHR-AI-Smart-v0.4
+          path: SOHR-AI-Smart-v0.4.apk
           if-no-files-found: error
           retention-days: 30

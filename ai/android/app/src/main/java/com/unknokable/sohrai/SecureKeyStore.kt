@@ -11,13 +11,16 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 class SecureKeyStore(context: Context) {
-    private val prefs = context.getSharedPreferences("sohr_ai_secure", Context.MODE_PRIVATE)
-    private val alias = "sohr_ai_openrouter_key"
+    private val prefs = context.getSharedPreferences("sohr_ai_secure_v2", Context.MODE_PRIVATE)
 
-    private fun getOrCreateKey(): SecretKey {
+    private fun alias(name: String) = "sohr_ai_" + name.replace(Regex("[^a-zA-Z0-9_]"), "_")
+
+    private fun getOrCreateKey(name: String): SecretKey {
+        val alias = alias(name)
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         val existing = store.getKey(alias, null) as? SecretKey
         if (existing != null) return existing
+
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
         generator.init(
             KeyGenParameterSpec.Builder(
@@ -32,35 +35,42 @@ class SecureKeyStore(context: Context) {
         return generator.generateKey()
     }
 
-    fun save(value: String) {
+    fun save(name: String, value: String) {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
+        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey(name))
         val encrypted = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
         prefs.edit()
-            .putString("iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
-            .putString("payload", Base64.encodeToString(encrypted, Base64.NO_WRAP))
+            .putString(name + "_iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
+            .putString(name + "_payload", Base64.encodeToString(encrypted, Base64.NO_WRAP))
             .apply()
     }
 
-    fun load(): String? = runCatching {
-        val iv = prefs.getString("iv", null) ?: return null
-        val payload = prefs.getString("payload", null) ?: return null
+    fun load(name: String): String? = runCatching {
+        val iv = prefs.getString(name + "_iv", null) ?: return null
+        val payload = prefs.getString(name + "_payload", null) ?: return null
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(
             Cipher.DECRYPT_MODE,
-            getOrCreateKey(),
+            getOrCreateKey(name),
             GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP))
         )
         String(cipher.doFinal(Base64.decode(payload, Base64.NO_WRAP)), Charsets.UTF_8)
     }.getOrNull()
 
-    fun clear() {
-        prefs.edit().clear().apply()
+    fun has(name: String): Boolean = !load(name).isNullOrBlank()
+
+    fun clear(name: String) {
+        prefs.edit().remove(name + "_iv").remove(name + "_payload").apply()
         runCatching {
             KeyStore.getInstance("AndroidKeyStore").apply {
                 load(null)
-                if (containsAlias(alias)) deleteEntry(alias)
+                val a = alias(name)
+                if (containsAlias(a)) deleteEntry(a)
             }
         }
+    }
+
+    fun clearAll() {
+        listOf("gemini", "groq").forEach { clear(it) }
     }
 }
