@@ -1,8 +1,8 @@
 package com.unknokable.sohrai
 
-import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.text.method.LinkMovementMethod
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -21,6 +21,7 @@ class ChatAdapter(
     }
 
     private val markwonCache = mutableMapOf<Int, Markwon>()
+    private val animated = mutableSetOf<Int>()
 
     class MessageHolder(
         val shell: FrameLayout,
@@ -42,7 +43,7 @@ class ChatAdapter(
         val context = parent.context
 
         val shell = FrameLayout(context).apply {
-            setPadding(dp(12), dp(4), dp(12), dp(4))
+            setPadding(dp(14), dp(4), dp(14), dp(4))
             layoutParams = RecyclerView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -50,16 +51,11 @@ class ChatAdapter(
         }
 
         val text = TextView(context).apply {
-            textSize = 15.5f
+            textSize = 15.8f
             setLineSpacing(dp(3).toFloat(), 1.04f)
             includeFontPadding = false
             setTextIsSelectable(true)
-            setPadding(
-                if (viewType == USER) dp(14) else dp(3),
-                dp(10),
-                if (viewType == USER) dp(14) else dp(3),
-                dp(10)
-            )
+            movementMethod = LinkMovementMethod.getInstance()
         }
 
         val params = FrameLayout.LayoutParams(
@@ -67,9 +63,7 @@ class ChatAdapter(
             else ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply {
-            gravity =
-                if (viewType == USER) Gravity.END
-                else Gravity.START
+            gravity = if (viewType == USER) Gravity.END else Gravity.START
         }
 
         shell.addView(text, params)
@@ -83,31 +77,30 @@ class ChatAdapter(
         val message = messages[position]
         val user = message.role == "user"
 
-        holder.text.setTextColor(
-            if (user) Color.WHITE else palette.text
-        )
-
-        holder.text.typeface =
-            Typeface.create("sans", Typeface.NORMAL)
-
-        holder.text.background =
-            if (user) rounded(palette.accent, 19f)
-            else null
+        holder.text.setTextColor(palette.text)
+        holder.text.typeface = Typeface.create("sans", Typeface.NORMAL)
 
         if (user) {
+            holder.text.setPadding(dp(14), dp(10), dp(14), dp(10))
+            holder.text.background = rounded(palette.surface, 20f)
             holder.text.text = message.text
         } else {
-            val markwon =
-                markwonCache.getOrPut(
-                    holder.text.context.hashCode()
-                ) {
-                    Markwon.create(holder.text.context)
-                }
+            holder.text.setPadding(dp(3), dp(10), dp(3), dp(10))
+            holder.text.background = null
+            val markwon = markwonCache.getOrPut(holder.text.context.hashCode()) {
+                Markwon.create(holder.text.context)
+            }
+            markwon.setMarkdown(holder.text, message.text.ifBlank { " " })
+        }
 
-            markwon.setMarkdown(
-                holder.text,
-                message.text.ifBlank { " " }
-            )
+        if (animated.add(position)) {
+            holder.shell.alpha = 0f
+            holder.shell.translationY = dp(6).toFloat()
+            holder.shell.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setDuration(180L)
+                .start()
         }
     }
 
@@ -119,20 +112,18 @@ class ChatAdapter(
     ): GradientDrawable =
         GradientDrawable().apply {
             setColor(color)
-            cornerRadius =
-                radiusDp *
-                    android.content.res.Resources
-                        .getSystem()
-                        .displayMetrics
-                        .density
-        }
-
-    private fun dp(value: Int): Int =
-        (
-            value *
+            cornerRadius = radiusDp *
                 android.content.res.Resources
                     .getSystem()
                     .displayMetrics
                     .density
-            ).toInt()
+        }
+
+    private fun dp(value: Int): Int =
+        (value *
+            android.content.res.Resources
+                .getSystem()
+                .displayMetrics
+                .density
+        ).toInt()
 }

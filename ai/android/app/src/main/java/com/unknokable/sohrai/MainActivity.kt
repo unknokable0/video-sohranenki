@@ -40,18 +40,18 @@ import kotlinx.coroutines.launch
 class MainActivity : AppCompatActivity() {
 
     private lateinit var root: FrameLayout
-    private lateinit var uiPrefs: SharedPreferences
+    private lateinit var prefs: SharedPreferences
     private lateinit var keyStore: SecureKeyStore
     private lateinit var chatStore: ChatStore
 
-    private val api = SmartAiClient()
+    private val api = OpenAiClient()
     private val messages = mutableListOf<ChatMessage>()
 
     private lateinit var recycler: RecyclerView
     private lateinit var adapter: ChatAdapter
     private lateinit var input: EditText
     private lateinit var sendButton: ImageButton
-    private lateinit var statusText: TextView
+    private lateinit var modelTitle: TextView
     private var thinkingCard: LinearLayout? = null
     private var thinkingLabel: TextView? = null
     private var generationJob: Job? = null
@@ -64,18 +64,44 @@ class MainActivity : AppCompatActivity() {
     private val palette: ThemePalette
         get() = if (lightTheme) AppThemes.Light else AppThemes.Dark
 
+    private val modelId: String
+        get() = prefs.getString(
+            "model_id",
+            "gpt-5.6-sol"
+        ) ?: "gpt-5.6-sol"
+
+    private val previousResponseId: String?
+        get() = prefs.getString(
+            "previous_response_id",
+            null
+        )
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        uiPrefs = getSharedPreferences("sohr_ai_ui_v4", MODE_PRIVATE)
-        lightTheme = uiPrefs.getBoolean("light_theme", false)
-        animations = uiPrefs.getBoolean("animations", true)
+        prefs = getSharedPreferences(
+            "sohr_ai_ui_v6",
+            MODE_PRIVATE
+        )
+
+        lightTheme = prefs.getBoolean(
+            "light_theme",
+            false
+        )
+
+        animations = prefs.getBoolean(
+            "animations",
+            true
+        )
 
         keyStore = SecureKeyStore(this)
         chatStore = ChatStore(this)
         messages += chatStore.load()
 
-        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowCompat.setDecorFitsSystemWindows(
+            window,
+            false
+        )
 
         root = FrameLayout(this).apply {
             setBackgroundColor(palette.background)
@@ -83,13 +109,18 @@ class MainActivity : AppCompatActivity() {
         }
 
         setContentView(root)
+
         installSafeInsets()
         applySystemTheme()
         showSplash()
 
         root.postDelayed({
-            if (keysReady()) showChatScreen() else showConnectScreen()
-        }, 620L)
+            if (keyStore.has("openai")) {
+                showChatScreen()
+            } else {
+                showConnectScreen()
+            }
+        }, 520L)
     }
 
     override fun onDestroy() {
@@ -98,80 +129,126 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    private fun keysReady(): Boolean =
-        keyStore.has("gemini") && keyStore.has("groq")
-
     private fun installSafeInsets() {
-        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
-            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
-            val bottom = maxOf(bars.bottom, ime.bottom)
+        ViewCompat.setOnApplyWindowInsetsListener(
+            root
+        ) { view, insets ->
+            val bars = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars()
+            )
 
-            view.setPadding(0, bars.top, 0, bottom)
+            val ime = insets.getInsets(
+                WindowInsetsCompat.Type.ime()
+            )
 
-            if (::recycler.isInitialized && ime.bottom > 0) {
-                recycler.post { scrollToBottom() }
+            view.setPadding(
+                0,
+                bars.top,
+                0,
+                maxOf(
+                    bars.bottom,
+                    ime.bottom
+                )
+            )
+
+            if (
+                ::recycler.isInitialized &&
+                ime.bottom > 0
+            ) {
+                recycler.post {
+                    scrollToBottom()
+                }
             }
 
             insets
         }
+
         ViewCompat.requestApplyInsets(root)
     }
 
     private fun applySystemTheme() {
         root.setBackgroundColor(palette.background)
-        window.statusBarColor = Color.TRANSPARENT
-        window.navigationBarColor = Color.TRANSPARENT
 
-        WindowInsetsControllerCompat(window, root).apply {
-            isAppearanceLightStatusBars = lightTheme
-            isAppearanceLightNavigationBars = lightTheme
+        window.statusBarColor =
+            Color.TRANSPARENT
+
+        window.navigationBarColor =
+            Color.TRANSPARENT
+
+        WindowInsetsControllerCompat(
+            window,
+            root
+        ).apply {
+            isAppearanceLightStatusBars =
+                lightTheme
+
+            isAppearanceLightNavigationBars =
+                lightTheme
         }
     }
 
     private fun showSplash() {
         val page = FrameLayout(this).apply {
-            setBackgroundColor(palette.background)
+            setBackgroundColor(
+                palette.background
+            )
         }
 
-        val center = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-        }
+        val center =
+            LinearLayout(this).apply {
+                orientation =
+                    LinearLayout.VERTICAL
+
+                gravity = Gravity.CENTER
+            }
 
         val logo = TextView(this).apply {
             text = "SOHR AI"
-            textSize = 31f
+            textSize = 30f
             gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
+
+            setTypeface(
+                typeface,
+                Typeface.BOLD
+            )
+
             setTextColor(palette.text)
-            alpha = if (animations) 0f else 1f
-            scaleX = if (animations) 0.94f else 1f
-            scaleY = if (animations) 0.94f else 1f
+
+            alpha =
+                if (animations) 0f else 1f
+
+            scaleX =
+                if (animations) 0.96f else 1f
+
+            scaleY =
+                if (animations) 0.96f else 1f
         }
 
-        val loader = LoadingWaveView(this, palette.accent).apply {
-            alpha = if (animations) 0f else 1f
-        }
-
-        val subtitle = TextView(this).apply {
-            text = "Smart"
-            textSize = 12.5f
-            gravity = Gravity.CENTER
-            setTextColor(palette.muted)
-            setPadding(0, dp(9), 0, 0)
-            alpha = if (animations) 0f else 1f
-        }
+        val loader =
+            LoadingWaveView(
+                this,
+                if (lightTheme)
+                    Color.BLACK
+                else
+                    Color.WHITE
+            ).apply {
+                alpha =
+                    if (animations) 0f else 1f
+            }
 
         center.addView(logo)
+
         center.addView(
             loader,
-            LinearLayout.LayoutParams(dp(50), dp(50)).apply {
-                topMargin = dp(15)
-                gravity = Gravity.CENTER_HORIZONTAL
+            LinearLayout.LayoutParams(
+                dp(44),
+                dp(44)
+            ).apply {
+                topMargin = dp(14)
+                gravity =
+                    Gravity.CENTER_HORIZONTAL
             }
         )
-        center.addView(subtitle)
 
         page.addView(
             center,
@@ -189,20 +266,21 @@ class MainActivity : AppCompatActivity() {
                 .alpha(1f)
                 .scaleX(1f)
                 .scaleY(1f)
-                .setDuration(280L)
-                .setInterpolator(PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                .setDuration(230L)
+                .setInterpolator(
+                    PathInterpolator(
+                        0.22f,
+                        1f,
+                        0.36f,
+                        1f
+                    )
+                )
                 .start()
 
             loader.animate()
                 .alpha(1f)
-                .setStartDelay(90L)
-                .setDuration(170L)
-                .start()
-
-            subtitle.animate()
-                .alpha(1f)
-                .setStartDelay(140L)
-                .setDuration(170L)
+                .setStartDelay(70L)
+                .setDuration(150L)
                 .start()
         }
     }
@@ -211,193 +289,404 @@ class MainActivity : AppCompatActivity() {
         applySystemTheme()
 
         val page = FrameLayout(this).apply {
-            setBackgroundColor(palette.background)
+            setBackgroundColor(
+                palette.background
+            )
         }
 
-        val scroll = ScrollView(this).apply {
-            isVerticalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_NEVER
-            isFillViewport = true
-        }
+        val scroll =
+            ScrollView(this).apply {
+                isVerticalScrollBarEnabled = false
+                overScrollMode =
+                    View.OVER_SCROLL_NEVER
+                isFillViewport = true
+            }
 
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(12), dp(16), dp(24))
-        }
+        val content =
+            LinearLayout(this).apply {
+                orientation =
+                    LinearLayout.VERTICAL
 
-        content.addView(TextView(this).apply {
-            text = "SOHR AI"
-            textSize = 26f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(palette.text)
-        })
+                gravity =
+                    Gravity.CENTER_HORIZONTAL
 
-        content.addView(TextView(this).apply {
-            text = "Один чат · три модели · бесплатные API"
-            textSize = 13f
-            setTextColor(palette.muted)
-            setPadding(0, dp(4), 0, dp(14))
-        })
+                setPadding(
+                    dp(18),
+                    dp(30),
+                    dp(18),
+                    dp(26)
+                )
+            }
 
-        content.addView(TextView(this).apply {
-            text = "Подключение"
-            textSize = 18f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(palette.text)
-        })
+        content.addView(
+            TextView(this).apply {
+                text = "SOHR AI"
+                textSize = 30f
+                gravity = Gravity.CENTER
 
-        content.addView(TextView(this).apply {
-            text = "Два бесплатных ключа нужны один раз. Потом приложение само выбирает модель и режим."
-            textSize = 12.5f
-            setTextColor(palette.muted)
-            setPadding(0, dp(4), 0, dp(10))
-        })
+                setTypeface(
+                    typeface,
+                    Typeface.BOLD
+                )
 
-        val geminiInput = providerKeyCard(
-            title = "Google Gemini",
-            description = "Gemini 3.8 Flash · основной чат + веб-проверка",
-            button = "Получить Gemini API key",
-            url = "https://aistudio.google.com/apikey",
-            hint = "AIza…"
-        )
-
-        val groqInput = providerKeyCard(
-            title = "Groq",
-            description = "GPT-OSS 120B + Qwen 3.8 · проверка и резерв",
-            button = "Получить Groq API key",
-            url = "https://console.groq.com/keys",
-            hint = "gsk_…"
+                setTextColor(palette.text)
+            }
         )
 
         content.addView(
-            geminiInput.first,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(9) }
+            TextView(this).apply {
+                text = "Подключение OpenAI"
+                textSize = 14f
+                gravity = Gravity.CENTER
+                setTextColor(palette.muted)
+
+                setPadding(
+                    0,
+                    dp(6),
+                    0,
+                    dp(24)
+                )
+            }
         )
 
-        content.addView(
-            groqInput.first,
+        val card =
+            LinearLayout(this).apply {
+                orientation =
+                    LinearLayout.VERTICAL
+
+                setPadding(
+                    dp(16),
+                    dp(16),
+                    dp(16),
+                    dp(16)
+                )
+
+                background =
+                    rounded(
+                        palette.surface,
+                        22
+                    )
+            }
+
+        card.addView(
+            TextView(this).apply {
+                text = "OpenAI API key"
+                textSize = 17f
+
+                setTypeface(
+                    typeface,
+                    Typeface.BOLD
+                )
+
+                setTextColor(palette.text)
+            }
+        )
+
+        card.addView(
+            TextView(this).apply {
+                text =
+                    "Ключ сохраняется зашифрованно на этом устройстве и не вшивается в APK."
+
+                textSize = 12.5f
+                setTextColor(palette.muted)
+
+                setPadding(
+                    0,
+                    dp(5),
+                    0,
+                    dp(12)
+                )
+            }
+        )
+
+        val openKeys =
+            actionButton(
+                "Открыть OpenAI API keys",
+                palette.surfaceAlt,
+                palette.text
+            )
+
+        openKeys.setOnClickListener {
+            animateTap(openKeys)
+
+            openUrl(
+                "https://platform.openai.com/api-keys"
+            )
+        }
+
+        card.addView(
+            openKeys,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
+                dp(48)
             )
         )
 
-        val inlineStatus = TextView(this).apply {
-            textSize = 12f
-            setTextColor(palette.muted)
-            visibility = View.GONE
-            setPadding(dp(2), dp(10), dp(2), 0)
-        }
-        content.addView(inlineStatus)
+        val keyShell =
+            LinearLayout(this).apply {
+                orientation =
+                    LinearLayout.HORIZONTAL
 
-        val connect = actionButton(
-            "Проверить ключи и войти",
-            palette.accent,
-            Color.WHITE
+                gravity =
+                    Gravity.CENTER_VERTICAL
+
+                setPadding(
+                    dp(11),
+                    dp(2),
+                    dp(4),
+                    dp(2)
+                )
+
+                background =
+                    roundedWithStroke(
+                        palette.background,
+                        17,
+                        palette.stroke
+                    )
+            }
+
+        val keyField =
+            EditText(this).apply {
+                hint = "sk-…"
+                setHintTextColor(palette.muted)
+                setTextColor(palette.text)
+                textSize = 14.5f
+                maxLines = 1
+                isSingleLine = true
+                background = null
+
+                inputType =
+                    InputType.TYPE_CLASS_TEXT or
+                        InputType.TYPE_TEXT_VARIATION_PASSWORD
+
+                transformationMethod =
+                    PasswordTransformationMethod
+                        .getInstance()
+
+                setPadding(
+                    0,
+                    dp(9),
+                    dp(6),
+                    dp(9)
+                )
+            }
+
+        val eye =
+            ImageButton(this).apply {
+                setImageResource(
+                    R.drawable.ic_visibility
+                )
+
+                imageTintList =
+                    ColorStateList.valueOf(
+                        palette.muted
+                    )
+
+                background =
+                    rounded(
+                        palette.background,
+                        18
+                    )
+
+                setPadding(
+                    dp(10),
+                    dp(10),
+                    dp(10),
+                    dp(10)
+                )
+
+                var visible = false
+
+                setOnClickListener {
+                    visible = !visible
+
+                    setImageResource(
+                        if (visible)
+                            R.drawable.ic_visibility_off
+                        else
+                            R.drawable.ic_visibility
+                    )
+
+                    keyField.transformationMethod =
+                        if (visible)
+                            HideReturnsTransformationMethod
+                                .getInstance()
+                        else
+                            PasswordTransformationMethod
+                                .getInstance()
+
+                    keyField.setSelection(
+                        keyField.text.length
+                    )
+
+                    animateTap(this)
+                }
+            }
+
+        keyShell.addView(
+            keyField,
+            LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                1f
+            )
         )
+
+        keyShell.addView(
+            eye,
+            LinearLayout.LayoutParams(
+                dp(44),
+                dp(44)
+            )
+        )
+
+        card.addView(
+            keyShell,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dp(10)
+            }
+        )
+
+        val inlineStatus =
+            TextView(this).apply {
+                textSize = 12f
+                setTextColor(palette.muted)
+                visibility = View.GONE
+
+                setPadding(
+                    dp(2),
+                    dp(9),
+                    dp(2),
+                    0
+                )
+            }
+
+        card.addView(inlineStatus)
+
+        val connect =
+            actionButton(
+                "Подключить",
+                palette.accent,
+                if (lightTheme)
+                    Color.WHITE
+                else
+                    Color.BLACK
+            )
 
         connect.setOnClickListener {
             animateTap(connect)
 
-            val gemini = geminiInput.second.text?.toString()?.trim().orEmpty()
-            val groq = groqInput.second.text?.toString()?.trim().orEmpty()
+            val key =
+                keyField.text
+                    ?.toString()
+                    ?.trim()
+                    .orEmpty()
 
-            if (gemini.isBlank() || groq.isBlank()) {
-                inlineStatus.text = "Вставь оба ключа."
-                inlineStatus.setTextColor(Color.parseColor("#FF7A9A"))
-                inlineStatus.visibility = View.VISIBLE
+            if (key.isBlank()) {
+                inlineStatus.text =
+                    "Вставь OpenAI API key."
+
+                inlineStatus.setTextColor(
+                    Color.parseColor("#EF6A6A")
+                )
+
+                inlineStatus.visibility =
+                    View.VISIBLE
+
                 return@setOnClickListener
             }
 
             connect.isEnabled = false
-            connect.alpha = 0.62f
+            connect.alpha = 0.55f
             connect.text = "Проверяю…"
 
-            inlineStatus.text = "Проверяем Google AI…"
-            inlineStatus.setTextColor(palette.muted)
-            inlineStatus.visibility = View.VISIBLE
+            inlineStatus.text =
+                "Проверяю доступ к GPT‑5.6 Sol…"
+
+            inlineStatus.setTextColor(
+                palette.muted
+            )
+
+            inlineStatus.visibility =
+                View.VISIBLE
 
             lifecycleScope.launch {
-                val geminiCheck = api.verifyGemini(gemini)
+                val check =
+                    api.verifyKey(key)
 
-                if (geminiCheck.isFailure) {
-                    inlineStatus.text = friendlyError(
-                        geminiCheck.exceptionOrNull()?.message,
-                        "Gemini"
+                if (check.isSuccess) {
+                    keyStore.save(
+                        "openai",
+                        key
                     )
-                    inlineStatus.setTextColor(Color.parseColor("#FF7A9A"))
+
+                    inlineStatus.text =
+                        "Готово."
+
+                    inlineStatus.setTextColor(
+                        if (lightTheme)
+                            Color.parseColor("#0D7A45")
+                        else
+                            Color.parseColor("#7EE2A8")
+                    )
+
+                    root.postDelayed({
+                        showChatScreen()
+                    }, if (animations) 130L else 0L)
+                } else {
+                    inlineStatus.text =
+                        friendlyError(
+                            check.exceptionOrNull()
+                                ?.message
+                        )
+
+                    inlineStatus.setTextColor(
+                        Color.parseColor("#EF6A6A")
+                    )
+
                     connect.isEnabled = true
                     connect.alpha = 1f
-                    connect.text = "Проверить ключи и войти"
-                    return@launch
+                    connect.text = "Подключить"
                 }
-
-                inlineStatus.text = "Проверяем Groq…"
-
-                val groqCheck = api.verifyGroq(groq)
-
-                if (groqCheck.isFailure) {
-                    inlineStatus.text = friendlyError(
-                        groqCheck.exceptionOrNull()?.message,
-                        "Groq"
-                    )
-                    inlineStatus.setTextColor(Color.parseColor("#FF7A9A"))
-                    connect.isEnabled = true
-                    connect.alpha = 1f
-                    connect.text = "Проверить ключи и войти"
-                    return@launch
-                }
-
-                keyStore.save("gemini", gemini)
-                keyStore.save("groq", groq)
-
-                inlineStatus.text = "Готово."
-                inlineStatus.setTextColor(palette.accent)
-
-                root.postDelayed({
-                    showChatScreen()
-                }, if (animations) 140L else 0L)
             }
         }
 
-        content.addView(
+        card.addView(
             connect,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(52)
-            ).apply { topMargin = dp(12) }
+            ).apply {
+                topMargin = dp(12)
+            }
         )
 
-        val info = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(13), dp(14), dp(13))
-            background = rounded(palette.accentSoft, 17)
-        }
+        card.addView(
+            TextView(this).apply {
+                text =
+                    "ChatGPT‑подписка и OpenAI API оплачиваются отдельно. Приложение использует баланс API твоего аккаунта."
 
-        info.addView(TextView(this).apply {
-            text = "Как работает Smart"
-            textSize = 13.5f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(palette.text)
-        })
+                textSize = 10.8f
+                setTextColor(palette.muted)
 
-        info.addView(TextView(this).apply {
-            text = "Обычный вопрос — один быстрый ответ Gemini. Сложный вопрос — Gemini, GPT-OSS и Qwen сверяют решение, затем получается один итог. Свежая информация — отдельный веб-режим."
-            textSize = 11.7f
-            setTextColor(palette.muted)
-            setPadding(0, dp(4), 0, 0)
-            setLineSpacing(dp(2).toFloat(), 1f)
-        })
+                setPadding(
+                    dp(2),
+                    dp(10),
+                    dp(2),
+                    0
+                )
+            }
+        )
 
         content.addView(
-            info,
+            card,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(10) }
+            )
         )
 
         scroll.addView(
@@ -416,123 +705,10 @@ class MainActivity : AppCompatActivity() {
             )
         )
 
-        replaceRoot(page, true)
-    }
-
-    private fun providerKeyCard(
-        title: String,
-        description: String,
-        button: String,
-        url: String,
-        hint: String
-    ): Pair<View, EditText> {
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(13), dp(14), dp(14))
-            background = rounded(palette.surface, 18)
-        }
-
-        card.addView(TextView(this).apply {
-            text = title
-            textSize = 15f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(palette.text)
-        })
-
-        card.addView(TextView(this).apply {
-            text = description
-            textSize = 11.5f
-            setTextColor(palette.muted)
-            setPadding(0, dp(2), 0, dp(9))
-        })
-
-        val open = actionButton(button, palette.surfaceAlt, palette.text)
-        open.setOnClickListener {
-            animateTap(open)
-            openUrl(url)
-        }
-
-        card.addView(
-            open,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(45)
-            )
+        replaceRoot(
+            page,
+            true
         )
-
-        val shell = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(10), dp(2), dp(3), dp(2))
-            background = roundedWithStroke(
-                palette.surfaceAlt,
-                15,
-                palette.stroke
-            )
-        }
-
-        val field = EditText(this).apply {
-            this.hint = hint
-            setHintTextColor(palette.muted)
-            setTextColor(palette.text)
-            textSize = 14f
-            isSingleLine = true
-            maxLines = 1
-            background = null
-            inputType =
-                InputType.TYPE_CLASS_TEXT or
-                InputType.TYPE_TEXT_VARIATION_PASSWORD
-            transformationMethod = PasswordTransformationMethod.getInstance()
-            setPadding(0, dp(8), dp(5), dp(8))
-        }
-
-        val eye = ImageButton(this).apply {
-            setImageResource(R.drawable.ic_visibility)
-            imageTintList = ColorStateList.valueOf(palette.muted)
-            background = rounded(palette.surfaceAlt, 17)
-            setPadding(dp(9), dp(9), dp(9), dp(9))
-
-            var visible = false
-
-            setOnClickListener {
-                visible = !visible
-                setImageResource(
-                    if (visible) R.drawable.ic_visibility_off
-                    else R.drawable.ic_visibility
-                )
-
-                field.transformationMethod =
-                    if (visible) HideReturnsTransformationMethod.getInstance()
-                    else PasswordTransformationMethod.getInstance()
-
-                field.setSelection(field.text.length)
-                animateTap(this)
-            }
-        }
-
-        shell.addView(
-            field,
-            LinearLayout.LayoutParams(
-                0,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                1f
-            )
-        )
-
-        shell.addView(
-            eye,
-            LinearLayout.LayoutParams(dp(40), dp(40))
-        )
-
-        card.addView(
-            shell,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(8) }
-        )
-
-        return card to field
     }
 
     private fun showChatScreen() {
@@ -541,89 +717,187 @@ class MainActivity : AppCompatActivity() {
         if (messages.isEmpty()) {
             messages += ChatMessage(
                 "assistant",
-                "Привет. Это **SOHR AI**. Пиши как в обычный ChatGPT — приложение само решит, когда нужен один быстрый ответ, когда перекрёстная проверка, а когда веб."
+                "Чем могу помочь?"
             )
+
             chatStore.save(messages)
         }
 
-        val page = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(palette.background)
-        }
+        val page =
+            LinearLayout(this).apply {
+                orientation =
+                    LinearLayout.VERTICAL
 
-        val header = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), dp(6), dp(10), dp(4))
-        }
+                setBackgroundColor(
+                    palette.background
+                )
+            }
 
-        val titles = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
+        val header =
+            LinearLayout(this).apply {
+                orientation =
+                    LinearLayout.HORIZONTAL
 
-        titles.addView(TextView(this).apply {
-            text = "SOHR AI"
-            textSize = 20f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(palette.text)
-        })
+                gravity =
+                    Gravity.CENTER_VERTICAL
 
-        statusText = TextView(this).apply {
-            text = "Smart · готов"
-            textSize = 10.8f
-            setTextColor(palette.muted)
-            setPadding(0, dp(1), 0, 0)
-        }
+                setPadding(
+                    dp(10),
+                    dp(5),
+                    dp(10),
+                    dp(4)
+                )
+            }
 
-        titles.addView(statusText)
+        val newChat =
+            ImageButton(this).apply {
+                setImageResource(
+                    R.drawable.ic_new_chat
+                )
+
+                imageTintList =
+                    ColorStateList.valueOf(
+                        palette.text
+                    )
+
+                background =
+                    transparentSelectable()
+
+                setPadding(
+                    dp(10),
+                    dp(10),
+                    dp(10),
+                    dp(10)
+                )
+
+                setOnClickListener {
+                    animateTap(this)
+                    newConversation()
+                }
+            }
 
         header.addView(
-            titles,
+            newChat,
+            LinearLayout.LayoutParams(
+                dp(44),
+                dp(44)
+            )
+        )
+
+        modelTitle =
+            TextView(this).apply {
+                text =
+                    modelDisplayName(
+                        modelId
+                    ) + " ⌄"
+
+                textSize = 15.5f
+                gravity = Gravity.CENTER
+
+                setTypeface(
+                    typeface,
+                    Typeface.BOLD
+                )
+
+                setTextColor(palette.text)
+
+                setOnClickListener {
+                    animateTap(this)
+                    showModelDialog()
+                }
+            }
+
+        header.addView(
+            modelTitle,
             LinearLayout.LayoutParams(
                 0,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
+                dp(44),
                 1f
             )
         )
 
-        val settings = ImageButton(this).apply {
-            setImageResource(R.drawable.ic_settings)
-            imageTintList = ColorStateList.valueOf(palette.text)
-            background = rounded(palette.surfaceAlt, 19)
-            setPadding(dp(9), dp(9), dp(9), dp(9))
+        val settings =
+            ImageButton(this).apply {
+                setImageResource(
+                    R.drawable.ic_settings
+                )
 
-            setOnClickListener {
-                animateTap(this)
-                showSettingsDialog()
+                imageTintList =
+                    ColorStateList.valueOf(
+                        palette.text
+                    )
+
+                background =
+                    transparentSelectable()
+
+                setPadding(
+                    dp(10),
+                    dp(10),
+                    dp(10),
+                    dp(10)
+                )
+
+                setOnClickListener {
+                    animateTap(this)
+                    showSettingsDialog()
+                }
             }
-        }
 
         header.addView(
             settings,
-            LinearLayout.LayoutParams(dp(40), dp(40))
+            LinearLayout.LayoutParams(
+                dp(44),
+                dp(44)
+            )
         )
 
         page.addView(header)
 
-        thinkingCard = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(9), dp(5), dp(9), dp(5))
-            background = rounded(palette.surface, 14)
-            visibility = View.GONE
-        }
+        thinkingCard =
+            LinearLayout(this).apply {
+                orientation =
+                    LinearLayout.HORIZONTAL
+
+                gravity =
+                    Gravity.CENTER_VERTICAL
+
+                setPadding(
+                    dp(12),
+                    dp(5),
+                    dp(12),
+                    dp(5)
+                )
+
+                visibility = View.GONE
+            }
 
         thinkingCard?.addView(
-            LoadingWaveView(this, palette.accent),
-            LinearLayout.LayoutParams(dp(26), dp(26))
+            LoadingWaveView(
+                this,
+                if (lightTheme)
+                    Color.BLACK
+                else
+                    Color.WHITE
+            ),
+            LinearLayout.LayoutParams(
+                dp(24),
+                dp(24)
+            )
         )
 
-        thinkingLabel = TextView(this).apply {
-            text = "Думаю…"
-            textSize = 11.5f
-            setTextColor(palette.muted)
-            setPadding(dp(7), 0, 0, 0)
-        }
+        thinkingLabel =
+            TextView(this).apply {
+                text = "Думаю…"
+                textSize = 11.8f
+                setTextColor(palette.muted)
+
+                setPadding(
+                    dp(7),
+                    0,
+                    0,
+                    0
+                )
+            }
 
         thinkingCard?.addView(
             thinkingLabel,
@@ -642,22 +916,41 @@ class MainActivity : AppCompatActivity() {
             ).apply {
                 marginStart = dp(14)
                 marginEnd = dp(14)
-                bottomMargin = dp(3)
             }
         )
 
-        recycler = RecyclerView(this).apply {
-            layoutManager = LinearLayoutManager(this@MainActivity).apply {
-                stackFromEnd = true
-            }
-            itemAnimator = null
-            overScrollMode = View.OVER_SCROLL_NEVER
-            clipToPadding = false
-            setPadding(0, dp(2), 0, dp(5))
-            setBackgroundColor(Color.TRANSPARENT)
-        }
+        recycler =
+            RecyclerView(this).apply {
+                layoutManager =
+                    LinearLayoutManager(
+                        this@MainActivity
+                    ).apply {
+                        stackFromEnd = true
+                    }
 
-        adapter = ChatAdapter(messages, palette)
+                overScrollMode =
+                    View.OVER_SCROLL_NEVER
+
+                clipToPadding = false
+
+                setPadding(
+                    0,
+                    dp(3),
+                    0,
+                    dp(8)
+                )
+
+                setBackgroundColor(
+                    Color.TRANSPARENT
+                )
+            }
+
+        adapter =
+            ChatAdapter(
+                messages,
+                palette
+            )
+
         recycler.adapter = adapter
 
         page.addView(
@@ -669,77 +962,137 @@ class MainActivity : AppCompatActivity() {
             )
         )
 
-        val composer = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.BOTTOM
-            setPadding(dp(10), dp(4), dp(10), dp(7))
-        }
+        val composer =
+            LinearLayout(this).apply {
+                orientation =
+                    LinearLayout.HORIZONTAL
 
-        val inputShell = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(5), dp(2), dp(4), dp(2))
-            background = roundedWithStroke(
-                palette.surface,
-                22,
-                palette.stroke
-            )
-        }
+                gravity =
+                    Gravity.CENTER_VERTICAL
 
-        input = EditText(this).apply {
-            hint = "Сообщение…"
-            setHintTextColor(palette.muted)
-            setTextColor(palette.text)
-            textSize = 15.5f
-            minLines = 1
-            maxLines = 6
-            isSingleLine = false
-            background = null
-            setPadding(dp(9), dp(9), dp(7), dp(9))
+                setPadding(
+                    dp(10),
+                    dp(5),
+                    dp(10),
+                    dp(9)
+                )
+            }
 
-            inputType =
-                InputType.TYPE_CLASS_TEXT or
-                InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or
-                InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        val shell =
+            LinearLayout(this).apply {
+                orientation =
+                    LinearLayout.HORIZONTAL
 
-            imeOptions = EditorInfo.IME_ACTION_SEND
+                gravity =
+                    Gravity.CENTER_VERTICAL
 
-            setOnEditorActionListener { _, actionId, event ->
-                val submit =
-                    actionId == EditorInfo.IME_ACTION_SEND ||
-                    (
-                        event?.keyCode == KeyEvent.KEYCODE_ENTER &&
-                            event.action == KeyEvent.ACTION_DOWN &&
-                            !event.isShiftPressed
-                        )
+                setPadding(
+                    dp(7),
+                    dp(3),
+                    dp(5),
+                    dp(3)
+                )
 
-                if (submit) {
-                    sendMessage()
-                    true
-                } else {
-                    false
+                background =
+                    roundedWithStroke(
+                        palette.surface,
+                        25,
+                        palette.stroke
+                    )
+            }
+
+        input =
+            EditText(this).apply {
+                hint = "Сообщение"
+                setHintTextColor(palette.muted)
+                setTextColor(palette.text)
+                textSize = 15.5f
+                minLines = 1
+                maxLines = 6
+                isSingleLine = false
+                background = null
+
+                setPadding(
+                    dp(9),
+                    dp(9),
+                    dp(8),
+                    dp(9)
+                )
+
+                inputType =
+                    InputType.TYPE_CLASS_TEXT or
+                        InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or
+                        InputType.TYPE_TEXT_FLAG_MULTI_LINE
+
+                imeOptions =
+                    EditorInfo.IME_ACTION_SEND
+
+                setOnEditorActionListener {
+                        _,
+                        actionId,
+                        event ->
+
+                    val submit =
+                        actionId ==
+                            EditorInfo.IME_ACTION_SEND ||
+                            (
+                                event?.keyCode ==
+                                    KeyEvent.KEYCODE_ENTER &&
+                                    event.action ==
+                                    KeyEvent.ACTION_DOWN &&
+                                    !event.isShiftPressed
+                                )
+
+                    if (submit) {
+                        if (busy) {
+                            stopGeneration()
+                        } else {
+                            sendMessage()
+                        }
+
+                        true
+                    } else {
+                        false
+                    }
                 }
             }
-        }
 
-        sendButton = ImageButton(this).apply {
-            setImageResource(R.drawable.ic_send)
-            imageTintList = ColorStateList.valueOf(Color.WHITE)
-            background = rounded(palette.accent, 20)
-            setPadding(dp(10), dp(10), dp(10), dp(10))
+        sendButton =
+            ImageButton(this).apply {
+                setImageResource(
+                    R.drawable.ic_send
+                )
 
-            setOnClickListener {
-                animateTap(this)
+                imageTintList =
+                    ColorStateList.valueOf(
+                        sendIconColor()
+                    )
 
-                if (busy) {
-                    stopGeneration()
-                } else {
-                    sendMessage()
+                background =
+                    rounded(
+                        palette.accent,
+                        21
+                    )
+
+                setPadding(
+                    dp(10),
+                    dp(10),
+                    dp(10),
+                    dp(10)
+                )
+
+                setOnClickListener {
+                    animateTap(this)
+
+                    if (busy) {
+                        stopGeneration()
+                    } else {
+                        sendMessage()
+                    }
                 }
             }
-        }
 
-        inputShell.addView(
+        shell.addView(
             input,
             LinearLayout.LayoutParams(
                 0,
@@ -748,13 +1101,16 @@ class MainActivity : AppCompatActivity() {
             )
         )
 
-        inputShell.addView(
+        shell.addView(
             sendButton,
-            LinearLayout.LayoutParams(dp(42), dp(42))
+            LinearLayout.LayoutParams(
+                dp(42),
+                dp(42)
+            )
         )
 
         composer.addView(
-            inputShell,
+            shell,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -763,214 +1119,620 @@ class MainActivity : AppCompatActivity() {
 
         page.addView(composer)
 
-        replaceRoot(page, true)
-        recycler.post { scrollToBottom() }
+        replaceRoot(
+            page,
+            true
+        )
+
+        recycler.post {
+            scrollToBottom()
+        }
     }
 
     private fun sendMessage() {
         if (busy) return
 
-        val text = input.text?.toString()?.trim().orEmpty()
+        val text =
+            input.text
+                ?.toString()
+                ?.trim()
+                .orEmpty()
+
         if (text.isBlank()) return
 
-        val geminiKey = keyStore.load("gemini")
-        val groqKey = keyStore.load("groq")
+        val key =
+            keyStore.load("openai")
 
-        if (geminiKey.isNullOrBlank() || groqKey.isNullOrBlank()) {
+        if (key.isNullOrBlank()) {
             showConnectScreen()
             return
         }
 
         input.setText("")
 
-        messages += ChatMessage("user", text)
+        messages += ChatMessage(
+            "user",
+            text
+        )
 
-        val assistantIndex = messages.size
-        messages += ChatMessage("assistant", "")
-        currentAssistantIndex = assistantIndex
+        val assistantIndex =
+            messages.size
+
+        messages += ChatMessage(
+            "assistant",
+            ""
+        )
+
+        currentAssistantIndex =
+            assistantIndex
 
         adapter.notifyItemRangeInserted(
             assistantIndex - 1,
             2
         )
 
-        scrollToBottom()
         chatStore.save(messages)
+        scrollToBottom()
         setBusy(true)
 
-        val requestHistory = messages.dropLast(1).map { it.copy() }
+        val history =
+            messages
+                .dropLast(1)
+                .map { it.copy() }
 
-        generationJob = lifecycleScope.launch {
-            try {
-                val result = api.reply(
-                    geminiKey = geminiKey,
-                    groqKey = groqKey,
-                    messages = requestHistory,
-                    onStage = { stage ->
-                        runOnUiThread {
-                            if (!busy) return@runOnUiThread
-                            statusText.text = stage
-                            thinkingLabel?.text = stage
-                        }
-                    },
-                    onDelta = { delta ->
-                        runOnUiThread {
-                            if (!busy) return@runOnUiThread
+        generationJob =
+            lifecycleScope.launch {
+                try {
+                    val result =
+                        api.streamResponse(
+                            key = key,
+                            model = modelId,
+                            previousResponseId =
+                                previousResponseId,
+                            history = history,
+                            userText = text,
+                            onStage = { stage ->
+                                runOnUiThread {
+                                    if (!busy) {
+                                        return@runOnUiThread
+                                    }
 
-                            val index = currentAssistantIndex
-                                ?: return@runOnUiThread
+                                    thinkingLabel?.text =
+                                        stage
+                                }
+                            },
+                            onDelta = { delta ->
+                                runOnUiThread {
+                                    if (!busy) {
+                                        return@runOnUiThread
+                                    }
 
-                            if (index !in messages.indices) {
-                                return@runOnUiThread
+                                    val index =
+                                        currentAssistantIndex
+                                            ?: return@runOnUiThread
+
+                                    if (
+                                        index !in
+                                        messages.indices
+                                    ) {
+                                        return@runOnUiThread
+                                    }
+
+                                    messages[index].text +=
+                                        delta
+
+                                    adapter.notifyItemChanged(
+                                        index
+                                    )
+
+                                    scrollToBottom()
+                                }
                             }
+                        )
 
-                            messages[index].text += delta
-                            adapter.notifyItemChanged(index)
-                            scrollToBottom()
-                        }
-                    }
-                )
+                    val index =
+                        currentAssistantIndex
 
-                val index = currentAssistantIndex
-
-                if (index != null && index in messages.indices) {
-                    messages[index].text = result.text
-                    adapter.notifyItemChanged(index)
-                }
-
-                statusText.text = result.mode
-                chatStore.save(messages)
-                scrollToBottom()
-            } catch (error: Throwable) {
-                if (!busy) return@launch
-
-                val index = currentAssistantIndex
-
-                if (index != null && index in messages.indices) {
-                    if (messages[index].text.isBlank()) {
+                    if (
+                        index != null &&
+                        index in messages.indices
+                    ) {
                         messages[index].text =
-                            "**Не удалось получить ответ.**\\n\\n" +
-                                friendlyError(
-                                    error.message,
-                                    "AI"
-                                )
-                    } else {
-                        messages[index].text +=
-                            "\\n\\n_Соединение прервалось до полного завершения._"
+                            renderResult(result)
+
+                        adapter.notifyItemChanged(
+                            index
+                        )
                     }
 
-                    adapter.notifyItemChanged(index)
-                }
+                    result.responseId
+                        ?.takeIf {
+                            it.isNotBlank()
+                        }
+                        ?.let {
+                            prefs.edit()
+                                .putString(
+                                    "previous_response_id",
+                                    it
+                                )
+                                .apply()
+                        }
 
-                statusText.text = "Ошибка"
-                chatStore.save(messages)
-            } finally {
-                if (busy) {
-                    setBusy(false)
+                    chatStore.save(messages)
+                    scrollToBottom()
+                } catch (error: Throwable) {
+                    if (!busy) {
+                        return@launch
+                    }
+
+                    val index =
+                        currentAssistantIndex
+
+                    if (
+                        index != null &&
+                        index in messages.indices
+                    ) {
+                        if (
+                            messages[index].text
+                                .isBlank()
+                        ) {
+                            messages[index].text =
+                                "**Не удалось получить ответ.**\n\n" +
+                                    friendlyError(
+                                        error.message
+                                    )
+                        } else {
+                            messages[index].text +=
+                                "\n\n_Соединение прервалось. Уже полученный текст сохранён._"
+                        }
+
+                        adapter.notifyItemChanged(
+                            index
+                        )
+                    }
+
+                    chatStore.save(messages)
+                } finally {
+                    if (busy) {
+                        setBusy(false)
+                    }
                 }
             }
+    }
+
+    private fun renderResult(
+        result: OpenAiResult
+    ): String {
+        if (result.sources.isEmpty()) {
+            return result.text
+        }
+
+        return buildString {
+            append(
+                result.text.trim()
+            )
+
+            append("\n\n**Источники**")
+
+            result.sources
+                .distinctBy { it.second }
+                .take(8)
+                .forEach { source ->
+                    append("\n- [")
+                    append(
+                        source.first
+                            .replace("[", "")
+                            .replace("]", "")
+                    )
+                    append("](")
+                    append(source.second)
+                    append(")")
+                }
         }
     }
 
     private fun stopGeneration() {
         api.cancel()
+
         generationJob?.cancel()
         generationJob = null
 
-        val index = currentAssistantIndex
+        val index =
+            currentAssistantIndex
 
         if (
             index != null &&
             index in messages.indices &&
             messages[index].text.isBlank()
         ) {
-            messages[index].text = "_Остановлено._"
+            messages[index].text =
+                "_Остановлено._"
+
             adapter.notifyItemChanged(index)
         }
 
         chatStore.save(messages)
-        statusText.text = "Остановлено"
+
         setBusy(false)
     }
 
     private fun setBusy(value: Boolean) {
         busy = value
+
         thinkingCard?.visibility =
-            if (value) View.VISIBLE else View.GONE
+            if (value)
+                View.VISIBLE
+            else
+                View.GONE
 
         if (::sendButton.isInitialized) {
             sendButton.setImageResource(
-                if (value) R.drawable.ic_stop
-                else R.drawable.ic_send
+                if (value)
+                    R.drawable.ic_stop
+                else
+                    R.drawable.ic_send
             )
-            sendButton.alpha = 1f
-            sendButton.isEnabled = true
+
+            sendButton.imageTintList =
+                ColorStateList.valueOf(
+                    sendIconColor()
+                )
         }
 
         if (!value) {
             currentAssistantIndex = null
-            if (::statusText.isInitialized &&
-                (
-                    statusText.text.toString().contains("Думаю", true) ||
-                    statusText.text.toString().contains("Сверяю", true) ||
-                    statusText.text.toString().contains("Собираю", true) ||
-                    statusText.text.toString().contains("Проверяю", true)
-                    )
-            ) {
-                statusText.text = "Smart · готов"
-            }
         }
     }
 
-    private fun showSettingsDialog() {
-        val dialog = Dialog(this)
-        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
-
-        val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(16), dp(16), dp(18))
-            background = rounded(palette.surface, 24)
+    private fun newConversation() {
+        if (busy) {
+            stopGeneration()
         }
 
-        box.addView(TextView(this).apply {
-            text = "Настройки"
-            textSize = 20f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(palette.text)
-        })
+        messages.clear()
+        chatStore.clear()
 
-        box.addView(TextView(this).apply {
-            text = "SOHR AI Smart 0.4"
-            textSize = 11.5f
-            setTextColor(palette.muted)
-            setPadding(0, dp(2), 0, dp(12))
-        })
+        prefs.edit()
+            .remove(
+                "previous_response_id"
+            )
+            .apply()
 
-        box.addView(TextView(this).apply {
-            text = "Тема"
-            textSize = 12.5f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(palette.text)
-            setPadding(dp(2), 0, 0, dp(6))
-        })
+        showChatScreen()
+    }
+
+    private fun showModelDialog() {
+        val dialog = Dialog(this)
+        dialog.requestWindowFeature(
+            Window.FEATURE_NO_TITLE
+        )
+
+        val box =
+            LinearLayout(this).apply {
+                orientation =
+                    LinearLayout.VERTICAL
+
+                setPadding(
+                    dp(16),
+                    dp(16),
+                    dp(16),
+                    dp(18)
+                )
+
+                background =
+                    rounded(
+                        palette.surface,
+                        24
+                    )
+            }
 
         box.addView(
-            themeSelector(dialog),
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(50)
-            )
+            TextView(this).apply {
+                text = "Модель"
+                textSize = 20f
+
+                setTypeface(
+                    typeface,
+                    Typeface.BOLD
+                )
+
+                setTextColor(palette.text)
+            }
         )
 
         box.addView(
-            settingActionRow(
-                title = "Анимации",
-                description = if (animations) "Включены" else "Выключены",
-                action = if (animations) "ON" else "OFF"
+            TextView(this).apply {
+                text =
+                    "GPT‑5.6 Sol — баланс качества и цены. GPT‑6 Astra Max — максимум качества, но заметно дороже."
+
+                textSize = 11.5f
+                setTextColor(palette.muted)
+
+                setPadding(
+                    0,
+                    dp(4),
+                    0,
+                    dp(12)
+                )
+            }
+        )
+
+        box.addView(
+            modelRow(
+                title = "GPT‑5.6 Sol",
+                description =
+                    "По умолчанию · сильный чат",
+                selected =
+                    modelId ==
+                        "gpt-5.6-sol"
             ) {
-                animations = !animations
-                uiPrefs.edit()
-                    .putBoolean("animations", animations)
+                chooseModel(
+                    dialog,
+                    "gpt-5.6-sol"
+                )
+            }
+        )
+
+        box.addView(
+            modelRow(
+                title = "GPT‑6 Astra Max",
+                description =
+                    "Самая мощная модель OpenAI · дороже",
+                selected =
+                    modelId ==
+                        "gpt-6-astra"
+            ) {
+                chooseModel(
+                    dialog,
+                    "gpt-6-astra"
+                )
+            },
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dp(8)
+            }
+        )
+
+        dialog.setContentView(box)
+
+        prepareBottomDialog(dialog)
+    }
+
+    private fun chooseModel(
+        dialog: Dialog,
+        id: String
+    ) {
+        prefs.edit()
+            .putString(
+                "model_id",
+                id
+            )
+            .remove(
+                "previous_response_id"
+            )
+            .apply()
+
+        dialog.dismiss()
+
+        if (::modelTitle.isInitialized) {
+            modelTitle.text =
+                modelDisplayName(id) +
+                    " ⌄"
+        }
+    }
+
+    private fun modelRow(
+        title: String,
+        description: String,
+        selected: Boolean,
+        onClick: () -> Unit
+    ): View =
+        LinearLayout(this).apply {
+            orientation =
+                LinearLayout.HORIZONTAL
+
+            gravity =
+                Gravity.CENTER_VERTICAL
+
+            setPadding(
+                dp(14),
+                dp(12),
+                dp(12),
+                dp(12)
+            )
+
+            background =
+                rounded(
+                    if (selected)
+                        palette.accentSoft
+                    else
+                        palette.background,
+                    17
+                )
+
+            val labels =
+                LinearLayout(
+                    this@MainActivity
+                ).apply {
+                    orientation =
+                        LinearLayout.VERTICAL
+                }
+
+            labels.addView(
+                TextView(
+                    this@MainActivity
+                ).apply {
+                    text = title
+                    textSize = 14f
+
+                    setTypeface(
+                        typeface,
+                        Typeface.BOLD
+                    )
+
+                    setTextColor(
+                        palette.text
+                    )
+                }
+            )
+
+            labels.addView(
+                TextView(
+                    this@MainActivity
+                ).apply {
+                    text = description
+                    textSize = 11f
+                    setTextColor(
+                        palette.muted
+                    )
+
+                    setPadding(
+                        0,
+                        dp(2),
+                        0,
+                        0
+                    )
+                }
+            )
+
+            addView(
+                labels,
+                LinearLayout.LayoutParams(
+                    0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+            )
+
+            addView(
+                TextView(
+                    this@MainActivity
+                ).apply {
+                    text =
+                        if (selected)
+                            "✓"
+                        else
+                            ""
+
+                    textSize = 18f
+                    gravity = Gravity.CENTER
+                    setTextColor(
+                        palette.text
+                    )
+                },
+                LinearLayout.LayoutParams(
+                    dp(34),
+                    dp(34)
+                )
+            )
+
+            setOnClickListener {
+                animateTap(this)
+                onClick()
+            }
+        }
+
+    private fun showSettingsDialog() {
+        val dialog = Dialog(this)
+
+        dialog.requestWindowFeature(
+            Window.FEATURE_NO_TITLE
+        )
+
+        val box =
+            LinearLayout(this).apply {
+                orientation =
+                    LinearLayout.VERTICAL
+
+                setPadding(
+                    dp(16),
+                    dp(16),
+                    dp(16),
+                    dp(18)
+                )
+
+                background =
+                    rounded(
+                        palette.surface,
+                        24
+                    )
+            }
+
+        box.addView(
+            TextView(this).apply {
+                text = "Настройки"
+                textSize = 20f
+
+                setTypeface(
+                    typeface,
+                    Typeface.BOLD
+                )
+
+                setTextColor(palette.text)
+            }
+        )
+
+        box.addView(
+            TextView(this).apply {
+                text = "SOHR AI · OpenAI v0.6"
+                textSize = 11.5f
+                setTextColor(palette.muted)
+
+                setPadding(
+                    0,
+                    dp(2),
+                    0,
+                    dp(12)
+                )
+            }
+        )
+
+        box.addView(
+            settingRow(
+                "Тема",
+                if (lightTheme)
+                    "Светлая"
+                else
+                    "Тёмная",
+                "Сменить"
+            ) {
+                lightTheme =
+                    !lightTheme
+
+                prefs.edit()
+                    .putBoolean(
+                        "light_theme",
+                        lightTheme
+                    )
+                    .apply()
+
+                dialog.dismiss()
+                showChatScreen()
+            }
+        )
+
+        box.addView(
+            settingRow(
+                "Анимации",
+                if (animations)
+                    "Включены"
+                else
+                    "Выключены",
+                if (animations)
+                    "ON"
+                else
+                    "OFF"
+            ) {
+                animations =
+                    !animations
+
+                prefs.edit()
+                    .putBoolean(
+                        "animations",
+                        animations
+                    )
                     .apply()
 
                 dialog.dismiss()
@@ -979,59 +1741,211 @@ class MainActivity : AppCompatActivity() {
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(8) }
+            ).apply {
+                topMargin = dp(8)
+            }
         )
 
         box.addView(
-            settingActionRow(
-                title = "AI-подключения",
-                description = "Gemini + Groq",
-                action = "Сменить"
+            settingRow(
+                "OpenAI API key",
+                "Зашифрован на устройстве",
+                "Сменить"
             ) {
-                keyStore.clearAll()
+                keyStore.clear("openai")
+
+                prefs.edit()
+                    .remove(
+                        "previous_response_id"
+                    )
+                    .apply()
+
                 dialog.dismiss()
                 showConnectScreen()
             },
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(7) }
+            ).apply {
+                topMargin = dp(8)
+            }
         )
 
         box.addView(
-            settingActionRow(
-                title = "История",
-                description = "Очистить локальный чат",
-                action = "Очистить"
+            settingRow(
+                "Новая беседа",
+                "Очистить локальную историю",
+                "Очистить"
             ) {
-                messages.clear()
-                chatStore.save(messages)
                 dialog.dismiss()
-                showChatScreen()
+                newConversation()
             },
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(7) }
+            ).apply {
+                topMargin = dp(8)
+            }
         )
 
-        box.addView(TextView(this).apply {
-            text = "Smart автоматически экономит лимиты: три модели запускаются только когда запрос реально сложный."
-            textSize = 11f
-            setTextColor(palette.muted)
-            setPadding(dp(3), dp(11), dp(3), 0)
-        })
+        box.addView(
+            TextView(this).apply {
+                text =
+                    "Веб‑поиск включён как инструмент: модель сама использует его, когда информация может быть свежей."
+
+                textSize = 10.8f
+                setTextColor(palette.muted)
+
+                setPadding(
+                    dp(3),
+                    dp(11),
+                    dp(3),
+                    0
+                )
+            }
+        )
 
         dialog.setContentView(box)
 
-        dialog.window?.apply {
-            setBackgroundDrawableResource(android.R.color.transparent)
-            addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        prepareBottomDialog(dialog)
+    }
 
-            attributes = attributes.apply {
-                dimAmount = 0.55f
-                gravity = Gravity.BOTTOM
+    private fun settingRow(
+        title: String,
+        description: String,
+        action: String,
+        onClick: () -> Unit
+    ): View =
+        LinearLayout(this).apply {
+            orientation =
+                LinearLayout.HORIZONTAL
+
+            gravity =
+                Gravity.CENTER_VERTICAL
+
+            setPadding(
+                dp(13),
+                dp(11),
+                dp(9),
+                dp(11)
+            )
+
+            background =
+                rounded(
+                    palette.background,
+                    16
+                )
+
+            val labels =
+                LinearLayout(
+                    this@MainActivity
+                ).apply {
+                    orientation =
+                        LinearLayout.VERTICAL
+                }
+
+            labels.addView(
+                TextView(
+                    this@MainActivity
+                ).apply {
+                    text = title
+                    textSize = 13.5f
+
+                    setTypeface(
+                        typeface,
+                        Typeface.BOLD
+                    )
+
+                    setTextColor(
+                        palette.text
+                    )
+                }
+            )
+
+            labels.addView(
+                TextView(
+                    this@MainActivity
+                ).apply {
+                    text = description
+                    textSize = 11f
+                    setTextColor(
+                        palette.muted
+                    )
+
+                    setPadding(
+                        0,
+                        dp(2),
+                        0,
+                        0
+                    )
+                }
+            )
+
+            addView(
+                labels,
+                LinearLayout.LayoutParams(
+                    0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+            )
+
+            addView(
+                TextView(
+                    this@MainActivity
+                ).apply {
+                    text = action
+                    textSize = 11.5f
+                    gravity = Gravity.CENTER
+
+                    setTextColor(
+                        palette.text
+                    )
+
+                    setTypeface(
+                        typeface,
+                        Typeface.BOLD
+                    )
+
+                    setPadding(
+                        dp(9),
+                        dp(7),
+                        dp(9),
+                        dp(7)
+                    )
+
+                    background =
+                        rounded(
+                            palette.accentSoft,
+                            12
+                        )
+                }
+            )
+
+            setOnClickListener {
+                animateTap(this)
+                onClick()
             }
+        }
+
+    private fun prepareBottomDialog(
+        dialog: Dialog
+    ) {
+        dialog.window?.apply {
+            setBackgroundDrawableResource(
+                android.R.color.transparent
+            )
+
+            addFlags(
+                WindowManager.LayoutParams
+                    .FLAG_DIM_BEHIND
+            )
+
+            attributes =
+                attributes.apply {
+                    dimAmount = 0.55f
+                    gravity = Gravity.BOTTOM
+                }
         }
 
         dialog.show()
@@ -1042,199 +1956,85 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun themeSelector(dialog: Dialog): View {
-        val selector = FrameLayout(this).apply {
-            background = rounded(palette.surfaceAlt, 15)
-            setPadding(dp(4), dp(4), dp(4), dp(4))
-            clipChildren = true
+    private fun modelDisplayName(
+        id: String
+    ): String =
+        when (id) {
+            "gpt-6-astra" ->
+                "GPT‑6 Astra Max"
+
+            else ->
+                "GPT‑5.6 Sol"
         }
 
-        val indicator = View(this).apply {
-            background = rounded(palette.accent, 12)
-        }
+    private fun friendlyError(
+        raw: String?
+    ): String {
+        val text =
+            raw.orEmpty()
 
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-        }
+        return when {
+            text.contains(
+                "401",
+                true
+            ) ||
+                text.contains(
+                    "invalid api key",
+                    true
+                ) ->
+                "OpenAI API key не подошёл. Проверь ключ и вставь его ещё раз."
 
-        val dark = TextView(this).apply {
-            text = "Тёмная"
-            gravity = Gravity.CENTER
-            textSize = 12.5f
-            setTypeface(typeface, Typeface.BOLD)
-        }
+            text.contains(
+                "insufficient_quota",
+                true
+            ) ||
+                text.contains(
+                    "billing",
+                    true
+                ) ||
+                text.contains(
+                    "quota",
+                    true
+                ) ->
+                "На OpenAI API нет доступного баланса или достигнут лимит аккаунта."
 
-        val light = TextView(this).apply {
-            text = "Светлая"
-            gravity = Gravity.CENTER
-            textSize = 12.5f
-            setTypeface(typeface, Typeface.BOLD)
-        }
+            text.contains(
+                "429",
+                true
+            ) ||
+                text.contains(
+                    "rate limit",
+                    true
+                ) ->
+                "OpenAI временно ограничил частоту запросов. Повтори чуть позже."
 
-        row.addView(
-            dark,
-            LinearLayout.LayoutParams(0, dp(42), 1f)
-        )
-
-        row.addView(
-            light,
-            LinearLayout.LayoutParams(0, dp(42), 1f)
-        )
-
-        selector.addView(
-            indicator,
-            FrameLayout.LayoutParams(
-                0,
-                dp(42),
-                Gravity.START or Gravity.CENTER_VERTICAL
-            )
-        )
-
-        selector.addView(
-            row,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(42)
-            )
-        )
-
-        fun position(animated: Boolean) {
-            val slot =
+            text.contains(
+                "model",
+                true
+            ) &&
                 (
-                    (selector.width -
-                        selector.paddingLeft -
-                        selector.paddingRight) / 2f
-                    ).coerceAtLeast(0f)
-
-            if (slot <= 0f) return
-
-            val params =
-                indicator.layoutParams as FrameLayout.LayoutParams
-
-            params.width = slot.toInt()
-            indicator.layoutParams = params
-
-            val target = if (lightTheme) slot else 0f
-
-            indicator.animate().cancel()
-
-            if (animated && animations) {
-                indicator.animate()
-                    .translationX(target)
-                    .setDuration(180L)
-                    .setInterpolator(
-                        PathInterpolator(
-                            0.22f,
-                            1f,
-                            0.36f,
-                            1f
+                    text.contains(
+                        "access",
+                        true
+                    ) ||
+                        text.contains(
+                            "not found",
+                            true
                         )
-                    )
-                    .start()
-            } else {
-                indicator.translationX = target
-            }
+                    ) ->
+                "У этого API‑ключа нет доступа к выбранной модели. Выбери GPT‑5.6 Sol."
 
-            dark.setTextColor(
-                if (!lightTheme) Color.WHITE else palette.muted
-            )
+            text.contains(
+                "timeout",
+                true
+            ) ->
+                "Ответ занял слишком долго и был остановлен."
 
-            light.setTextColor(
-                if (lightTheme) Color.WHITE else palette.muted
-            )
-        }
+            text.isBlank() ->
+                "Неизвестная ошибка OpenAI API."
 
-        dark.setOnClickListener {
-            if (!lightTheme) return@setOnClickListener
-
-            lightTheme = false
-            uiPrefs.edit()
-                .putBoolean("light_theme", false)
-                .apply()
-
-            position(true)
-
-            selector.postDelayed({
-                dialog.dismiss()
-                showChatScreen()
-            }, if (animations) 180L else 0L)
-        }
-
-        light.setOnClickListener {
-            if (lightTheme) return@setOnClickListener
-
-            lightTheme = true
-            uiPrefs.edit()
-                .putBoolean("light_theme", true)
-                .apply()
-
-            position(true)
-
-            selector.postDelayed({
-                dialog.dismiss()
-                showChatScreen()
-            }, if (animations) 180L else 0L)
-        }
-
-        selector.post {
-            position(false)
-        }
-
-        return selector
-    }
-
-    private fun settingActionRow(
-        title: String,
-        description: String,
-        action: String,
-        onClick: () -> Unit
-    ): View = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(13), dp(11), dp(9), dp(11))
-        background = rounded(palette.surfaceAlt, 15)
-
-        val labels = LinearLayout(this@MainActivity).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-
-        labels.addView(TextView(this@MainActivity).apply {
-            text = title
-            textSize = 13.5f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(palette.text)
-        })
-
-        labels.addView(TextView(this@MainActivity).apply {
-            text = description
-            textSize = 11f
-            setTextColor(palette.muted)
-            setPadding(0, dp(2), 0, 0)
-        })
-
-        addView(
-            labels,
-            LinearLayout.LayoutParams(
-                0,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                1f
-            )
-        )
-
-        addView(TextView(this@MainActivity).apply {
-            text = action
-            textSize = 11.5f
-            gravity = Gravity.CENTER
-            setTextColor(palette.accent)
-            setTypeface(typeface, Typeface.BOLD)
-            setPadding(dp(9), dp(7), dp(9), dp(7))
-            background = rounded(palette.accentSoft, 11)
-        })
-
-        setOnClickListener {
-            animateTap(this)
-            onClick()
+            else ->
+                text.take(650)
         }
     }
 
@@ -1242,24 +2042,43 @@ class MainActivity : AppCompatActivity() {
         label: String,
         backgroundColor: Int,
         foregroundColor: Int
-    ): TextView = TextView(this).apply {
-        text = label
-        textSize = 13.5f
-        gravity = Gravity.CENTER
-        setTypeface(typeface, Typeface.BOLD)
-        setTextColor(foregroundColor)
-        background = rounded(backgroundColor, 15)
-        isClickable = true
-        isFocusable = true
-    }
+    ): TextView =
+        TextView(this).apply {
+            text = label
+            textSize = 13.5f
+            gravity = Gravity.CENTER
+
+            setTypeface(
+                typeface,
+                Typeface.BOLD
+            )
+
+            setTextColor(
+                foregroundColor
+            )
+
+            background =
+                rounded(
+                    backgroundColor,
+                    16
+                )
+
+            isClickable = true
+            isFocusable = true
+        }
 
     private fun replaceRoot(
         view: View,
         animate: Boolean
     ) {
-        val old = root.getChildAt(0)
+        val old =
+            root.getChildAt(0)
 
-        if (!animate || !animations || old == null) {
+        if (
+            !animate ||
+            !animations ||
+            old == null
+        ) {
             root.removeAllViews()
 
             root.addView(
@@ -1269,11 +2088,13 @@ class MainActivity : AppCompatActivity() {
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
             )
+
             return
         }
 
         view.alpha = 0f
-        view.translationY = dp(5).toFloat()
+        view.translationY =
+            dp(4).toFloat()
 
         root.addView(
             view,
@@ -1286,7 +2107,7 @@ class MainActivity : AppCompatActivity() {
         view.animate()
             .alpha(1f)
             .translationY(0f)
-            .setDuration(200L)
+            .setDuration(180L)
             .setInterpolator(
                 PathInterpolator(
                     0.22f,
@@ -1304,24 +2125,26 @@ class MainActivity : AppCompatActivity() {
 
         old.animate()
             .alpha(0f)
-            .setDuration(110L)
+            .setDuration(100L)
             .start()
     }
 
-    private fun animateTap(view: View) {
+    private fun animateTap(
+        view: View
+    ) {
         if (!animations) return
 
         view.animate().cancel()
 
         view.animate()
-            .scaleX(0.97f)
-            .scaleY(0.97f)
-            .setDuration(65L)
+            .scaleX(0.96f)
+            .scaleY(0.96f)
+            .setDuration(55L)
             .withEndAction {
                 view.animate()
                     .scaleX(1f)
                     .scaleY(1f)
-                    .setDuration(150L)
+                    .setDuration(135L)
                     .setInterpolator(
                         PathInterpolator(
                             0.22f,
@@ -1335,7 +2158,9 @@ class MainActivity : AppCompatActivity() {
             .start()
     }
 
-    private fun openUrl(url: String) {
+    private fun openUrl(
+        url: String
+    ) {
         runCatching {
             startActivity(
                 Intent(
@@ -1346,36 +2171,28 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun friendlyError(
-        raw: String?,
-        provider: String
-    ): String {
-        val text = raw.orEmpty()
-
-        return when {
-            text.contains("401", true) ||
-                text.contains("unauthorized", true) ||
-                text.contains("api key", true) ||
-                text.contains("invalid", true) ->
-                provider + ": ключ не подошёл. Создай новый ключ и вставь его ещё раз."
-
-            text.contains("429", true) ||
-                text.contains("rate", true) ||
-                text.contains("quota", true) ->
-                provider + ": бесплатный лимит временно достигнут. Приложение попробует резервную модель там, где это возможно."
-
-            text.isBlank() ->
-                provider + ": неизвестная ошибка соединения."
-
-            else -> text.take(650)
-        }
-    }
-
     private fun scrollToBottom() {
-        if (::recycler.isInitialized && messages.isNotEmpty()) {
-            recycler.scrollToPosition(messages.lastIndex)
+        if (
+            ::recycler.isInitialized &&
+            messages.isNotEmpty()
+        ) {
+            recycler.scrollToPosition(
+                messages.lastIndex
+            )
         }
     }
+
+    private fun sendIconColor(): Int =
+        if (lightTheme)
+            Color.WHITE
+        else
+            Color.BLACK
+
+    private fun transparentSelectable(): GradientDrawable =
+        GradientDrawable().apply {
+            setColor(Color.TRANSPARENT)
+            cornerRadius = dp(18).toFloat()
+        }
 
     private fun rounded(
         color: Int,
@@ -1383,7 +2200,8 @@ class MainActivity : AppCompatActivity() {
     ): GradientDrawable =
         GradientDrawable().apply {
             setColor(color)
-            cornerRadius = dp(radiusDp).toFloat()
+            cornerRadius =
+                dp(radiusDp).toFloat()
         }
 
     private fun roundedWithStroke(
@@ -1393,10 +2211,20 @@ class MainActivity : AppCompatActivity() {
     ): GradientDrawable =
         GradientDrawable().apply {
             setColor(color)
-            cornerRadius = dp(radiusDp).toFloat()
-            setStroke(dp(1), stroke)
+            cornerRadius =
+                dp(radiusDp).toFloat()
+
+            setStroke(
+                dp(1),
+                stroke
+            )
         }
 
     private fun dp(value: Int): Int =
-        (value * resources.displayMetrics.density).toInt()
+        (
+            value *
+                resources
+                    .displayMetrics
+                    .density
+            ).toInt()
 }

@@ -1,8 +1,8 @@
-name: Build SOHR AI Stable v0.5
+name: Build SOHR AI OpenAI v0.6
 
 on:
   push:
-    branches: [sohr-ai-stable-v05]
+    branches: [sohr-ai-openai-v06]
     paths:
       - "ai/android/**"
       - ".github/workflows/build-sohr-ai.yml"
@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: sohr-ai-stable-v05
+  group: sohr-ai-openai-v06
   cancel-in-progress: true
 
 jobs:
@@ -47,15 +47,15 @@ jobs:
             SOHR_KEY_ALIAS="$SOHR_KEY_ALIAS" \
             SOHR_KEY_PASSWORD="$SOHR_KEY_PASSWORD" \
             gradle -p ai/android :app:assembleRelease --no-daemon --stacktrace
-            cp ai/android/app/build/outputs/apk/release/app-release.apk SOHR-AI-Stable-v0.5.apk
+            cp ai/android/app/build/outputs/apk/release/app-release.apk SOHR-AI-OpenAI-v0.6.apk
           else
             gradle -p ai/android :app:assembleDebug --no-daemon --stacktrace
-            cp ai/android/app/build/outputs/apk/debug/app-debug.apk SOHR-AI-Stable-v0.5.apk
+            cp ai/android/app/build/outputs/apk/debug/app-debug.apk SOHR-AI-OpenAI-v0.6.apk
           fi
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: SOHR-AI-Stable-v0.5
-          path: SOHR-AI-Stable-v0.5.apk
+          name: SOHR-AI-OpenAI-v0.6
+          path: SOHR-AI-OpenAI-v0.6.apk
           if-no-files-found: error
           retention-days: 30
