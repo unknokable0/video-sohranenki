@@ -3,12 +3,6 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-val apiBaseUrl = System.getenv("SOHR_AI_API_URL")
-    ?.trim()
-    ?.trimEnd('/')
-    ?.takeIf { it.isNotBlank() }
-    ?: "http://10.0.2.2:8787"
-
 android {
     namespace = "com.unknokable.sohrai"
     compileSdk = 36
@@ -17,14 +11,8 @@ android {
         applicationId = "com.unknokable.sohrai"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
-
-        buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
-    }
-
-    buildFeatures {
-        buildConfig = true
+        versionCode = 2
+        versionName = "0.2.0"
     }
 
     signingConfigs {

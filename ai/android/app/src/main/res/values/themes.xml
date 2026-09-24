@@ -2,10 +2,11 @@
     <style name="Theme.SohrAI" parent="Theme.MaterialComponents.DayNight.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:statusBarColor">#0B0910</item>
-        <item name="android:navigationBarColor">#0B0910</item>
-        <item name="colorPrimary">#9B7BFF</item>
-        <item name="colorAccent">#9B7BFF</item>
+        <item name="android:statusBarColor">#08070D</item>
+        <item name="android:navigationBarColor">#08070D</item>
+        <item name="colorPrimary">#8B5CF6</item>
+        <item name="colorAccent">#8B5CF6</item>
         <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowNoTitle">true</item>
     </style>
 </resources>

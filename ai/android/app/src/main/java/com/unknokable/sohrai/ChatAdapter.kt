@@ -11,7 +11,8 @@ import androidx.recyclerview.widget.RecyclerView
 import io.noties.markwon.Markwon
 
 class ChatAdapter(
-    private val messages: List<ChatMessage>
+    private val messages: List<ChatMessage>,
+    private var palette: ThemePalette
 ) : RecyclerView.Adapter<ChatAdapter.MessageHolder>() {
 
     companion object {
@@ -21,10 +22,12 @@ class ChatAdapter(
 
     private val markwonCache = mutableMapOf<Int, Markwon>()
 
-    class MessageHolder(
-        val shell: FrameLayout,
-        val text: TextView
-    ) : RecyclerView.ViewHolder(shell)
+    class MessageHolder(val shell: FrameLayout, val text: TextView) : RecyclerView.ViewHolder(shell)
+
+    fun updatePalette(value: ThemePalette) {
+        palette = value
+        notifyDataSetChanged()
+    }
 
     override fun getItemViewType(position: Int): Int =
         if (messages[position].role == "user") USER else ASSISTANT
@@ -38,7 +41,6 @@ class ChatAdapter(
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
         }
-
         val text = TextView(context).apply {
             textSize = 15.5f
             setLineSpacing(dp(3).toFloat(), 1.04f)
@@ -46,29 +48,20 @@ class ChatAdapter(
             setTextIsSelectable(viewType == ASSISTANT)
             setPadding(dp(15), dp(12), dp(15), dp(12))
         }
-
         val params = FrameLayout.LayoutParams(
             if (viewType == USER) dp(320) else ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply {
-            gravity = if (viewType == USER) Gravity.END else Gravity.START
-        }
+        ).apply { gravity = if (viewType == USER) Gravity.END else Gravity.START }
         shell.addView(text, params)
-
         return MessageHolder(shell, text)
     }
 
     override fun onBindViewHolder(holder: MessageHolder, position: Int) {
         val message = messages[position]
         val user = message.role == "user"
-
-        holder.text.setTextColor(Color.parseColor(if (user) "#FFFFFF" else "#F4F0FA"))
+        holder.text.setTextColor(if (user) Color.WHITE else palette.text)
         holder.text.typeface = Typeface.create("sans", Typeface.NORMAL)
-        holder.text.background = rounded(
-            if (user) "#7C5CFC" else "#17131F",
-            if (user) 20f else 18f
-        )
-
+        holder.text.background = rounded(if (user) palette.accent else palette.surface, if (user) 20f else 18f)
         if (user) {
             holder.text.text = message.text
         } else {
@@ -81,10 +74,10 @@ class ChatAdapter(
 
     override fun getItemCount(): Int = messages.size
 
-    private fun rounded(color: String, radiusDp: Float): GradientDrawable =
+    private fun rounded(color: Int, radiusDp: Float): GradientDrawable =
         GradientDrawable().apply {
-            setColor(Color.parseColor(color))
-            cornerRadius = radiusDp * 3f
+            setColor(color)
+            cornerRadius = radiusDp * android.content.res.Resources.getSystem().displayMetrics.density
         }
 
     private fun dp(value: Int): Int =
