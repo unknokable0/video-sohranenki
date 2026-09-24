@@ -1,6 +1,9 @@
 package com.unknokable.sohrai
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -13,15 +16,27 @@ import java.util.concurrent.TimeUnit
 data class FusionResult(
     val text: String,
     val concreteModel: String?,
-    val sources: List<Pair<String, String>>
+    val sources: List<Pair<String, String>> = emptyList()
+)
+
+private data class FreeOpinion(
+    val label: String,
+    val model: String,
+    val text: String
 )
 
 class FusionApiClient {
     private val client = OkHttpClient.Builder()
         .connectTimeout(25, TimeUnit.SECONDS)
         .writeTimeout(45, TimeUnit.SECONDS)
-        .readTimeout(7, TimeUnit.MINUTES)
+        .readTimeout(5, TimeUnit.MINUTES)
         .build()
+
+    private val analysts = listOf(
+        "Nemotron" to "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "Laguna" to "poolside/laguna-s-2.1:free",
+        "Ling" to "inclusionai/ling-3.0-flash:free"
+    )
 
     suspend fun verifyKey(key: String): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
@@ -41,37 +56,138 @@ class FusionApiClient {
 
     suspend fun fusion(
         key: String,
-        messages: List<ChatMessage>
-    ): FusionResult = withContext(Dispatchers.IO) {
-        val payload = JSONObject().apply {
-            put("model", "openrouter/fusion")
-            put("tool_choice", "required")
-            put("plugins", JSONArray().put(
-                JSONObject()
-                    .put("id", "fusion")
-                    .put("analysis_models", JSONArray()
-                        .put("~openai/gpt-latest")
-                        .put("~anthropic/claude-opus-latest")
-                        .put("~google/gemini-pro-latest")
-                        .put("x-ai/grok-4.7")
+        messages: List<ChatMessage>,
+        onStage: suspend (String) -> Unit = {}
+    ): FusionResult = coroutineScope {
+        onStage("Три бесплатные модели анализируют запрос…")
+
+        val opinions = analysts.map { (label, model) ->
+            async(Dispatchers.IO) {
+                runCatching {
+                    FreeOpinion(
+                        label = label,
+                        model = model,
+                        text = callModel(
+                            key = key,
+                            model = model,
+                            messages = analystMessages(messages, label)
+                        )
                     )
-                    .put("model", "~openai/gpt-latest")
-                    .put("max_tool_calls", 4)
-                    .put("max_completion_tokens", 9000)
-                    .put("reasoning", JSONObject().put("effort", "high"))
-            ))
-            put("messages", JSONArray().apply {
-                put(JSONObject().put("role", "system").put("content",
-                    "Ты — единый финальный ассистент SOHR AI. Пользователь видит один чат, но ответ должен опираться на независимый анализ нескольких сильных моделей. " +
-                    "Дай один цельный ответ, без перечисления внутренних рассуждений моделей. Проверяй актуальные факты через доступный веб-поиск. " +
-                    "Если источники расходятся, укажи это коротко. Не придумывай данные, версии, цены, даты и источники. " +
-                    "Отвечай на языке пользователя. Форматируй аккуратно: короткие абзацы, ясные заголовки только когда они реально помогают."
-                ))
-                messages.filter { it.text.isNotBlank() }.takeLast(22).forEach { message ->
-                    put(JSONObject().put("role", message.role).put("content", message.text))
-                }
-            })
+                }.getOrNull()
+            }
+        }.awaitAll().filterNotNull()
+
+        if (opinions.isEmpty()) {
+            error("Все бесплатные модели сейчас недоступны. Попробуй повторить запрос позже.")
         }
+
+        onStage("Сверяю ${opinions.size} независимых ответа…")
+
+        val finalText = runCatching {
+            callModel(
+                key = key,
+                model = "nvidia/nemotron-3-ultra-550b-a55b:free",
+                messages = judgeMessages(messages, opinions),
+                maxTokens = 3200
+            )
+        }.getOrElse {
+            // Если финальный бесплатный вызов временно недоступен, не теряем уже полученный результат.
+            bestEffortFallback(opinions)
+        }
+
+        FusionResult(
+            text = finalText.trim(),
+            concreteModel = "Free Fusion · " + opinions.joinToString(" + ") { it.label }
+        )
+    }
+
+    private fun analystMessages(messages: List<ChatMessage>, label: String): JSONArray =
+        JSONArray().apply {
+            put(
+                JSONObject()
+                    .put("role", "system")
+                    .put(
+                        "content",
+                        "Ты один из независимых экспертов Free Fusion ($label). " +
+                            "Дай точный, полезный и компактный ответ. Проверяй внутреннюю логику и не выдумывай факты. " +
+                            "Если вопрос требует свежей информации из интернета, а у тебя нет подтверждённых свежих данных, прямо обозначь это. " +
+                            "Не описывай скрытые рассуждения; дай только вывод и важные основания. Отвечай на языке пользователя."
+                    )
+            )
+            messages.filter { it.text.isNotBlank() }.takeLast(14).forEach { message ->
+                put(JSONObject().put("role", message.role).put("content", message.text))
+            }
+        }
+
+    private fun judgeMessages(messages: List<ChatMessage>, opinions: List<FreeOpinion>): JSONArray {
+        val context = buildString {
+            messages.filter { it.text.isNotBlank() }.takeLast(10).forEach {
+                append(if (it.role == "user") "Пользователь: " else "Ассистент: ")
+                append(it.text.take(5000))
+                append("\n")
+            }
+        }
+
+        val panel = buildString {
+            opinions.forEachIndexed { index, opinion ->
+                append("\n--- Ответ ")
+                append(index + 1)
+                append(" · ")
+                append(opinion.label)
+                append(" ---\n")
+                append(opinion.text.take(7000))
+                append("\n")
+            }
+        }
+
+        return JSONArray().apply {
+            put(
+                JSONObject()
+                    .put("role", "system")
+                    .put(
+                        "content",
+                        "Ты финальный редактор SOHR AI Free Fusion. Ниже есть несколько независимых ответов бесплатных моделей. " +
+                            "Сверь их и выдай ОДИН цельный ответ пользователю. Не говори, что ты 'смешал модели', если это не нужно. " +
+                            "Исправляй явные противоречия, не усиливай непроверенные утверждения и не придумывай источники. " +
+                            "Если модели расходятся или актуальность нельзя подтвердить без веб-поиска, коротко укажи неопределённость. " +
+                            "Пиши красиво и компактно, используй Markdown только там, где он улучшает читаемость. " +
+                            "Не раскрывай скрытые цепочки рассуждений."
+                    )
+            )
+            put(
+                JSONObject()
+                    .put("role", "user")
+                    .put(
+                        "content",
+                        "Контекст диалога:\n$context\nНезависимые ответы моделей:$panel\nСобери лучший финальный ответ."
+                    )
+            )
+        }
+    }
+
+    private fun bestEffortFallback(opinions: List<FreeOpinion>): String {
+        val first = opinions.first()
+        return buildString {
+            append(first.text.trim())
+            if (opinions.size == 1) {
+                append("\n\n_Остальные бесплатные модели временно не ответили._")
+            } else {
+                append("\n\n_Финальная сверка временно недоступна; показан наиболее полный из полученных ответов._")
+            }
+        }
+    }
+
+    private fun callModel(
+        key: String,
+        model: String,
+        messages: JSONArray,
+        maxTokens: Int = 2400
+    ): String {
+        val payload = JSONObject()
+            .put("model", model)
+            .put("messages", messages)
+            .put("max_tokens", maxTokens)
+            .put("temperature", 0.35)
 
         val request = Request.Builder()
             .url("https://openrouter.ai/api/v1/chat/completions")
@@ -79,7 +195,7 @@ class FusionApiClient {
             .header("Authorization", "Bearer $key")
             .header("Content-Type", "application/json")
             .header("HTTP-Referer", "https://github.com/unknokable0/video-sohranenki")
-            .header("X-OpenRouter-Title", "SOHR AI Fusion")
+            .header("X-OpenRouter-Title", "SOHR AI Free Fusion")
             .build()
 
         client.newCall(request).execute().use { response ->
@@ -90,92 +206,29 @@ class FusionApiClient {
                 }.getOrNull().orEmpty()
                 error(detail.ifBlank { "OpenRouter ответил " + response.code })
             }
-
             val json = JSONObject(body)
-            val choice = json.optJSONArray("choices")?.optJSONObject(0)
-                ?: error("OpenRouter не вернул ответ")
-            val message = choice.optJSONObject("message")
-                ?: error("OpenRouter вернул ответ без message")
-
-            val text = extractText(message.opt("content"))
-                .ifBlank { error("Ответ модели пустой") }
-
-            val sources = linkedMapOf<String, String>()
-            collectAnnotations(message, sources)
-            val citations = message.optJSONArray("citations")
-            if (citations != null) {
-                for (i in 0 until citations.length()) {
-                    val item = citations.opt(i)
-                    if (item is String && item.startsWith("http")) {
-                        sources.putIfAbsent(item, item)
-                    } else if (item is JSONObject) {
-                        val url = item.optString("url")
-                        if (url.isNotBlank()) {
-                            sources.putIfAbsent(url, item.optString("title").ifBlank { url })
-                        }
-                    }
-                }
+            val message = json.optJSONArray("choices")
+                ?.optJSONObject(0)
+                ?.optJSONObject("message")
+                ?: error("Модель не вернула сообщение")
+            return extractText(message.opt("content")).ifBlank {
+                error("Модель вернула пустой ответ")
             }
-
-            val withSources = if (sources.isEmpty()) text else buildString {
-                append(text.trim())
-                append("\n\n**Источники**")
-                sources.entries.take(8).forEach { (url, title) ->
-                    append("\n- [")
-                    append(title.replace("[", "").replace("]", ""))
-                    append("](")
-                    append(url)
-                    append(")")
-                }
-            }
-
-            FusionResult(
-                text = withSources,
-                concreteModel = json.optString("model").takeIf { it.isNotBlank() },
-                sources = sources.entries.map { it.value to it.key }
-            )
         }
     }
 
-    private fun extractText(content: Any?): String {
-        return when (content) {
-            is String -> content
-            is JSONArray -> buildString {
-                for (i in 0 until content.length()) {
-                    val item = content.optJSONObject(i) ?: continue
-                    val t = item.optString("text")
-                    if (t.isNotBlank()) {
-                        if (isNotEmpty()) append("\n")
-                        append(t)
-                    }
+    private fun extractText(content: Any?): String = when (content) {
+        is String -> content
+        is JSONArray -> buildString {
+            for (i in 0 until content.length()) {
+                val item = content.optJSONObject(i) ?: continue
+                val text = item.optString("text")
+                if (text.isNotBlank()) {
+                    if (isNotEmpty()) append("\n")
+                    append(text)
                 }
             }
-            else -> ""
         }
-    }
-
-    private fun collectAnnotations(node: Any?, out: MutableMap<String, String>) {
-        when (node) {
-            is JSONObject -> {
-                val type = node.optString("type")
-                if (type == "url_citation") {
-                    val url = node.optString("url")
-                    val title = node.optString("title").ifBlank { url }
-                    if (url.isNotBlank()) out.putIfAbsent(url, title)
-                }
-                val citation = node.optJSONObject("url_citation")
-                if (citation != null) {
-                    val url = citation.optString("url")
-                    val title = citation.optString("title").ifBlank { url }
-                    if (url.isNotBlank()) out.putIfAbsent(url, title)
-                }
-                val keys = node.keys()
-                while (keys.hasNext()) {
-                    val childKey = keys.next()
-                    collectAnnotations(node.opt(childKey), out)
-                }
-            }
-            is JSONArray -> for (i in 0 until node.length()) collectAnnotations(node.opt(i), out)
-        }
+        else -> ""
     }
 }
