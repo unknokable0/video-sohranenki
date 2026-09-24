@@ -1,18 +1,18 @@
-name: Build SOHR AI Android
+name: Build SOHR AI Fusion v0.2
 
 on:
   push:
-    branches: [main]
+    branches: [sohr-ai-fusion-v02]
     paths:
       - "ai/android/**"
-      - ".github/workflows/build-sohr-ai.yml"
+      - ".github/workflows/build-sohr-ai-fusion-v02.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: sohr-ai-build-main
+  group: sohr-ai-fusion-v02
   cancel-in-progress: true
 
 jobs:
@@ -20,7 +20,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      SOHR_AI_API_URL: ${{ secrets.SOHR_AI_API_URL }}
       SOHR_KEYSTORE_B64: ${{ secrets.SOHR_KEYSTORE_B64 }}
       SOHR_KEYSTORE_PASSWORD: ${{ secrets.SOHR_KEYSTORE_PASSWORD }}
       SOHR_KEY_ALIAS: ${{ secrets.SOHR_KEY_ALIAS }}
@@ -51,16 +50,16 @@ jobs:
             SOHR_KEY_ALIAS="$SOHR_KEY_ALIAS" \
             SOHR_KEY_PASSWORD="$SOHR_KEY_PASSWORD" \
             gradle -p ai/android :app:assembleRelease --no-daemon --stacktrace
-            cp ai/android/app/build/outputs/apk/release/app-release.apk SOHR-AI.apk
+            cp ai/android/app/build/outputs/apk/release/app-release.apk SOHR-AI-Fusion-v0.2.apk
           else
             gradle -p ai/android :app:assembleDebug --no-daemon --stacktrace
-            cp ai/android/app/build/outputs/apk/debug/app-debug.apk SOHR-AI.apk
+            cp ai/android/app/build/outputs/apk/debug/app-debug.apk SOHR-AI-Fusion-v0.2.apk
           fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: SOHR-AI-${{ github.run_number }}
-          path: SOHR-AI.apk
+          name: SOHR-AI-Fusion-v0.2
+          path: SOHR-AI-Fusion-v0.2.apk
           if-no-files-found: error
           retention-days: 30
