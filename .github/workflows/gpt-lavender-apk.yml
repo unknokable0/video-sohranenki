@@ -4,7 +4,7 @@ on:
   push:
     branches: [gpt-lavender-apk-build]
     paths:
-      - "gpt-lavender-standalone-src.zip"
+      - "gpt-lavender-standalone/**"
       - ".github/workflows/gpt-lavender-apk.yml"
   workflow_dispatch:
 
@@ -20,8 +20,6 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "9.6.0"
-      - name: Extract project
-        run: unzip -q -o gpt-lavender-standalone-src.zip
       - name: Build debug APK
         working-directory: gpt-lavender-standalone
         run: gradle --no-daemon assembleDebug
