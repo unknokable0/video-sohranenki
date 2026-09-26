@@ -25,6 +25,14 @@ class DayCollectionAdapter(
     private val onClick: (DayCollection) -> Unit
 ) : RecyclerView.Adapter<DayCollectionAdapter.Holder>() {
 
+    private val animatedIds = HashSet<Long>()
+
+    init {
+        setHasStableIds(true)
+    }
+
+    override fun getItemId(position: Int): Long = items[position].date.toEpochDay()
+
     private fun dp(context: Context, value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
 
@@ -154,15 +162,19 @@ class DayCollectionAdapter(
         if (thumbModel != null) holder.image.load(thumbModel) { crossfade(animationsEnabled) }
         else holder.image.setImageDrawable(null)
 
-        if (animationsEnabled) {
+        holder.itemView.animate().cancel()
+        if (animationsEnabled && animatedIds.add(item.date.toEpochDay())) {
             holder.itemView.alpha = 0f
-            holder.itemView.translationY = dp(holder.itemView.context, 10).toFloat()
+            holder.itemView.translationY = dp(holder.itemView.context, 8).toFloat()
             holder.itemView.animate()
                 .alpha(1f)
                 .translationY(0f)
-                .setDuration(190)
-                .setStartDelay((position.coerceAtMost(8) * 22L))
+                .setDuration(165)
+                .setStartDelay((position.coerceAtMost(5) * 14L))
                 .start()
+        } else {
+            holder.itemView.alpha = 1f
+            holder.itemView.translationY = 0f
         }
 
         holder.itemView.setOnClickListener {

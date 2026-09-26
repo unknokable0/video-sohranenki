@@ -22,8 +22,17 @@ class VideoAdapter(
     private val items: List<VideoItem>,
     private val palette: ThemePalette,
     private val animationsEnabled: Boolean,
+    private val progressFor: (VideoItem) -> Float,
     private val onClick: (VideoItem) -> Unit
 ) : RecyclerView.Adapter<VideoAdapter.Holder>() {
+
+    private val animatedIds = HashSet<Long>()
+
+    init {
+        setHasStableIds(true)
+    }
+
+    override fun getItemId(position: Int): Long = items[position].messageId
 
     private fun dp(context: Context, value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
@@ -110,8 +119,28 @@ class VideoAdapter(
                 Gravity.END or Gravity.BOTTOM
             ).apply {
                 marginEnd = dp(context, 6)
-                bottomMargin = dp(context, 6)
+                bottomMargin = dp(context, 7)
             }
+        )
+
+        val progressTrack = FrameLayout(context).apply {
+            visibility = View.GONE
+            background = GradientDrawable().apply { setColor(Color.parseColor("#66000000")) }
+        }
+        val progressFill = View(context).apply {
+            background = GradientDrawable().apply { setColor(Color.parseColor("#FF0033")) }
+        }
+        progressTrack.addView(
+            progressFill,
+            FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START)
+        )
+        preview.addView(
+            progressTrack,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(context, 3),
+                Gravity.BOTTOM
+            )
         )
 
         val info = LinearLayout(context).apply {
@@ -146,7 +175,7 @@ class VideoAdapter(
             )
         )
 
-        return Holder(root, thumbnail, title, meta, duration)
+        return Holder(root, thumbnail, title, meta, duration, progressTrack, progressFill)
     }
 
     override fun getItemCount(): Int = items.size
@@ -157,6 +186,19 @@ class VideoAdapter(
         holder.duration.text = formatDuration(item.durationSeconds)
         holder.meta.text = formatMeta(item)
 
+        val progress = progressFor(item).coerceIn(0f, 1f)
+        if (progress > 0.01f && progress < 0.985f) {
+            holder.progressTrack.visibility = View.VISIBLE
+            holder.progressFill.layoutParams = FrameLayout.LayoutParams(
+                (dp(holder.itemView.context, 148) * progress).toInt().coerceAtLeast(dp(holder.itemView.context, 2)),
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                Gravity.START
+            )
+        } else {
+            holder.progressTrack.visibility = View.GONE
+        }
+
+        holder.thumbnail.animate().cancel()
         val thumb = item.thumbnailPath
         val remoteThumb = item.thumbnailUrl
         val model: Any? = when {
@@ -177,14 +219,15 @@ class VideoAdapter(
             holder.thumbnail.alpha = 0f
         }
 
-        if (animationsEnabled) {
+        holder.itemView.animate().cancel()
+        if (animationsEnabled && animatedIds.add(item.messageId)) {
             holder.itemView.alpha = 0f
-            holder.itemView.translationY = dp(holder.itemView.context, 10).toFloat()
+            holder.itemView.translationY = dp(holder.itemView.context, 8).toFloat()
             holder.itemView.animate()
                 .alpha(1f)
                 .translationY(0f)
-                .setDuration(180)
-                .setStartDelay((position.coerceAtMost(8) * 18).toLong())
+                .setDuration(160)
+                .setStartDelay((position.coerceAtMost(5) * 14).toLong())
                 .start()
         } else {
             holder.itemView.alpha = 1f
@@ -230,6 +273,8 @@ class VideoAdapter(
         val thumbnail: ImageView,
         val title: TextView,
         val meta: TextView,
-        val duration: TextView
+        val duration: TextView,
+        val progressTrack: FrameLayout,
+        val progressFill: View
     ) : RecyclerView.ViewHolder(view)
 }

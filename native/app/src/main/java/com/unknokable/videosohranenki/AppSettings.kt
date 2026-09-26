@@ -39,6 +39,14 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean("light_theme", false)
         set(value) = prefs.edit().putBoolean("light_theme", value).apply()
 
+    var postLoginTourSeen: Boolean
+        get() = prefs.getBoolean("post_login_tour_seen", false)
+        set(value) = prefs.edit().putBoolean("post_login_tour_seen", value).apply()
+
+    var guestMode: Boolean
+        get() = prefs.getBoolean("guest_mode", false)
+        set(value) = prefs.edit().putBoolean("guest_mode", value).apply()
+
     var videoSource: String
         get() = prefs.getString("video_source", "telegram") ?: "telegram"
         set(value) = prefs.edit().putString("video_source", if (value == "twitch") "twitch" else "telegram").apply()
@@ -77,7 +85,7 @@ class AppSettings(context: Context) {
         prefs.getLong("playback_position_" + messageId, 0L)
 
     fun savePlaybackPosition(messageId: Long, positionMs: Long, durationMs: Long) {
-        val shouldClear = positionMs < 5_000L ||
+        val shouldClear = positionMs < 1_000L ||
             (durationMs > 0L && durationMs - positionMs <= 10_000L)
         prefs.edit().apply {
             if (shouldClear) remove("playback_position_" + messageId)

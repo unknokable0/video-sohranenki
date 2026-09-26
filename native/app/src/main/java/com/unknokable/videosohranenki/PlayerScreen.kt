@@ -1544,6 +1544,10 @@ class PlayerScreen(
         totalTime.text = formatMs(resolvedDurationMs())
     }
 
+    fun flushPlaybackPosition() {
+        persistPlaybackPosition(force = true)
+    }
+
     private fun persistPlaybackPosition(force: Boolean = false) {
         val now = SystemClock.elapsedRealtime()
         if (!force && now - lastProgressPersistAt < 2_000L) return
