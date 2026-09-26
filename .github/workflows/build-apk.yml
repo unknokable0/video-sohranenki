@@ -44,11 +44,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 5.3.0-test26 version
+      - name: Assign SOHR 5.3.0-test27 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=503026" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=5.3.0-test26" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=503027" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=5.3.0-test27" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -102,8 +102,8 @@ jobs:
 
           MIN_SDK="$(sed -n "s/.*sdkVersion:'\\([0-9][0-9]*\\)'.*/\\1/p" /tmp/sohr-badging.txt | head -1)"
           echo "SOHR minSdk=$MIN_SDK"
-          if [ -z "$MIN_SDK" ] || [ "$MIN_SDK" -gt 26 ]; then
-            echo "APK requires Android newer than 8.0; BlueStacks compatibility check failed." >&2
+          if [ -z "$MIN_SDK" ] || [ "$MIN_SDK" -gt 24 ]; then
+            echo "APK requires Android newer than 7.0; BlueStacks compatibility check failed." >&2
             exit 1
           fi
 
@@ -126,7 +126,7 @@ jobs:
       - name: BlueStacks-like x86_64 smoke test
         uses: ReactiveCircus/android-emulator-runner@v2
         with:
-          api-level: 30
+          api-level: 25
           arch: x86_64
           profile: pixel_2
           disable-animations: true
@@ -148,7 +148,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 5.3.0-test26 • polished SOHR live controls • stream auto-recovery • chat auto-reconnect • BlueStacks x86_64 smoke test • verified in-app updater"
+            "notes": "SOHR 5.3.0-test27 • Android 7.x compatibility • BlueStacks Nougat x86_64 smoke test • polished live recovery • verified in-app updater"
           }
           EOF
           cat update.json
