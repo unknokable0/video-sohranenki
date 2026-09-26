@@ -74,7 +74,7 @@ class LivePulseView(context: Context) : View(context) {
             return
         }
 
-        val roseRed = Color.parseColor("#FF4057")
+        val roseRed = Color.parseColor("#FF2E43")
 
         if (animations) {
             val eased = 1f - (1f - phase) * (1f - phase)
