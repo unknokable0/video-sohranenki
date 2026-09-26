@@ -132,11 +132,18 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
           script: |
+            adb logcat -c
             adb install -r SOHR.apk
             adb shell am start -W -n com.unknokable.videosohranenki/.MainActivity
-            sleep 4
+            sleep 6
             adb shell pidof com.unknokable.videosohranenki | grep -Eq '[0-9]+'
-            echo "SOHR launched successfully on x86_64 Android emulator"
+            adb logcat -d -t 500 > /tmp/sohr-logcat.txt
+            if grep -Eqi 'UnsatisfiedLinkError|dlopen failed|cannot locate symbol|FATAL EXCEPTION.*unknokable|Process: com\.unknokable\.videosohranenki.*FATAL' /tmp/sohr-logcat.txt; then
+              echo "SOHR/TDLib native compatibility failed on Android 7.1 x86_64" >&2
+              tail -250 /tmp/sohr-logcat.txt >&2
+              exit 1
+            fi
+            echo "SOHR + native libraries launched successfully on Android 7.1 x86_64"
 
       - name: Generate updater manifest
         shell: bash
