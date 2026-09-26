@@ -26,6 +26,12 @@ data class TwitchDeviceToken(
     val refreshToken: String?
 )
 
+sealed interface TwitchDevicePollResult {
+    data object Pending : TwitchDevicePollResult
+    data object SlowDown : TwitchDevicePollResult
+    data class Authorized(val token: TwitchDeviceToken) : TwitchDevicePollResult
+}
+
 data class TwitchProfile(
     val id: String,
     val login: String,
@@ -71,7 +77,7 @@ object TwitchApi {
         )
     }
 
-    suspend fun pollDeviceAuthorization(clientId: String, deviceCode: String): TwitchDeviceToken? =
+    suspend fun pollDeviceAuthorization(clientId: String, deviceCode: String): TwitchDevicePollResult =
         withContext(Dispatchers.IO) {
             val (code, body) = postForm(
                 "https://id.twitch.tv/oauth2/token",
@@ -82,13 +88,16 @@ object TwitchApi {
                     "grant_type" to "urn:ietf:params:oauth:grant-type:device_code"
                 )
             )
+
             if (code in 200..299) {
                 val root = JSONObject(body)
                 val token = root.optString("access_token")
                 if (token.isBlank()) throw IOException("Twitch не вернул access token")
-                return@withContext TwitchDeviceToken(
-                    accessToken = token,
-                    refreshToken = root.optString("refresh_token").takeIf { it.isNotBlank() }
+                return@withContext TwitchDevicePollResult.Authorized(
+                    TwitchDeviceToken(
+                        accessToken = token,
+                        refreshToken = root.optString("refresh_token").takeIf { it.isNotBlank() }
+                    )
                 )
             }
 
@@ -97,11 +106,10 @@ object TwitchApi {
             val normalized = message.lowercase()
 
             if (code == 400 && normalized.contains("authorization_pending")) {
-                return@withContext null
+                return@withContext TwitchDevicePollResult.Pending
             }
             if (code == 400 && normalized.contains("slow_down")) {
-                delay(5_000L)
-                return@withContext null
+                return@withContext TwitchDevicePollResult.SlowDown
             }
             if (normalized.contains("access_denied") || normalized.contains("access denied")) {
                 throw TwitchAuthException("Вход Twitch был отменён")
@@ -113,6 +121,31 @@ object TwitchApi {
             }
 
             throw IOException(message.ifBlank { "Twitch token: HTTP $code" })
+        }
+
+    suspend fun refreshAccessToken(clientId: String, refreshToken: String): TwitchDeviceToken =
+        withContext(Dispatchers.IO) {
+            val (code, body) = postForm(
+                "https://id.twitch.tv/oauth2/token",
+                linkedMapOf(
+                    "grant_type" to "refresh_token",
+                    "refresh_token" to refreshToken,
+                    "client_id" to clientId
+                )
+            )
+            if (code !in 200..299) {
+                val message = runCatching { JSONObject(body).optString("message") }.getOrNull()
+                throw TwitchAuthException(
+                    message?.takeIf { it.isNotBlank() } ?: "Не удалось обновить Twitch-сессию"
+                )
+            }
+            val root = JSONObject(body)
+            val token = root.optString("access_token")
+            if (token.isBlank()) throw TwitchAuthException("Twitch не вернул новый access token")
+            TwitchDeviceToken(
+                accessToken = token,
+                refreshToken = root.optString("refresh_token").takeIf { it.isNotBlank() }
+            )
         }
 
     suspend fun loadCurrentUser(clientId: String, accessToken: String): TwitchProfile = withContext(Dispatchers.IO) {
