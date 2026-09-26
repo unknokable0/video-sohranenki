@@ -44,10 +44,10 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 5.3.0-test10 version
+      - name: Assign SOHR 5.3.0-test11 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=503010" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=503011" >> "$GITHUB_ENV"
           echo "SOHR_VERSION_NAME=5.3.0-test8" >> "$GITHUB_ENV"
 
       - name: Verify Twitch Device Code endpoint
@@ -96,7 +96,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/SOHR.apk",
             "sha256": "$SHA256",
-            "notes": "SOHR 5.3.0-test10 • mobile Twitch OAuth • automatic return to SOHR • secure state validation"
+            "notes": "SOHR 5.3.0-test11 • Twitch device login • automatic return to SOHR • refresh-token recovery"
           }
           EOF
           cat update.json
