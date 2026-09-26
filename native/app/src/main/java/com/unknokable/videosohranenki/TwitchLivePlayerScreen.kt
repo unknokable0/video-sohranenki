@@ -2,6 +2,7 @@ package com.unknokable.videosohranenki
 
 import android.app.Activity
 import android.content.pm.ActivityInfo
+import android.os.Build
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
@@ -27,6 +28,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.CoroutineScope
@@ -57,9 +59,17 @@ class TwitchLivePlayerScreen(
     private val playerView = PlayerView(activity)
     private val loader = LoadingWaveView(activity, palette.accent)
     private val controlsOverlay = FrameLayout(activity)
-    private val playPause = ImageButton(activity)
+    private val playPause = SohrLiveControlView(
+        activity,
+        SohrLiveControlView.Mode.PLAY_PAUSE,
+        withAlpha(palette.accent, 232)
+    )
     private val audioToggle = LiveAudioToggleView(activity, palette.accent)
-    private val fullscreenButton = ImageButton(activity)
+    private val fullscreenButton = SohrLiveControlView(
+        activity,
+        SohrLiveControlView.Mode.FULLSCREEN,
+        withAlpha(palette.accent, 205)
+    )
 
     private val chatStatus = TextView(activity)
     private val chatScroll = ScrollView(activity)
@@ -120,6 +130,7 @@ class TwitchLivePlayerScreen(
             useController = false
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
             setBackgroundColor(Color.BLACK)
+            keepScreenOn = true
         }
         playerCard.addView(
             playerView,
@@ -205,17 +216,13 @@ class TwitchLivePlayerScreen(
             setPadding(dp(12), dp(10), dp(12), dp(8))
         }
 
-        val back = iconButton(
-            resId = R.drawable.ic_back,
-            backgroundColor = palette.surface,
-            tintColor = palette.text,
-            size = 40
+        val back = SohrLiveControlView(
+            activity,
+            SohrLiveControlView.Mode.BACK,
+            palette.surfaceAlt,
+            palette.text
         ).apply {
-            contentDescription = "Назад"
-            setOnClickListener {
-                pulseButton(this)
-                onBack()
-            }
+            onTap = { onBack() }
         }
 
         val pulse = LivePulseView(activity).apply {
@@ -260,7 +267,7 @@ class TwitchLivePlayerScreen(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(8), 0, dp(11), 0)
-            background = rounded(Color.parseColor("#B43A3842"), 14)
+            background = rounded(palette.accentSoft, 14)
         }
 
         val pulse = LivePulseView(activity).apply {
@@ -285,23 +292,18 @@ class TwitchLivePlayerScreen(
         controlsOverlay.background = GradientDrawable(
             GradientDrawable.Orientation.BOTTOM_TOP,
             intArrayOf(
-                Color.parseColor("#7A000000"),
-                Color.parseColor("#19000000"),
-                Color.parseColor("#06000000")
+                Color.parseColor("#72000000"),
+                Color.parseColor("#12000000"),
+                Color.TRANSPARENT
             )
         )
         controlsOverlay.alpha = 1f
         controlsOverlay.visibility = View.VISIBLE
 
         playPause.apply {
-            setImageResource(R.drawable.ic_pause)
-            imageTintList = ColorStateList.valueOf(Color.WHITE)
-            background = rounded(withAlpha(palette.accent, 232), 25)
-            setPadding(dp(13), dp(13), dp(13), dp(13))
-            contentDescription = "Пауза"
-            setOnClickListener {
-                val p = player ?: return@setOnClickListener
-                pulseButton(this)
+            setPlaying(true)
+            onTap = {
+                val p = player ?: return@apply
                 if (p.isPlaying) {
                     p.pause()
                     showControls(autoHide = false)
@@ -332,13 +334,8 @@ class TwitchLivePlayerScreen(
         actions.addView(audioToggle, LinearLayout.LayoutParams(dp(40), dp(40)))
 
         fullscreenButton.apply {
-            setImageResource(R.drawable.ic_fullscreen)
-            imageTintList = ColorStateList.valueOf(Color.WHITE)
-            background = rounded(withAlpha(palette.accent, 205), 20)
-            setPadding(dp(10), dp(10), dp(10), dp(10))
-            contentDescription = "Полный экран"
-            setOnClickListener {
-                pulseButton(this)
+            setFullscreen(false)
+            onTap = {
                 setFullscreenMode(!fullscreen)
                 showControls(autoHide = player?.isPlaying == true)
             }
@@ -524,7 +521,10 @@ class TwitchLivePlayerScreen(
                     .setPrioritizeTimeOverSizeThresholds(true)
                     .build()
 
-                val exo = ExoPlayer.Builder(activity)
+                val renderersFactory = DefaultRenderersFactory(activity)
+                    .setEnableDecoderFallback(true)
+
+                val exo = ExoPlayer.Builder(activity, renderersFactory)
                     .setLoadControl(loadControl)
                     .build()
 
@@ -549,11 +549,7 @@ class TwitchLivePlayerScreen(
 
                 exo.addListener(object : Player.Listener {
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
-                        playPause.setImageResource(
-                            if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play
-                        )
-                        playPause.contentDescription =
-                            if (isPlaying) "Пауза" else "Продолжить"
+                        playPause.setPlaying(isPlaying)
 
                         if (isPlaying) scheduleControlsHide()
                         else showControls(autoHide = false)
@@ -726,8 +722,13 @@ class TwitchLivePlayerScreen(
         fullscreen = enabled
 
         activity.requestedOrientation =
-            if (enabled) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            when {
+                !enabled -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                shouldForceLandscape() -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            }
+
+        fullscreenButton.setFullscreen(enabled)
 
         val params = playerCard.layoutParams as LinearLayout.LayoutParams
         if (enabled) {
@@ -812,22 +813,21 @@ class TwitchLivePlayerScreen(
         handler.postDelayed(hideControlsRunnable, 2_100L)
     }
 
-    private fun pulseButton(view: View) {
-        if (!animationsEnabled) return
+    private fun shouldForceLandscape(): Boolean {
+        val sw = activity.resources.configuration.smallestScreenWidthDp
+        val manufacturer = Build.MANUFACTURER.orEmpty()
+        val brand = Build.BRAND.orEmpty()
+        val model = Build.MODEL.orEmpty()
+        val fingerprint = Build.FINGERPRINT.orEmpty()
 
-        view.animate().cancel()
-        view.animate()
-            .scaleX(0.92f)
-            .scaleY(0.92f)
-            .setDuration(55L)
-            .withEndAction {
-                view.animate()
-                    .scaleX(1f)
-                    .scaleY(1f)
-                    .setDuration(135L)
-                    .start()
-            }
-            .start()
+        val emulatorLike =
+            manufacturer.contains("bluestacks", ignoreCase = true) ||
+            brand.contains("bluestacks", ignoreCase = true) ||
+            model.contains("bluestacks", ignoreCase = true) ||
+            fingerprint.contains("generic", ignoreCase = true) ||
+            model.contains("sdk", ignoreCase = true)
+
+        return !emulatorLike && sw < 600
     }
 
     fun destroy() {
@@ -846,18 +846,6 @@ class TwitchLivePlayerScreen(
         playerView.player = null
         player?.release()
         player = null
-    }
-
-    private fun iconButton(
-        resId: Int,
-        backgroundColor: Int,
-        tintColor: Int,
-        size: Int
-    ): ImageButton = ImageButton(activity).apply {
-        setImageResource(resId)
-        imageTintList = ColorStateList.valueOf(tintColor)
-        background = rounded(backgroundColor, size / 2)
-        setPadding(dp(10), dp(10), dp(10), dp(10))
     }
 
     private fun rounded(color: Int, radiusDp: Int) = GradientDrawable().apply {
