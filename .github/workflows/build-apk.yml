@@ -44,11 +44,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 5.3.0-test25 version
+      - name: Assign SOHR 5.3.0-test26 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=503025" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=5.3.0-test25" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=503026" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=5.3.0-test26" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -84,6 +84,58 @@ jobs:
           cp SOHR.apk "$APK_ASSET"
           echo "SOHR_APK_ASSET=$APK_ASSET" >> "$GITHUB_ENV"
 
+      - name: Verify BlueStacks APK compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          if [ -z "$AAPT" ]; then
+            echo "Android aapt not found" >&2
+            exit 1
+          fi
+
+          "$AAPT" dump badging SOHR.apk | tee /tmp/sohr-badging.txt
+
+          grep -q "package: name='com.unknokable.videosohranenki'" /tmp/sohr-badging.txt
+          grep -q "launchable-activity: name='com.unknokable.videosohranenki.MainActivity'" /tmp/sohr-badging.txt
+
+          MIN_SDK="$(sed -n "s/.*sdkVersion:'\\([0-9][0-9]*\\)'.*/\\1/p" /tmp/sohr-badging.txt | head -1)"
+          echo "SOHR minSdk=$MIN_SDK"
+          if [ -z "$MIN_SDK" ] || [ "$MIN_SDK" -gt 26 ]; then
+            echo "APK requires Android newer than 8.0; BlueStacks compatibility check failed." >&2
+            exit 1
+          fi
+
+          ABIS="$(unzip -Z1 SOHR.apk | sed -n 's#^lib/\\([^/]*\\)/.*#\\1#p' | sort -u)"
+          echo "Native ABIs:"
+          printf '%s\n' "$ABIS"
+
+          if [ -n "$ABIS" ] && ! printf '%s\n' "$ABIS" | grep -qx "x86_64"; then
+            echo "APK has native libraries but no x86_64 ABI for BlueStacks/emulators." >&2
+            exit 1
+          fi
+
+      - name: BlueStacks-like x86_64 smoke test
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
+          script: |
+            adb install -r SOHR.apk
+            adb shell am start -W -n com.unknokable.videosohranenki/.MainActivity
+            sleep 4
+            PID="$(adb shell pidof com.unknokable.videosohranenki | tr -d '\r')"
+            if [ -z "$PID" ]; then
+              echo "SOHR process is not alive after launch on x86_64 emulator." >&2
+              adb logcat -d -t 250
+              exit 1
+            fi
+            echo "SOHR launched successfully on x86_64 Android emulator, pid=$PID"
+
       - name: Generate updater manifest
         shell: bash
         run: |
@@ -94,7 +146,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 5.3.0-test25 • LIVE UI polish • custom SOHR controls • emulator playback fallback • Android 7+ support • verified in-app updater"
+            "notes": "SOHR 5.3.0-test26 • polished SOHR live controls • stream auto-recovery • chat auto-reconnect • BlueStacks x86_64 smoke test • verified in-app updater"
           }
           EOF
           cat update.json
