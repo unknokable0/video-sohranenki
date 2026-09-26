@@ -4,109 +4,65 @@ import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.Path
-import android.graphics.PathMeasure
 import android.view.View
-import android.view.animation.AccelerateDecelerateInterpolator
+import android.view.animation.LinearInterpolator
+import kotlin.math.cos
 import kotlin.math.sin
 
 class LoadingWaveView(context: Context, private val color: Int) : View(context) {
-
-    private val basePath = Path()
-    private val segmentPath = Path()
-    private val measure = PathMeasure()
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var phase = 0f
-
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-        strokeJoin = Paint.Join.ROUND
-    }
-
     private val animator = ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = 1750L
+        duration = 1100L
         repeatCount = ValueAnimator.INFINITE
-        interpolator = AccelerateDecelerateInterpolator()
-        addUpdateListener {
-            phase = it.animatedFraction
-            invalidate()
-        }
+        interpolator = LinearInterpolator()
+        addUpdateListener { phase = it.animatedFraction; invalidate() }
     }
 
-    init {
-        animator.start()
-    }
-
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        rebuildPath(w.toFloat(), h.toFloat())
-    }
-
-    private fun rebuildPath(w: Float, h: Float) {
-        val left = w * 0.24f
-        val right = w * 0.76f
-        val top = h * 0.18f
-        val bottom = h * 0.82f
-
-        basePath.reset()
-        basePath.moveTo(right, top)
-        basePath.cubicTo(
-            w * 0.49f, h * 0.14f,
-            left, h * 0.25f,
-            left, h * 0.37f
-        )
-        basePath.cubicTo(
-            left, h * 0.49f,
-            right, h * 0.48f,
-            right, h * 0.59f
-        )
-        basePath.cubicTo(
-            right, h * 0.72f,
-            w * 0.56f, h * 0.84f,
-            left, bottom
-        )
-
-        measure.setPath(basePath, false)
-    }
+    init { animator.start() }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        if (width == 0 || height == 0 || measure.length <= 0f) return
+        if (width <= 0 || height <= 0) return
+        val cx = width / 2f
+        val cy = height / 2f
+        val radius = minOf(width, height) * .23f
 
-        val breathe = 1f + sin((phase * Math.PI * 2).toFloat()) * 0.012f
-        canvas.save()
-        canvas.scale(breathe, breathe, width / 2f, height / 2f)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = dp(2.2f)
+        paint.color = withAlpha(color, 42)
+        canvas.drawCircle(cx, cy, radius, paint)
 
-        paint.color = (color and 0x00FFFFFF) or (42 shl 24)
-        paint.strokeWidth = dp(5.2f)
-        canvas.drawPath(basePath, paint)
-
-        val start = phase * measure.length
-        val end = start + measure.length * 0.34f
-        segmentPath.reset()
-
-        if (end <= measure.length) {
-            measure.getSegment(start, end, segmentPath, true)
-        } else {
-            measure.getSegment(start, measure.length, segmentPath, true)
-            measure.getSegment(0f, end - measure.length, segmentPath, true)
+        paint.style = Paint.Style.FILL
+        repeat(3) { index ->
+            val local = (phase + index / 3f) % 1f
+            val angle = local * Math.PI.toFloat() * 2f - Math.PI.toFloat() / 2f
+            val pulse = .72f + .28f * (.5f + .5f * sin((local * Math.PI * 2).toFloat()))
+            paint.color = withAlpha(color, (150 + 105 * pulse).toInt())
+            canvas.drawCircle(
+                cx + cos(angle) * radius,
+                cy + sin(angle) * radius,
+                dp(3.2f + 1.2f * pulse),
+                paint
+            )
         }
 
-        paint.color = color
-        paint.strokeWidth = dp(6.8f)
-        canvas.drawPath(segmentPath, paint)
-
-        canvas.restore()
+        paint.color = withAlpha(color, 205)
+        canvas.drawCircle(cx, cy, dp(2.7f), paint)
     }
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        if (!animator.isStarted) animator.start()
+        if (!animator.isRunning) animator.start()
     }
 
     override fun onDetachedFromWindow() {
         animator.cancel()
         super.onDetachedFromWindow()
     }
+
+    private fun withAlpha(value: Int, alpha: Int): Int =
+        (value and 0x00FFFFFF) or (alpha.coerceIn(0, 255) shl 24)
 
     private fun dp(v: Float): Float = v * resources.displayMetrics.density
 }

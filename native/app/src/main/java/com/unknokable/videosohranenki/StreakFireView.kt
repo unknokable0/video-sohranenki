@@ -2,6 +2,7 @@ package com.unknokable.videosohranenki
 
 import android.animation.ValueAnimator
 import android.content.Context
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
@@ -10,30 +11,27 @@ import android.graphics.Path
 import android.graphics.Shader
 import android.view.View
 import android.view.animation.LinearInterpolator
+import kotlin.math.cos
 import kotlin.math.sin
 
-class StreakFireView(
-    context: Context,
-    private var flameColor: Int
-) : View(context) {
-
+class StreakFireView(context: Context, private var flameColor: Int) : View(context) {
     private val outerPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val innerPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val outerPath = Path()
-    private val innerPath = Path()
+    private val sparkPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val outer = Path()
+    private val inner = Path()
     private var phase = 0f
 
     private val animator = ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = 2600L
+        duration = 2400L
         repeatCount = ValueAnimator.INFINITE
         interpolator = LinearInterpolator()
-        addUpdateListener {
-            phase = it.animatedFraction
-            invalidate()
-        }
+        addUpdateListener { phase = it.animatedFraction; invalidate() }
     }
 
     init {
+        setLayerType(LAYER_TYPE_SOFTWARE, null)
         animator.start()
     }
 
@@ -48,91 +46,62 @@ class StreakFireView(
         val h = height.toFloat()
         if (w <= 0f || h <= 0f) return
 
-        val t = (phase * Math.PI * 2).toFloat()
-        val sway = sin(t) * w * 0.022f
-        val tipSway = sin(t * 1.35f + 0.7f) * w * 0.035f
-        val breatheX = 1f + sin(t * 1.7f) * 0.018f
-        val breatheY = 1f + sin(t * 1.25f + 0.4f) * 0.025f
+        val t = phase * Math.PI.toFloat() * 2f
+        val sway = sin(t) * w * .018f
+        val tip = sin(t * 1.27f + .4f) * w * .034f
+        val cx = w * .5f
+        val bottom = h * .89f
 
-        val topColor = blend(flameColor, Color.WHITE, 0.34f)
-        outerPaint.shader = LinearGradient(
-            0f,
-            h * 0.10f,
-            0f,
-            h * 0.90f,
-            topColor,
-            flameColor,
-            Shader.TileMode.CLAMP
-        )
+        outer.reset()
+        outer.moveTo(cx, bottom)
+        outer.cubicTo(w * .23f, h * .83f, w * .16f, h * .62f, w * .31f, h * .46f)
+        outer.cubicTo(w * .41f, h * .35f, w * .37f, h * .23f, cx + tip, h * .07f)
+        outer.cubicTo(w * .58f + tip * .25f, h * .27f, w * .75f, h * .32f, w * .70f, h * .50f)
+        outer.cubicTo(w * .84f, h * .63f, w * .76f, h * .83f, cx, bottom)
+        outer.close()
+
+        glowPaint.style = Paint.Style.FILL
+        glowPaint.color = withAlpha(flameColor, 115)
+        glowPaint.maskFilter = BlurMaskFilter(dp(9f), BlurMaskFilter.Blur.NORMAL)
 
         canvas.save()
         canvas.translate(sway, 0f)
-        canvas.scale(breatheX, breatheY, w * 0.5f, h * 0.82f)
+        canvas.drawPath(outer, glowPaint)
 
-        val cx = w * 0.5f
-        val bottom = h * 0.90f
+        outerPaint.shader = LinearGradient(
+            0f, h * .12f, 0f, h * .9f,
+            blend(flameColor, Color.WHITE, .35f), flameColor, Shader.TileMode.CLAMP
+        )
+        outerPaint.maskFilter = null
+        canvas.drawPath(outer, outerPaint)
 
-        outerPath.reset()
-        outerPath.moveTo(cx, bottom)
-        outerPath.cubicTo(
-            w * 0.22f, h * 0.82f,
-            w * 0.16f, h * 0.60f,
-            w * 0.31f, h * 0.44f
-        )
-        outerPath.cubicTo(
-            w * 0.39f, h * 0.35f,
-            w * 0.35f, h * 0.23f,
-            cx + tipSway, h * 0.08f
-        )
-        outerPath.cubicTo(
-            w * 0.56f + tipSway * 0.45f, h * 0.24f,
-            w * 0.73f, h * 0.30f,
-            w * 0.70f, h * 0.49f
-        )
-        outerPath.cubicTo(
-            w * 0.86f, h * 0.62f,
-            w * 0.77f, h * 0.84f,
-            cx, bottom
-        )
-        outerPath.close()
-        canvas.drawPath(outerPath, outerPaint)
-
+        inner.reset()
+        inner.moveTo(cx, h * .79f)
+        inner.cubicTo(w * .40f, h * .72f, w * .41f, h * .58f, w * .48f, h * .49f)
+        inner.cubicTo(w * .53f, h * .42f, w * .51f, h * .36f, w * .56f, h * .28f)
+        inner.cubicTo(w * .65f, h * .49f, w * .68f, h * .64f, w * .62f, h * .73f)
+        inner.cubicTo(w * .59f, h * .77f, w * .55f, h * .79f, cx, h * .79f)
+        inner.close()
+        innerPaint.color = withAlpha(blend(flameColor, Color.WHITE, .72f), 215)
         innerPaint.shader = null
-        innerPaint.color = blend(flameColor, Color.WHITE, 0.62f)
-        innerPaint.alpha = 190
-
-        val innerShift = sin(t * 1.55f + 1.2f) * w * 0.018f
-        innerPath.reset()
-        innerPath.moveTo(cx + innerShift, h * 0.80f)
-        innerPath.cubicTo(
-            w * 0.39f, h * 0.73f,
-            w * 0.40f, h * 0.60f,
-            w * 0.47f, h * 0.51f
-        )
-        innerPath.cubicTo(
-            w * 0.52f, h * 0.45f,
-            w * 0.50f, h * 0.38f,
-            w * 0.55f + innerShift, h * 0.31f
-        )
-        innerPath.cubicTo(
-            w * 0.63f, h * 0.49f,
-            w * 0.69f, h * 0.63f,
-            w * 0.63f, h * 0.72f
-        )
-        innerPath.cubicTo(
-            w * 0.60f, h * 0.77f,
-            w * 0.55f, h * 0.80f,
-            cx + innerShift, h * 0.80f
-        )
-        innerPath.close()
-        canvas.drawPath(innerPath, innerPaint)
-
+        canvas.drawPath(inner, innerPaint)
         canvas.restore()
+
+        sparkPaint.color = blend(flameColor, Color.WHITE, .45f)
+        repeat(3) { i ->
+            val local = (phase + i * .29f) % 1f
+            val x = cx + cos((i + 1) * 1.7f) * w * .13f + sin(t + i) * w * .02f
+            val y = h * .42f - local * h * .26f
+            val alpha = (1f - local).coerceIn(0f, 1f)
+            sparkPaint.alpha = (170 * alpha).toInt()
+            canvas.drawCircle(x, y, dp(1.8f + 1.2f * alpha), sparkPaint)
+        }
+        sparkPaint.alpha = 255
     }
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        if (!animator.isStarted) animator.start()
+        if (!animator.isRunning) animator.start()
     }
 
     override fun onDetachedFromWindow() {
@@ -147,16 +116,23 @@ class StreakFireView(
             streak < 20 -> Color.parseColor("#9A68FF")
             streak < 50 -> Color.parseColor("#4D98FF")
             streak < 100 -> Color.parseColor("#FF4A5E")
-            else -> Color.parseColor("#B7FF28")
-        }
-
-        private fun blend(from: Int, to: Int, amount: Float): Int {
-            val a = amount.coerceIn(0f, 1f)
-            return Color.rgb(
-                (Color.red(from) + (Color.red(to) - Color.red(from)) * a).toInt(),
-                (Color.green(from) + (Color.green(to) - Color.green(from)) * a).toInt(),
-                (Color.blue(from) + (Color.blue(to) - Color.blue(from)) * a).toInt()
-            )
+            streak < 200 -> Color.parseColor("#B7FF28")
+            else -> Color.parseColor("#55E6FF")
         }
     }
+
+    private fun withAlpha(v: Int, a: Int): Int =
+        (v and 0x00FFFFFF) or (a.coerceIn(0, 255) shl 24)
+
+    private fun blend(from: Int, to: Int, amount: Float): Int {
+        val a = amount.coerceIn(0f, 1f)
+        return Color.argb(
+            (Color.alpha(from) + (Color.alpha(to) - Color.alpha(from)) * a).toInt(),
+            (Color.red(from) + (Color.red(to) - Color.red(from)) * a).toInt(),
+            (Color.green(from) + (Color.green(to) - Color.green(from)) * a).toInt(),
+            (Color.blue(from) + (Color.blue(to) - Color.blue(from)) * a).toInt()
+        )
+    }
+
+    private fun dp(v: Float): Float = v * resources.displayMetrics.density
 }

@@ -10,8 +10,8 @@
         android:allowBackup="false"
         android:usesCleartextTraffic="true"
         android:label="SOHR"
-        android:icon="@drawable/ic_launcher"
-        android:roundIcon="@drawable/ic_launcher"
+        android:icon="@drawable/ic_launcher_sohr"
+        android:roundIcon="@drawable/ic_launcher_sohr"
         android:theme="@style/AppTheme">
         <provider
             android:name="androidx.core.content.FileProvider"
