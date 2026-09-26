@@ -130,6 +130,8 @@ class MainActivity : AppCompatActivity() {
     private val telegramAutoRefreshIntervalMs = 45_000L
     private val twitchAutoRefreshIntervalMs = 180_000L
     private var startupUpdateCheckDone = false
+    private var updateAutoCheckJob: kotlinx.coroutines.Job? = null
+    private val automaticUpdateCheckIntervalMs = 6L * 60L * 60L * 1000L
     private var onboardingActive = false
     private var videoSection = 1 // 1 collections, 2 watched
     private var pendingVideoSectionCrossfade = false
@@ -302,6 +304,23 @@ class MainActivity : AppCompatActivity() {
         }
         if (!startupPhase && !isPlayerScreen && !isSettingsScreen && !isAccountScreen && !isStreakScreen) {
             scheduleFeedAutoRefresh(delayMs = 550L, force = false)
+            scheduleAutomaticUpdateCheck(delayMs = 1_100L, force = false)
+        }
+    }
+
+    private fun scheduleAutomaticUpdateCheck(delayMs: Long = 900L, force: Boolean = false) {
+        if (updateAutoCheckJob?.isActive == true) return
+
+        val runtimePrefs = getSharedPreferences("sohr_runtime", MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        val lastCheckAt = runtimePrefs.getLong("last_auto_update_check_at", 0L)
+        if (!force && lastCheckAt > 0L && now - lastCheckAt < automaticUpdateCheckIntervalMs) return
+
+        updateAutoCheckJob = lifecycleScope.launch {
+            delay(delayMs)
+            runtimePrefs.edit().putLong("last_auto_update_check_at", System.currentTimeMillis()).apply()
+            checkForUpdates(manual = false)
+            updateAutoCheckJob = null
         }
     }
 
@@ -2159,7 +2178,7 @@ class MainActivity : AppCompatActivity() {
         currentVideos = videos
         if (!startupUpdateCheckDone) {
             startupUpdateCheckDone = true
-            root.postDelayed({ checkForUpdates(manual = false) }, 900L)
+            scheduleAutomaticUpdateCheck(delayMs = 900L, force = true)
         }
         completedUpdateNotice?.let { version ->
             completedUpdateNotice = null
@@ -2243,15 +2262,41 @@ class MainActivity : AppCompatActivity() {
         controls.addView(TextView(this).apply {
             text=if(videoSection==2) "Просмотрено по дням" else "Сборники по дням"; textSize=14f; setTypeface(typeface,Typeface.BOLD); setTextColor(muted)
         },LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
-        controls.addView(TextView(this).apply {
-            text = "Авто"
-            textSize = 11f
+        val autoStatus = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(10), 0, dp(11), 0)
+            background = roundedBg(palette.surfaceAlt, 14)
+            contentDescription = "Автопроверка видео и обновлений активна"
+        }
+        val autoDot = View(this).apply {
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(Color.parseColor("#58DFA0"))
+            }
+        }
+        autoStatus.addView(autoDot, LinearLayout.LayoutParams(dp(7), dp(7)).apply {
+            marginEnd = dp(7)
+        })
+        autoStatus.addView(TextView(this).apply {
+            text = "Автопроверка активна"
+            textSize = 10.5f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
-            setTextColor(purple)
-            setPadding(dp(10), 0, dp(10), 0)
-            background = roundedBg(palette.surfaceAlt, 14)
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)))
+            setTextColor(muted)
+        })
+        if (settings.animations) {
+            autoDot.animate()
+                .alpha(0.45f)
+                .setDuration(820L)
+                .withEndAction {
+                    if (autoDot.isAttachedToWindow) {
+                        autoDot.animate().alpha(1f).setDuration(820L).start()
+                    }
+                }
+                .start()
+        }
+        controls.addView(autoStatus, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)))
         header.addView(controls, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
         page.addView(header)
 
@@ -2300,7 +2345,12 @@ class MainActivity : AppCompatActivity() {
 
         twitchLiveJob = lifecycleScope.launch {
             try {
-                val live = TwitchApi.loadLiveStream(clientId, token, "t2x2")
+                val channelLive = TwitchApi.loadLiveStream(clientId, token, "t2x2")
+                val live = channelLive ?: TwitchApi.loadRandomLiveStream(
+                    clientId = clientId,
+                    accessToken = token,
+                    excludeLogins = setOf("t2x2")
+                )
                 lastT2x2Live = live
                 lastT2x2LiveUnavailable = false
                 lastT2x2LiveCheckedAt = System.currentTimeMillis()
@@ -2351,28 +2401,37 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
         }
         info.addView(TextView(this).apply {
-            text = "Антон t2x2"
+            text = live?.displayName?.takeIf { it.isNotBlank() } ?: "t2x2"
             textSize = 14.5f
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(this@MainActivity.text)
             maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
         })
         info.addView(TextView(this).apply {
             text = when {
-                live != null -> "В эфире • ${live.viewerCount} зрителей"
-                unavailable -> "Статус эфира недоступен"
-                else -> "Не в сети"
+                live != null && live.testStream ->
+                    "@${live.login} • Тестовый эфир • ${live.viewerCount} зрителей"
+                live != null ->
+                    "@${live.login} • В эфире • ${live.viewerCount} зрителей"
+                unavailable -> "@t2x2 • Статус эфира недоступен"
+                else -> "@t2x2 • Не в сети"
             }
-            textSize = 12f
+            textSize = 11.5f
             setTextColor(
                 if (live != null) Color.parseColor("#FF405A") else muted
             )
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
             setPadding(0, dp(4), 0, 0)
         })
-        if (live != null && live.title.isNotBlank()) {
+        if (live != null && (live.gameName.isNotBlank() || live.title.isNotBlank())) {
             info.addView(TextView(this).apply {
-                text = live.title
-                textSize = 11f
+                text = listOfNotNull(
+                    live.gameName.takeIf { it.isNotBlank() },
+                    live.title.takeIf { it.isNotBlank() }
+                ).joinToString(" • ")
+                textSize = 10.8f
                 setTextColor(muted)
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
