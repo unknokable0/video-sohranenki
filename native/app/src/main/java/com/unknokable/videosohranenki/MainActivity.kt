@@ -302,7 +302,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (android.os.Build.VERSION.SDK_INT >= 24 && !isInPictureInPictureMode) {
+        if (android.os.Build.VERSION.SDK_INT >= 26 && !isInPictureInPictureMode) {
             stopService(Intent(this, PlaybackKeepAliveService::class.java))
         }
         if (waitingForInstallPermission && updateManager.canRequestInstall()) {
