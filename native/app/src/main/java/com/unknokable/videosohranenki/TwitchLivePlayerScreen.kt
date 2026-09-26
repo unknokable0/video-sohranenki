@@ -35,6 +35,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(UnstableApi::class)
@@ -64,11 +65,16 @@ class TwitchLivePlayerScreen(
         SohrLiveControlView.Mode.PLAY_PAUSE,
         withAlpha(palette.accent, 232)
     )
-    private val audioToggle = LiveAudioToggleView(activity, palette.accent)
+    private val audioToggle = LiveAudioToggleView(
+        activity,
+        palette.accent,
+        Color.TRANSPARENT,
+        Color.WHITE
+    )
     private val fullscreenButton = SohrLiveControlView(
         activity,
         SohrLiveControlView.Mode.FULLSCREEN,
-        withAlpha(palette.accent, 205)
+        Color.TRANSPARENT
     )
 
     private val chatStatus = TextView(activity)
@@ -83,6 +89,9 @@ class TwitchLivePlayerScreen(
     private var destroyed = false
     private var controlsVisible = true
     private var chatHasMessages = false
+    private var streamRecoveryAttempts = 0
+    private var recoveringStream = false
+    private var playerErrorView: TextView? = null
 
     private val hideControlsRunnable = Runnable { hideControls() }
     private val liveEdgeGuardRunnable = object : Runnable {
@@ -93,7 +102,7 @@ class TwitchLivePlayerScreen(
                 if (
                     p.isPlaying &&
                     offset != C.TIME_UNSET &&
-                    offset > 6_500L
+                    offset > 5_500L
                 ) {
                     p.seekToDefaultPosition()
                 }
@@ -263,29 +272,15 @@ class TwitchLivePlayerScreen(
     }
 
     private fun buildLiveStatusPill(): View {
-        val pill = LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(8), 0, dp(11), 0)
-            background = rounded(palette.accentSoft, 14)
-        }
-
-        val pulse = LivePulseView(activity).apply {
-            setState(true, animationsEnabled)
-        }
-        pill.addView(
-            pulse,
-            LinearLayout.LayoutParams(dp(20), dp(20)).apply {
-                marginEnd = dp(4)
-            }
-        )
-        pill.addView(TextView(activity).apply {
+        return TextView(activity).apply {
             text = "В эфире"
             textSize = 10.5f
+            gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
-        })
-        return pill
+            setPadding(dp(12), 0, dp(12), 0)
+            background = rounded(withAlpha(palette.accent, 205), 14)
+        }
     }
 
     private fun buildPlayerControls() {
@@ -321,6 +316,12 @@ class TwitchLivePlayerScreen(
         val actions = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
+            setPadding(dp(4), dp(3), dp(4), dp(3))
+            background = roundedStroke(
+                color = withAlpha(palette.surfaceAlt, 238),
+                strokeColor = withAlpha(palette.accent, 80),
+                radiusDp = 22
+            )
         }
 
         audioToggle.apply {
@@ -331,7 +332,7 @@ class TwitchLivePlayerScreen(
                 showControls(autoHide = player?.isPlaying == true)
             }
         }
-        actions.addView(audioToggle, LinearLayout.LayoutParams(dp(40), dp(40)))
+        actions.addView(audioToggle, LinearLayout.LayoutParams(dp(36), dp(36)))
 
         fullscreenButton.apply {
             setFullscreen(false)
@@ -342,8 +343,8 @@ class TwitchLivePlayerScreen(
         }
         actions.addView(
             fullscreenButton,
-            LinearLayout.LayoutParams(dp(40), dp(40)).apply {
-                marginStart = dp(8)
+            LinearLayout.LayoutParams(dp(36), dp(36)).apply {
+                marginStart = dp(2)
             }
         )
 
@@ -533,18 +534,7 @@ class TwitchLivePlayerScreen(
                 exo.volume = if (muted) 0f else 1f
                 exo.playWhenReady = true
 
-                val mediaItem = MediaItem.Builder()
-                    .setUri(hlsUrl)
-                    .setLiveConfiguration(
-                        MediaItem.LiveConfiguration.Builder()
-                            .setTargetOffsetMs(2_800L)
-                            .setMinPlaybackSpeed(0.97f)
-                            .setMaxPlaybackSpeed(1.08f)
-                            .build()
-                    )
-                    .build()
-
-                exo.setMediaItem(mediaItem)
+                exo.setMediaItem(createLiveMediaItem(hlsUrl))
                 exo.prepare()
 
                 exo.addListener(object : Player.Listener {
@@ -557,8 +547,17 @@ class TwitchLivePlayerScreen(
 
                     override fun onRenderedFirstFrame() {
                         loader.visibility = View.GONE
+                        streamRecoveryAttempts = 0
+                        recoveringStream = false
+                        clearPlayerError()
                         scheduleControlsHide()
                         startLiveEdgeGuard()
+                    }
+
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        if (playbackState == Player.STATE_ENDED && !destroyed) {
+                            recoverLiveStream(exo, "Эфир временно прервался")
+                        }
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
@@ -567,7 +566,10 @@ class TwitchLivePlayerScreen(
                             exo.prepare()
                             exo.play()
                         } else {
-                            showPlayerError(error.message ?: "Не удалось продолжить эфир")
+                            recoverLiveStream(
+                                exo,
+                                error.message ?: "Не удалось продолжить эфир"
+                            )
                         }
                     }
                 })
@@ -698,23 +700,92 @@ class TwitchLivePlayerScreen(
     }
 
     private fun showPlayerError(message: String) {
-        val error = TextView(activity).apply {
-            text = message
-            textSize = 12.5f
+        val error = playerErrorView ?: TextView(activity).apply {
+            textSize = 12f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
-            setPadding(dp(16), dp(10), dp(16), dp(10))
-            background = rounded(withAlpha(palette.surfaceAlt, 235), 15)
+            setPadding(dp(14), dp(9), dp(14), dp(9))
+            background = rounded(withAlpha(palette.surfaceAlt, 242), 15)
+            playerErrorView = this
+            playerCard.addView(
+                this,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.CENTER
+                )
+            )
         }
 
-        playerCard.addView(
-            error,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.CENTER
+        error.text = message
+        error.visibility = View.VISIBLE
+        if (animationsEnabled) {
+            error.alpha = 0f
+            error.animate().alpha(1f).setDuration(140L).start()
+        }
+    }
+
+    private fun clearPlayerError() {
+        playerErrorView?.let { error ->
+            error.animate().cancel()
+            error.visibility = View.GONE
+        }
+    }
+
+    private fun createLiveMediaItem(url: String): MediaItem =
+        MediaItem.Builder()
+            .setUri(url)
+            .setLiveConfiguration(
+                MediaItem.LiveConfiguration.Builder()
+                    .setTargetOffsetMs(2_800L)
+                    .setMinPlaybackSpeed(0.97f)
+                    .setMaxPlaybackSpeed(1.08f)
+                    .build()
             )
-        )
+            .build()
+
+    private fun recoverLiveStream(exo: ExoPlayer, lastError: String) {
+        if (destroyed || recoveringStream) return
+
+        if (streamRecoveryAttempts >= 3) {
+            loader.visibility = View.GONE
+            showPlayerError("Эфир временно недоступен. Повторим при следующем обновлении потока.")
+            return
+        }
+
+        recoveringStream = true
+        streamRecoveryAttempts += 1
+        loader.visibility = View.VISIBLE
+        clearPlayerError()
+
+        scope.launch {
+            delay(
+                when (streamRecoveryAttempts) {
+                    1 -> 450L
+                    2 -> 900L
+                    else -> 1_600L
+                }
+            )
+
+            try {
+                val freshUrl = TwitchVodResolver.resolveLive(live.login)
+                if (destroyed) return@launch
+
+                exo.setMediaItem(createLiveMediaItem(freshUrl), true)
+                exo.prepare()
+                exo.seekToDefaultPosition()
+                exo.play()
+                recoveringStream = false
+            } catch (_: Exception) {
+                recoveringStream = false
+                if (streamRecoveryAttempts >= 3) {
+                    loader.visibility = View.GONE
+                    showPlayerError(lastError)
+                } else {
+                    recoverLiveStream(exo, lastError)
+                }
+            }
+        }
     }
 
     fun setFullscreenMode(enabled: Boolean) {
