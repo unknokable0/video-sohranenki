@@ -16,23 +16,24 @@ class LiveAudioToggleView(
     private val accentColor: Int
 ) : View(context) {
 
-    private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-    }
-    private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeWidth = dp(1.8f)
-        strokeCap = Paint.Cap.ROUND
-        strokeJoin = Paint.Join.ROUND
-        color = Color.WHITE
     }
     private val speakerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
         color = Color.WHITE
     }
-    private val speakerPath = Path()
+    private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+        color = Color.WHITE
+    }
+    private val speaker = Path()
+
     private var mutedProgress = 0f
     private var animator: ValueAnimator? = null
+
     var isMuted: Boolean = false
         private set
 
@@ -44,128 +45,132 @@ class LiveAudioToggleView(
         contentDescription = "Выключить звук"
     }
 
-    fun setMuted(muted: Boolean, animate: Boolean = true, notify: Boolean = false) {
-        if (isMuted == muted && ((muted && mutedProgress >= .999f) || (!muted && mutedProgress <= .001f))) return
+    fun setMuted(
+        muted: Boolean,
+        animate: Boolean = true,
+        notify: Boolean = false
+    ) {
         isMuted = muted
         contentDescription = if (muted) "Включить звук" else "Выключить звук"
 
         animator?.cancel()
         val target = if (muted) 1f else 0f
+
         if (!animate) {
             mutedProgress = target
             invalidate()
-            if (notify) onMutedChanged?.invoke(muted)
-            return
+        } else {
+            animator = ValueAnimator.ofFloat(mutedProgress, target).apply {
+                duration = 190L
+                interpolator = PathInterpolator(0.22f, 1f, 0.36f, 1f)
+                addUpdateListener {
+                    mutedProgress = it.animatedValue as Float
+                    invalidate()
+                }
+                start()
+            }
         }
 
-        animator = ValueAnimator.ofFloat(mutedProgress, target).apply {
-            duration = 180L
-            interpolator = PathInterpolator(0.22f, 1f, 0.36f, 1f)
-            addUpdateListener {
-                mutedProgress = it.animatedValue as Float
-                invalidate()
-            }
-            start()
-        }
         if (notify) onMutedChanged?.invoke(muted)
     }
 
     override fun performClick(): Boolean {
         super.performClick()
         setMuted(!isMuted, animate = true, notify = true)
+
         animate().cancel()
-        scaleX = 0.94f
-        scaleY = 0.94f
         animate()
-            .scaleX(1f)
-            .scaleY(1f)
-            .setDuration(150L)
-            .setInterpolator(PathInterpolator(0.22f, 1f, 0.36f, 1f))
+            .scaleX(0.90f)
+            .scaleY(0.90f)
+            .setDuration(55L)
+            .withEndAction {
+                animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(145L)
+                    .setInterpolator(PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                    .start()
+            }
             .start()
         return true
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                animate().cancel()
-                animate().scaleX(0.94f).scaleY(0.94f).setDuration(55L).start()
-                return true
-            }
+            MotionEvent.ACTION_DOWN -> return true
             MotionEvent.ACTION_UP -> {
-                if (isPointInside(event.x, event.y)) performClick()
-                else animateBack()
+                if (event.x in 0f..width.toFloat() && event.y in 0f..height.toFloat()) {
+                    performClick()
+                }
                 return true
             }
-            MotionEvent.ACTION_CANCEL -> {
-                animateBack()
-                return true
-            }
+            MotionEvent.ACTION_CANCEL -> return true
         }
         return super.onTouchEvent(event)
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        val w = width.toFloat()
-        val h = height.toFloat()
-        if (w <= 0f || h <= 0f) return
 
-        val radius = minOf(w, h) * .5f
-        bgPaint.color = withAlpha(accentColor, 200)
-        canvas.drawCircle(w * .5f, h * .5f, radius, bgPaint)
+        val size = minOf(width, height).toFloat()
+        if (size <= 0f) return
 
-        val cx = w * .5f
-        val cy = h * .5f
-        val unit = minOf(w, h) / 42f
+        val cx = width / 2f
+        val cy = height / 2f
+        val u = size / 40f
 
-        speakerPath.reset()
-        speakerPath.moveTo(cx - 9f * unit, cy - 4f * unit)
-        speakerPath.lineTo(cx - 5f * unit, cy - 4f * unit)
-        speakerPath.lineTo(cx + 1f * unit, cy - 9f * unit)
-        speakerPath.lineTo(cx + 1f * unit, cy + 9f * unit)
-        speakerPath.lineTo(cx - 5f * unit, cy + 4f * unit)
-        speakerPath.lineTo(cx - 9f * unit, cy + 4f * unit)
-        speakerPath.close()
-        canvas.drawPath(speakerPath, speakerPaint)
+        backgroundPaint.color = withAlpha(accentColor, 215)
+        canvas.drawCircle(cx, cy, size * 0.5f, backgroundPaint)
 
-        val waveAlpha = ((1f - mutedProgress) * 255f).toInt().coerceIn(0, 255)
-        iconPaint.color = withAlpha(Color.WHITE, waveAlpha)
-        iconPaint.strokeWidth = 1.7f * unit
-        val wave1 = RectF(cx - 1f * unit, cy - 7f * unit, cx + 9f * unit, cy + 7f * unit)
-        canvas.drawArc(wave1, -48f, 96f, false, iconPaint)
-        val wave2 = RectF(cx - 2f * unit, cy - 11f * unit, cx + 15f * unit, cy + 11f * unit)
-        canvas.drawArc(wave2, -43f, 86f, false, iconPaint)
+        speaker.reset()
+        speaker.moveTo(cx - 9f * u, cy - 4f * u)
+        speaker.lineTo(cx - 5f * u, cy - 4f * u)
+        speaker.lineTo(cx + 1f * u, cy - 9f * u)
+        speaker.lineTo(cx + 1f * u, cy + 9f * u)
+        speaker.lineTo(cx - 5f * u, cy + 4f * u)
+        speaker.lineTo(cx - 9f * u, cy + 4f * u)
+        speaker.close()
+        canvas.drawPath(speaker, speakerPaint)
 
-        if (mutedProgress > .001f) {
-            iconPaint.color = withAlpha(Color.WHITE, (mutedProgress * 255f).toInt().coerceIn(0, 255))
-            iconPaint.strokeWidth = 2.1f * unit
-            val shift = (1f - mutedProgress) * 3f * unit
+        linePaint.strokeWidth = 1.7f * u
+
+        val soundAlpha = ((1f - mutedProgress) * 255f).toInt().coerceIn(0, 255)
+        linePaint.color = withAlpha(Color.WHITE, soundAlpha)
+
+        val innerWave = RectF(
+            cx - 1f * u,
+            cy - 6f * u,
+            cx + 8f * u,
+            cy + 6f * u
+        )
+        canvas.drawArc(innerWave, -46f, 92f, false, linePaint)
+
+        val outerWave = RectF(
+            cx - 2f * u,
+            cy - 10f * u,
+            cx + 13f * u,
+            cy + 10f * u
+        )
+        canvas.drawArc(outerWave, -42f, 84f, false, linePaint)
+
+        if (mutedProgress > 0.001f) {
+            linePaint.color = withAlpha(
+                Color.WHITE,
+                (mutedProgress * 255f).toInt().coerceIn(0, 255)
+            )
+            linePaint.strokeWidth = 2.05f * u
+
+            val slide = (1f - mutedProgress) * 2f * u
             canvas.drawLine(
-                cx - 8f * unit + shift,
-                cy - 9f * unit,
-                cx + 11f * unit + shift,
-                cy + 9f * unit,
-                iconPaint
+                cx - 7f * u + slide,
+                cy - 8f * u,
+                cx + 10f * u + slide,
+                cy + 8f * u,
+                linePaint
             )
         }
     }
 
-    private fun animateBack() {
-        animate().cancel()
-        animate()
-            .scaleX(1f)
-            .scaleY(1f)
-            .setDuration(140L)
-            .setInterpolator(PathInterpolator(0.22f, 1f, 0.36f, 1f))
-            .start()
-    }
-
-    private fun isPointInside(x: Float, y: Float): Boolean =
-        x >= 0f && x <= width && y >= 0f && y <= height
-
     private fun withAlpha(color: Int, alpha: Int): Int =
         (color and 0x00FFFFFF) or (alpha.coerceIn(0, 255) shl 24)
-
-    private fun dp(value: Float): Float = value * resources.displayMetrics.density
 }
