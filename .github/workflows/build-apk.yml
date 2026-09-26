@@ -116,6 +116,13 @@ jobs:
             exit 1
           fi
 
+      - name: Enable KVM for x86_64 smoke test
+        shell: bash
+        run: |
+          if [ -e /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm
+          fi
+
       - name: BlueStacks-like x86_64 smoke test
         uses: ReactiveCircus/android-emulator-runner@v2
         with:
