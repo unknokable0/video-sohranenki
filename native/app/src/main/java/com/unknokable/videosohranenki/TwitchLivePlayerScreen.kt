@@ -302,8 +302,8 @@ class TwitchLivePlayerScreen(
 
         playPause.apply {
             setPlaying(true)
-            onTap = {
-                val p = player ?: return@apply
+            onTap = tap@{
+                val p = player ?: return@tap
                 if (p.isPlaying) {
                     p.pause()
                     showControls(autoHide = false)
