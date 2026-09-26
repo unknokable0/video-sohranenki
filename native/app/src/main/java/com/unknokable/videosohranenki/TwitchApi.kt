@@ -256,7 +256,7 @@ object TwitchApi {
         require(accessToken.isNotBlank()) { "Нужно войти в Twitch" }
 
         val root = getJson(
-            "https://api.twitch.tv/helix/streams?first=30",
+            "https://api.twitch.tv/helix/streams?first=100",
             clientId,
             accessToken
         )
@@ -266,19 +266,36 @@ object TwitchApi {
             "casino", "slots", "gambling", "poker", "betting", "sports betting"
         )
 
-        val candidates = mutableListOf<JSONObject>()
+        val safe = mutableListOf<JSONObject>()
         for (i in 0 until data.length()) {
             val stream = data.optJSONObject(i) ?: continue
             val login = stream.optString("user_login").lowercase()
+            val displayName = stream.optString("user_name").lowercase()
+            val title = stream.optString("title").lowercase()
             val game = stream.optString("game_name").lowercase()
             if (login.isBlank() || login in excluded) continue
             if (stream.optBoolean("is_mature", false)) continue
             if (blockedCategoryWords.any { game.contains(it) }) continue
-            candidates += stream
-        }
-        if (candidates.isEmpty()) return@withContext null
 
-        val index = ((System.currentTimeMillis() / 1000L) % candidates.size).toInt()
+            val broadcastLike = listOf(
+                "official", "esports", "tournament", "championship", "league"
+            ).any { word ->
+                login.contains(word) || displayName.contains(word) || title.contains(word)
+            }
+            if (broadcastLike) continue
+            safe += stream
+        }
+
+        if (safe.isEmpty()) return@withContext null
+
+        val ordinary = safe.filter {
+            val viewers = it.optInt("viewer_count", 0)
+            viewers in 25..3_500
+        }
+        val candidates = if (ordinary.isNotEmpty()) ordinary else safe
+
+        val bucket = System.currentTimeMillis() / (15L * 60L * 1000L)
+        val index = (bucket % candidates.size).toInt()
         parseLiveStream(candidates[index], testStream = true)
     }
 
