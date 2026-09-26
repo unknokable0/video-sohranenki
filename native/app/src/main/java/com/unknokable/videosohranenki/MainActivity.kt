@@ -174,6 +174,7 @@ class MainActivity : AppCompatActivity() {
                 if (isPlayerScreen) {
                     val outgoingPlayer = playerScreen
                     val outgoingTwitchPlayer = twitchPlayerScreen
+                    outgoingPlayer?.flushPlaybackPosition()
                     playerScreen = null
                     twitchPlayerScreen = null
                     isPlayerScreen = false
@@ -216,6 +217,11 @@ class MainActivity : AppCompatActivity() {
                 finish()
             }
         })
+
+        if (settings.guestMode) {
+            root.postDelayed({ enterGuestMode(showNotice = false) }, 360L)
+            return
+        }
 
         if (BuildConfig.TELEGRAM_API_ID == 0 || BuildConfig.TELEGRAM_API_HASH.isBlank()) {
             showMessage(
@@ -428,6 +434,7 @@ class MainActivity : AppCompatActivity() {
             }
             is TdApi.AuthorizationStateReady -> {
                 settings.authPhone = null
+                settings.guestMode = false
                 telegramReady = true
                 ensureStreamServer()
                 cleanupStorage()
@@ -466,12 +473,12 @@ class MainActivity : AppCompatActivity() {
         startupPhase = false
         startupStatusView = null
 
-        data class TourPage(val icon: Int, val title: String, val body: String)
+        data class TourPage(val visual: OnboardingFeatureView.Kind, val title: String, val body: String)
         val pages = listOf(
-            TourPage(R.drawable.ic_nav_video, "Все записи в одном месте", "SOHR собирает последние видео и раскладывает их по дням, чтобы нужный стрим находился сразу."),
-            TourPage(R.drawable.ic_play, "Продолжай с того же места", "SOHR запоминает позицию просмотра. Под начатым видео появится тонкая полоска прогресса — как на YouTube."),
-            TourPage(R.drawable.ic_nav_streak, "Не теряй Streak", "Смотри записи в разные дни — SOHR сохранит серию и покажет её уровень в отдельной вкладке."),
-            TourPage(R.drawable.ic_refresh, "Обновления прямо в SOHR", "Новые версии проверяются внутри приложения. Если обновление доступно, SOHR скачает APK и откроет установку.")
+            TourPage(OnboardingFeatureView.Kind.COLLECTIONS, "Все записи в одном месте", "SOHR собирает последние видео и раскладывает их по дням, чтобы нужный стрим находился сразу."),
+            TourPage(OnboardingFeatureView.Kind.RESUME, "Продолжай с того же места", "SOHR запоминает позицию просмотра. Под начатым видео появляется красная полоска прогресса — как на YouTube."),
+            TourPage(OnboardingFeatureView.Kind.STREAK, "Не теряй Streak", "Смотри записи в разные дни — SOHR сохранит серию и покажет новый уровень огня."),
+            TourPage(OnboardingFeatureView.Kind.UPDATE, "Обновления прямо в SOHR", "Новые версии проверяются и загружаются прямо внутри приложения.")
         )
 
         val page = FrameLayout(this).apply { setBackgroundColor(bg) }
@@ -503,11 +510,7 @@ class MainActivity : AppCompatActivity() {
         val iconShell = FrameLayout(this).apply {
             background = roundedBg(palette.surfaceAlt, 34)
         }
-        val icon = ImageView(this).apply {
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(25), dp(25), dp(25), dp(25))
-            setColorFilter(purple)
-        }
+        val icon = OnboardingFeatureView(this, purple)
         iconShell.addView(icon, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
@@ -578,7 +581,7 @@ class MainActivity : AppCompatActivity() {
             val data = pages[index]
 
             fun applyData() {
-                icon.setImageResource(data.icon)
+                icon.setKind(data.visual)
                 icon.rotation = 0f
                 title.text = data.title
                 body.text = data.body
@@ -657,6 +660,37 @@ class MainActivity : AppCompatActivity() {
             title.animate().alpha(1f).setStartDelay(100L).setDuration(240L).start()
             body.animate().alpha(1f).setStartDelay(150L).setDuration(260L).start()
             button.animate().alpha(1f).setStartDelay(210L).setDuration(260L).start()
+        }
+    }
+
+    private fun enterGuestMode(showNotice: Boolean = true) {
+        settings.guestMode = true
+        settings.authPhone = null
+        telegramReady = false
+        startupPhase = false
+        startupStatusView = null
+
+        val zone = ZoneId.systemDefault()
+        val cutoff = LocalDate.now(zone).minusDays(6).atStartOfDay(zone).toEpochSecond()
+        val cached = videoCache.load()
+            .filter { it.localPath != null || it.date.toLong() >= cutoff }
+            .sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })
+
+        telegramVideos = cached
+        currentVideos = cached
+        suppressNextRootAnimation = true
+        showFeed(cached)
+
+        if (showNotice) {
+            root.postDelayed({
+                ModernDialogs.showNotice(
+                    context = this,
+                    palette = palette,
+                    title = "Гостевой режим",
+                    message = "Можно смотреть уже сохранённые локальные видео, пользоваться Streak, настройками и обновлениями. Новые Telegram-видео доступны после входа.",
+                    button = "Понятно"
+                )
+            }, 220L)
         }
     }
 
@@ -931,6 +965,7 @@ class MainActivity : AppCompatActivity() {
                         }
 
                         requestedPhoneNumber = normalized
+                        settings.guestMode = false
                         settings.authPhone = normalized
 
                         val authSettings = TdApi.PhoneNumberAuthenticationSettings(
@@ -953,6 +988,21 @@ class MainActivity : AppCompatActivity() {
             }
         }
         authSubmitButton = submit
+
+        val guest = TextView(this).apply {
+            text = "Продолжить как гость"
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(purple)
+            background = roundedBg(palette.surfaceAlt, 16)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                animatePress(this)
+                enterGuestMode()
+            }
+        }
 
         val help = TextView(this).apply {
             text = if (settings.languageCode == "ru") {
@@ -983,6 +1033,10 @@ class MainActivity : AppCompatActivity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             dp(50)
         ).apply { topMargin = dp(10) })
+        card.addView(guest, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(48)
+        ).apply { topMargin = dp(8) })
         card.addView(error)
         card.addView(help)
 
@@ -2246,10 +2300,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun switchVideoSection(section: Int) {
         if (section !in 1..2 || videoSection == section) return
-        pendingVideoSectionCrossfade = false
-        pendingVideoSectionDirection = 0
+        pendingVideoSectionCrossfade = true
+        pendingVideoSectionDirection = if (section > videoSection) 1 else -1
         pendingRootSlide = 0
-        suppressNextContentAnimation = true
+        suppressNextContentAnimation = false
         videoSection = section
         showFeed(currentVideos)
     }
@@ -2282,7 +2336,11 @@ class MainActivity : AppCompatActivity() {
         val header=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(16),dp(16),dp(16),dp(10)); setBackgroundColor(bg) }
         header.addView(TextView(this).apply { text="SOHR"; textSize=24f; setTextColor(this@MainActivity.text); setTypeface(typeface,Typeface.BOLD) })
         header.addView(TextView(this).apply {
-            val sourceName = if (settings.videoSource == "twitch") "Twitch • @t2x2" else "Telegram • @t2x2_video"
+            val sourceName = when {
+                settings.guestMode && settings.videoSource == "telegram" -> "Гость • локальный режим"
+                settings.videoSource == "twitch" -> "Twitch • @t2x2"
+                else -> "Telegram • @t2x2_video"
+            }
             text=if(videoSection==2) "$sourceName • ${watchedVideos.size} просмотрено • ${watchedGroups.size} сборников" else "$sourceName • Последние 7 дней • ${regularGroups.size} сборников • ${regularVideos.size} видео"
             textSize=12f; setTextColor(muted); setPadding(0,dp(5),0,dp(10)); maxLines=1
         })
@@ -2333,7 +2391,19 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener {
                 if (isEnabled) {
                     animatePress(this)
-                    if (settings.videoSource == "twitch") loadTwitchVideos(inPlace = true) else loadVideos(inPlace = true)
+                    if (settings.videoSource == "twitch") {
+                        loadTwitchVideos(inPlace = true)
+                    } else if (settings.guestMode) {
+                        ModernDialogs.showNotice(
+                            this@MainActivity,
+                            palette,
+                            "Нужен вход",
+                            "Новые Telegram-видео можно проверить после входа. В гостевом режиме доступны локально сохранённые записи.",
+                            "Понятно"
+                        )
+                    } else {
+                        loadVideos(inPlace = true)
+                    }
                 }
             }
         }
@@ -2436,7 +2506,7 @@ class MainActivity : AppCompatActivity() {
         val durationMs = item.durationSeconds.toLong() * 1000L
         if (durationMs <= 0L) return 0f
         val positionMs = settings.playbackPosition(item.messageId)
-        if (positionMs < 5_000L || positionMs >= durationMs - 10_000L) return 0f
+        if (positionMs < 1_000L || positionMs >= durationMs - 10_000L) return 0f
         return (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
     }
 
@@ -2587,6 +2657,13 @@ class MainActivity : AppCompatActivity() {
     private fun showSelectedVideoSource(forceRefresh: Boolean = false) {
         currentDay = null
         videoSection = 1
+        if (settings.guestMode && settings.videoSource == "telegram") {
+            val cached = videoCache.load().sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })
+            telegramVideos = cached
+            currentVideos = cached
+            showFeed(cached)
+            return
+        }
         if (settings.videoSource == "twitch") {
             if (!forceRefresh && twitchVideos.isNotEmpty()) {
                 currentVideos = twitchVideos
@@ -2901,45 +2978,43 @@ class MainActivity : AppCompatActivity() {
             background = roundedBg(panel, 20)
         }
 
+        data class FireLevel(val from: Int, val to: Int?, val range: String, val color: Int, val name: String)
         val levelData = listOf(
-            Triple("1–9 дней", Color.parseColor("#E7E7EC"), "Белый"),
-            Triple("10–19 дней", Color.parseColor("#9A68FF"), "Фиолетовый"),
-            Triple("20–49 дней", Color.parseColor("#4D98FF"), "Синий"),
-            Triple("50–99 дней", Color.parseColor("#FF4A5E"), "Красный"),
-            Triple("100+ дней", Color.parseColor("#B7FF28"), "Кислотный")
+            FireLevel(1, 9, "1–9 дней", Color.parseColor("#E7E7EC"), "Искра"),
+            FireLevel(10, 19, "10–19 дней", Color.parseColor("#9A68FF"), "Фиолетовый огонь"),
+            FireLevel(20, 49, "20–49 дней", Color.parseColor("#4D98FF"), "Синий огонь"),
+            FireLevel(50, 99, "50–99 дней", Color.parseColor("#FF4A5E"), "Жар"),
+            FireLevel(100, 199, "100–199 дней", Color.parseColor("#B7FF28"), "Неон"),
+            FireLevel(200, null, "200+ дней", Color.parseColor("#55E6FF"), "Аврора")
         )
 
         levelData.forEach { entry ->
-            val range = entry.first
-            val color = entry.second
-            val name = entry.third
-
+            val active = streak >= entry.from && (entry.to == null || streak <= entry.to)
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(4), dp(9), dp(4), dp(9))
+                setPadding(dp(8), dp(8), dp(8), dp(8))
+                background = if (active) roundedBg(palette.surfaceAlt, 16) else null
             }
-
-            val dot = View(this).apply {
-                background = roundedBg(color, 10)
+            val miniFire = StreakFireView(this, entry.color)
+            val labels = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(10), 0, 0, 0)
             }
-            val rangeView = TextView(this).apply {
-                text = range
+            labels.addView(TextView(this).apply {
+                text = entry.range
                 textSize = 13f
                 setTypeface(typeface, Typeface.BOLD)
                 setTextColor(this@MainActivity.text)
-                setPadding(dp(12), 0, 0, 0)
-            }
-            val nameView = TextView(this).apply {
-                text = name
-                textSize = 12f
-                gravity = Gravity.END
-                setTextColor(muted)
-            }
-
-            row.addView(dot, LinearLayout.LayoutParams(dp(18), dp(18)))
-            row.addView(rangeView, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            row.addView(nameView)
+            })
+            labels.addView(TextView(this).apply {
+                text = if (active) entry.name + " • сейчас" else entry.name
+                textSize = 11.5f
+                setTextColor(if (active) entry.color else muted)
+                setPadding(0, dp(2), 0, 0)
+            })
+            row.addView(miniFire, LinearLayout.LayoutParams(dp(34), dp(34)))
+            row.addView(labels, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             levels.addView(row)
         }
 
@@ -3165,6 +3240,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showAccount() {
+        if (settings.guestMode) {
+            renderGuestAccount()
+            return
+        }
         isAccountScreen = true
         isSettingsScreen = false
         isStreakScreen = false
@@ -3223,6 +3302,64 @@ class MainActivity : AppCompatActivity() {
                 showMessage("Не удалось открыть аккаунт", e.message ?: "Ошибка Telegram")
             }
         }
+    }
+
+    private fun renderGuestAccount() {
+        isAccountScreen = true
+        isSettingsScreen = false
+        isStreakScreen = false
+        isPlayerScreen = false
+        currentDay = null
+        setFullscreen(false)
+        applySystemTheme()
+
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(18), dp(34), dp(18), dp(24))
+            setBackgroundColor(bg)
+        }
+
+        val avatar = ImageView(this).apply {
+            setImageResource(R.drawable.ic_launcher_sohr)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            background = roundedBg(palette.surfaceAlt, 40)
+            setPadding(dp(16), dp(16), dp(16), dp(16))
+        }
+        page.addView(avatar, LinearLayout.LayoutParams(dp(96), dp(96)))
+
+        page.addView(TextView(this).apply {
+            text = "Гость"
+            textSize = 24f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+            setPadding(0, dp(14), 0, dp(5))
+        })
+
+        page.addView(TextView(this).apply {
+            text = "Локальные записи, Streak и настройки доступны. Для новых Telegram-видео нужен вход."
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTextColor(muted)
+            setPadding(dp(16), 0, dp(16), dp(22))
+        })
+
+        val login = TextView(this).apply {
+            text = "Войти в Telegram"
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            background = roundedBg(purple, 16)
+            setOnClickListener {
+                animatePress(this)
+                settings.guestMode = false
+                recreate()
+            }
+        }
+        page.addView(login, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)))
+        replaceRoot(withBottomNav(page, SohrTab.ACCOUNT))
     }
 
     private fun renderAccount(user: TdApi.User, avatarPath: String?, twitchProfile: TwitchProfile?) {

@@ -27,8 +27,8 @@ class SohrTimeBar(context: Context) : View(context) {
     private val density = resources.displayMetrics.density
     private val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(105, 255, 255, 255) }
     private val bufferPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(190, 255, 255, 255) }
-    private val playedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(167, 139, 250) }
-    private val thumbPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(167, 139, 250) }
+    private val playedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(255, 0, 51) }
+    private val thumbPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(255, 0, 51) }
     private val rect = RectF()
 
     fun setProgress(positionMs: Long, durationMs: Long, bufferedPositionMs: Long) {
