@@ -9,6 +9,7 @@
     <application
         android:allowBackup="false"
         android:hardwareAccelerated="true"
+        android:extractNativeLibs="true"
         android:usesCleartextTraffic="true"
         android:label="SOHR"
         android:icon="@drawable/ic_launcher"
