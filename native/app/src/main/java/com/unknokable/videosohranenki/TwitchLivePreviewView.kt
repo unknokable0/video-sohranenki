@@ -1,7 +1,6 @@
 package com.unknokable.videosohranenki
 
 import android.content.Context
-import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -9,7 +8,6 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
-import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.media3.common.MediaItem
@@ -38,8 +36,8 @@ class TwitchLivePreviewView(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val playerView = PlayerView(context)
     private val poster = ImageView(context)
-    private val loader = LoadingWaveView(context, Color.parseColor("#FF5F7E"))
-    private val muteButton = ImageButton(context)
+    private val loader = LoadingWaveView(context, palette.accent)
+    private val audioToggle = LiveAudioToggleView(context, palette.accent)
     private var player: ExoPlayer? = null
     private var released = false
     private var muted = true
@@ -79,13 +77,13 @@ class TwitchLivePreviewView(
         addView(loader, LayoutParams(dp(46), dp(46), Gravity.CENTER))
 
         val liveBadge = TextView(context).apply {
-            text = "LIVE"
+            text = "В эфире"
             textSize = 10.5f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
             setPadding(dp(9), 0, dp(9), 0)
-            background = rounded(Color.parseColor("#E84F70"), 11)
+            background = rounded(Color.parseColor("#4D4A55"), 11)
         }
         addView(
             liveBadge,
@@ -106,18 +104,15 @@ class TwitchLivePreviewView(
             }
         )
 
-        muteButton.apply {
-            setImageResource(R.drawable.ic_volume_off)
-            imageTintList = ColorStateList.valueOf(Color.WHITE)
-            background = rounded(Color.parseColor("#8A0A0A0E"), 19)
-            setPadding(dp(9), dp(9), dp(9), dp(9))
-            contentDescription = "Включить звук"
-            setOnClickListener {
-                toggleMute()
+        audioToggle.apply {
+            setMuted(true, animate = false)
+            onMutedChanged = { muted ->
+                this@TwitchLivePreviewView.muted = muted
+                player?.volume = if (muted) 0f else 1f
             }
         }
         addView(
-            muteButton,
+            audioToggle,
             LayoutParams(dp(38), dp(38), Gravity.TOP or Gravity.END).apply {
                 rightMargin = dp(10)
                 topMargin = dp(10)
@@ -131,7 +126,7 @@ class TwitchLivePreviewView(
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
             setPadding(dp(9), 0, dp(9), 0)
-            background = rounded(Color.parseColor("#8A0A0A0E"), 11)
+            background = rounded(Color.parseColor("#7A32303A"), 11)
         }
         addView(
             viewers,
@@ -180,13 +175,6 @@ class TwitchLivePreviewView(
                 loader.visibility = View.GONE
             }
         }
-    }
-
-    private fun toggleMute() {
-        muted = !muted
-        player?.volume = if (muted) 0f else 1f
-        muteButton.setImageResource(if (muted) R.drawable.ic_volume_off else R.drawable.ic_volume_on)
-        muteButton.contentDescription = if (muted) "Включить звук" else "Выключить звук"
     }
 
     override fun onDetachedFromWindow() {
