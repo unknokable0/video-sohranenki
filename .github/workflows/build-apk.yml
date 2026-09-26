@@ -44,35 +44,23 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 5.3.0-test14 version
+      - name: Assign SOHR 5.3.0-test15 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=503014" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=503015" >> "$GITHUB_ENV"
           echo "SOHR_VERSION_NAME=5.3.0-test14" >> "$GITHUB_ENV"
 
-      - name: Verify Twitch Device Code endpoint
+      - name: Verify Twitch OAuth bridge
         shell: bash
         run: |
-          DEVICE_CLIENT_ID="${TWITCH_CLIENT_ID:-gnr3cikerodr25wpbrb04a11031qiz}"
-          RESPONSE="$(curl --silent --show-error --fail-with-body \
-            -X POST 'https://id.twitch.tv/oauth2/device' \
-            -H 'Content-Type: application/x-www-form-urlencoded' \
-            --data-urlencode "client_id=$DEVICE_CLIENT_ID" \
-            --data-urlencode 'scopes=' 2>/tmp/twitch-device-error.txt || true)"
-          export RESPONSE
-          python3 - <<'PY'
-          import json, os, sys
-          raw = os.environ.get("RESPONSE", "")
-          try:
-              data = json.loads(raw)
-          except Exception:
-              print("Twitch Device Code endpoint returned invalid JSON", file=sys.stderr)
-              sys.exit(1)
-          if not data.get("device_code") or not data.get("verification_uri"):
-              print("Twitch Device Code endpoint rejected this Client ID: " + str(data), file=sys.stderr)
-              sys.exit(1)
-          print("Twitch Device Code endpoint OK")
-          PY
+          CALLBACK="https://unknokable0.github.io/video-sohranenki/twitch-auth/"
+          echo "Checking $CALLBACK"
+          HTML="$(curl --silent --show-error --location --fail --max-time 20 "$CALLBACK")"
+          printf '%s' "$HTML" | grep -q 'sohr://twitch-auth' || {
+            echo "SOHR Twitch callback is not live or does not contain the app deep link." >&2
+            exit 1
+          }
+          echo "SOHR Twitch callback is live"
 
       - name: Build installable APK
         shell: bash
@@ -99,7 +87,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 5.3.0-test14 • in-app Twitch activation • automatic token detection • stable updater assets • version metadata fix"
+            "notes": "SOHR 5.3.0-test15 • restored Twitch implicit OAuth • direct return to SOHR • stable updater assets"
           }
           EOF
           cat update.json
