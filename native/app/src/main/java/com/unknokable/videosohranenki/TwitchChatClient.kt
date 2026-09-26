@@ -40,7 +40,7 @@ class TwitchChatClient {
                 onStatus("Подключаем чат…")
                 val ssl = (SSLSocketFactory.getDefault()
                     .createSocket("irc.chat.twitch.tv", 6697) as SSLSocket).apply {
-                    soTimeout = 35_000
+                    soTimeout = 0
                     startHandshake()
                 }
                 socket = ssl
@@ -59,8 +59,7 @@ class TwitchChatClient {
                 send("CAP REQ :twitch.tv/tags twitch.tv/commands")
                 send("JOIN #" + channelLogin.lowercase())
 
-                onStatus("Чат подключён")
-
+                var connected = false
                 while (isActive && !ssl.isClosed) {
                     val line = reader.readLine() ?: break
                     when {
@@ -69,7 +68,15 @@ class TwitchChatClient {
                             onStatus("Нужно переподключить Twitch для чата")
                             break
                         }
+                        !connected && (line.contains(" 001 ") || line.contains(" ROOMSTATE #")) -> {
+                            connected = true
+                            onStatus("Чат подключён")
+                        }
                         line.contains(" PRIVMSG #") -> {
+                            if (!connected) {
+                                connected = true
+                                onStatus("Чат подключён")
+                            }
                             parsePrivMsg(line)?.let(onMessage)
                         }
                     }
