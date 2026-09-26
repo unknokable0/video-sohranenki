@@ -44,11 +44,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 5.1.0 clean player version
+      - name: Assign SOHR 5.1.1 updater fix version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=501000" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=5.1.0" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=501001" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=5.1.1" >> "$GITHUB_ENV"
 
       - name: Build installable APK
         shell: bash
