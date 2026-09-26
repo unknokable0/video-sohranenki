@@ -63,6 +63,12 @@ class AppSettings(context: Context) {
             if (value.isNullOrBlank()) remove("twitch_oauth_state") else putString("twitch_oauth_state", value)
         }.apply()
 
+    var twitchRefreshToken: String?
+        get() = prefs.getString("twitch_refresh_token", null)
+        set(value) = prefs.edit().apply {
+            if (value.isNullOrBlank()) remove("twitch_refresh_token") else putString("twitch_refresh_token", value)
+        }.apply()
+
     var twitchLogin: String?
         get() = prefs.getString("twitch_login", null)
         set(value) = prefs.edit().apply {

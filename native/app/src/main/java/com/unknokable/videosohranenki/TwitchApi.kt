@@ -12,6 +12,19 @@ import kotlin.math.abs
 
 class TwitchAuthException(message: String = "Twitch authorization expired") : IOException(message)
 
+data class TwitchDeviceAuthorization(
+    val deviceCode: String,
+    val userCode: String,
+    val verificationUri: String,
+    val expiresIn: Int,
+    val interval: Int
+)
+
+data class TwitchDeviceToken(
+    val accessToken: String,
+    val refreshToken: String?
+)
+
 data class TwitchProfile(
     val id: String,
     val login: String,
@@ -28,6 +41,68 @@ data class TwitchLiveStream(
 )
 
 object TwitchApi {
+    suspend fun startDeviceAuthorization(clientId: String): TwitchDeviceAuthorization = withContext(Dispatchers.IO) {
+        require(clientId.isNotBlank()) { "Twitch Client ID не настроен" }
+        val (code, body) = postForm(
+            "https://id.twitch.tv/oauth2/device",
+            linkedMapOf(
+                "client_id" to clientId,
+                "scopes" to ""
+            )
+        )
+        if (code !in 200..299) {
+            val message = runCatching { JSONObject(body).optString("message") }.getOrNull()
+            throw IOException(message?.takeIf { it.isNotBlank() } ?: "Twitch device auth: HTTP $code")
+        }
+        val root = JSONObject(body)
+        val deviceCode = root.optString("device_code")
+        val userCode = root.optString("user_code")
+        val verificationUri = root.optString("verification_uri")
+        if (deviceCode.isBlank() || verificationUri.isBlank()) {
+            throw IOException("Twitch не вернул данные для входа")
+        }
+        TwitchDeviceAuthorization(
+            deviceCode = deviceCode,
+            userCode = userCode,
+            verificationUri = verificationUri,
+            expiresIn = root.optInt("expires_in", 900).coerceAtLeast(60),
+            interval = root.optInt("interval", 5).coerceIn(2, 15)
+        )
+    }
+
+    suspend fun pollDeviceAuthorization(clientId: String, deviceCode: String): TwitchDeviceToken? =
+        withContext(Dispatchers.IO) {
+            val (code, body) = postForm(
+                "https://id.twitch.tv/oauth2/token",
+                linkedMapOf(
+                    "client_id" to clientId,
+                    "scopes" to "",
+                    "device_code" to deviceCode,
+                    "grant_type" to "urn:ietf:params:oauth:grant-type:device_code"
+                )
+            )
+            if (code in 200..299) {
+                val root = JSONObject(body)
+                val token = root.optString("access_token")
+                if (token.isBlank()) throw IOException("Twitch не вернул access token")
+                return@withContext TwitchDeviceToken(
+                    accessToken = token,
+                    refreshToken = root.optString("refresh_token").takeIf { it.isNotBlank() }
+                )
+            }
+
+            val root = runCatching { JSONObject(body) }.getOrNull()
+            val message = root?.optString("message").orEmpty()
+            if (code == 400 && (message == "authorization_pending" || message == "slow_down")) {
+                return@withContext null
+            }
+            if (code == 400 && (message.contains("invalid device", ignoreCase = true) ||
+                    message.contains("expired", ignoreCase = true))) {
+                throw TwitchAuthException("Время входа Twitch истекло")
+            }
+            throw IOException(message.ifBlank { "Twitch token: HTTP $code" })
+        }
+
     suspend fun loadCurrentUser(clientId: String, accessToken: String): TwitchProfile = withContext(Dispatchers.IO) {
         val root = getJson("https://api.twitch.tv/helix/users", clientId, accessToken)
         val data = root.optJSONArray("data")
@@ -179,6 +254,30 @@ object TwitchApi {
             }
             result.distinctBy { it.messageId }.sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })
         }
+
+    private fun postForm(url: String, fields: Map<String, String>): Pair<Int, String> {
+        val body = fields.entries.joinToString("&") { (key, value) ->
+            java.net.URLEncoder.encode(key, "UTF-8") + "=" +
+                java.net.URLEncoder.encode(value, "UTF-8")
+        }
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = 10_000
+            readTimeout = 15_000
+            doOutput = true
+            setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+            setRequestProperty("Accept", "application/json")
+        }
+        return try {
+            connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+            val code = connection.responseCode
+            val response = (if (code in 200..299) connection.inputStream else connection.errorStream)
+                ?.bufferedReader()?.use { it.readText() }.orEmpty()
+            code to response
+        } finally {
+            connection.disconnect()
+        }
+    }
 
     private fun getJson(url: String, clientId: String, accessToken: String): JSONObject {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {

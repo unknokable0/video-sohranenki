@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 5.3 test channel: stable Twitch HTTPS OAuth bridge
+# SOHR 5.3 test channel: Twitch Device Code Flow
 on:
   push:
     branches: [main]
@@ -44,11 +44,35 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 5.3.0-test5 version
+      - name: Assign SOHR 5.3.0-test7 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=503006" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=5.3.0-test6" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=503007" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=5.3.0-test7" >> "$GITHUB_ENV"
+
+      - name: Verify Twitch Device Code endpoint
+        if: ${{ env.TWITCH_CLIENT_ID != '' }}
+        shell: bash
+        run: |
+          RESPONSE="$(curl --silent --show-error --fail-with-body \
+            -X POST 'https://id.twitch.tv/oauth2/device' \
+            -H 'Content-Type: application/x-www-form-urlencoded' \
+            --data-urlencode "client_id=$TWITCH_CLIENT_ID" \
+            --data-urlencode 'scopes=' 2>/tmp/twitch-device-error.txt || true)"
+          export RESPONSE
+          python3 - <<'PY'
+          import json, os, sys
+          raw = os.environ.get("RESPONSE", "")
+          try:
+              data = json.loads(raw)
+          except Exception:
+              print("Twitch Device Code endpoint returned invalid JSON", file=sys.stderr)
+              sys.exit(1)
+          if not data.get("device_code") or not data.get("verification_uri"):
+              print("Twitch Device Code endpoint rejected this Client ID: " + str(data), file=sys.stderr)
+              sys.exit(1)
+          print("Twitch Device Code endpoint OK")
+          PY
 
       - name: Build installable APK
         shell: bash
@@ -72,7 +96,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/SOHR.apk",
             "sha256": "$SHA256",
-            "notes": "SOHR 5.3.0-test6 • fixed Twitch HTTPS callback bridge • automatic return to SOHR"
+            "notes": "SOHR 5.3.0-test7 • Twitch Device Code Flow • no redirect or GitHub Pages dependency"
           }
           EOF
           cat update.json
