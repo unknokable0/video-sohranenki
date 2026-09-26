@@ -15,7 +15,7 @@ android {
     compileSdk = 36
     defaultConfig {
         applicationId = "com.unknokable.videosohranenki"
-        minSdk = 26
+        minSdk = 24
         targetSdk = 35
         versionCode = sohrBuildNumber ?: 410
         versionName = sohrVersionName ?: "4.1.0"
