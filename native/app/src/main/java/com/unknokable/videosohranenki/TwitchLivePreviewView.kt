@@ -39,7 +39,12 @@ class TwitchLivePreviewView(
     private val playerView = PlayerView(context)
     private val poster = ImageView(context)
     private val loader = LoadingWaveView(context, palette.accent)
-    private val audioToggle = LiveAudioToggleView(context, palette.accent)
+    private val audioToggle = LiveAudioToggleView(
+        context,
+        palette.accent,
+        palette.accentSoft,
+        Color.WHITE
+    )
 
     private var player: ExoPlayer? = null
     private var released = false
