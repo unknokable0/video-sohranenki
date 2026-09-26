@@ -1,6 +1,7 @@
 package com.unknokable.videosohranenki
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.IOException
@@ -58,7 +59,7 @@ object TwitchApi {
         val deviceCode = root.optString("device_code")
         val userCode = root.optString("user_code")
         val verificationUri = root.optString("verification_uri")
-        if (deviceCode.isBlank() || verificationUri.isBlank()) {
+        if (deviceCode.isBlank() || userCode.isBlank() || verificationUri.isBlank()) {
             throw IOException("Twitch не вернул данные для входа")
         }
         TwitchDeviceAuthorization(
@@ -93,13 +94,24 @@ object TwitchApi {
 
             val root = runCatching { JSONObject(body) }.getOrNull()
             val message = root?.optString("message").orEmpty()
-            if (code == 400 && (message == "authorization_pending" || message == "slow_down")) {
+            val normalized = message.lowercase()
+
+            if (code == 400 && normalized.contains("authorization_pending")) {
                 return@withContext null
             }
-            if (code == 400 && (message.contains("invalid device", ignoreCase = true) ||
-                    message.contains("expired", ignoreCase = true))) {
-                throw TwitchAuthException("Время входа Twitch истекло")
+            if (code == 400 && normalized.contains("slow_down")) {
+                delay(5_000L)
+                return@withContext null
             }
+            if (normalized.contains("access_denied") || normalized.contains("access denied")) {
+                throw TwitchAuthException("Вход Twitch был отменён")
+            }
+            if (normalized.contains("invalid device") ||
+                normalized.contains("expired") ||
+                normalized.contains("token_expired")) {
+                throw TwitchAuthException("Код входа Twitch истёк. Попробуй ещё раз.")
+            }
+
             throw IOException(message.ifBlank { "Twitch token: HTTP $code" })
         }
 
