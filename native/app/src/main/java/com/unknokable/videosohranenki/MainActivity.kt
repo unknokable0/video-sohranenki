@@ -83,6 +83,10 @@ class MainActivity : AppCompatActivity() {
     private var twitchVideos: List<VideoItem> = emptyList()
     private var twitchLoadJob: kotlinx.coroutines.Job? = null
     private var twitchLiveJob: kotlinx.coroutines.Job? = null
+    private var lastT2x2Live: TwitchLiveStream? = null
+    private var lastT2x2LiveCheckedAt = 0L
+    private var lastT2x2LiveUnavailable = false
+    private val t2x2LiveCacheMs = 20_000L
     private var pendingTwitchWelcome = false
     private var currentDay: DayCollection? = null
     private var isPlayerScreen = false
@@ -469,201 +473,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-
-    private fun showPostLoginOnboarding() {
-        onboardingActive = true
-        startupPhase = false
-        startupStatusView = null
-
-        data class TourPage(val visual: OnboardingFeatureView.Kind, val title: String, val body: String)
-        val pages = listOf(
-            TourPage(OnboardingFeatureView.Kind.COLLECTIONS, "Все записи в одном месте", "SOHR собирает последние видео и раскладывает их по дням, чтобы нужный стрим находился сразу."),
-            TourPage(OnboardingFeatureView.Kind.RESUME, "Продолжай с того же места", "SOHR запоминает позицию просмотра. Под начатым видео появляется красная полоска прогресса — как на YouTube."),
-            TourPage(OnboardingFeatureView.Kind.STREAK, "Не теряй Streak", "Смотри записи в разные дни — SOHR сохранит серию и покажет новый уровень огня."),
-            TourPage(OnboardingFeatureView.Kind.UPDATE, "Обновления прямо в SOHR", "Новые версии проверяются и загружаются прямо внутри приложения.")
-        )
-
-        val page = FrameLayout(this).apply { setBackgroundColor(bg) }
-
-        val skip = TextView(this).apply {
-            text = "Пропустить"
-            textSize = 13f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(muted)
-            background = roundedBg(palette.surfaceAlt, 16)
-        }
-        page.addView(skip, FrameLayout.LayoutParams(dp(96), dp(42), Gravity.TOP or Gravity.END).apply {
-            topMargin = dp(18)
-            marginEnd = dp(18)
-        })
-
-        val center = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(30), 0, dp(30), 0)
-        }
-        page.addView(center, FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            Gravity.CENTER
-        ))
-
-        val iconShell = FrameLayout(this).apply {
-            background = roundedBg(palette.surfaceAlt, 34)
-        }
-        val icon = OnboardingFeatureView(this, purple)
-        iconShell.addView(icon, FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        ))
-        center.addView(iconShell, LinearLayout.LayoutParams(dp(112), dp(112)).apply {
-            gravity = Gravity.CENTER_HORIZONTAL
-        })
-
-        val title = TextView(this).apply {
-            textSize = 26f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(this@MainActivity.text)
-            setPadding(0, dp(24), 0, 0)
-        }
-        center.addView(title, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ))
-
-        val body = TextView(this).apply {
-            textSize = 14f
-            gravity = Gravity.CENTER
-            setTextColor(muted)
-            setLineSpacing(dp(2).toFloat(), 1.08f)
-            setPadding(dp(4), dp(10), dp(4), 0)
-        }
-        center.addView(body, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ))
-
-        val dots = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-        }
-        center.addView(dots, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(36)
-        ).apply { topMargin = dp(18) })
-
-        val button = Button(this).apply {
-            setTextColor(Color.WHITE)
-            setTypeface(typeface, Typeface.BOLD)
-            background = roundedBg(purple, 17)
-        }
-        page.addView(button, FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(54),
-            Gravity.BOTTOM
-        ).apply {
-            marginStart = dp(22)
-            marginEnd = dp(22)
-            bottomMargin = dp(28)
-        })
-
-        var index = 0
-
-        fun finishTour() {
-            settings.postLoginTourSeen = true
-            onboardingActive = false
-            suppressNextRootAnimation = true
-            showSelectedVideoSource(forceRefresh = false)
-        }
-
-        fun renderTourPage(next: Int, animate: Boolean) {
-            index = next.coerceIn(0, pages.lastIndex)
-            val data = pages[index]
-
-            fun applyData() {
-                icon.setKind(data.visual)
-                icon.rotation = 0f
-                title.text = data.title
-                body.text = data.body
-                button.text = if (index == pages.lastIndex) "Начать" else "Продолжить"
-
-                dots.removeAllViews()
-                pages.indices.forEach { dotIndex ->
-                    dots.addView(
-                        View(this).apply {
-                            background = roundedBg(if (dotIndex == index) purple else palette.stroke, 4)
-                        },
-                        LinearLayout.LayoutParams(
-                            if (dotIndex == index) dp(22) else dp(7),
-                            dp(7)
-                        ).apply {
-                            marginStart = dp(4)
-                            marginEnd = dp(4)
-                        }
-                    )
-                }
-            }
-
-            if (!animate) {
-                applyData()
-                return
-            }
-
-            center.animate().cancel()
-            center.animate()
-                .alpha(0f)
-                .translationX(-dp(18).toFloat())
-                .setDuration(120L)
-                .withEndAction {
-                    applyData()
-                    center.translationX = dp(18).toFloat()
-                    iconShell.scaleX = 0.92f
-                    iconShell.scaleY = 0.92f
-                    center.animate()
-                        .alpha(1f)
-                        .translationX(0f)
-                        .setDuration(230L)
-                        .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
-                        .start()
-                    iconShell.animate()
-                        .scaleX(1f)
-                        .scaleY(1f)
-                        .rotationBy(6f)
-                        .setDuration(300L)
-                        .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
-                        .start()
-                }
-                .start()
-        }
-
-        button.setOnClickListener {
-            animatePress(button)
-            if (index >= pages.lastIndex) finishTour() else renderTourPage(index + 1, true)
-        }
-        skip.setOnClickListener {
-            animatePress(skip)
-            finishTour()
-        }
-
-        renderTourPage(0, false)
-        replaceRoot(page)
-
-        if (settings.animations) {
-            iconShell.alpha = 0f
-            iconShell.scaleX = 0.84f
-            iconShell.scaleY = 0.84f
-            title.alpha = 0f
-            body.alpha = 0f
-            button.alpha = 0f
-            iconShell.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(360L)
-                .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)).start()
-            title.animate().alpha(1f).setStartDelay(100L).setDuration(240L).start()
-            body.animate().alpha(1f).setStartDelay(150L).setDuration(260L).start()
-            button.animate().alpha(1f).setStartDelay(210L).setDuration(260L).start()
-        }
-    }
 
     private fun enterGuestMode(showNotice: Boolean = true) {
         settings.guestMode = true
@@ -2422,23 +2231,19 @@ class MainActivity : AppCompatActivity() {
         header.addView(controls, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(54)))
         page.addView(header)
 
-        val liveSlot = FrameLayout(this).apply {
-            visibility = if (settings.twitchAccessToken.isNullOrBlank()) View.GONE else View.VISIBLE
-        }
+        val liveSlot = FrameLayout(this)
         page.addView(
             liveSlot,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                if (settings.twitchAccessToken.isNullOrBlank()) 0 else dp(92)
+                dp(92)
             ).apply {
                 marginStart = dp(16)
                 marginEnd = dp(16)
-                bottomMargin = if (settings.twitchAccessToken.isNullOrBlank()) 0 else dp(8)
+                bottomMargin = dp(8)
             }
         )
-        if (!settings.twitchAccessToken.isNullOrBlank()) {
-            liveSlot.post { refreshT2x2Live(liveSlot) }
-        }
+        liveSlot.post { refreshT2x2Live(liveSlot) }
 
         if(feedRefreshCompletedFlash){ feedRefreshCompletedFlash=false; refresh.postDelayed({ if(feedRefreshButton===refresh&&refresh.isEnabled){ refreshText.animate().alpha(0f).setDuration(80L).withEndAction{refreshText.text="Проверить новые";refreshText.animate().alpha(1f).setDuration(120L).start()}.start() } },1100L) }
 
@@ -2454,132 +2259,149 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshT2x2Live(slot: FrameLayout) {
         twitchLiveJob?.cancel()
+
+        val now = System.currentTimeMillis()
+        if (lastT2x2LiveCheckedAt > 0L && now - lastT2x2LiveCheckedAt < t2x2LiveCacheMs) {
+            renderT2x2Live(slot, lastT2x2Live, lastT2x2LiveUnavailable)
+            return
+        }
+
         val clientId = BuildConfig.TWITCH_CLIENT_ID.trim()
         val token = settings.twitchAccessToken
         if (clientId.isBlank() || token.isNullOrBlank()) {
-            slot.visibility = View.GONE
-            val params = slot.layoutParams
-            if (params != null) {
-                params.height = 0
-                slot.layoutParams = params
-            }
+            lastT2x2Live = null
+            lastT2x2LiveUnavailable = true
+            lastT2x2LiveCheckedAt = now
+            renderT2x2Live(slot, null, unavailable = true)
             return
         }
 
         twitchLiveJob = lifecycleScope.launch {
             try {
                 val live = TwitchApi.loadLiveStream(clientId, token, "t2x2")
-                if (!slot.isAttachedToWindow) return@launch
-                renderT2x2Live(slot, live)
+                lastT2x2Live = live
+                lastT2x2LiveUnavailable = false
+                lastT2x2LiveCheckedAt = System.currentTimeMillis()
+                if (slot.isAttachedToWindow) renderT2x2Live(slot, live)
             } catch (_: TwitchAuthException) {
+                lastT2x2Live = null
+                lastT2x2LiveUnavailable = true
+                lastT2x2LiveCheckedAt = System.currentTimeMillis()
                 if (slot.isAttachedToWindow) renderT2x2Live(slot, null, unavailable = true)
             } catch (_: Exception) {
+                lastT2x2Live = null
+                lastT2x2LiveUnavailable = true
+                lastT2x2LiveCheckedAt = System.currentTimeMillis()
                 if (slot.isAttachedToWindow) renderT2x2Live(slot, null, unavailable = true)
             }
         }
     }
 
     private fun renderT2x2Live(slot: FrameLayout, live: TwitchLiveStream?, unavailable: Boolean = false) {
+        val animateIn = slot.childCount == 0
         slot.removeAllViews()
         slot.visibility = View.VISIBLE
 
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(10), dp(10), dp(12), dp(10))
+            setPadding(dp(12), dp(10), dp(12), dp(10))
             background = roundedBg(panel, 18)
             isClickable = live != null
             isFocusable = live != null
         }
 
-        if (live != null) {
-            val preview = FrameLayout(this)
-            val image = ImageView(this).apply {
-                scaleType = ImageView.ScaleType.CENTER_CROP
-                background = roundedBg(palette.surfaceAlt, 14)
-                clipToOutline = true
-                load(live.thumbnailUrl) { crossfade(settings.animations) }
+        val pulse = LivePulseView(this).apply {
+            setState(
+                live = live != null,
+                animations = settings.animations
+            )
+        }
+        card.addView(
+            pulse,
+            LinearLayout.LayoutParams(dp(48), dp(48)).apply {
+                marginEnd = dp(10)
             }
-            preview.addView(image, FrameLayout.LayoutParams(dp(112), dp(64)))
+        )
 
-            val badge = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER
-                setPadding(dp(7), 0, dp(7), 0)
-                background = roundedBg(Color.parseColor("#E91936"), 9)
+        val info = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        info.addView(TextView(this).apply {
+            text = "Антон t2x2"
+            textSize = 14.5f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+            maxLines = 1
+        })
+        info.addView(TextView(this).apply {
+            text = when {
+                live != null -> "В эфире • ${live.viewerCount} зрителей"
+                unavailable -> "Статус эфира недоступен"
+                else -> "Не в сети"
             }
-            val dot = View(this).apply { background = roundedBg(Color.WHITE, 4) }
-            badge.addView(dot, LinearLayout.LayoutParams(dp(6), dp(6)).apply { marginEnd = dp(5) })
-            badge.addView(TextView(this).apply {
-                text = "В ЭФИРЕ"
-                textSize = 9.5f
+            textSize = 12f
+            setTextColor(
+                if (live != null) Color.parseColor("#FF405A") else muted
+            )
+            setPadding(0, dp(4), 0, 0)
+        })
+        if (live != null && live.title.isNotBlank()) {
+            info.addView(TextView(this).apply {
+                text = live.title
+                textSize = 11f
+                setTextColor(muted)
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setPadding(0, dp(3), 0, 0)
+            })
+        }
+        card.addView(
+            info,
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        )
+
+        if (live != null) {
+            val watch = TextView(this).apply {
+                text = "Смотреть"
+                textSize = 11.5f
+                gravity = Gravity.CENTER
                 setTypeface(typeface, Typeface.BOLD)
                 setTextColor(Color.WHITE)
-            })
-            preview.addView(badge, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(22), Gravity.START or Gravity.TOP).apply {
-                leftMargin = dp(6); topMargin = dp(6)
-            })
-
-            if (settings.animations) {
-                android.animation.ObjectAnimator.ofFloat(dot, View.ALPHA, 1f, 0.28f, 1f).apply {
-                    duration = 1300L
-                    repeatCount = android.animation.ValueAnimator.INFINITE
-                    interpolator = android.view.animation.AccelerateDecelerateInterpolator()
-                    start()
-                    dot.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
-                        override fun onViewAttachedToWindow(v: View) = Unit
-                        override fun onViewDetachedFromWindow(v: View) { cancel() }
-                    })
-                }
+                background = roundedBg(Color.parseColor("#E91936"), 13)
             }
-
-            card.addView(preview, LinearLayout.LayoutParams(dp(112), dp(64)))
-
-            val info = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(12), 0, 0, 0)
-            }
-            info.addView(TextView(this).apply {
-                text = live.title.ifBlank { "t2x2 в эфире" }
-                textSize = 14f
-                maxLines = 2
-                ellipsize = android.text.TextUtils.TruncateAt.END
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(this@MainActivity.text)
+            card.addView(watch, LinearLayout.LayoutParams(dp(70), dp(34)).apply {
+                marginStart = dp(8)
             })
-            info.addView(TextView(this).apply {
-                text = live.viewerCount.toString() + " зрителей • Twitch"
-                textSize = 11.5f
-                setTextColor(muted)
-                setPadding(0, dp(5), 0, 0)
-            })
-            card.addView(info, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-
             card.setOnClickListener {
                 animatePress(card)
-                runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(live.url))) }
+                runCatching {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(live.url)))
+                }
             }
-        } else {
-            val statusDot = View(this).apply {
-                background = roundedBg(if (unavailable) muted else palette.stroke, 5)
-            }
-            card.addView(statusDot, LinearLayout.LayoutParams(dp(8), dp(8)).apply { marginStart = dp(4); marginEnd = dp(10) })
-            card.addView(TextView(this).apply {
-                text = if (unavailable) "Статус t2x2 временно недоступен" else "t2x2 сейчас не в эфире"
-                textSize = 13f
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(muted)
-            })
         }
 
-        slot.addView(card, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(84)))
-        if (settings.animations) {
+        slot.addView(
+            card,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(84)
+            )
+        )
+
+        if (animateIn && settings.animations) {
             card.alpha = 0f
-            card.translationY = dp(5).toFloat()
-            card.animate().alpha(1f).translationY(0f).setDuration(220L)
-                .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)).start()
+            card.translationY = dp(4).toFloat()
+            card.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setDuration(180L)
+                .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                .start()
         }
     }
+
 
     private fun showDayCollection(collection: DayCollection) {
         currentDay = collection
