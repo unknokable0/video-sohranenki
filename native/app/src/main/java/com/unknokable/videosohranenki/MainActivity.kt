@@ -35,6 +35,9 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import android.webkit.CookieManager
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -85,6 +88,7 @@ class MainActivity : AppCompatActivity() {
     private var twitchVideos: List<VideoItem> = emptyList()
     private var twitchLoadJob: kotlinx.coroutines.Job? = null
     private var twitchAuthJob: kotlinx.coroutines.Job? = null
+    private var twitchAuthDialog: Dialog? = null
     private var twitchLiveJob: kotlinx.coroutines.Job? = null
     private var lastT2x2Live: TwitchLiveStream? = null
     private var lastT2x2LiveCheckedAt = 0L
@@ -2759,21 +2763,12 @@ class MainActivity : AppCompatActivity() {
 
         twitchAuthJob = lifecycleScope.launch {
             try {
-                showLoading("Создаём код Twitch…")
+                showLoading("Создаём вход Twitch…")
                 val device = TwitchApi.startDeviceAuthorization(clientId)
                 val code = device.userCode.trim()
 
                 copyTwitchCode(code)
-                showLoading("Код Twitch: $code\nПодтверди вход в браузере…")
-
-                val opened = openTwitchBrowser(Uri.parse(device.verificationUri))
-                if (!opened) {
-                    showMessage(
-                        "Не удалось открыть Twitch",
-                        "Открой ${device.verificationUri} в браузере и введи код $code. Код уже скопирован."
-                    )
-                    return@launch
-                }
+                showTwitchActivationDialog(device)
 
                 val expiresAt = System.currentTimeMillis() + device.expiresIn * 1000L
                 var pollDelayMs = device.interval.coerceIn(5, 15) * 1000L
@@ -2788,6 +2783,9 @@ class MainActivity : AppCompatActivity() {
                             pollDelayMs = (pollDelayMs + 5_000L).coerceAtMost(20_000L)
                         }
                         is TwitchDevicePollResult.Authorized -> {
+                            twitchAuthDialog?.dismiss()
+                            twitchAuthDialog = null
+
                             settings.twitchAccessToken = result.token.accessToken
                             settings.twitchRefreshToken = result.token.refreshToken
                             settings.twitchOauthState = null
@@ -2796,7 +2794,6 @@ class MainActivity : AppCompatActivity() {
                             pendingTwitchWelcome = true
                             suppressNextRootAnimation = true
 
-                            bringSohrToFrontAfterTwitchLogin()
                             showLoading("Twitch подключён. Загружаем записи…")
                             loadTwitchVideos(inPlace = false)
                             return@launch
@@ -2804,19 +2801,22 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                bringSohrToFrontAfterTwitchLogin()
+                twitchAuthDialog?.dismiss()
+                twitchAuthDialog = null
                 showMessage(
                     "Время входа Twitch истекло",
-                    "Нажми «Подключить Twitch» ещё раз. Новый код создастся автоматически."
+                    "Нажми «Подключить Twitch» ещё раз. SOHR создаст новый код."
                 )
             } catch (e: TwitchAuthException) {
-                bringSohrToFrontAfterTwitchLogin()
+                twitchAuthDialog?.dismiss()
+                twitchAuthDialog = null
                 showMessage(
                     "Не удалось войти в Twitch",
                     e.message ?: "Twitch отклонил вход. Попробуй ещё раз."
                 )
             } catch (e: Exception) {
-                bringSohrToFrontAfterTwitchLogin()
+                twitchAuthDialog?.dismiss()
+                twitchAuthDialog = null
                 showMessage(
                     "Не удалось войти в Twitch",
                     e.message ?: "Ошибка авторизации Twitch"
@@ -2825,6 +2825,147 @@ class MainActivity : AppCompatActivity() {
                 twitchAuthJob = null
             }
         }
+    }
+
+    private fun showTwitchActivationDialog(device: TwitchDeviceAuthorization) {
+        twitchAuthDialog?.dismiss()
+
+        val dialog = Dialog(this)
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+
+        val shell = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(bg)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+        }
+
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        val titleWrap = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        titleWrap.addView(TextView(this).apply {
+            text = "Подключение Twitch"
+            textSize = 19f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+        })
+        titleWrap.addView(TextView(this).apply {
+            text = "Код: ${device.userCode}"
+            textSize = 13f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.parseColor("#9147FF"))
+            setPadding(0, dp(3), 0, 0)
+            setOnClickListener {
+                copyTwitchCode(device.userCode)
+                Toast.makeText(this@MainActivity, "Код скопирован", Toast.LENGTH_SHORT).show()
+            }
+        })
+
+        val close = TextView(this).apply {
+            text = "×"
+            textSize = 26f
+            gravity = Gravity.CENTER
+            setTextColor(muted)
+            background = roundedBg(panel, 18)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                twitchAuthJob?.cancel()
+                dialog.dismiss()
+            }
+        }
+
+        header.addView(titleWrap, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        header.addView(close, LinearLayout.LayoutParams(dp(42), dp(42)))
+        shell.addView(header)
+
+        shell.addView(TextView(this).apply {
+            text = "Войди в Twitch и нажми «Активировать». После подтверждения SOHR сам закроет эту страницу и подключит аккаунт."
+            textSize = 12.5f
+            setTextColor(muted)
+            setLineSpacing(0f, 1.08f)
+            setPadding(0, dp(8), 0, dp(10))
+        })
+
+        val webView = WebView(this).apply {
+            setBackgroundColor(Color.parseColor("#0E0E10"))
+            webViewClient = WebViewClient()
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.databaseEnabled = true
+            settings.loadsImagesAutomatically = true
+            settings.javaScriptCanOpenWindowsAutomatically = false
+            settings.setSupportMultipleWindows(false)
+            CookieManager.getInstance().setAcceptCookie(true)
+            CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+            loadUrl(device.verificationUri)
+        }
+
+        shell.addView(
+            webView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            ).apply {
+                topMargin = dp(4)
+            }
+        )
+
+        val fallback = TextView(this).apply {
+            text = "Открыть Twitch во внешнем браузере"
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            background = roundedBg(Color.parseColor("#9147FF"), 15)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                val opened = openTwitchBrowser(Uri.parse(device.verificationUri))
+                if (!opened) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Не удалось открыть браузер",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+        shell.addView(
+            fallback,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply {
+                topMargin = dp(10)
+            }
+        )
+
+        dialog.setContentView(shell)
+        dialog.setCanceledOnTouchOutside(false)
+        dialog.setOnCancelListener {
+            twitchAuthJob?.cancel()
+            twitchAuthDialog = null
+            webView.stopLoading()
+            webView.destroy()
+        }
+        dialog.setOnDismissListener {
+            if (twitchAuthDialog === dialog) twitchAuthDialog = null
+            runCatching {
+                webView.stopLoading()
+                webView.loadUrl("about:blank")
+                webView.destroy()
+            }
+        }
+        dialog.window?.apply {
+            setBackgroundDrawable(ColorDrawable(bg))
+            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        }
+        dialog.show()
+        dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        twitchAuthDialog = dialog
     }
 
     private fun copyTwitchCode(code: String) {
@@ -2837,50 +2978,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openTwitchBrowser(uri: Uri): Boolean = runCatching {
-        val baseIntent = Intent(Intent.ACTION_VIEW, uri).apply {
+        val intent = Intent(Intent.ACTION_VIEW, uri).apply {
             addCategory(Intent.CATEGORY_BROWSABLE)
         }
-
-        val packages = packageManager
-            .queryIntentActivities(baseIntent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
-            .mapNotNull { it.activityInfo?.packageName }
-            .distinct()
-
-        val preferredBrowser = packages.firstOrNull { packageName ->
-            val name = packageName.lowercase(Locale.US)
-            !name.contains("twitch") && (
-                name.contains("chrome") ||
-                    name.contains("firefox") ||
-                    name.contains("browser") ||
-                    name.contains("edge") ||
-                    name.contains("opera") ||
-                    name.contains("brave")
-                )
-        } ?: packages.firstOrNull { !it.lowercase(Locale.US).contains("twitch") }
-
-        val intent = if (preferredBrowser != null) {
-            Intent(baseIntent).setPackage(preferredBrowser)
-        } else {
-            Intent.createChooser(baseIntent, "Войти через Twitch")
-        }
-
         startActivity(intent)
         true
     }.getOrElse { false }
-
-    private fun bringSohrToFrontAfterTwitchLogin() {
-        runCatching {
-            val activityManager = getSystemService(android.content.Context.ACTIVITY_SERVICE)
-                as android.app.ActivityManager
-            activityManager.moveTaskToFront(taskId, 0)
-        }.recoverCatching {
-            startActivity(
-                Intent(this, MainActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                }
-            )
-        }
-    }
 
     private fun handleTwitchAuthIntent(sourceIntent: Intent?, loadAfter: Boolean): Boolean {
         val data = sourceIntent?.data ?: return false
