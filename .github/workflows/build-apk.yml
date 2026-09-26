@@ -135,13 +135,8 @@ jobs:
             adb install -r SOHR.apk
             adb shell am start -W -n com.unknokable.videosohranenki/.MainActivity
             sleep 4
-            PID="$(adb shell pidof com.unknokable.videosohranenki | tr -d '\r')"
-            if [ -z "$PID" ]; then
-              echo "SOHR process is not alive after launch on x86_64 emulator." >&2
-              adb logcat -d -t 250
-              exit 1
-            fi
-            echo "SOHR launched successfully on x86_64 Android emulator, pid=$PID"
+            adb shell pidof com.unknokable.videosohranenki | grep -Eq '[0-9]+'
+            echo "SOHR launched successfully on x86_64 Android emulator"
 
       - name: Generate updater manifest
         shell: bash
