@@ -44,11 +44,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 5.3.0-test4 version
+      - name: Assign SOHR 5.3.0-test5 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=503004" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=5.3.0-test4" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=503005" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=5.3.0-test5" >> "$GITHUB_ENV"
 
       - name: Build installable APK
         shell: bash
@@ -72,7 +72,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/SOHR.apk",
             "sha256": "$SHA256",
-            "notes": "SOHR $SOHR_VERSION_NAME • restored classic SOHR icon • restored S-loader • direct Twitch sign-in callback • OAuth return fix"
+            "notes": "SOHR 5.3.0-test5 • direct Twitch login callback • automatic video refresh • manual feed refresh removed"
           }
           EOF
           cat update.json

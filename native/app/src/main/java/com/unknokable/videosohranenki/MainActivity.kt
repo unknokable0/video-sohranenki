@@ -51,6 +51,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -87,6 +88,7 @@ class MainActivity : AppCompatActivity() {
     private var lastT2x2LiveCheckedAt = 0L
     private var lastT2x2LiveUnavailable = false
     private val t2x2LiveCacheMs = 20_000L
+    private val twitchRedirectUri = "sohr://twitch-auth"
     private var pendingTwitchWelcome = false
     private var currentDay: DayCollection? = null
     private var isPlayerScreen = false
@@ -117,6 +119,10 @@ class MainActivity : AppCompatActivity() {
     private var feedRefreshLabel: TextView? = null
     private var feedRefreshLoader: LoadingWaveView? = null
     private var feedRefreshCompletedFlash = false
+    private var feedAutoRefreshJob: kotlinx.coroutines.Job? = null
+    private var lastFeedAutoRefreshAt = 0L
+    private val telegramAutoRefreshIntervalMs = 45_000L
+    private val twitchAutoRefreshIntervalMs = 180_000L
     private var startupUpdateCheckDone = false
     private var onboardingActive = false
     private var videoSection = 1 // 1 collections, 2 watched
@@ -258,7 +264,7 @@ class MainActivity : AppCompatActivity() {
                     is TdApi.UpdateAuthorizationState -> handleAuthState(update.authorizationState)
                     is TdApi.UpdateNewMessage -> {
                         if (channelChatId != 0L && update.message.chatId == channelChatId) {
-                            loadVideos(inPlace = true)
+                            scheduleFeedAutoRefresh(delayMs = 900L, force = true)
                         }
                     }
                 }
@@ -286,6 +292,30 @@ class MainActivity : AppCompatActivity() {
             waitingForInstallPermission = false
             pendingUpdateApk?.takeIf { it.exists() }?.let { apk ->
                 root.postDelayed({ launchUpdateInstaller(apk) }, 220L)
+            }
+        }
+        if (!startupPhase && !isPlayerScreen && !isSettingsScreen && !isAccountScreen && !isStreakScreen) {
+            scheduleFeedAutoRefresh(delayMs = 550L, force = false)
+        }
+    }
+
+    private fun scheduleFeedAutoRefresh(delayMs: Long = 900L, force: Boolean = false) {
+        if (settings.guestMode || isPlayerScreen || isSettingsScreen || isAccountScreen || isStreakScreen) return
+        if (settings.videoSource == "telegram" && !telegramReady) return
+
+        val now = System.currentTimeMillis()
+        val minInterval = if (settings.videoSource == "twitch") twitchAutoRefreshIntervalMs else telegramAutoRefreshIntervalMs
+        if (!force && lastFeedAutoRefreshAt > 0L && now - lastFeedAutoRefreshAt < minInterval) return
+
+        feedAutoRefreshJob?.cancel()
+        feedAutoRefreshJob = lifecycleScope.launch {
+            delay(delayMs)
+            if (isPlayerScreen || isSettingsScreen || isAccountScreen || isStreakScreen) return@launch
+            lastFeedAutoRefreshAt = System.currentTimeMillis()
+            if (settings.videoSource == "twitch") {
+                loadTwitchVideos(inPlace = true)
+            } else if (telegramReady) {
+                loadVideos(inPlace = true)
             }
         }
     }
@@ -2198,37 +2228,25 @@ class MainActivity : AppCompatActivity() {
         }
         header.addView(tabs,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(46)))
 
+        feedRefreshButton = null
+        feedRefreshLabel = null
+        feedRefreshLoader = null
+        feedRefreshCompletedFlash = false
+
         val controls=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(0,dp(10),0,0) }
         controls.addView(TextView(this).apply {
             text=if(videoSection==2) "Просмотрено по дням" else "Сборники по дням"; textSize=14f; setTypeface(typeface,Typeface.BOLD); setTextColor(muted)
         },LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
-        val loader=LoadingWaveView(this,purple).apply { visibility=View.GONE }
-        val refreshText=TextView(this).apply { text=if(feedRefreshCompletedFlash) "Готово" else "Проверить новые"; textSize=12f; gravity=Gravity.CENTER_VERTICAL; setTypeface(typeface,Typeface.BOLD); setTextColor(purple) }
-        val refresh=LinearLayout(this).apply {
-            orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER; setPadding(dp(12),0,dp(12),0); background=roundedBg(palette.surfaceAlt,16); isClickable=true; isFocusable=true
-            addView(loader,LinearLayout.LayoutParams(dp(24),dp(24)).apply{marginEnd=dp(7)}); addView(refreshText)
-            setOnClickListener {
-                if (isEnabled) {
-                    animatePress(this)
-                    if (settings.videoSource == "twitch") {
-                        loadTwitchVideos(inPlace = true)
-                    } else if (settings.guestMode) {
-                        ModernDialogs.showNotice(
-                            this@MainActivity,
-                            palette,
-                            "Нужен вход",
-                            "Новые Telegram-видео можно проверить после входа. В гостевом режиме доступны локально сохранённые записи.",
-                            "Понятно"
-                        )
-                    } else {
-                        loadVideos(inPlace = true)
-                    }
-                }
-            }
-        }
-        feedRefreshButton=refresh; feedRefreshLabel=refreshText; feedRefreshLoader=loader
-        controls.addView(refresh,LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,dp(44)))
-        header.addView(controls, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(54)))
+        controls.addView(TextView(this).apply {
+            text = "Авто"
+            textSize = 11f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(purple)
+            setPadding(dp(10), 0, dp(10), 0)
+            background = roundedBg(palette.surfaceAlt, 14)
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)))
+        header.addView(controls, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
         page.addView(header)
 
         val liveSlot = FrameLayout(this)
@@ -2244,8 +2262,6 @@ class MainActivity : AppCompatActivity() {
             }
         )
         liveSlot.post { refreshT2x2Live(liveSlot) }
-
-        if(feedRefreshCompletedFlash){ feedRefreshCompletedFlash=false; refresh.postDelayed({ if(feedRefreshButton===refresh&&refresh.isEnabled){ refreshText.animate().alpha(0f).setDuration(80L).withEndAction{refreshText.text="Проверить новые";refreshText.animate().alpha(1f).setDuration(120L).start()}.start() } },1100L) }
 
         if(visibleGroups.isEmpty()) {
             page.addView(TextView(this).apply { text=if(videoSection==2) "Здесь появятся видео, которые ты отметил как просмотренные." else "Непросмотренных сборников пока нет.";textSize=15f;gravity=Gravity.CENTER;setTextColor(muted);setPadding(dp(28),0,dp(28),0) },LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
@@ -2722,7 +2738,7 @@ class MainActivity : AppCompatActivity() {
         val auth = Uri.parse("https://id.twitch.tv/oauth2/authorize").buildUpon()
             .appendQueryParameter("response_type", "token")
             .appendQueryParameter("client_id", clientId)
-            .appendQueryParameter("redirect_uri", "sohr://twitch-auth")
+            .appendQueryParameter("redirect_uri", twitchRedirectUri)
             .appendQueryParameter("scope", "")
             .appendQueryParameter("state", state)
             .build()
