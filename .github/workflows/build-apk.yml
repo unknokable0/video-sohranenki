@@ -138,11 +138,7 @@ jobs:
             sleep 6
             adb shell pidof com.unknokable.videosohranenki | grep -Eq '[0-9]+'
             adb logcat -d -t 500 > /tmp/sohr-logcat.txt
-            if grep -Eqi 'UnsatisfiedLinkError|dlopen failed|cannot locate symbol|FATAL EXCEPTION.*unknokable|Process: com\.unknokable\.videosohranenki.*FATAL' /tmp/sohr-logcat.txt; then
-              echo "SOHR/TDLib native compatibility failed on Android 7.1 x86_64" >&2
-              tail -250 /tmp/sohr-logcat.txt >&2
-              exit 1
-            fi
+            grep -Eqi 'UnsatisfiedLinkError|dlopen failed|cannot locate symbol|FATAL EXCEPTION.*unknokable|Process: com\\.unknokable\\.videosohranenki.*FATAL' /tmp/sohr-logcat.txt && { echo "SOHR/TDLib native compatibility failed on Android 7.1 x86_64" >&2; tail -250 /tmp/sohr-logcat.txt >&2; exit 1; } || true
             echo "SOHR + native libraries launched successfully on Android 7.1 x86_64"
 
       - name: Generate updater manifest
