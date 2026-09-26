@@ -75,6 +75,7 @@ class MainActivity : AppCompatActivity() {
     private var streamServer: TelegramStreamServer? = null
     private var playerScreen: PlayerScreen? = null
     private var twitchPlayerScreen: TwitchPlayerScreen? = null
+    private var twitchLivePlayerScreen: TwitchLivePlayerScreen? = null
     private var currentStreamingItem: VideoItem? = null
     private lateinit var settings: AppSettings
     private lateinit var streakTracker: StreakTracker
@@ -98,6 +99,7 @@ class MainActivity : AppCompatActivity() {
     // TEMPORARY: test build only. Set false after LIVE card is visually verified.
     private val temporaryLivePreviewEnabled = true
     private var pendingTwitchWelcome = false
+    private var pendingTwitchLiveAfterAuth: TwitchLiveStream? = null
     private var currentDay: DayCollection? = null
     private var isPlayerScreen = false
     private var isSettingsScreen = false
@@ -187,6 +189,8 @@ class MainActivity : AppCompatActivity() {
                     }
                     if (twitchPlayerScreen?.isFullscreen == true) {
                         twitchPlayerScreen?.exitFullscreen()
+                    } else if (twitchLivePlayerScreen?.isFullscreen == true) {
+                        twitchLivePlayerScreen?.exitFullscreen()
                     } else {
                         setFullscreen(false)
                     }
@@ -195,9 +199,11 @@ class MainActivity : AppCompatActivity() {
                 if (isPlayerScreen) {
                     val outgoingPlayer = playerScreen
                     val outgoingTwitchPlayer = twitchPlayerScreen
+                    val outgoingTwitchLivePlayer = twitchLivePlayerScreen
                     outgoingPlayer?.flushPlaybackPosition()
                     playerScreen = null
                     twitchPlayerScreen = null
+                    twitchLivePlayerScreen = null
                     isPlayerScreen = false
                     pendingRootSlide = -1
                     suppressNextContentAnimation = true
@@ -206,6 +212,7 @@ class MainActivity : AppCompatActivity() {
                     root.postDelayed({
                         outgoingPlayer?.destroy()
                         outgoingTwitchPlayer?.destroy()
+                        outgoingTwitchLivePlayer?.destroy()
                         currentStreamingItem?.let { streamed -> streamServer?.release(streamed) }
                         currentStreamingItem = null
                     }, if (settings.animations) 280L else 0L)
@@ -2302,12 +2309,14 @@ class MainActivity : AppCompatActivity() {
         header.addView(controls, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
         page.addView(header)
 
-        val liveSlot = FrameLayout(this)
+        val liveSlot = FrameLayout(this).apply {
+            minimumHeight = dp(84)
+        }
         page.addView(
             liveSlot,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(92)
+                ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
                 marginStart = dp(16)
                 marginEnd = dp(16)
@@ -2347,17 +2356,14 @@ class MainActivity : AppCompatActivity() {
 
         twitchLiveJob = lifecycleScope.launch {
             try {
-                val channelLive = TwitchApi.loadLiveStream(clientId, token, "t2x2")
-                val live = if (channelLive != null) {
-                    channelLive
-                } else if (temporaryLivePreviewEnabled) {
+                val live = if (temporaryLivePreviewEnabled) {
                     TwitchApi.loadRandomLiveStream(
                         clientId = clientId,
                         accessToken = token,
                         excludeLogins = setOf("t2x2")
                     )
                 } else {
-                    null
+                    TwitchApi.loadLiveStream(clientId, token, "t2x2")
                 }
                 lastT2x2Live = live
                 lastT2x2LiveUnavailable = false
@@ -2382,25 +2388,92 @@ class MainActivity : AppCompatActivity() {
         slot.removeAllViews()
         slot.visibility = View.VISIBLE
 
+        if (live == null) {
+            val offline = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                background = roundedBg(panel, 18)
+            }
+
+            val pulse = LivePulseView(this).apply {
+                setState(false, settings.animations)
+            }
+            offline.addView(
+                pulse,
+                LinearLayout.LayoutParams(dp(24), dp(24)).apply {
+                    marginEnd = dp(10)
+                }
+            )
+
+            val labels = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+            }
+            labels.addView(TextView(this).apply {
+                text = "t2x2"
+                textSize = 14.5f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(this@MainActivity.text)
+            })
+            labels.addView(TextView(this).apply {
+                text = if (unavailable) "@t2x2 • Статус эфира недоступен" else "@t2x2 • Не в сети"
+                textSize = 11.5f
+                setTextColor(muted)
+                setPadding(0, dp(3), 0, 0)
+            })
+            offline.addView(labels)
+
+            slot.addView(
+                offline,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dp(72)
+                )
+            )
+            return
+        }
+
         val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedBg(panel, 20)
+            clipToOutline = true
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                animatePress(this)
+                openTwitchLivePlayer(live)
+            }
+        }
+
+        val previewHeight = ((resources.displayMetrics.widthPixels - dp(32)) * 9f / 16f).toInt()
+        val preview = TwitchLivePreviewView(
+            context = this,
+            live = live,
+            palette = palette,
+            animationsEnabled = settings.animations,
+            onOpen = { openTwitchLivePlayer(live) }
+        )
+        card.addView(
+            preview,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                previewHeight
+            )
+        )
+
+        val meta = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            background = roundedBg(panel, 18)
-            isClickable = live != null
-            isFocusable = live != null
+            setPadding(dp(12), dp(10), dp(12), dp(11))
         }
 
         val pulse = LivePulseView(this).apply {
-            setState(
-                live = live != null,
-                animations = settings.animations
-            )
+            setState(true, settings.animations)
         }
-        card.addView(
+        meta.addView(
             pulse,
-            LinearLayout.LayoutParams(dp(48), dp(48)).apply {
-                marginEnd = dp(10)
+            LinearLayout.LayoutParams(dp(24), dp(24)).apply {
+                marginEnd = dp(8)
             }
         )
 
@@ -2409,88 +2482,74 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
         }
         info.addView(TextView(this).apply {
-            text = live?.displayName?.takeIf { it.isNotBlank() } ?: "t2x2"
+            text = live.displayName.ifBlank { live.login }
             textSize = 14.5f
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(this@MainActivity.text)
-            maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.END
         })
         info.addView(TextView(this).apply {
-            text = when {
-                live != null && live.testStream ->
-                    "@${live.login} • Тестовый эфир • ${live.viewerCount} зрителей"
-                live != null ->
-                    "@${live.login} • В эфире • ${live.viewerCount} зрителей"
-                unavailable -> "@t2x2 • Статус эфира недоступен"
-                else -> "@t2x2 • Не в сети"
-            }
-            textSize = 11.5f
-            setTextColor(
-                if (live != null) Color.parseColor("#FF405A") else muted
-            )
+            text = "@" + live.login + " • В эфире • " + live.viewerCount + " зрителей"
+            textSize = 11.3f
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
-            setPadding(0, dp(4), 0, 0)
+            setTextColor(Color.parseColor("#FF5F7E"))
+            setPadding(0, dp(3), 0, 0)
         })
-        if (live != null && (live.gameName.isNotBlank() || live.title.isNotBlank())) {
+        if (live.gameName.isNotBlank() || live.title.isNotBlank()) {
             info.addView(TextView(this).apply {
                 text = listOfNotNull(
                     live.gameName.takeIf { it.isNotBlank() },
                     live.title.takeIf { it.isNotBlank() }
                 ).joinToString(" • ")
                 textSize = 10.8f
-                setTextColor(muted)
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
+                setTextColor(muted)
                 setPadding(0, dp(3), 0, 0)
             })
         }
-        card.addView(
+        meta.addView(
             info,
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         )
 
-        if (live != null) {
-            val watch = TextView(this).apply {
-                text = "Смотреть"
-                textSize = 11.5f
-                gravity = Gravity.CENTER
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(Color.WHITE)
-                background = roundedBg(Color.parseColor("#E91936"), 13)
-            }
-            card.addView(watch, LinearLayout.LayoutParams(dp(70), dp(34)).apply {
-                marginStart = dp(8)
-            })
-            card.setOnClickListener {
-                animatePress(card)
-                runCatching {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(live.url)))
-                }
-            }
+        val open = TextView(this).apply {
+            text = "Открыть"
+            textSize = 11f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            background = roundedBg(Color.parseColor("#D94B68"), 14)
         }
+        meta.addView(
+            open,
+            LinearLayout.LayoutParams(dp(68), dp(34)).apply {
+                marginStart = dp(8)
+            }
+        )
 
+        card.addView(meta)
         slot.addView(
             card,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(84)
+                ViewGroup.LayoutParams.WRAP_CONTENT
             )
         )
 
         if (animateIn && settings.animations) {
             card.alpha = 0f
-            card.translationY = dp(4).toFloat()
+            card.translationY = dp(5).toFloat()
             card.animate()
                 .alpha(1f)
                 .translationY(0f)
-                .setDuration(180L)
+                .setDuration(210L)
                 .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
                 .start()
         }
     }
-
 
     private fun showDayCollection(collection: DayCollection) {
         currentDay = collection
@@ -2598,6 +2657,8 @@ class MainActivity : AppCompatActivity() {
         }
         twitchPlayerScreen?.destroy()
         twitchPlayerScreen = null
+        twitchLivePlayerScreen?.destroy()
+        twitchLivePlayerScreen = null
         val localFile = item.localPath?.let(::File)?.takeIf { it.exists() }
         val server = streamServer
         if (localFile == null && server == null) return
@@ -2673,6 +2734,8 @@ class MainActivity : AppCompatActivity() {
         playerScreen = null
         twitchPlayerScreen?.destroy()
         twitchPlayerScreen = null
+        twitchLivePlayerScreen?.destroy()
+        twitchLivePlayerScreen = null
         currentStreamingItem?.let { streamed -> streamServer?.release(streamed) }
         currentStreamingItem = null
 
@@ -2723,6 +2786,80 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
+    private fun openTwitchLivePlayer(live: TwitchLiveStream) {
+        val clientId = BuildConfig.TWITCH_CLIENT_ID.trim()
+        val token = settings.twitchAccessToken
+        if (clientId.isBlank() || token.isNullOrBlank()) {
+            pendingTwitchLiveAfterAuth = live
+            startTwitchLogin()
+            return
+        }
+
+        showLoading("Открываем эфир…")
+        lifecycleScope.launch {
+            try {
+                val tokenInfo = TwitchApi.validateTokenInfo(clientId, token)
+                val login = tokenInfo.login.takeIf { it.isNotBlank() }
+                    ?: settings.twitchLogin.orEmpty()
+
+                if (!tokenInfo.scopes.contains("chat:read")) {
+                    pendingTwitchLiveAfterAuth = live
+                    settings.twitchLogin = login.takeIf { it.isNotBlank() }
+                    isPlayerScreen = false
+                    startTwitchLogin()
+                    return@launch
+                }
+
+                settings.twitchLogin = login.takeIf { it.isNotBlank() }
+
+                playerScreen?.destroy()
+                playerScreen = null
+                twitchPlayerScreen?.destroy()
+                twitchPlayerScreen = null
+                twitchLivePlayerScreen?.destroy()
+                twitchLivePlayerScreen = null
+                currentStreamingItem?.let { streamed -> streamServer?.release(streamed) }
+                currentStreamingItem = null
+
+                isSettingsScreen = false
+                isAccountScreen = false
+                isStreakScreen = false
+                isPlayerScreen = true
+
+                twitchLivePlayerScreen = TwitchLivePlayerScreen(
+                    activity = this@MainActivity,
+                    live = live,
+                    accessToken = token,
+                    accountLogin = login,
+                    palette = palette,
+                    animationsEnabled = settings.animations,
+                    onBack = { onBackPressedDispatcher.onBackPressed() },
+                    onFullscreen = { setFullscreen(it) },
+                    onChatScopeMissing = {
+                        pendingTwitchLiveAfterAuth = live
+                        startTwitchLogin()
+                    }
+                )
+
+                pendingRootSlide = 1
+                replaceRoot(twitchLivePlayerScreen!!.root)
+            } catch (_: TwitchAuthException) {
+                pendingTwitchLiveAfterAuth = live
+                settings.twitchAccessToken = null
+                settings.twitchLogin = null
+                isPlayerScreen = false
+                startTwitchLogin()
+            } catch (e: Exception) {
+                isPlayerScreen = false
+                showMessage(
+                    "Не удалось открыть эфир",
+                    e.message ?: "Twitch не отдал прямой эфир."
+                )
+            }
+        }
+    }
+
 
     private fun showSelectedVideoSource(forceRefresh: Boolean = false) {
         currentDay = null
@@ -2832,7 +2969,7 @@ class MainActivity : AppCompatActivity() {
             .appendQueryParameter("response_type", "token")
             .appendQueryParameter("client_id", clientId)
             .appendQueryParameter("redirect_uri", TWITCH_REDIRECT_URI)
-            .appendQueryParameter("scope", "")
+            .appendQueryParameter("scope", "chat:read")
             .appendQueryParameter("state", state)
             .appendQueryParameter("force_verify", "false")
             .build()
@@ -3019,15 +3156,23 @@ class MainActivity : AppCompatActivity() {
                 settings.twitchOauthState = null
                 settings.twitchLogin = login.takeIf { it.isNotBlank() }
                 settings.videoSource = "twitch"
-                pendingTwitchWelcome = true
                 suppressNextRootAnimation = true
 
-                loadTwitchVideos(inPlace = false)
+                val pendingLive = pendingTwitchLiveAfterAuth
+                pendingTwitchLiveAfterAuth = null
+                if (pendingLive != null) {
+                    pendingTwitchWelcome = false
+                    openTwitchLivePlayer(pendingLive)
+                } else {
+                    pendingTwitchWelcome = true
+                    loadTwitchVideos(inPlace = false)
+                }
             } catch (e: Exception) {
                 settings.twitchAccessToken = null
                 settings.twitchRefreshToken = null
                 settings.twitchOauthState = null
                 settings.twitchLogin = null
+                pendingTwitchLiveAfterAuth = null
                 showMessage(
                     "Не удалось подключить Twitch",
                     e.message ?: "Twitch не подтвердил токен."
@@ -4705,6 +4850,8 @@ class MainActivity : AppCompatActivity() {
         playerScreen = null
         twitchPlayerScreen?.destroy()
         twitchPlayerScreen = null
+        twitchLivePlayerScreen?.destroy()
+        twitchLivePlayerScreen = null
         twitchLiveJob?.cancel()
         twitchLiveJob = null
         twitchAuthJob?.cancel()
