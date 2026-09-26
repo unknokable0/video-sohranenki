@@ -90,6 +90,7 @@ class MainActivity : AppCompatActivity() {
     private var lastT2x2LiveCheckedAt = 0L
     private var lastT2x2LiveUnavailable = false
     private val t2x2LiveCacheMs = 20_000L
+    private val twitchRedirectUri = "https://unknokable0.github.io/video-sohranenki/twitch-auth/"
     private var pendingTwitchWelcome = false
     private var currentDay: DayCollection? = null
     private var isPlayerScreen = false
@@ -2738,96 +2739,31 @@ class MainActivity : AppCompatActivity() {
             showMessage("Twitch ещё не подключён", "В сборке отсутствует Twitch Client ID.")
             return
         }
-        if (twitchAuthJob?.isActive == true) {
-            Toast.makeText(this, "Вход Twitch уже запущен", Toast.LENGTH_SHORT).show()
-            return
-        }
 
-        twitchAuthJob = lifecycleScope.launch {
-            try {
-                showLoading("Создаём код Twitch…")
-                val device = TwitchApi.startDeviceAuthorization(clientId)
-                val code = device.userCode.trim()
-                val activationUri = buildTwitchActivationUri(device)
+        val state = java.util.UUID.randomUUID().toString().replace("-", "")
+        settings.twitchOauthState = state
 
-                copyTwitchCode(code)
-                showLoading("Код Twitch: $code\nПодтверди вход в браузере…")
+        val authUri = Uri.parse("https://id.twitch.tv/oauth2/authorize").buildUpon()
+            .appendQueryParameter("response_type", "token")
+            .appendQueryParameter("client_id", clientId)
+            .appendQueryParameter("redirect_uri", twitchRedirectUri)
+            .appendQueryParameter("scope", "")
+            .appendQueryParameter("state", state)
+            .appendQueryParameter("force_verify", "false")
+            .build()
 
-                val opened = openTwitchActivation(activationUri)
-                if (!opened) {
-                    showMessage(
-                        "Не удалось открыть Twitch",
-                        "Открой ${device.verificationUri} в браузере и введи код $code. Код уже скопирован."
-                    )
-                    return@launch
-                }
-
-                Toast.makeText(
-                    this@MainActivity,
-                    "Код Twitch $code скопирован. Если Twitch попросит код — просто вставь его.",
-                    Toast.LENGTH_LONG
-                ).show()
-
-                val expiresAt = System.currentTimeMillis() + device.expiresIn * 1000L
-                val pollDelayMs = device.interval.coerceIn(5, 15) * 1000L
-                while (kotlinx.coroutines.currentCoroutineContext().isActive &&
-                    System.currentTimeMillis() < expiresAt) {
-                    delay(pollDelayMs)
-                    val token = TwitchApi.pollDeviceAuthorization(clientId, device.deviceCode) ?: continue
-
-                    settings.twitchAccessToken = token.accessToken
-                    settings.twitchRefreshToken = token.refreshToken
-                    settings.twitchOauthState = null
-                    settings.twitchLogin = null
-                    settings.videoSource = "twitch"
-                    pendingTwitchWelcome = true
-                    suppressNextRootAnimation = true
-                    loadTwitchVideos(inPlace = false)
-                    return@launch
-                }
-
-                showMessage(
-                    "Время входа Twitch истекло",
-                    "Нажми «Подключить Twitch» ещё раз. Новый код создастся автоматически."
-                )
-            } catch (e: TwitchAuthException) {
-                showMessage(
-                    "Не удалось войти в Twitch",
-                    e.message ?: "Twitch отклонил вход. Попробуй ещё раз."
-                )
-            } catch (e: Exception) {
-                showMessage(
-                    "Не удалось войти в Twitch",
-                    e.message ?: "Ошибка авторизации Twitch"
-                )
-            } finally {
-                twitchAuthJob = null
-            }
+        showLoading("Открываем безопасный вход Twitch…")
+        val opened = openTwitchBrowser(authUri)
+        if (!opened) {
+            settings.twitchOauthState = null
+            showMessage(
+                "Не удалось открыть Twitch",
+                "Не найден браузер для входа. Установи или включи обычный браузер и попробуй ещё раз."
+            )
         }
     }
 
-    private fun buildTwitchActivationUri(device: TwitchDeviceAuthorization): Uri {
-        val base = Uri.parse(device.verificationUri)
-        if (!base.getQueryParameter("device-code").isNullOrBlank()) return base
-
-        val builder = base.buildUpon()
-        if (base.getQueryParameter("public").isNullOrBlank()) {
-            builder.appendQueryParameter("public", "true")
-        }
-        builder.appendQueryParameter("device-code", device.userCode)
-        return builder.build()
-    }
-
-    private fun copyTwitchCode(code: String) {
-        if (code.isBlank()) return
-        val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE)
-            as? android.content.ClipboardManager
-        clipboard?.setPrimaryClip(
-            android.content.ClipData.newPlainText("Twitch login code", code)
-        )
-    }
-
-    private fun openTwitchActivation(uri: Uri): Boolean = runCatching {
+    private fun openTwitchBrowser(uri: Uri): Boolean = runCatching {
         val baseIntent = Intent(Intent.ACTION_VIEW, uri).apply {
             addCategory(Intent.CATEGORY_BROWSABLE)
         }
@@ -2852,33 +2788,76 @@ class MainActivity : AppCompatActivity() {
         val intent = if (preferredBrowser != null) {
             Intent(baseIntent).setPackage(preferredBrowser)
         } else {
-            Intent.createChooser(baseIntent, "Открыть вход Twitch")
+            Intent.createChooser(baseIntent, "Войти через Twitch")
         }
-
         startActivity(intent)
         true
     }.getOrElse { false }
 
     private fun handleTwitchAuthIntent(sourceIntent: Intent?, loadAfter: Boolean): Boolean {
-        // Совместимость со старыми SOHR-ссылками. Новые версии используют Device Code Flow
-        // и вообще не зависят от redirect/callback URL.
         val data = sourceIntent?.data ?: return false
         if (data.scheme != "sohr" || data.host != "twitch-auth") return false
-        fun decode(value: String): String = runCatching { java.net.URLDecoder.decode(value, "UTF-8") }.getOrDefault(value)
+
+        fun decode(value: String): String =
+            runCatching { java.net.URLDecoder.decode(value, "UTF-8") }.getOrDefault(value)
+
         val params = linkedMapOf<String, String>()
-        data.fragment.orEmpty().split("&").filter { it.contains("=") }.forEach { part ->
-            params[decode(part.substringBefore("="))] = decode(part.substringAfter("="))
+        data.fragment.orEmpty()
+            .split("&")
+            .filter { it.contains("=") }
+            .forEach { part ->
+                params[decode(part.substringBefore("="))] = decode(part.substringAfter("="))
+            }
+        data.queryParameterNames.forEach { key ->
+            data.getQueryParameter(key)?.let { params[key] = it }
         }
-        data.queryParameterNames.forEach { key -> data.getQueryParameter(key)?.let { params[key] = it } }
-        val token = params["access_token"] ?: return true
+
+        sourceIntent.data = null
+
+        val error = params["error"]
+        if (!error.isNullOrBlank()) {
+            settings.twitchOauthState = null
+            val description = params["error_description"]?.takeIf { it.isNotBlank() }
+            showMessage(
+                "Вход Twitch отменён",
+                description ?: error
+            )
+            return true
+        }
+
+        val expectedState = settings.twitchOauthState
+        val returnedState = params["state"]
+        if (expectedState.isNullOrBlank() || returnedState.isNullOrBlank() || expectedState != returnedState) {
+            settings.twitchOauthState = null
+            showMessage(
+                "Не удалось подтвердить вход Twitch",
+                "Проверка безопасности входа не совпала. Нажми «Подключить Twitch» и войди ещё раз."
+            )
+            return true
+        }
+
+        val token = params["access_token"]
+        if (token.isNullOrBlank()) {
+            settings.twitchOauthState = null
+            showMessage(
+                "Twitch не вернул доступ",
+                "Авторизация завершилась без токена. Попробуй войти ещё раз."
+            )
+            return true
+        }
+
         settings.twitchAccessToken = token
         settings.twitchRefreshToken = null
         settings.twitchOauthState = null
         settings.twitchLogin = null
         settings.videoSource = "twitch"
         pendingTwitchWelcome = true
-        sourceIntent.data = null
-        if (loadAfter) loadTwitchVideos(inPlace = false)
+        suppressNextRootAnimation = true
+
+        if (loadAfter) {
+            showLoading("Twitch подключён. Загружаем записи…")
+            loadTwitchVideos(inPlace = false)
+        }
         return true
     }
 
