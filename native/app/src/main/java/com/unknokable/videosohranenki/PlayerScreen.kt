@@ -272,7 +272,7 @@ class PlayerScreen(
         previewBubble = buildSeekPreview()
         playerCard.addView(
             previewBubble,
-            FrameLayout.LayoutParams(dp(174), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
+            FrameLayout.LayoutParams(dp(206), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
                 bottomMargin = dp(58)
             }
         )
@@ -319,7 +319,7 @@ class PlayerScreen(
                 updatePlayIcon()
                 root.keepScreenOn = isPlaying
                 if (isPlaying && ::endOverlay.isInitialized) endOverlay.visibility = View.GONE
-                if (isPlaying) { handler.removeCallbacks(autoHideControls); handler.postDelayed(autoHideControls, 3_000L) } else handler.removeCallbacks(autoHideControls)
+                if (isPlaying) { handler.removeCallbacks(autoHideControls); handler.postDelayed(autoHideControls, 2_600L) } else handler.removeCallbacks(autoHideControls)
                 if (isPlaying && !playbackCounted) {
                     playbackCounted = true
                     onPlaybackStarted()
@@ -384,7 +384,7 @@ class PlayerScreen(
             setBackgroundColor(palette.background)
         }
 
-        val back = iconButton(R.drawable.ic_back, "#181322", 42).apply {
+        val back = iconButton(R.drawable.ic_back, "#66000000", 42).apply {
             setOnClickListener { pulse(this); onBack() }
         }
 
@@ -408,7 +408,7 @@ class PlayerScreen(
 
     private fun buildOverlay(): FrameLayout {
         val frame = FrameLayout(activity).apply {
-            setBackgroundColor(Color.parseColor("#24000000"))
+            setBackgroundColor(Color.parseColor("#33000000"))
         }
 
         val center = LinearLayout(activity).apply {
@@ -416,14 +416,47 @@ class PlayerScreen(
             gravity = Gravity.CENTER
         }
 
-        playPause = iconButton(R.drawable.ic_play, "#8B5CF6", 54).apply {
+        val back10 = TextView(activity).apply {
+            text = "↶\n10"
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            background = rounded("#66000000", 28)
             setOnClickListener {
-                if (player.isPlaying) player.pause() else player.play()
+                player.seekBack()
+                showSeekFeedback(false, 10)
                 pulse(this)
+                showOverlay()
             }
         }
 
-        center.addView(playPause, LinearLayout.LayoutParams(dp(56), dp(56)))
+        playPause = iconButton(R.drawable.ic_play, "#99000000", 58).apply {
+            setOnClickListener {
+                if (player.isPlaying) player.pause() else player.play()
+                pulse(this)
+                showOverlay()
+            }
+        }
+
+        val forward10 = TextView(activity).apply {
+            text = "↷\n10"
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            background = rounded("#66000000", 28)
+            setOnClickListener {
+                player.seekForward()
+                showSeekFeedback(true, 10)
+                pulse(this)
+                showOverlay()
+            }
+        }
+
+        center.addView(back10, LinearLayout.LayoutParams(dp(54), dp(54)).apply { marginEnd = dp(26) })
+        center.addView(playPause, LinearLayout.LayoutParams(dp(60), dp(60)))
+        center.addView(forward10, LinearLayout.LayoutParams(dp(54), dp(54)).apply { marginStart = dp(26) })
 
         frame.addView(
             center,
@@ -554,7 +587,7 @@ class PlayerScreen(
             setPadding(0, dp(5), 0, 0)
         }
 
-        box.addView(previewImage, LinearLayout.LayoutParams(dp(160), dp(90)))
+        box.addView(previewImage, LinearLayout.LayoutParams(dp(192), dp(108)))
         box.addView(previewTime, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
@@ -565,7 +598,7 @@ class PlayerScreen(
     private fun updatePreviewUi(positionMs: Long, fraction: Float) {
         previewTime.text = formatMs(positionMs)
         currentTime.text = formatMs(positionMs)
-        val maxShift = ((playerCard.width - dp(174)) / 2f).coerceAtLeast(0f)
+        val maxShift = ((playerCard.width - dp(206)) / 2f).coerceAtLeast(0f)
         previewBubble.translationX = ((fraction.coerceIn(0f, 1f) - 0.5f) * 2f * maxShift)
     }
 
@@ -1172,7 +1205,7 @@ class PlayerScreen(
             runCatching { (scrim.parent as? ViewGroup)?.removeView(scrim) }
             if (fullscreen && player.isPlaying) {
                 handler.removeCallbacks(autoHideControls)
-                handler.postDelayed(autoHideControls, 3_000L)
+                handler.postDelayed(autoHideControls, 2_600L)
             }
             after?.invoke()
         }
@@ -1559,14 +1592,14 @@ class PlayerScreen(
     }
 
     private fun showOverlay() {
-        handler.removeCallbacks(autoHideControls); overlay.visibility=View.VISIBLE; overlay.animate().cancel(); overlay.animate().alpha(1f).setDuration(if(settings.animations)240 else 0).start()
+        handler.removeCallbacks(autoHideControls); overlay.visibility=View.VISIBLE; overlay.animate().cancel(); overlay.animate().alpha(1f).setDuration(if(settings.animations)170 else 0).start()
         if(player.isPlaying) handler.postDelayed(autoHideControls,3_000L)
     }
 
     private fun hideOverlay() {
         handler.removeCallbacks(autoHideControls); overlay.animate().cancel(); overlay.animate()
             .alpha(0f)
-            .setDuration(if (settings.animations) 240 else 0)
+            .setDuration(if (settings.animations) 180 else 0)
             .withEndAction { overlay.visibility = View.GONE }
             .start()
     }
