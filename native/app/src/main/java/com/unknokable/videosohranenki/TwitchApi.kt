@@ -40,11 +40,15 @@ data class TwitchProfile(
 )
 
 data class TwitchLiveStream(
+    val login: String,
+    val displayName: String,
+    val gameName: String,
     val title: String,
     val viewerCount: Int,
     val thumbnailUrl: String,
     val startedAt: String,
-    val url: String
+    val url: String,
+    val testStream: Boolean = false
 )
 
 object TwitchApi {
@@ -217,22 +221,65 @@ object TwitchApi {
             )
             val data = root.optJSONArray("data") ?: return@withContext null
             if (data.length() == 0) return@withContext null
-
-            val stream = data.getJSONObject(0)
-            val thumbnail = stream.optString("thumbnail_url")
-                .replace("{width}", "640")
-                .replace("{height}", "360")
-                .replace("%{width}", "640")
-                .replace("%{height}", "360")
-
-            TwitchLiveStream(
-                title = stream.optString("title").ifBlank { "$login в эфире" },
-                viewerCount = stream.optInt("viewer_count", 0),
-                thumbnailUrl = thumbnail,
-                startedAt = stream.optString("started_at"),
-                url = "https://www.twitch.tv/$login"
-            )
+            parseLiveStream(data.getJSONObject(0), testStream = false)
         }
+
+    suspend fun loadRandomLiveStream(
+        clientId: String,
+        accessToken: String,
+        excludeLogins: Set<String> = emptySet()
+    ): TwitchLiveStream? = withContext(Dispatchers.IO) {
+        require(clientId.isNotBlank()) { "Twitch Client ID не настроен" }
+        require(accessToken.isNotBlank()) { "Нужно войти в Twitch" }
+
+        val root = getJson(
+            "https://api.twitch.tv/helix/streams?first=30",
+            clientId,
+            accessToken
+        )
+        val data = root.optJSONArray("data") ?: return@withContext null
+        val excluded = excludeLogins.map { it.lowercase() }.toSet()
+        val blockedCategoryWords = listOf(
+            "casino", "slots", "gambling", "poker", "betting", "sports betting"
+        )
+
+        val candidates = mutableListOf<JSONObject>()
+        for (i in 0 until data.length()) {
+            val stream = data.optJSONObject(i) ?: continue
+            val login = stream.optString("user_login").lowercase()
+            val game = stream.optString("game_name").lowercase()
+            if (login.isBlank() || login in excluded) continue
+            if (stream.optBoolean("is_mature", false)) continue
+            if (blockedCategoryWords.any { game.contains(it) }) continue
+            candidates += stream
+        }
+        if (candidates.isEmpty()) return@withContext null
+
+        val index = ((System.currentTimeMillis() / 1000L) % candidates.size).toInt()
+        parseLiveStream(candidates[index], testStream = true)
+    }
+
+    private fun parseLiveStream(stream: JSONObject, testStream: Boolean): TwitchLiveStream {
+        val login = stream.optString("user_login")
+        val displayName = stream.optString("user_name").ifBlank { login }
+        val thumbnail = stream.optString("thumbnail_url")
+            .replace("{width}", "640")
+            .replace("{height}", "360")
+            .replace("%{width}", "640")
+            .replace("%{height}", "360")
+
+        return TwitchLiveStream(
+            login = login,
+            displayName = displayName,
+            gameName = stream.optString("game_name"),
+            title = stream.optString("title").ifBlank { "$displayName в эфире" },
+            viewerCount = stream.optInt("viewer_count", 0),
+            thumbnailUrl = thumbnail,
+            startedAt = stream.optString("started_at"),
+            url = "https://www.twitch.tv/$login",
+            testStream = testStream
+        )
+    }
 
     suspend fun loadArchives(clientId: String, accessToken: String, login: String, days: Long = 7): List<VideoItem> =
         withContext(Dispatchers.IO) {
