@@ -35,6 +35,10 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import android.webkit.CookieManager
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -85,6 +89,7 @@ class MainActivity : AppCompatActivity() {
     private var twitchVideos: List<VideoItem> = emptyList()
     private var twitchLoadJob: kotlinx.coroutines.Job? = null
     private var twitchAuthJob: kotlinx.coroutines.Job? = null
+    private var twitchAuthDialog: Dialog? = null
     private var twitchLiveJob: kotlinx.coroutines.Job? = null
     private var lastT2x2Live: TwitchLiveStream? = null
     private var lastT2x2LiveCheckedAt = 0L
@@ -2765,27 +2770,124 @@ class MainActivity : AppCompatActivity() {
             .appendQueryParameter("force_verify", "false")
             .build()
 
-        showLoading("Открываем вход Twitch…")
-
-        val opened = runCatching {
-            startActivity(
-                Intent(Intent.ACTION_VIEW, auth).apply {
-                    addCategory(Intent.CATEGORY_BROWSABLE)
-                }
-            )
-            true
-        }.getOrElse { false }
-
-        if (!opened) {
-            settings.twitchOauthState = null
-            showMessage("Не удалось открыть Twitch", "На телефоне не найден браузер.")
-        }
+        showTwitchOAuthDialog(auth)
     }
 
-    private fun handleTwitchAuthIntent(sourceIntent: Intent?, loadAfter: Boolean): Boolean {
-        val data = sourceIntent?.data ?: return false
-        if (data.scheme != "sohr" || data.host != "twitch-auth") return false
+    private fun showTwitchOAuthDialog(authUri: Uri) {
+        twitchAuthDialog?.dismiss()
 
+        val dialog = Dialog(this)
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(bg)
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+        }
+
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        header.addView(
+            TextView(this).apply {
+                text = "Вход в Twitch"
+                textSize = 19f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(this@MainActivity.text)
+            },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        )
+
+        val close = TextView(this).apply {
+            text = "×"
+            textSize = 26f
+            gravity = Gravity.CENTER
+            setTextColor(muted)
+            background = roundedBg(panel, 18)
+            setOnClickListener {
+                settings.twitchOauthState = null
+                dialog.dismiss()
+                showAccount()
+            }
+        }
+        header.addView(close, LinearLayout.LayoutParams(dp(42), dp(42)))
+        page.addView(header)
+
+        page.addView(TextView(this).apply {
+            text = "Войди в Twitch и подтверди доступ. После подтверждения SOHR сам завершит вход."
+            textSize = 12.5f
+            setTextColor(muted)
+            setPadding(0, dp(7), 0, dp(10))
+        })
+
+        val webView = WebView(this).apply {
+            setBackgroundColor(Color.parseColor("#0E0E10"))
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.databaseEnabled = true
+            settings.loadsImagesAutomatically = true
+            settings.javaScriptCanOpenWindowsAutomatically = false
+            settings.setSupportMultipleWindows(false)
+
+            CookieManager.getInstance().setAcceptCookie(true)
+            CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+
+            webViewClient = object : WebViewClient() {
+                private fun intercept(url: String?): Boolean {
+                    if (url.isNullOrBlank()) return false
+                    if (!url.startsWith(TWITCH_REDIRECT_URI, ignoreCase = true)) return false
+
+                    stopLoading()
+                    handleTwitchOAuthCallback(Uri.parse(url))
+                    return true
+                }
+
+                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean =
+                    intercept(request?.url?.toString())
+
+                @Suppress("DEPRECATION")
+                override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean =
+                    intercept(url)
+            }
+
+            loadUrl(authUri.toString())
+        }
+
+        page.addView(
+            webView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            ).apply { topMargin = dp(4) }
+        )
+
+        dialog.setContentView(page)
+        dialog.setCanceledOnTouchOutside(false)
+        dialog.setOnCancelListener {
+            settings.twitchOauthState = null
+            twitchAuthDialog = null
+        }
+        dialog.setOnDismissListener {
+            if (twitchAuthDialog === dialog) twitchAuthDialog = null
+            runCatching {
+                webView.stopLoading()
+                webView.loadUrl("about:blank")
+                webView.destroy()
+            }
+        }
+
+        dialog.show()
+        dialog.window?.apply {
+            setBackgroundDrawable(ColorDrawable(bg))
+            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        }
+        twitchAuthDialog = dialog
+    }
+
+    private fun handleTwitchOAuthCallback(data: Uri) {
         fun decode(value: String): String =
             runCatching { java.net.URLDecoder.decode(value, "UTF-8") }.getOrDefault(value)
 
@@ -2800,52 +2902,79 @@ class MainActivity : AppCompatActivity() {
             data.getQueryParameter(key)?.let { params[key] = it }
         }
 
-        sourceIntent.data = null
-
         val error = params["error"]
         if (!error.isNullOrBlank()) {
+            twitchAuthDialog?.dismiss()
+            twitchAuthDialog = null
             settings.twitchOauthState = null
-            val description = params["error_description"]?.takeIf { it.isNotBlank() }
             showMessage(
                 "Вход Twitch отменён",
-                description ?: error
+                params["error_description"]?.takeIf { it.isNotBlank() } ?: error
             )
-            return true
+            return
         }
 
         val expectedState = settings.twitchOauthState
         val returnedState = params["state"]
         if (expectedState.isNullOrBlank() || returnedState.isNullOrBlank() || expectedState != returnedState) {
+            twitchAuthDialog?.dismiss()
+            twitchAuthDialog = null
             settings.twitchOauthState = null
             showMessage(
                 "Не удалось подтвердить вход Twitch",
-                "Проверка безопасности входа не совпала. Нажми «Подключить Twitch» и войди ещё раз."
+                "Проверка безопасности входа не совпала. Попробуй ещё раз."
             )
-            return true
+            return
         }
 
         val token = params["access_token"]
         if (token.isNullOrBlank()) {
+            twitchAuthDialog?.dismiss()
+            twitchAuthDialog = null
             settings.twitchOauthState = null
             showMessage(
-                "Twitch не вернул доступ",
-                "Авторизация завершилась без токена. Попробуй войти ещё раз."
+                "Twitch не вернул токен",
+                "Авторизация завершилась без access token."
             )
-            return true
+            return
         }
 
-        settings.twitchAccessToken = token
-        settings.twitchRefreshToken = null
-        settings.twitchOauthState = null
-        settings.twitchLogin = null
-        settings.videoSource = "twitch"
-        pendingTwitchWelcome = true
-        suppressNextRootAnimation = true
+        twitchAuthDialog?.dismiss()
+        twitchAuthDialog = null
 
-        if (loadAfter) {
-            showLoading("Twitch подключён. Загружаем записи…")
-            loadTwitchVideos(inPlace = false)
+        lifecycleScope.launch {
+            try {
+                showLoading("Проверяем Twitch…")
+                val clientId = BuildConfig.TWITCH_CLIENT_ID.trim()
+                val login = TwitchApi.validateToken(clientId, token)
+
+                settings.twitchAccessToken = token
+                settings.twitchRefreshToken = null
+                settings.twitchOauthState = null
+                settings.twitchLogin = login.takeIf { it.isNotBlank() }
+                settings.videoSource = "twitch"
+                pendingTwitchWelcome = true
+                suppressNextRootAnimation = true
+
+                loadTwitchVideos(inPlace = false)
+            } catch (e: Exception) {
+                settings.twitchAccessToken = null
+                settings.twitchRefreshToken = null
+                settings.twitchOauthState = null
+                settings.twitchLogin = null
+                showMessage(
+                    "Не удалось подключить Twitch",
+                    e.message ?: "Twitch не подтвердил токен."
+                )
+            }
         }
+    }
+
+    private fun handleTwitchAuthIntent(sourceIntent: Intent?, loadAfter: Boolean): Boolean {
+        val data = sourceIntent?.data ?: return false
+        if (data.scheme != "sohr" || data.host != "twitch-auth") return false
+        sourceIntent.data = null
+        handleTwitchOAuthCallback(data)
         return true
     }
 
