@@ -2738,37 +2738,41 @@ class MainActivity : AppCompatActivity() {
             showMessage("Twitch ещё не подключён", "В сборке отсутствует Twitch Client ID.")
             return
         }
+        if (twitchAuthJob?.isActive == true) {
+            Toast.makeText(this, "Вход Twitch уже запущен", Toast.LENGTH_SHORT).show()
+            return
+        }
 
-        twitchAuthJob?.cancel()
         twitchAuthJob = lifecycleScope.launch {
             try {
-                showLoading("Готовим вход Twitch…")
+                showLoading("Создаём код Twitch…")
                 val device = TwitchApi.startDeviceAuthorization(clientId)
+                val code = device.userCode.trim()
+                val activationUri = buildTwitchActivationUri(device)
 
-                val activationUri = Uri.parse(device.verificationUri)
-                val opened = runCatching {
-                    startActivity(Intent(Intent.ACTION_VIEW, activationUri))
-                    true
-                }.getOrElse { false }
+                copyTwitchCode(code)
+                showLoading("Код Twitch: $code\nПодтверди вход в браузере…")
 
+                val opened = openTwitchActivation(activationUri)
                 if (!opened) {
                     showMessage(
                         "Не удалось открыть Twitch",
-                        "Открой ${device.verificationUri} и введи код ${device.userCode}."
+                        "Открой ${device.verificationUri} в браузере и введи код $code. Код уже скопирован."
                     )
                     return@launch
                 }
 
                 Toast.makeText(
                     this@MainActivity,
-                    "Подтверди вход в Twitch. SOHR подключит аккаунт автоматически.",
+                    "Код Twitch $code скопирован. Если Twitch попросит код — просто вставь его.",
                     Toast.LENGTH_LONG
                 ).show()
 
                 val expiresAt = System.currentTimeMillis() + device.expiresIn * 1000L
+                val pollDelayMs = device.interval.coerceIn(5, 15) * 1000L
                 while (kotlinx.coroutines.currentCoroutineContext().isActive &&
                     System.currentTimeMillis() < expiresAt) {
-                    delay(device.interval * 1000L)
+                    delay(pollDelayMs)
                     val token = TwitchApi.pollDeviceAuthorization(clientId, device.deviceCode) ?: continue
 
                     settings.twitchAccessToken = token.accessToken
@@ -2784,7 +2788,12 @@ class MainActivity : AppCompatActivity() {
 
                 showMessage(
                     "Время входа Twitch истекло",
-                    "Нажми войти в Twitch ещё раз и подтверди вход."
+                    "Нажми «Подключить Twitch» ещё раз. Новый код создастся автоматически."
+                )
+            } catch (e: TwitchAuthException) {
+                showMessage(
+                    "Не удалось войти в Twitch",
+                    e.message ?: "Twitch отклонил вход. Попробуй ещё раз."
                 )
             } catch (e: Exception) {
                 showMessage(
@@ -2796,6 +2805,59 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
+    private fun buildTwitchActivationUri(device: TwitchDeviceAuthorization): Uri {
+        val base = Uri.parse(device.verificationUri)
+        if (!base.getQueryParameter("device-code").isNullOrBlank()) return base
+
+        val builder = base.buildUpon()
+        if (base.getQueryParameter("public").isNullOrBlank()) {
+            builder.appendQueryParameter("public", "true")
+        }
+        builder.appendQueryParameter("device-code", device.userCode)
+        return builder.build()
+    }
+
+    private fun copyTwitchCode(code: String) {
+        if (code.isBlank()) return
+        val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+            as? android.content.ClipboardManager
+        clipboard?.setPrimaryClip(
+            android.content.ClipData.newPlainText("Twitch login code", code)
+        )
+    }
+
+    private fun openTwitchActivation(uri: Uri): Boolean = runCatching {
+        val baseIntent = Intent(Intent.ACTION_VIEW, uri).apply {
+            addCategory(Intent.CATEGORY_BROWSABLE)
+        }
+
+        val packages = packageManager
+            .queryIntentActivities(baseIntent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+            .mapNotNull { it.activityInfo?.packageName }
+            .distinct()
+
+        val preferredBrowser = packages.firstOrNull { packageName ->
+            val name = packageName.lowercase(Locale.US)
+            !name.contains("twitch") && (
+                name.contains("chrome") ||
+                    name.contains("firefox") ||
+                    name.contains("browser") ||
+                    name.contains("edge") ||
+                    name.contains("opera") ||
+                    name.contains("brave")
+                )
+        } ?: packages.firstOrNull { !it.lowercase(Locale.US).contains("twitch") }
+
+        val intent = if (preferredBrowser != null) {
+            Intent(baseIntent).setPackage(preferredBrowser)
+        } else {
+            Intent.createChooser(baseIntent, "Открыть вход Twitch")
+        }
+
+        startActivity(intent)
+        true
+    }.getOrElse { false }
 
     private fun handleTwitchAuthIntent(sourceIntent: Intent?, loadAfter: Boolean): Boolean {
         // Совместимость со старыми SOHR-ссылками. Новые версии используют Device Code Flow
