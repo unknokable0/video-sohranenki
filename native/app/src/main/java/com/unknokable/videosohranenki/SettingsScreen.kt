@@ -111,7 +111,7 @@ class SettingsScreen(
             icon = "↓",
             iconColor = "#8B5CF6",
             title = "Проверить обновления",
-            description = "SOHR " + BuildConfig.VERSION_NAME
+            description = "Автопроверка активна • SOHR " + BuildConfig.VERSION_NAME
         ) {
             onCheckUpdates()
         })
