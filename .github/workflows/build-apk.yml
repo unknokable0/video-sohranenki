@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: sohr-build-main-v19
+  group: sohr-build-main-v20
   cancel-in-progress: true
 
 jobs:
@@ -44,11 +44,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 5.3.0-test19 version
+      - name: Assign SOHR 5.3.0-test20 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=503019" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=5.3.0-test19" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=503020" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=5.3.0-test20" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -94,7 +94,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 5.3.0-test19 • in-app Twitch implicit OAuth • callback interception • token validation • compile fix • fresh build queue • correct version metadata • stable updater assets"
+            "notes": "SOHR 5.3.0-test20 • Twitch live channel names • safe random live test • refined streak flame • active auto-check status"
           }
           EOF
           cat update.json
