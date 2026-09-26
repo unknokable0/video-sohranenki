@@ -13,7 +13,9 @@ import android.view.animation.PathInterpolator
 
 class LiveAudioToggleView(
     context: Context,
-    private val accentColor: Int
+    private val accentColor: Int,
+    private val controlBackgroundColor: Int = accentColor,
+    private val controlIconColor: Int = Color.WHITE
 ) : View(context) {
 
     private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -21,13 +23,13 @@ class LiveAudioToggleView(
     }
     private val speakerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = Color.WHITE
+        color = controlIconColor
     }
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
-        color = Color.WHITE
+        color = controlIconColor
     }
     private val speaker = Path()
 
@@ -119,7 +121,7 @@ class LiveAudioToggleView(
         val cy = height / 2f
         val u = size / 40f
 
-        backgroundPaint.color = withAlpha(accentColor, 215)
+        backgroundPaint.color = controlBackgroundColor
         canvas.drawCircle(cx, cy, size * 0.5f, backgroundPaint)
 
         speaker.reset()
@@ -135,7 +137,7 @@ class LiveAudioToggleView(
         linePaint.strokeWidth = 1.7f * u
 
         val soundAlpha = ((1f - mutedProgress) * 255f).toInt().coerceIn(0, 255)
-        linePaint.color = withAlpha(Color.WHITE, soundAlpha)
+        linePaint.color = withAlpha(controlIconColor, soundAlpha)
 
         val innerWave = RectF(
             cx - 1f * u,
