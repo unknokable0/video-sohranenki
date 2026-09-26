@@ -44,20 +44,20 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 5.3.0-test7 version
+      - name: Assign SOHR 5.3.0-test8 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=503007" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=5.3.0-test7" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=503008" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=5.3.0-test8" >> "$GITHUB_ENV"
 
       - name: Verify Twitch Device Code endpoint
-        if: ${{ env.TWITCH_CLIENT_ID != '' }}
         shell: bash
         run: |
+          DEVICE_CLIENT_ID="${TWITCH_CLIENT_ID:-gnr3cikerodr25wpbrb04a11031qiz}"
           RESPONSE="$(curl --silent --show-error --fail-with-body \
             -X POST 'https://id.twitch.tv/oauth2/device' \
             -H 'Content-Type: application/x-www-form-urlencoded' \
-            --data-urlencode "client_id=$TWITCH_CLIENT_ID" \
+            --data-urlencode "client_id=$DEVICE_CLIENT_ID" \
             --data-urlencode 'scopes=' 2>/tmp/twitch-device-error.txt || true)"
           export RESPONSE
           python3 - <<'PY'
@@ -96,7 +96,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/SOHR.apk",
             "sha256": "$SHA256",
-            "notes": "SOHR 5.3.0-test7 • Twitch Device Code Flow • no redirect or GitHub Pages dependency"
+            "notes": "SOHR 5.3.0-test8 • verified Twitch Device Code Flow • no redirect or GitHub Pages dependency"
           }
           EOF
           cat update.json
