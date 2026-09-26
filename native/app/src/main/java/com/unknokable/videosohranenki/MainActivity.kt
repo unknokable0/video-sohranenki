@@ -113,6 +113,7 @@ class MainActivity : AppCompatActivity() {
     private var feedRefreshLoader: LoadingWaveView? = null
     private var feedRefreshCompletedFlash = false
     private var startupUpdateCheckDone = false
+    private var onboardingActive = false
     private var videoSection = 1 // 1 collections, 2 watched
     private var pendingVideoSectionCrossfade = false
     private var pendingVideoSectionDirection = 0
@@ -430,23 +431,232 @@ class MainActivity : AppCompatActivity() {
                 telegramReady = true
                 ensureStreamServer()
                 cleanupStorage()
+
+                val shouldShowTour = !settings.postLoginTourSeen
+                onboardingActive = shouldShowTour
+
                 val zone = ZoneId.systemDefault()
                 val cutoff = LocalDate.now(zone).minusDays(6).atStartOfDay(zone).toEpochSecond()
                 val cached = videoCache.load().filter { it.localPath != null || it.date.toLong() >= cutoff }
                     .sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })
                 telegramVideos = cached
                 if (cached.isNotEmpty()) updateStatsSnapshot(cached)
-                if (settings.videoSource == "telegram" && cached.isNotEmpty()) {
+
+                if (shouldShowTour) {
+                    currentVideos = cached
+                    runOnUiThread { showPostLoginOnboarding() }
+                } else if (settings.videoSource == "telegram" && cached.isNotEmpty()) {
                     currentVideos = cached
                     runOnUiThread { suppressNextRootAnimation = true; showFeed(cached) }
                 } else if (settings.videoSource == "twitch") {
                     runOnUiThread { showSelectedVideoSource(forceRefresh = true) }
                 }
+
                 loadVideos(inPlace = cached.isNotEmpty() || settings.videoSource != "telegram")
             }
             is TdApi.AuthorizationStateLoggingOut -> runOnUiThread { showLoading("Выходим…") }
             is TdApi.AuthorizationStateClosing -> runOnUiThread { showLoading("Закрываем соединение…") }
             is TdApi.AuthorizationStateClosed -> Unit
+        }
+    }
+
+
+    private fun showPostLoginOnboarding() {
+        onboardingActive = true
+        startupPhase = false
+        startupStatusView = null
+
+        data class TourPage(val icon: Int, val title: String, val body: String)
+        val pages = listOf(
+            TourPage(R.drawable.ic_nav_video, "Все записи в одном месте", "SOHR собирает последние видео и раскладывает их по дням, чтобы нужный стрим находился сразу."),
+            TourPage(R.drawable.ic_play, "Продолжай с того же места", "SOHR запоминает позицию просмотра. Под начатым видео появится тонкая полоска прогресса — как на YouTube."),
+            TourPage(R.drawable.ic_nav_streak, "Не теряй Streak", "Смотри записи в разные дни — SOHR сохранит серию и покажет её уровень в отдельной вкладке."),
+            TourPage(R.drawable.ic_refresh, "Обновления прямо в SOHR", "Новые версии проверяются внутри приложения. Если обновление доступно, SOHR скачает APK и откроет установку.")
+        )
+
+        val page = FrameLayout(this).apply { setBackgroundColor(bg) }
+
+        val skip = TextView(this).apply {
+            text = "Пропустить"
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(muted)
+            background = roundedBg(palette.surfaceAlt, 16)
+        }
+        page.addView(skip, FrameLayout.LayoutParams(dp(96), dp(42), Gravity.TOP or Gravity.END).apply {
+            topMargin = dp(18)
+            marginEnd = dp(18)
+        })
+
+        val center = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(30), 0, dp(30), 0)
+        }
+        page.addView(center, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            Gravity.CENTER
+        ))
+
+        val iconShell = FrameLayout(this).apply {
+            background = roundedBg(palette.surfaceAlt, 34)
+        }
+        val icon = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(25), dp(25), dp(25), dp(25))
+            setColorFilter(purple)
+        }
+        iconShell.addView(icon, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ))
+        center.addView(iconShell, LinearLayout.LayoutParams(dp(112), dp(112)).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+        })
+
+        val title = TextView(this).apply {
+            textSize = 26f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+            setPadding(0, dp(24), 0, 0)
+        }
+        center.addView(title, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
+
+        val body = TextView(this).apply {
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setTextColor(muted)
+            setLineSpacing(dp(2).toFloat(), 1.08f)
+            setPadding(dp(4), dp(10), dp(4), 0)
+        }
+        center.addView(body, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
+
+        val dots = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        center.addView(dots, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(36)
+        ).apply { topMargin = dp(18) })
+
+        val button = Button(this).apply {
+            setTextColor(Color.WHITE)
+            setTypeface(typeface, Typeface.BOLD)
+            background = roundedBg(purple, 17)
+        }
+        page.addView(button, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(54),
+            Gravity.BOTTOM
+        ).apply {
+            marginStart = dp(22)
+            marginEnd = dp(22)
+            bottomMargin = dp(28)
+        })
+
+        var index = 0
+
+        fun finishTour() {
+            settings.postLoginTourSeen = true
+            onboardingActive = false
+            suppressNextRootAnimation = true
+            showSelectedVideoSource(forceRefresh = false)
+        }
+
+        fun renderTourPage(next: Int, animate: Boolean) {
+            index = next.coerceIn(0, pages.lastIndex)
+            val data = pages[index]
+
+            fun applyData() {
+                icon.setImageResource(data.icon)
+                icon.rotation = 0f
+                title.text = data.title
+                body.text = data.body
+                button.text = if (index == pages.lastIndex) "Начать" else "Продолжить"
+
+                dots.removeAllViews()
+                pages.indices.forEach { dotIndex ->
+                    dots.addView(
+                        View(this).apply {
+                            background = roundedBg(if (dotIndex == index) purple else palette.stroke, 4)
+                        },
+                        LinearLayout.LayoutParams(
+                            if (dotIndex == index) dp(22) else dp(7),
+                            dp(7)
+                        ).apply {
+                            marginStart = dp(4)
+                            marginEnd = dp(4)
+                        }
+                    )
+                }
+            }
+
+            if (!animate) {
+                applyData()
+                return
+            }
+
+            center.animate().cancel()
+            center.animate()
+                .alpha(0f)
+                .translationX(-dp(18).toFloat())
+                .setDuration(120L)
+                .withEndAction {
+                    applyData()
+                    center.translationX = dp(18).toFloat()
+                    iconShell.scaleX = 0.92f
+                    iconShell.scaleY = 0.92f
+                    center.animate()
+                        .alpha(1f)
+                        .translationX(0f)
+                        .setDuration(230L)
+                        .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                        .start()
+                    iconShell.animate()
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .rotationBy(6f)
+                        .setDuration(300L)
+                        .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                        .start()
+                }
+                .start()
+        }
+
+        button.setOnClickListener {
+            animatePress(button)
+            if (index >= pages.lastIndex) finishTour() else renderTourPage(index + 1, true)
+        }
+        skip.setOnClickListener {
+            animatePress(skip)
+            finishTour()
+        }
+
+        renderTourPage(0, false)
+        replaceRoot(page)
+
+        if (settings.animations) {
+            iconShell.alpha = 0f
+            iconShell.scaleX = 0.84f
+            iconShell.scaleY = 0.84f
+            title.alpha = 0f
+            body.alpha = 0f
+            button.alpha = 0f
+            iconShell.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(360L)
+                .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)).start()
+            title.animate().alpha(1f).setStartDelay(100L).setDuration(240L).start()
+            body.animate().alpha(1f).setStartDelay(150L).setDuration(260L).start()
+            button.animate().alpha(1f).setStartDelay(210L).setDuration(260L).start()
         }
     }
 
@@ -576,11 +786,18 @@ class MainActivity : AppCompatActivity() {
             background = roundedBg(palette.surfaceAlt, 16)
         }
 
-        val prefix = TextView(this).apply {
+        var prefixUpdating = false
+        val prefix = EditText(this).apply {
+            hint = "+"
             textSize = 16f
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(this@MainActivity.text)
-            setPadding(dp(4), 0, dp(10), 0)
+            setHintTextColor(muted)
+            setPadding(dp(4), 0, dp(8), 0)
+            inputType = InputType.TYPE_CLASS_PHONE
+            setSingleLine(true)
+            gravity = Gravity.CENTER
+            background = null
         }
 
         val input = EditText(this).apply {
@@ -602,7 +819,11 @@ class MainActivity : AppCompatActivity() {
             } else {
                 if (settings.languageCode == "ru") "Выбрать страну" else t("choose_country")
             }
-            prefix.text = if (hasCountry) "+${selected.dialCode}" else "+"
+            prefixUpdating = true
+            val prefixValue = if (hasCountry) "+${selected.dialCode}" else "+"
+            prefix.setText(prefixValue)
+            prefix.setSelection(prefixValue.length)
+            prefixUpdating = false
             formatter = phoneUtil.getAsYouTypeFormatter(if (hasCountry) selected.region else "ZZ")
             val digits = input.text.toString().filter { it.isDigit() }
             if (digits.isNotEmpty()) {
@@ -626,6 +847,31 @@ class MainActivity : AppCompatActivity() {
                 applyCountry()
             }
         }
+
+        prefix.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+            override fun afterTextChanged(s: Editable?) {
+                if (prefixUpdating) return
+                val digits = s?.toString().orEmpty().filter { it.isDigit() }.take(4)
+                val normalized = if (digits.isBlank()) "+" else "+$digits"
+                if (normalized != s?.toString().orEmpty()) {
+                    prefixUpdating = true
+                    prefix.setText(normalized)
+                    prefix.setSelection(normalized.length)
+                    prefixUpdating = false
+                }
+                val code = digits.toIntOrNull() ?: 0
+                val match = regions.firstOrNull { it.dialCode == code }
+                selected = match ?: PhoneCountry(region = "ZZ", name = "", dialCode = code, flag = "")
+                country.text = if (match != null) {
+                    "${match.flag}  ${match.name}   +${match.dialCode}"
+                } else {
+                    if (settings.languageCode == "ru") "Код страны введён вручную" else t("choose_country")
+                }
+                formatter = phoneUtil.getAsYouTypeFormatter(match?.region ?: "ZZ")
+            }
+        })
 
         input.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -660,8 +906,9 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener {
                 animatePress(this)
                 val national = input.text.toString().filter { it.isDigit() }
-                if (selected.dialCode <= 0 || selected.region == "ZZ") {
-                    error.text = if (settings.languageCode == "ru") "Сначала выбери страну" else t("choose_country")
+                val dialDigits = prefix.text.toString().filter { it.isDigit() }
+                if (dialDigits.isBlank()) {
+                    error.text = if (settings.languageCode == "ru") "Введи код страны, например +48" else t("choose_country")
                     error.visibility = View.VISIBLE
                     return@setOnClickListener
                 }
@@ -671,14 +918,14 @@ class MainActivity : AppCompatActivity() {
                     return@setOnClickListener
                 }
 
-                val normalized = "+${selected.dialCode}$national"
+                val normalized = "+$dialDigits$national"
                 error.visibility = View.GONE
                 isEnabled = false
                 alpha = 0.72f
 
                 lifecycleScope.launch {
                     try {
-                        val parsed = phoneUtil.parse(normalized, selected.region)
+                        val parsed = phoneUtil.parse(normalized, selected.region.takeIf { it != "ZZ" } ?: "ZZ")
                         if (!phoneUtil.isValidNumber(parsed)) {
                             throw IllegalArgumentException(t("phone_check"))
                         }
@@ -709,7 +956,7 @@ class MainActivity : AppCompatActivity() {
 
         val help = TextView(this).apply {
             text = if (settings.languageCode == "ru") {
-                "Выбери страну, введи номер и нажми «Продолжить». Telegram сам выберет доступный способ подтверждения для этого номера."
+                "Выбери страну или введи код страны вручную, затем номер и нажми «Продолжить»."
             } else {
                 t("choose_country")
             }
@@ -730,7 +977,7 @@ class MainActivity : AppCompatActivity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             dp(54)
         ).apply { topMargin = dp(10) })
-        phoneRow.addView(prefix)
+        phoneRow.addView(prefix, LinearLayout.LayoutParams(dp(76), ViewGroup.LayoutParams.MATCH_PARENT))
         phoneRow.addView(input, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
         card.addView(submit, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1770,7 +2017,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (inPlace && visibleTelegram) setFeedRefreshLoading(true)
         loadJob = lifecycleScope.launch {
-            if (!inPlace && visibleTelegram) {
+            if (!inPlace && visibleTelegram && !onboardingActive) {
                 withContext(Dispatchers.Main) { showLoading("Собираем записи за неделю…") }
             }
             try {
@@ -1835,6 +2082,9 @@ class MainActivity : AppCompatActivity() {
                     if (settings.videoSource != "telegram") return@withContext
                     val changed = currentVideos.map { it.messageId } != preparedVideos.map { it.messageId }
                     currentVideos = preparedVideos
+                    if (onboardingActive) {
+                        return@withContext
+                    }
                     if (inPlace && !changed) {
                         setFeedRefreshLoading(false, "Готово")
                         feedRefreshButton?.postDelayed({
@@ -1996,9 +2246,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun switchVideoSection(section: Int) {
         if (section !in 1..2 || videoSection == section) return
-        pendingVideoSectionCrossfade = true
-        pendingVideoSectionDirection = if (section > videoSection) 1 else -1
+        pendingVideoSectionCrossfade = false
+        pendingVideoSectionDirection = 0
         pendingRootSlide = 0
+        suppressNextContentAnimation = true
         videoSection = section
         showFeed(currentVideos)
     }
@@ -2033,7 +2284,7 @@ class MainActivity : AppCompatActivity() {
         header.addView(TextView(this).apply {
             val sourceName = if (settings.videoSource == "twitch") "Twitch • @t2x2" else "Telegram • @t2x2_video"
             text=if(videoSection==2) "$sourceName • ${watchedVideos.size} просмотрено • ${watchedGroups.size} сборников" else "$sourceName • Последние 7 дней • ${regularGroups.size} сборников • ${regularVideos.size} видео"
-            textSize=12f; setTextColor(muted); setPadding(0,dp(5),0,dp(10))
+            textSize=12f; setTextColor(muted); setPadding(0,dp(5),0,dp(10)); maxLines=1
         })
 
         val tabs=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(dp(3),dp(3),dp(3),dp(3)); background=roundedBg(palette.surfaceAlt,18) }
@@ -2095,7 +2346,7 @@ class MainActivity : AppCompatActivity() {
         if(visibleGroups.isEmpty()) {
             page.addView(TextView(this).apply { text=if(videoSection==2) "Здесь появятся видео, которые ты отметил как просмотренные." else "Непросмотренных сборников пока нет.";textSize=15f;gravity=Gravity.CENTER;setTextColor(muted);setPadding(dp(28),0,dp(28),0) },LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
         } else {
-            val list=RecyclerView(this).apply { isVerticalScrollBarEnabled=false;isHorizontalScrollBarEnabled=false;overScrollMode=View.OVER_SCROLL_NEVER;layoutManager=LinearLayoutManager(this@MainActivity);adapter=DayCollectionAdapter(visibleGroups,palette,settings.animations){showDayCollection(it)};setBackgroundColor(bg);setHasFixedSize(true);itemAnimator=if(settings.animations)itemAnimator else null }
+            val list=RecyclerView(this).apply { isVerticalScrollBarEnabled=false;isHorizontalScrollBarEnabled=false;overScrollMode=View.OVER_SCROLL_NEVER;layoutManager=LinearLayoutManager(this@MainActivity);adapter=DayCollectionAdapter(visibleGroups,palette,settings.animations){showDayCollection(it)};setBackgroundColor(bg);setHasFixedSize(true);itemAnimator=null }
             page.addView(list,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
         }
         replaceRoot(withBottomNav(page,SohrTab.VIDEOS))
@@ -2166,7 +2417,12 @@ class MainActivity : AppCompatActivity() {
             isHorizontalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
             layoutManager = LinearLayoutManager(this@MainActivity)
-            adapter = VideoAdapter(sortedVideos, palette, settings.animations) { openPlayer(it) }
+            adapter = VideoAdapter(
+                sortedVideos,
+                palette,
+                settings.animations,
+                progressFor = { playbackProgress(it) }
+            ) { openPlayer(it) }
             setBackgroundColor(bg)
             setHasFixedSize(true)
             itemAnimator = if (settings.animations) itemAnimator else null
@@ -2174,6 +2430,14 @@ class MainActivity : AppCompatActivity() {
 
         page.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         replaceRoot(withBottomNav(page, SohrTab.VIDEOS))
+    }
+
+    private fun playbackProgress(item: VideoItem): Float {
+        val durationMs = item.durationSeconds.toLong() * 1000L
+        if (durationMs <= 0L) return 0f
+        val positionMs = settings.playbackPosition(item.messageId)
+        if (positionMs < 5_000L || positionMs >= durationMs - 10_000L) return 0f
+        return (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
     }
 
     private fun dayTitle(date: LocalDate): String {
@@ -3620,13 +3884,13 @@ class MainActivity : AppCompatActivity() {
                     if (manual) {
                         showSettings()
                         root.post {
-                            ModernDialogs.showChoices(
+                            ModernDialogs.showNotice(
                                 context = this@MainActivity,
                                 palette = palette,
                                 title = "Обновлений нет",
-                                options = listOf("У тебя последняя версия • " + BuildConfig.VERSION_NAME),
-                                selected = 0
-                            ) { }
+                                message = "У тебя последняя версия SOHR • " + BuildConfig.VERSION_NAME,
+                                button = "Готово"
+                            )
                         }
                     }
                     return@launch

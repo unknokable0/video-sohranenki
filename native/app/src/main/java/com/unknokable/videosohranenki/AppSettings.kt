@@ -39,6 +39,10 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean("light_theme", false)
         set(value) = prefs.edit().putBoolean("light_theme", value).apply()
 
+    var postLoginTourSeen: Boolean
+        get() = prefs.getBoolean("post_login_tour_seen", false)
+        set(value) = prefs.edit().putBoolean("post_login_tour_seen", value).apply()
+
     var videoSource: String
         get() = prefs.getString("video_source", "telegram") ?: "telegram"
         set(value) = prefs.edit().putString("video_source", if (value == "twitch") "twitch" else "telegram").apply()
