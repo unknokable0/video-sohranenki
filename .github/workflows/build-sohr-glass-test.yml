@@ -28,8 +28,8 @@ jobs:
       SOHR_KEYSTORE_PASSWORD: ${{ secrets.SOHR_KEYSTORE_PASSWORD }}
       SOHR_KEY_ALIAS: ${{ secrets.SOHR_KEY_ALIAS }}
       SOHR_KEY_PASSWORD: ${{ secrets.SOHR_KEY_PASSWORD }}
-      SOHR_BUILD_NUMBER: "600002"
-      SOHR_VERSION_NAME: "6.0.0-test2"
+      SOHR_BUILD_NUMBER: "600003"
+      SOHR_VERSION_NAME: "6.0.0-test3"
 
     steps:
       - uses: actions/checkout@v4
