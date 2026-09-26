@@ -2615,7 +2615,7 @@ class MainActivity : AppCompatActivity() {
             onLanguageChanged = {
                 showSettings()
             },
-            onCheckUpdates = { checkForUpdates() }
+            onCheckUpdates = { status -> checkForUpdates(statusView = status) }
         )
         replaceRoot(withBottomNav(screen.build(), SohrTab.SETTINGS))
     }
@@ -2932,7 +2932,7 @@ class MainActivity : AppCompatActivity() {
                 animateThemeReveal(nextLight, nextSource)
             },
             onLanguageChanged = { showSettings() },
-            onCheckUpdates = { checkForUpdates() }
+            onCheckUpdates = { status -> checkForUpdates(statusView = status) }
         ).build()
 
         val nextHost = FrameLayout(this).apply {
@@ -3765,37 +3765,39 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun checkForUpdates(manual: Boolean = true) {
+    private fun checkForUpdates(manual: Boolean = true, statusView: TextView? = null) {
         lifecycleScope.launch {
-            if (manual) showLoading("Проверяем обновления…")
+            if (manual) {
+                statusView?.text = "Проверяем…"
+                statusView?.setTextColor(purple)
+            }
             try {
                 val info = updateManager.check()
                 if (info == null) {
                     if (manual) {
-                        showSettings()
-                        root.post {
-                            ModernDialogs.showChoices(
-                                context = this@MainActivity,
-                                palette = palette,
-                                title = "Обновлений нет",
-                                options = listOf("У тебя последняя версия • " + BuildConfig.VERSION_NAME),
-                                selected = 0
-                            ) { }
-                        }
+                        statusView?.text = "Последняя версия • " + BuildConfig.VERSION_NAME
+                        statusView?.setTextColor(muted)
+                        statusView?.animate()?.cancel()
+                        statusView?.alpha = 0.55f
+                        statusView?.animate()?.alpha(1f)?.setDuration(180L)?.start()
                     }
                     return@launch
                 }
 
                 val runtimePrefs = getSharedPreferences("sohr_runtime", MODE_PRIVATE)
                 if (!manual && runtimePrefs.getInt("ignored_update_code", -1) == info.versionCode) return@launch
-                if (manual) showSettings()
+
+                if (manual) {
+                    statusView?.text = "Доступна " + info.versionName
+                    statusView?.setTextColor(purple)
+                }
 
                 root.post {
                     ModernDialogs.showConfirm(
                         context = this@MainActivity,
                         palette = palette,
                         title = "Доступна новая версия",
-                        message = "SOHR ${info.versionName}",
+                        message = "SOHR " + info.versionName + if (info.notes.isNotBlank()) "\n\n" + info.notes else "",
                         confirm = "Обновить сейчас"
                     ) {
                         downloadAndInstallUpdate(info)
@@ -3803,7 +3805,8 @@ class MainActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 if (manual) {
-                    showSettings()
+                    statusView?.text = "Ошибка проверки • нажми ещё раз"
+                    statusView?.setTextColor(Color.parseColor("#FF6B7A"))
                     root.post {
                         ModernDialogs.showNotice(
                             context = this@MainActivity,

@@ -21,7 +21,7 @@ class SettingsScreen(
     private val onBack: (Boolean) -> Unit,
     private val onThemeChanged: (Boolean, View) -> Unit,
     private val onLanguageChanged: () -> Unit,
-    private val onCheckUpdates: () -> Unit
+    private val onCheckUpdates: (TextView) -> Unit
 ) {
     private var needsReload = false
     private lateinit var frameRoot: FrameLayout
@@ -107,14 +107,7 @@ class SettingsScreen(
             checked = settings.animations
         ) { settings.animations = it })
 
-        root.addView(actionRow(
-            icon = "↓",
-            iconColor = "#8B5CF6",
-            title = "Проверить обновления",
-            description = "SOHR " + BuildConfig.VERSION_NAME
-        ) {
-            onCheckUpdates()
-        })
+        root.addView(updateRow())
 
         val scroll = ScrollView(activity).apply {
             isVerticalScrollBarEnabled = false
@@ -570,6 +563,81 @@ class SettingsScreen(
                     .start()
             }
             .start()
+    }
+
+    private fun updateRow(): View {
+        val row = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(13), dp(12), dp(13))
+            background = rounded(palette.surface, 18)
+            isClickable = true
+            isFocusable = true
+        }
+
+        val iconView = TextView(activity).apply {
+            text = "↓"
+            gravity = Gravity.CENTER
+            textSize = 20f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.parseColor("#8B5CF6"))
+            background = rounded(palette.surfaceAlt, 14)
+        }
+
+        val labels = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), 0, dp(8), 0)
+        }
+
+        val titleView = TextView(activity).apply {
+            text = "Проверить обновления"
+            textSize = 15f
+            setTextColor(palette.text)
+            setTypeface(typeface, Typeface.BOLD)
+        }
+
+        val statusView = TextView(activity).apply {
+            text = "SOHR " + BuildConfig.VERSION_NAME
+            textSize = 12f
+            setTextColor(palette.muted)
+            setPadding(0, dp(3), 0, 0)
+        }
+
+        val arrow = TextView(activity).apply {
+            text = "›"
+            textSize = 27f
+            gravity = Gravity.CENTER
+            setTextColor(palette.muted)
+        }
+
+        labels.addView(titleView)
+        labels.addView(statusView)
+        row.addView(iconView, LinearLayout.LayoutParams(dp(46), dp(46)))
+        row.addView(labels, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        row.addView(arrow, LinearLayout.LayoutParams(dp(34), dp(46)))
+
+        row.setOnClickListener {
+            if (!row.isEnabled) return@setOnClickListener
+            animateTap(row)
+            row.isEnabled = false
+            statusView.text = "Проверяем…"
+            statusView.setTextColor(palette.accent)
+            arrow.text = "…"
+            onCheckUpdates(statusView)
+            row.postDelayed({
+                row.isEnabled = true
+                arrow.text = "›"
+            }, 1_200L)
+        }
+
+        return LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(row)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(10) }
+        }
     }
 
     private fun actionRow(
