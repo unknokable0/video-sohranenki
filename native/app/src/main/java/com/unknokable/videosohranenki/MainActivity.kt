@@ -2494,7 +2494,7 @@ class MainActivity : AppCompatActivity() {
             textSize = 11.3f
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
-            setTextColor(Color.parseColor("#FF5F7E"))
+            setTextColor(purple)
             setPadding(0, dp(3), 0, 0)
         })
         if (live.gameName.isNotBlank() || live.title.isNotBlank()) {
@@ -2521,7 +2521,7 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
-            background = roundedBg(Color.parseColor("#D94B68"), 14)
+            background = roundedBg(purple, 14)
         }
         meta.addView(
             open,
@@ -4430,10 +4430,12 @@ class MainActivity : AppCompatActivity() {
             // got out of sync after navigation or an OEM-specific layout event.
             playerScreen?.setFullscreenMode(enabled)
             twitchPlayerScreen?.setFullscreenMode(enabled)
+            twitchLivePlayerScreen?.setFullscreenMode(enabled)
 
             val actual =
                 playerScreen?.isFullscreen
                     ?: twitchPlayerScreen?.isFullscreen
+                    ?: twitchLivePlayerScreen?.isFullscreen
                     ?: false
 
             fullScreen = actual
@@ -4442,6 +4444,7 @@ class MainActivity : AppCompatActivity() {
             fullScreen = false
             runCatching { playerScreen?.exitFullscreen() }
             runCatching { twitchPlayerScreen?.exitFullscreen() }
+            runCatching { twitchLivePlayerScreen?.exitFullscreen() }
             runCatching { applySystemBars(false) }
         }
     }
