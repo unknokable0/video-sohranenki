@@ -476,7 +476,7 @@ class TwitchLivePlayerScreen(
                     if (!destroyed) {
                         chatStatus.text = status
                         chatStatus.setTextColor(
-                            if (status == "Чат подключён") Color.parseColor("#72D8A4")
+                            if (status == "Чат подключён") palette.accent
                             else palette.muted
                         )
                     }
