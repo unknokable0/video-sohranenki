@@ -16,6 +16,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil.load
@@ -186,7 +187,10 @@ class TwitchLivePreviewView(
                     .setPrioritizeTimeOverSizeThresholds(true)
                     .build()
 
-                val exo = ExoPlayer.Builder(context)
+                val renderersFactory = DefaultRenderersFactory(context)
+                    .setEnableDecoderFallback(true)
+
+                val exo = ExoPlayer.Builder(context, renderersFactory)
                     .setLoadControl(loadControl)
                     .build()
 
