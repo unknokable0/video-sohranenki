@@ -1,14 +1,13 @@
 package com.unknokable.videosohranenki
 
 import android.app.Activity
+import android.content.pm.ActivityInfo
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.content.pm.ActivityInfo
 import android.os.Handler
 import android.os.Looper
-import android.text.Spannable
 import android.text.Spanned
 import android.text.SpannableStringBuilder
 import android.text.style.ForegroundColorSpan
@@ -21,6 +20,7 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -51,27 +51,46 @@ class TwitchLivePlayerScreen(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val chatClient = TwitchChatClient()
+    private val handler = Handler(Looper.getMainLooper())
 
     private val playerCard = FrameLayout(activity)
     private val playerView = PlayerView(activity)
     private val loader = LoadingWaveView(activity, palette.accent)
+    private val controlsOverlay = FrameLayout(activity)
     private val playPause = ImageButton(activity)
     private val audioToggle = LiveAudioToggleView(activity, palette.accent)
     private val fullscreenButton = ImageButton(activity)
-    private val controlsOverlay = FrameLayout(activity)
-    private val handler = Handler(Looper.getMainLooper())
-    private var controlsVisible = true
-    private val hideControlsRunnable = Runnable { hideControls() }
 
     private val chatStatus = TextView(activity)
     private val chatScroll = ScrollView(activity)
     private val chatList = LinearLayout(activity)
+    private val chatEmpty = TextView(activity)
     private val chatRows = mutableListOf<View>()
 
     private var player: ExoPlayer? = null
     private var muted = false
     private var fullscreen = false
     private var destroyed = false
+    private var controlsVisible = true
+    private var chatHasMessages = false
+
+    private val hideControlsRunnable = Runnable { hideControls() }
+    private val liveEdgeGuardRunnable = object : Runnable {
+        override fun run() {
+            val p = player
+            if (!destroyed && p != null) {
+                val offset = p.currentLiveOffset
+                if (
+                    p.isPlaying &&
+                    offset != C.TIME_UNSET &&
+                    offset > 6_500L
+                ) {
+                    p.seekToDefaultPosition()
+                }
+                handler.postDelayed(this, 4_000L)
+            }
+        }
+    }
 
     val isFullscreen: Boolean
         get() = fullscreen
@@ -83,13 +102,17 @@ class TwitchLivePlayerScreen(
         root.addView(buildHeader())
 
         playerCard.apply {
-            setBackgroundColor(Color.BLACK)
-            background = rounded(Color.BLACK, 18)
+            background = rounded(Color.BLACK, 24)
             clipToOutline = true
             isClickable = true
             isFocusable = true
+            elevation = dp(1).toFloat()
             setOnClickListener {
-                if (controlsVisible) hideControls() else showControls(autoHide = player?.isPlaying == true)
+                if (controlsVisible) {
+                    hideControls()
+                } else {
+                    showControls(autoHide = player?.isPlaying == true)
+                }
             }
         }
 
@@ -106,17 +129,17 @@ class TwitchLivePlayerScreen(
             )
         )
 
-        loader.alpha = 0.92f
+        loader.alpha = 0.95f
         playerCard.addView(
             loader,
-            FrameLayout.LayoutParams(dp(54), dp(54), Gravity.CENTER)
+            FrameLayout.LayoutParams(dp(50), dp(50), Gravity.CENTER)
         )
 
         playerCard.addView(
             buildLiveStatusPill(),
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                dp(30),
+                dp(32),
                 Gravity.TOP or Gravity.START
             ).apply {
                 leftMargin = dp(10)
@@ -124,7 +147,7 @@ class TwitchLivePlayerScreen(
             }
         )
 
-        buildPlayerOverlay()
+        buildPlayerControls()
         playerCard.addView(
             controlsOverlay,
             FrameLayout.LayoutParams(
@@ -145,14 +168,30 @@ class TwitchLivePlayerScreen(
             }
         )
 
-        root.addView(buildStreamInfo())
         root.addView(
-            buildChat(),
+            buildStreamInfoCard(),
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                marginStart = dp(12)
+                marginEnd = dp(12)
+                topMargin = dp(10)
+            }
+        )
+
+        root.addView(
+            buildChatCard(),
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 0,
                 1f
-            )
+            ).apply {
+                marginStart = dp(12)
+                marginEnd = dp(12)
+                topMargin = dp(10)
+                bottomMargin = dp(12)
+            }
         )
 
         startPlayer()
@@ -166,9 +205,17 @@ class TwitchLivePlayerScreen(
             setPadding(dp(12), dp(10), dp(12), dp(8))
         }
 
-        val back = iconButton(R.drawable.ic_back, palette.surfaceAlt, 42).apply {
+        val back = iconButton(
+            resId = R.drawable.ic_back,
+            backgroundColor = palette.surface,
+            tintColor = palette.text,
+            size = 40
+        ).apply {
             contentDescription = "Назад"
-            setOnClickListener { onBack() }
+            setOnClickListener {
+                pulseButton(this)
+                onBack()
+            }
         }
 
         val pulse = LivePulseView(activity).apply {
@@ -181,23 +228,24 @@ class TwitchLivePlayerScreen(
         }
         titles.addView(TextView(activity).apply {
             text = live.displayName.ifBlank { live.login }
-            textSize = 16f
+            textSize = 17f
             maxLines = 1
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(palette.text)
         })
         titles.addView(TextView(activity).apply {
-            text = "@" + live.login + " • В эфире"
+            text = "@" + live.login + "  •  прямой эфир"
             textSize = 11.5f
-            setTextColor(palette.accent)
+            maxLines = 1
+            setTextColor(palette.muted)
             setPadding(0, dp(2), 0, 0)
         })
 
-        row.addView(back, LinearLayout.LayoutParams(dp(42), dp(42)))
+        row.addView(back, LinearLayout.LayoutParams(dp(40), dp(40)))
         row.addView(
             pulse,
-            LinearLayout.LayoutParams(dp(24), dp(24)).apply {
-                marginStart = dp(10)
+            LinearLayout.LayoutParams(dp(22), dp(22)).apply {
+                marginStart = dp(11)
             }
         )
         row.addView(
@@ -211,8 +259,8 @@ class TwitchLivePlayerScreen(
         val pill = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(8), 0, dp(10), 0)
-            background = rounded(Color.parseColor("#514E57"), 13)
+            setPadding(dp(8), 0, dp(11), 0)
+            background = rounded(Color.parseColor("#B43A3842"), 14)
         }
 
         val pulse = LivePulseView(activity).apply {
@@ -221,7 +269,7 @@ class TwitchLivePlayerScreen(
         pill.addView(
             pulse,
             LinearLayout.LayoutParams(dp(20), dp(20)).apply {
-                marginEnd = dp(3)
+                marginEnd = dp(4)
             }
         )
         pill.addView(TextView(activity).apply {
@@ -233,16 +281,23 @@ class TwitchLivePlayerScreen(
         return pill
     }
 
-    private fun buildPlayerOverlay() {
-        controlsOverlay.setBackgroundColor(Color.parseColor("#17000000"))
+    private fun buildPlayerControls() {
+        controlsOverlay.background = GradientDrawable(
+            GradientDrawable.Orientation.BOTTOM_TOP,
+            intArrayOf(
+                Color.parseColor("#7A000000"),
+                Color.parseColor("#19000000"),
+                Color.parseColor("#06000000")
+            )
+        )
         controlsOverlay.alpha = 1f
         controlsOverlay.visibility = View.VISIBLE
 
         playPause.apply {
             setImageResource(R.drawable.ic_pause)
             imageTintList = ColorStateList.valueOf(Color.WHITE)
-            background = rounded(palette.accent, 27)
-            setPadding(dp(14), dp(14), dp(14), dp(14))
+            background = rounded(withAlpha(palette.accent, 232), 25)
+            setPadding(dp(13), dp(13), dp(13), dp(13))
             contentDescription = "Пауза"
             setOnClickListener {
                 val p = player ?: return@setOnClickListener
@@ -258,7 +313,7 @@ class TwitchLivePlayerScreen(
         }
         controlsOverlay.addView(
             playPause,
-            FrameLayout.LayoutParams(dp(54), dp(54), Gravity.CENTER)
+            FrameLayout.LayoutParams(dp(50), dp(50), Gravity.CENTER)
         )
 
         val actions = LinearLayout(activity).apply {
@@ -268,13 +323,13 @@ class TwitchLivePlayerScreen(
 
         audioToggle.apply {
             setMuted(false, animate = false)
-            onMutedChanged = { muted ->
-                this@TwitchLivePlayerScreen.muted = muted
-                player?.volume = if (muted) 0f else 1f
+            onMutedChanged = { nowMuted ->
+                muted = nowMuted
+                player?.volume = if (nowMuted) 0f else 1f
                 showControls(autoHide = player?.isPlaying == true)
             }
         }
-        actions.addView(audioToggle, LinearLayout.LayoutParams(dp(42), dp(42)))
+        actions.addView(audioToggle, LinearLayout.LayoutParams(dp(40), dp(40)))
 
         fullscreenButton.apply {
             setImageResource(R.drawable.ic_fullscreen)
@@ -290,7 +345,7 @@ class TwitchLivePlayerScreen(
         }
         actions.addView(
             fullscreenButton,
-            LinearLayout.LayoutParams(dp(42), dp(42)).apply {
+            LinearLayout.LayoutParams(dp(40), dp(40)).apply {
                 marginStart = dp(8)
             }
         )
@@ -299,7 +354,7 @@ class TwitchLivePlayerScreen(
             actions,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                dp(44),
+                dp(42),
                 Gravity.BOTTOM or Gravity.END
             ).apply {
                 rightMargin = dp(10)
@@ -308,10 +363,15 @@ class TwitchLivePlayerScreen(
         )
     }
 
-    private fun buildStreamInfo(): View {
+    private fun buildStreamInfoCard(): View {
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(13), dp(16), dp(10))
+            setPadding(dp(15), dp(13), dp(15), dp(13))
+            background = roundedStroke(
+                color = palette.surface,
+                strokeColor = palette.stroke,
+                radiusDp = 22
+            )
 
             addView(TextView(activity).apply {
                 text = live.title.ifBlank { live.displayName + " в эфире" }
@@ -325,57 +385,114 @@ class TwitchLivePlayerScreen(
                 text = listOfNotNull(
                     live.gameName.takeIf { it.isNotBlank() },
                     live.viewerCount.toString() + " зрителей"
-                ).joinToString(" • ")
-                textSize = 12f
+                ).joinToString("  •  ")
+                textSize = 11.8f
+                maxLines = 1
                 setTextColor(palette.muted)
-                setPadding(0, dp(5), 0, 0)
+                setPadding(0, dp(6), 0, 0)
             })
         }
     }
 
-    private fun buildChat(): View {
+    private fun buildChatCard(): View {
         val box = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(4), dp(12), dp(12))
+            background = roundedStroke(
+                color = palette.surface,
+                strokeColor = palette.stroke,
+                radiusDp = 24
+            )
+            clipToOutline = true
         }
 
         val header = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(4), dp(6), dp(4), dp(8))
+            setPadding(dp(15), dp(12), dp(12), dp(9))
         }
 
+        val titles = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        titles.addView(TextView(activity).apply {
+            text = "Чат"
+            textSize = 16f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(palette.text)
+        })
+        titles.addView(TextView(activity).apply {
+            text = "Сообщения в реальном времени"
+            textSize = 10.5f
+            setTextColor(palette.muted)
+            setPadding(0, dp(2), 0, 0)
+        })
+
         header.addView(
-            TextView(activity).apply {
-                text = "Чат"
-                textSize = 16f
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(palette.text)
-            },
+            titles,
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         )
 
         chatStatus.apply {
             text = "Подключаем…"
-            textSize = 10.5f
-            setTextColor(palette.muted)
+            textSize = 10f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(palette.accent)
+            setPadding(dp(10), 0, dp(10), 0)
+            background = rounded(palette.accentSoft, 13)
             setOnClickListener {
                 if (text.toString().contains("переподключ", ignoreCase = true)) {
                     onChatScopeMissing()
                 }
             }
         }
-        header.addView(chatStatus)
+        header.addView(
+            chatStatus,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                dp(28)
+            )
+        )
+
         box.addView(header)
 
+        val divider = View(activity).apply {
+            setBackgroundColor(withAlpha(palette.stroke, 150))
+        }
+        box.addView(
+            divider,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(1)
+            ).apply {
+                marginStart = dp(14)
+                marginEnd = dp(14)
+            }
+        )
+
         chatList.orientation = LinearLayout.VERTICAL
-        chatList.setPadding(dp(8), dp(8), dp(8), dp(8))
+        chatList.setPadding(dp(14), dp(8), dp(14), dp(12))
+
+        chatEmpty.apply {
+            text = "Сообщения появятся здесь"
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setTextColor(palette.muted)
+            setPadding(0, dp(22), 0, dp(22))
+        }
+        chatList.addView(
+            chatEmpty,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
 
         chatScroll.apply {
             isFillViewport = true
             isVerticalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
-            background = rounded(palette.surface, 18)
+            setBackgroundColor(Color.TRANSPARENT)
             addView(
                 chatList,
                 ViewGroup.LayoutParams(
@@ -403,13 +520,14 @@ class TwitchLivePlayerScreen(
                 if (destroyed) return@launch
 
                 val loadControl = DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(5_000, 20_000, 400, 800)
+                    .setBufferDurationsMs(2_500, 12_000, 300, 650)
                     .setPrioritizeTimeOverSizeThresholds(true)
                     .build()
 
                 val exo = ExoPlayer.Builder(activity)
                     .setLoadControl(loadControl)
                     .build()
+
                 player = exo
                 playerView.player = exo
                 exo.volume = if (muted) 0f else 1f
@@ -419,29 +537,32 @@ class TwitchLivePlayerScreen(
                     .setUri(hlsUrl)
                     .setLiveConfiguration(
                         MediaItem.LiveConfiguration.Builder()
-                            .setTargetOffsetMs(3_500L)
-                            .setMinPlaybackSpeed(0.98f)
-                            .setMaxPlaybackSpeed(1.04f)
+                            .setTargetOffsetMs(2_800L)
+                            .setMinPlaybackSpeed(0.97f)
+                            .setMaxPlaybackSpeed(1.08f)
                             .build()
                     )
                     .build()
 
                 exo.setMediaItem(mediaItem)
                 exo.prepare()
+
                 exo.addListener(object : Player.Listener {
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
-                        playPause.setImageResource(if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
-                        playPause.contentDescription = if (isPlaying) "Пауза" else "Продолжить"
-                        if (isPlaying) {
-                            scheduleControlsHide()
-                        } else {
-                            showControls(autoHide = false)
-                        }
+                        playPause.setImageResource(
+                            if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play
+                        )
+                        playPause.contentDescription =
+                            if (isPlaying) "Пауза" else "Продолжить"
+
+                        if (isPlaying) scheduleControlsHide()
+                        else showControls(autoHide = false)
                     }
 
                     override fun onRenderedFirstFrame() {
                         loader.visibility = View.GONE
                         scheduleControlsHide()
+                        startLiveEdgeGuard()
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
@@ -463,7 +584,7 @@ class TwitchLivePlayerScreen(
 
     private fun startChat() {
         if (accessToken.isBlank() || accountLogin.isBlank()) {
-            chatStatus.text = "Переподключи Twitch для чата"
+            updateChatStatus("Переподключи Twitch", connected = false)
             return
         }
 
@@ -474,10 +595,13 @@ class TwitchLivePlayerScreen(
             onStatus = { status ->
                 activity.runOnUiThread {
                     if (!destroyed) {
-                        chatStatus.text = status
-                        chatStatus.setTextColor(
-                            if (status == "Чат подключён") palette.accent
-                            else palette.muted
+                        updateChatStatus(
+                            text = when (status) {
+                                "Чат подключён" -> "Онлайн"
+                                "Подключаем чат…" -> "Подключаем…"
+                                else -> status
+                            },
+                            connected = status == "Чат подключён"
                         )
                     }
                 }
@@ -490,10 +614,24 @@ class TwitchLivePlayerScreen(
         )
     }
 
+    private fun updateChatStatus(text: String, connected: Boolean) {
+        chatStatus.text = text
+        chatStatus.setTextColor(if (connected) palette.accent else palette.muted)
+        chatStatus.background = rounded(
+            if (connected) palette.accentSoft else palette.surfaceAlt,
+            13
+        )
+    }
+
     private fun appendChat(message: TwitchChatMessage) {
+        if (!chatHasMessages) {
+            chatHasMessages = true
+            chatList.removeView(chatEmpty)
+        }
+
         val text = SpannableStringBuilder()
             .append(message.displayName)
-            .append(": ")
+            .append("  ")
             .append(message.text)
 
         val nameEnd = message.displayName.length.coerceAtMost(text.length)
@@ -512,42 +650,65 @@ class TwitchLivePlayerScreen(
             )
         }
 
-        val row = TextView(activity).apply {
+        val row = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(6), 0, 0)
+        }
+
+        row.addView(TextView(activity).apply {
             this.text = text
             textSize = 13f
             setTextColor(palette.text)
-            setPadding(dp(10), dp(8), dp(10), dp(8))
-            background = rounded(palette.surfaceAlt, 12)
+            setLineSpacing(0f, 1.08f)
             maxLines = 5
-        }
+        })
+
+        row.addView(View(activity).apply {
+            setBackgroundColor(withAlpha(palette.stroke, 110))
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(1)
+        ).apply {
+            topMargin = dp(7)
+        })
 
         chatList.addView(
             row,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
-                bottomMargin = dp(5)
-            }
+            )
         )
-        chatRows.add(row)
 
-        while (chatRows.size > 70) {
+        if (animationsEnabled) {
+            row.alpha = 0f
+            row.translationY = dp(6).toFloat()
+            row.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setDuration(170L)
+                .start()
+        }
+
+        chatRows.add(row)
+        while (chatRows.size > 80) {
             val old = chatRows.removeAt(0)
             chatList.removeView(old)
         }
 
-        chatScroll.post { chatScroll.fullScroll(View.FOCUS_DOWN) }
+        chatScroll.post {
+            chatScroll.smoothScrollTo(0, chatList.height)
+        }
     }
 
     private fun showPlayerError(message: String) {
         val error = TextView(activity).apply {
             text = message
-            textSize = 13f
+            textSize = 12.5f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
-            setPadding(dp(18), dp(11), dp(18), dp(11))
-            background = rounded(Color.parseColor("#C018111E"), 16)
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+            background = rounded(withAlpha(palette.surfaceAlt, 235), 15)
         }
 
         playerCard.addView(
@@ -564,19 +725,17 @@ class TwitchLivePlayerScreen(
         if (fullscreen == enabled) return
         fullscreen = enabled
 
-        if (enabled) {
-            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        } else {
-            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-        }
+        activity.requestedOrientation =
+            if (enabled) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
 
         val params = playerCard.layoutParams as LinearLayout.LayoutParams
         if (enabled) {
+            root.setBackgroundColor(Color.BLACK)
             for (i in 0 until root.childCount) {
                 val child = root.getChildAt(i)
                 child.visibility = if (child === playerCard) View.VISIBLE else View.GONE
             }
-            root.setPadding(0, 0, 0, 0)
             playerCard.background = null
             playerCard.clipToOutline = false
             params.width = ViewGroup.LayoutParams.MATCH_PARENT
@@ -585,8 +744,11 @@ class TwitchLivePlayerScreen(
             params.marginStart = 0
             params.marginEnd = 0
         } else {
-            for (i in 0 until root.childCount) root.getChildAt(i).visibility = View.VISIBLE
-            playerCard.background = rounded(Color.BLACK, 18)
+            root.setBackgroundColor(palette.background)
+            for (i in 0 until root.childCount) {
+                root.getChildAt(i).visibility = View.VISIBLE
+            }
+            playerCard.background = rounded(Color.BLACK, 24)
             playerCard.clipToOutline = true
             val width = activity.resources.displayMetrics.widthPixels
             params.width = ViewGroup.LayoutParams.MATCH_PARENT
@@ -595,13 +757,14 @@ class TwitchLivePlayerScreen(
             params.marginStart = dp(12)
             params.marginEnd = dp(12)
         }
+
         playerCard.layoutParams = params
         onFullscreen(enabled)
         showControls(autoHide = player?.isPlaying == true)
     }
 
     fun exitFullscreen() {
-        setFullscreenMode(false)
+        if (fullscreen) setFullscreenMode(false)
     }
 
     private fun jumpToLiveEdgeAndPlay() {
@@ -609,6 +772,11 @@ class TwitchLivePlayerScreen(
         p.seekToDefaultPosition()
         if (p.playbackState == Player.STATE_IDLE) p.prepare()
         p.play()
+    }
+
+    private fun startLiveEdgeGuard() {
+        handler.removeCallbacks(liveEdgeGuardRunnable)
+        handler.postDelayed(liveEdgeGuardRunnable, 4_000L)
     }
 
     private fun showControls(autoHide: Boolean) {
@@ -620,12 +788,14 @@ class TwitchLivePlayerScreen(
             .alpha(1f)
             .setDuration(if (animationsEnabled) 150L else 0L)
             .start()
+
         if (autoHide) scheduleControlsHide()
     }
 
     private fun hideControls() {
         handler.removeCallbacks(hideControlsRunnable)
         if (!controlsVisible) return
+
         controlsVisible = false
         controlsOverlay.animate().cancel()
         controlsOverlay.animate()
@@ -639,11 +809,12 @@ class TwitchLivePlayerScreen(
 
     private fun scheduleControlsHide() {
         handler.removeCallbacks(hideControlsRunnable)
-        handler.postDelayed(hideControlsRunnable, 2_300L)
+        handler.postDelayed(hideControlsRunnable, 2_100L)
     }
 
     private fun pulseButton(view: View) {
         if (!animationsEnabled) return
+
         view.animate().cancel()
         view.animate()
             .scaleX(0.92f)
@@ -653,24 +824,23 @@ class TwitchLivePlayerScreen(
                 view.animate()
                     .scaleX(1f)
                     .scaleY(1f)
-                    .setDuration(140L)
+                    .setDuration(135L)
                     .start()
             }
             .start()
     }
 
-    private fun withAlpha(color: Int, alpha: Int): Int =
-        (color and 0x00FFFFFF) or (alpha.coerceIn(0, 255) shl 24)
-
     fun destroy() {
         if (destroyed) return
         destroyed = true
         handler.removeCallbacksAndMessages(null)
+
         if (fullscreen) {
             fullscreen = false
             activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             onFullscreen(false)
         }
+
         chatClient.close()
         scope.cancel()
         playerView.player = null
@@ -678,18 +848,35 @@ class TwitchLivePlayerScreen(
         player = null
     }
 
-    private fun iconButton(resId: Int, backgroundColor: Int, size: Int): ImageButton =
-        ImageButton(activity).apply {
-            setImageResource(resId)
-            imageTintList = ColorStateList.valueOf(Color.WHITE)
-            background = rounded(backgroundColor, size / 2)
-            setPadding(dp(11), dp(11), dp(11), dp(11))
-        }
+    private fun iconButton(
+        resId: Int,
+        backgroundColor: Int,
+        tintColor: Int,
+        size: Int
+    ): ImageButton = ImageButton(activity).apply {
+        setImageResource(resId)
+        imageTintList = ColorStateList.valueOf(tintColor)
+        background = rounded(backgroundColor, size / 2)
+        setPadding(dp(10), dp(10), dp(10), dp(10))
+    }
 
     private fun rounded(color: Int, radiusDp: Int) = GradientDrawable().apply {
         setColor(color)
         cornerRadius = dp(radiusDp).toFloat()
     }
+
+    private fun roundedStroke(
+        color: Int,
+        strokeColor: Int,
+        radiusDp: Int
+    ) = GradientDrawable().apply {
+        setColor(color)
+        setStroke(dp(1), strokeColor)
+        cornerRadius = dp(radiusDp).toFloat()
+    }
+
+    private fun withAlpha(color: Int, alpha: Int): Int =
+        (color and 0x00FFFFFF) or (alpha.coerceIn(0, 255) shl 24)
 
     private fun dp(value: Int): Int =
         (value * activity.resources.displayMetrics.density).toInt()
