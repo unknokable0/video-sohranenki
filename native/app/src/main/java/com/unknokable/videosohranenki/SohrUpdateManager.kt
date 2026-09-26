@@ -42,33 +42,65 @@ class SohrUpdateManager(private val context: Context) {
 
     suspend fun download(info: UpdateInfo, onProgress: (Int) -> Unit): File = withContext(Dispatchers.IO) {
         val dir = File(context.cacheDir, "updates").apply { mkdirs() }
-        val target = File(dir, "SOHR-${info.versionName}.apk")
-        if (target.exists()) target.delete()
-        val connection = open(info.downloadUrl + (if (info.downloadUrl.contains('?')) '&' else '?') + "v=" + info.versionCode)
-        val total = connection.contentLengthLong.coerceAtLeast(0L)
-        connection.inputStream.use { input ->
-            target.outputStream().use { output ->
-                val buffer = ByteArray(128 * 1024)
-                var downloaded = 0L
-                var lastProgress = -1
-                while (true) {
-                    val read = input.read(buffer)
-                    if (read <= 0) break
-                    output.write(buffer, 0, read)
-                    downloaded += read
-                    if (total > 0L) {
-                        val progress = ((downloaded * 100L) / total).toInt().coerceIn(0, 100)
-                        if (progress != lastProgress) { lastProgress = progress; onProgress(progress) }
+        val target = File(dir, "SOHR-${info.versionCode}-${info.versionName}.apk")
+
+        var lastActualSha = ""
+        repeat(2) { attempt ->
+            if (target.exists()) target.delete()
+
+            val separator = if (info.downloadUrl.contains('?')) '&' else '?'
+            val downloadUrl = buildString {
+                append(info.downloadUrl)
+                append(separator)
+                append("v=")
+                append(info.versionCode)
+                append("&attempt=")
+                append(attempt + 1)
+                append("&t=")
+                append(System.currentTimeMillis())
+            }
+
+            val connection = open(downloadUrl)
+            try {
+                val total = connection.contentLengthLong.coerceAtLeast(0L)
+                connection.inputStream.use { input ->
+                    target.outputStream().use { output ->
+                        val buffer = ByteArray(128 * 1024)
+                        var downloaded = 0L
+                        var lastProgress = -1
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read <= 0) break
+                            output.write(buffer, 0, read)
+                            downloaded += read
+                            if (total > 0L) {
+                                val progress = ((downloaded * 100L) / total).toInt().coerceIn(0, 100)
+                                if (progress != lastProgress) {
+                                    lastProgress = progress
+                                    onProgress(progress)
+                                }
+                            }
+                        }
                     }
                 }
+            } finally {
+                connection.disconnect()
             }
+
+            if (info.sha256.isBlank()) return@withContext target
+
+            lastActualSha = sha256(target)
+            if (lastActualSha.equals(info.sha256, ignoreCase = true)) {
+                return@withContext target
+            }
+
+            target.delete()
         }
-        connection.disconnect()
-        if (info.sha256.isNotBlank()) {
-            val actual = sha256(target)
-            if (!actual.equals(info.sha256, ignoreCase = true)) { target.delete(); error("SHA-256 обновления не совпал") }
-        }
-        target
+
+        error(
+            "SHA-256 обновления не совпал. Ожидался " +
+                info.sha256.take(12) + "…, получен " + lastActualSha.take(12) + "…"
+        )
     }
 
     fun isSignatureCompatible(apk: File): Boolean = runCatching {
