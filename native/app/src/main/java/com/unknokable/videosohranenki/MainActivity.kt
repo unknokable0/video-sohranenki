@@ -82,6 +82,7 @@ class MainActivity : AppCompatActivity() {
     private var telegramVideos: List<VideoItem> = emptyList()
     private var twitchVideos: List<VideoItem> = emptyList()
     private var twitchLoadJob: kotlinx.coroutines.Job? = null
+    private var twitchLiveJob: kotlinx.coroutines.Job? = null
     private var pendingTwitchWelcome = false
     private var currentDay: DayCollection? = null
     private var isPlayerScreen = false
@@ -260,10 +261,10 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        root.postDelayed({
+        root.post {
             showLoading("Подключаем Telegram…")
             client.init()
-        }, 620L)
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -439,27 +440,28 @@ class MainActivity : AppCompatActivity() {
                 ensureStreamServer()
                 cleanupStorage()
 
-                val shouldShowTour = !settings.postLoginTourSeen
-                onboardingActive = shouldShowTour
+                settings.postLoginTourSeen = true
+                onboardingActive = false
 
                 val zone = ZoneId.systemDefault()
                 val cutoff = LocalDate.now(zone).minusDays(6).atStartOfDay(zone).toEpochSecond()
                 val cached = videoCache.load().filter { it.localPath != null || it.date.toLong() >= cutoff }
                     .sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })
                 telegramVideos = cached
+                currentVideos = cached
                 if (cached.isNotEmpty()) updateStatsSnapshot(cached)
 
-                if (shouldShowTour) {
-                    currentVideos = cached
-                    runOnUiThread { showPostLoginOnboarding() }
-                } else if (settings.videoSource == "telegram" && cached.isNotEmpty()) {
-                    currentVideos = cached
-                    runOnUiThread { suppressNextRootAnimation = true; showFeed(cached) }
-                } else if (settings.videoSource == "twitch") {
-                    runOnUiThread { showSelectedVideoSource(forceRefresh = true) }
+                runOnUiThread {
+                    suppressNextRootAnimation = true
+                    if (settings.videoSource == "twitch") {
+                        showSelectedVideoSource(forceRefresh = true)
+                    } else {
+                        showFeed(cached)
+                    }
                 }
 
-                loadVideos(inPlace = cached.isNotEmpty() || settings.videoSource != "telegram")
+                // Do not block the first usable screen on a fresh network sync.
+                loadVideos(inPlace = true)
             }
             is TdApi.AuthorizationStateLoggingOut -> runOnUiThread { showLoading("Выходим…") }
             is TdApi.AuthorizationStateClosing -> runOnUiThread { showLoading("Закрываем соединение…") }
@@ -2333,8 +2335,16 @@ class MainActivity : AppCompatActivity() {
         val visibleGroups=if(videoSection==2) watchedGroups else regularGroups
 
         val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(bg) }
-        val header=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(16),dp(16),dp(16),dp(10)); setBackgroundColor(bg) }
-        header.addView(TextView(this).apply { text="SOHR"; textSize=24f; setTextColor(this@MainActivity.text); setTypeface(typeface,Typeface.BOLD) })
+        val header=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            setPadding(dp(16),dp(14),dp(16),dp(8))
+            setBackgroundColor(bg)
+            minimumHeight = dp(174)
+        }
+        header.addView(TextView(this).apply {
+            text="SOHR"; textSize=24f; gravity=Gravity.CENTER_VERTICAL
+            setTextColor(this@MainActivity.text); setTypeface(typeface,Typeface.BOLD)
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(34)))
         header.addView(TextView(this).apply {
             val sourceName = when {
                 settings.guestMode && settings.videoSource == "telegram" -> "Гость • локальный режим"
@@ -2342,8 +2352,8 @@ class MainActivity : AppCompatActivity() {
                 else -> "Telegram • @t2x2_video"
             }
             text=if(videoSection==2) "$sourceName • ${watchedVideos.size} просмотрено • ${watchedGroups.size} сборников" else "$sourceName • Последние 7 дней • ${regularGroups.size} сборников • ${regularVideos.size} видео"
-            textSize=12f; setTextColor(muted); setPadding(0,dp(5),0,dp(10)); maxLines=1
-        })
+            textSize=12f; gravity=Gravity.CENTER_VERTICAL; setTextColor(muted); maxLines=1
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(30)))
 
         val tabs=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(dp(3),dp(3),dp(3),dp(3)); background=roundedBg(palette.surfaceAlt,18) }
         listOf("Сборники" to 1, "Просмотренное" to 2).forEachIndexed { position,(label,section) ->
@@ -2409,7 +2419,26 @@ class MainActivity : AppCompatActivity() {
         }
         feedRefreshButton=refresh; feedRefreshLabel=refreshText; feedRefreshLoader=loader
         controls.addView(refresh,LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,dp(44)))
-        header.addView(controls); page.addView(header)
+        header.addView(controls, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(54)))
+        page.addView(header)
+
+        val liveSlot = FrameLayout(this).apply {
+            visibility = if (settings.twitchAccessToken.isNullOrBlank()) View.GONE else View.VISIBLE
+        }
+        page.addView(
+            liveSlot,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                if (settings.twitchAccessToken.isNullOrBlank()) 0 else dp(92)
+            ).apply {
+                marginStart = dp(16)
+                marginEnd = dp(16)
+                bottomMargin = if (settings.twitchAccessToken.isNullOrBlank()) 0 else dp(8)
+            }
+        )
+        if (!settings.twitchAccessToken.isNullOrBlank()) {
+            liveSlot.post { refreshT2x2Live(liveSlot) }
+        }
 
         if(feedRefreshCompletedFlash){ feedRefreshCompletedFlash=false; refresh.postDelayed({ if(feedRefreshButton===refresh&&refresh.isEnabled){ refreshText.animate().alpha(0f).setDuration(80L).withEndAction{refreshText.text="Проверить новые";refreshText.animate().alpha(1f).setDuration(120L).start()}.start() } },1100L) }
 
@@ -2420,6 +2449,136 @@ class MainActivity : AppCompatActivity() {
             page.addView(list,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
         }
         replaceRoot(withBottomNav(page,SohrTab.VIDEOS))
+    }
+
+
+    private fun refreshT2x2Live(slot: FrameLayout) {
+        twitchLiveJob?.cancel()
+        val clientId = BuildConfig.TWITCH_CLIENT_ID.trim()
+        val token = settings.twitchAccessToken
+        if (clientId.isBlank() || token.isNullOrBlank()) {
+            slot.visibility = View.GONE
+            val params = slot.layoutParams
+            if (params != null) {
+                params.height = 0
+                slot.layoutParams = params
+            }
+            return
+        }
+
+        twitchLiveJob = lifecycleScope.launch {
+            try {
+                val live = TwitchApi.loadLiveStream(clientId, token, "t2x2")
+                if (!slot.isAttachedToWindow) return@launch
+                renderT2x2Live(slot, live)
+            } catch (_: TwitchAuthException) {
+                if (slot.isAttachedToWindow) renderT2x2Live(slot, null, unavailable = true)
+            } catch (_: Exception) {
+                if (slot.isAttachedToWindow) renderT2x2Live(slot, null, unavailable = true)
+            }
+        }
+    }
+
+    private fun renderT2x2Live(slot: FrameLayout, live: TwitchLiveStream?, unavailable: Boolean = false) {
+        slot.removeAllViews()
+        slot.visibility = View.VISIBLE
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(10), dp(10), dp(12), dp(10))
+            background = roundedBg(panel, 18)
+            isClickable = live != null
+            isFocusable = live != null
+        }
+
+        if (live != null) {
+            val preview = FrameLayout(this)
+            val image = ImageView(this).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                background = roundedBg(palette.surfaceAlt, 14)
+                clipToOutline = true
+                load(live.thumbnailUrl) { crossfade(settings.animations) }
+            }
+            preview.addView(image, FrameLayout.LayoutParams(dp(112), dp(64)))
+
+            val badge = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                setPadding(dp(7), 0, dp(7), 0)
+                background = roundedBg(Color.parseColor("#E91936"), 9)
+            }
+            val dot = View(this).apply { background = roundedBg(Color.WHITE, 4) }
+            badge.addView(dot, LinearLayout.LayoutParams(dp(6), dp(6)).apply { marginEnd = dp(5) })
+            badge.addView(TextView(this).apply {
+                text = "В ЭФИРЕ"
+                textSize = 9.5f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(Color.WHITE)
+            })
+            preview.addView(badge, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(22), Gravity.START or Gravity.TOP).apply {
+                leftMargin = dp(6); topMargin = dp(6)
+            })
+
+            if (settings.animations) {
+                android.animation.ObjectAnimator.ofFloat(dot, View.ALPHA, 1f, 0.28f, 1f).apply {
+                    duration = 1300L
+                    repeatCount = android.animation.ValueAnimator.INFINITE
+                    interpolator = android.view.animation.AccelerateDecelerateInterpolator()
+                    start()
+                    dot.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+                        override fun onViewAttachedToWindow(v: View) = Unit
+                        override fun onViewDetachedFromWindow(v: View) { cancel() }
+                    })
+                }
+            }
+
+            card.addView(preview, LinearLayout.LayoutParams(dp(112), dp(64)))
+
+            val info = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), 0, 0, 0)
+            }
+            info.addView(TextView(this).apply {
+                text = live.title.ifBlank { "t2x2 в эфире" }
+                textSize = 14f
+                maxLines = 2
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(this@MainActivity.text)
+            })
+            info.addView(TextView(this).apply {
+                text = live.viewerCount.toString() + " зрителей • Twitch"
+                textSize = 11.5f
+                setTextColor(muted)
+                setPadding(0, dp(5), 0, 0)
+            })
+            card.addView(info, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+            card.setOnClickListener {
+                animatePress(card)
+                runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(live.url))) }
+            }
+        } else {
+            val statusDot = View(this).apply {
+                background = roundedBg(if (unavailable) muted else palette.stroke, 5)
+            }
+            card.addView(statusDot, LinearLayout.LayoutParams(dp(8), dp(8)).apply { marginStart = dp(4); marginEnd = dp(10) })
+            card.addView(TextView(this).apply {
+                text = if (unavailable) "Статус t2x2 временно недоступен" else "t2x2 сейчас не в эфире"
+                textSize = 13f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(muted)
+            })
+        }
+
+        slot.addView(card, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(84)))
+        if (settings.animations) {
+            card.alpha = 0f
+            card.translationY = dp(5).toFloat()
+            card.animate().alpha(1f).translationY(0f).setDuration(220L)
+                .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)).start()
+        }
     }
 
     private fun showDayCollection(collection: DayCollection) {
@@ -2861,6 +3020,16 @@ class MainActivity : AppCompatActivity() {
 
         val fire = StreakFireView(this, flameColor)
 
+        val levelBadge = TextView(this).apply {
+            text = streakLevelName(streak)
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(flameColor)
+            setPadding(dp(12), dp(7), dp(12), dp(7))
+            background = roundedBg(palette.surfaceAlt, 14)
+        }
+
         val count = TextView(this).apply {
             text = streak.toString()
             textSize = 44f
@@ -2896,6 +3065,10 @@ class MainActivity : AppCompatActivity() {
                 gravity = Gravity.CENTER_HORIZONTAL
             }
         )
+        hero.addView(levelBadge, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            bottomMargin = dp(4)
+        })
         hero.addView(count)
         hero.addView(daysLabel)
         hero.addView(status)
@@ -3058,6 +3231,17 @@ class MainActivity : AppCompatActivity() {
                 levels.animate().alpha(1f).translationY(0f).setStartDelay(140L).setDuration(320L).setInterpolator(ease).start()
             }
         }
+    }
+
+
+    private fun streakLevelName(streak: Int): String = when {
+        streak <= 0 -> "Огонь ещё не зажжён"
+        streak < 10 -> "Искра"
+        streak < 20 -> "Фиолетовый огонь"
+        streak < 50 -> "Синий огонь"
+        streak < 100 -> "Жар"
+        streak < 200 -> "Неон"
+        else -> "Аврора"
     }
 
     private fun streakColor(streak: Int): Int = StreakFireView.colorForStreak(streak)
@@ -3817,22 +4001,26 @@ class MainActivity : AppCompatActivity() {
                 val telegramInterpolator = android.view.animation.DecelerateInterpolator(1.5f)
                 if (sectionCrossfade) {
                     val direction = if (sectionDirection == 0) 1 else sectionDirection
-                    val travel = dp(22).toFloat() * direction
+                    val travel = dp(10).toFloat() * direction
                     content.alpha = 0f
                     content.translationX = travel
+                    content.scaleX = 0.994f
+                    content.scaleY = 0.994f
                     old.alpha = 1f
                     old.translationX = 0f
                     old.animate()
-                        .alpha(0.12f)
-                        .translationX(-travel * 0.18f)
-                        .setDuration(150L)
+                        .alpha(0f)
+                        .translationX(-travel * 0.15f)
+                        .setDuration(140L)
                         .setInterpolator(telegramInterpolator)
                         .start()
                     content.animate()
                         .alpha(1f)
                         .translationX(0f)
-                        .setDuration(220L)
-                        .setInterpolator(telegramInterpolator)
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setDuration(230L)
+                        .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
                         .withEndAction {
                             old.animate().cancel()
                             old.alpha = 1f
@@ -4416,6 +4604,8 @@ class MainActivity : AppCompatActivity() {
         playerScreen = null
         twitchPlayerScreen?.destroy()
         twitchPlayerScreen = null
+        twitchLiveJob?.cancel()
+        twitchLiveJob = null
         streamServer?.stop()
         if (::client.isInitialized) client.close()
         super.onDestroy()

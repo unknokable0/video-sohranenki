@@ -19,6 +19,14 @@ data class TwitchProfile(
     val profileImageUrl: String
 )
 
+data class TwitchLiveStream(
+    val title: String,
+    val viewerCount: Int,
+    val thumbnailUrl: String,
+    val startedAt: String,
+    val url: String
+)
+
 object TwitchApi {
     suspend fun loadCurrentUser(clientId: String, accessToken: String): TwitchProfile = withContext(Dispatchers.IO) {
         val root = getJson("https://api.twitch.tv/helix/users", clientId, accessToken)
@@ -74,6 +82,37 @@ object TwitchApi {
             connection.disconnect()
         }
     }
+
+
+    suspend fun loadLiveStream(clientId: String, accessToken: String, login: String): TwitchLiveStream? =
+        withContext(Dispatchers.IO) {
+            require(clientId.isNotBlank()) { "Twitch Client ID не настроен" }
+            require(accessToken.isNotBlank()) { "Нужно войти в Twitch" }
+
+            val root = getJson(
+                "https://api.twitch.tv/helix/streams?user_login=" +
+                    java.net.URLEncoder.encode(login, "UTF-8"),
+                clientId,
+                accessToken
+            )
+            val data = root.optJSONArray("data") ?: return@withContext null
+            if (data.length() == 0) return@withContext null
+
+            val stream = data.getJSONObject(0)
+            val thumbnail = stream.optString("thumbnail_url")
+                .replace("{width}", "640")
+                .replace("{height}", "360")
+                .replace("%{width}", "640")
+                .replace("%{height}", "360")
+
+            TwitchLiveStream(
+                title = stream.optString("title").ifBlank { "$login в эфире" },
+                viewerCount = stream.optInt("viewer_count", 0),
+                thumbnailUrl = thumbnail,
+                startedAt = stream.optString("started_at"),
+                url = "https://www.twitch.tv/$login"
+            )
+        }
 
     suspend fun loadArchives(clientId: String, accessToken: String, login: String, days: Long = 7): List<VideoItem> =
         withContext(Dispatchers.IO) {

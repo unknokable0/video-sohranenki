@@ -53,7 +53,7 @@ class SohrBottomNavView(
 
     private val indicator = View(context).apply {
         background = GradientDrawable().apply {
-            setColor(withAlpha(palette.accentSoft, 215))
+            setColor(palette.accentSoft)
             cornerRadius = dp(20).toFloat()
         }
     }
@@ -66,9 +66,9 @@ class SohrBottomNavView(
         clipToPadding = true
 
         background = GradientDrawable().apply {
-            setColor(withAlpha(palette.surface, 224))
+            setColor(palette.surface)
             cornerRadius = dp(26).toFloat()
-            setStroke(dp(1), withAlpha(palette.stroke, 175))
+            setStroke(dp(1), palette.stroke)
         }
         elevation = dp(4).toFloat()
 

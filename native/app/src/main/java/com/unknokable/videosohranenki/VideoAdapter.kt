@@ -187,15 +187,19 @@ class VideoAdapter(
         holder.meta.text = formatMeta(item)
 
         val progress = progressFor(item).coerceIn(0f, 1f)
-        if (progress > 0.01f && progress < 0.985f) {
+        if (progress > 0.005f && progress < 0.995f) {
             holder.progressTrack.visibility = View.VISIBLE
-            holder.progressFill.layoutParams = FrameLayout.LayoutParams(
-                (dp(holder.itemView.context, 148) * progress).toInt().coerceAtLeast(dp(holder.itemView.context, 2)),
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                Gravity.START
-            )
+            holder.progressTrack.post {
+                val width = holder.progressTrack.width.coerceAtLeast(dp(holder.itemView.context, 2))
+                holder.progressFill.layoutParams = FrameLayout.LayoutParams(
+                    (width * progress).toInt().coerceIn(dp(holder.itemView.context, 2), width),
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    Gravity.START
+                )
+            }
         } else {
             holder.progressTrack.visibility = View.GONE
+            holder.progressFill.layoutParams = FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START)
         }
 
         holder.thumbnail.animate().cancel()
