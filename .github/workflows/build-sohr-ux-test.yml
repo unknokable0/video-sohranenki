@@ -1,0 +1,71 @@
+name: Build SOHR UX Test
+
+on:
+  push:
+    branches:
+      - test/sohr-continue-onboarding
+    paths:
+      - "native/**"
+      - ".github/workflows/build-sohr-ux-test.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sohr-ux-test
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+      TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+      TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
+      SOHR_KEYSTORE_B64: ${{ secrets.SOHR_KEYSTORE_B64 }}
+      SOHR_KEYSTORE_PASSWORD: ${{ secrets.SOHR_KEYSTORE_PASSWORD }}
+      SOHR_KEY_ALIAS: ${{ secrets.SOHR_KEY_ALIAS }}
+      SOHR_KEY_PASSWORD: ${{ secrets.SOHR_KEY_PASSWORD }}
+      SOHR_BUILD_NUMBER: "502001"
+      SOHR_VERSION_NAME: "5.2.0-test1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.11.1
+
+      - name: Build signed test APK
+        shell: bash
+        run: |
+          if [ -n "$SOHR_KEYSTORE_B64" ]; then
+            printf '%s' "$SOHR_KEYSTORE_B64" | base64 --decode > "$GITHUB_WORKSPACE/native/sohr-release.jks"
+            SOHR_KEYSTORE_PATH="$GITHUB_WORKSPACE/native/sohr-release.jks" \
+            SOHR_KEYSTORE_PASSWORD="$SOHR_KEYSTORE_PASSWORD" \
+            SOHR_KEY_ALIAS="$SOHR_KEY_ALIAS" \
+            SOHR_KEY_PASSWORD="$SOHR_KEY_PASSWORD" \
+            gradle -p native :app:assembleRelease --no-daemon --stacktrace
+            cp native/app/build/outputs/apk/release/app-release.apk SOHR-5.2.0-test1.apk
+          else
+            gradle -p native :app:assembleDebug --no-daemon --stacktrace
+            cp native/app/build/outputs/apk/debug/app-debug.apk SOHR-5.2.0-test1.apk
+          fi
+
+      - name: Upload test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOHR-5.2.0-test1
+          path: SOHR-5.2.0-test1.apk
+          if-no-files-found: error
+          retention-days: 30
