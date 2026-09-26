@@ -41,6 +41,7 @@ class PlayerGestureOverlay(
     private var downY = 0f
     private var downAt = 0L
     private var downPosition = 0L
+    private var scrubPosition = 0L
     private var moved = false
     private var verticalMode = 0
     private var longMode = 0
@@ -62,7 +63,8 @@ class PlayerGestureOverlay(
         } else {
             longMode = 2
             downPosition = player.currentPosition
-            onScrub(downPosition, false)
+            scrubPosition = downPosition
+            onScrub(scrubPosition, false)
         }
     }
 
@@ -99,6 +101,7 @@ class PlayerGestureOverlay(
                 downY = event.y
                 downAt = SystemClock.uptimeMillis()
                 downPosition = player.currentPosition
+                scrubPosition = downPosition
                 moved = false
                 verticalMode = 0
                 longMode = 0
@@ -120,7 +123,8 @@ class PlayerGestureOverlay(
                 if (longMode == 2) {
                     val duration = durationProvider().coerceAtLeast(1L)
                     val delta = (dx / (target.width * SCRUB_RANGE_FRACTION) * duration).toLong()
-                    onScrub((downPosition + delta).coerceIn(0L, duration), false)
+                    scrubPosition = (downPosition + delta).coerceIn(0L, duration)
+                    onScrub(scrubPosition, false)
                     return true
                 }
                 if (longMode == 1) return true
@@ -151,7 +155,7 @@ class PlayerGestureOverlay(
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 v.removeCallbacks(longPress)
                 if (longMode == 1) onTemporarySpeed(false)
-                if (longMode == 2) onScrub(player.currentPosition, true)
+                if (longMode == 2) onScrub(scrubPosition, true)
                 if (event.actionMasked == MotionEvent.ACTION_CANCEL) return true
                 val dx = event.x - downX
                 val dy = event.y - downY
