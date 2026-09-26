@@ -39,6 +39,11 @@ data class TwitchProfile(
     val profileImageUrl: String
 )
 
+data class TwitchTokenInfo(
+    val login: String,
+    val scopes: Set<String>
+)
+
 data class TwitchLiveStream(
     val login: String,
     val displayName: String,
@@ -165,27 +170,45 @@ object TwitchApi {
         )
     }
 
-    suspend fun validateToken(clientId: String, accessToken: String): String = withContext(Dispatchers.IO) {
-        val connection = (URL("https://id.twitch.tv/oauth2/validate").openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            connectTimeout = 10_000
-            readTimeout = 12_000
-            setRequestProperty("Authorization", "OAuth $accessToken")
-            setRequestProperty("Accept", "application/json")
+    suspend fun validateToken(clientId: String, accessToken: String): String =
+        validateTokenInfo(clientId, accessToken).login
+
+    suspend fun validateTokenInfo(clientId: String, accessToken: String): TwitchTokenInfo =
+        withContext(Dispatchers.IO) {
+            val connection = (URL("https://id.twitch.tv/oauth2/validate").openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 10_000
+                readTimeout = 12_000
+                setRequestProperty("Authorization", "OAuth " + accessToken)
+                setRequestProperty("Accept", "application/json")
+            }
+            try {
+                val code = connection.responseCode
+                val body = (if (code in 200..299) connection.inputStream else connection.errorStream)
+                    ?.bufferedReader()?.use { it.readText() }.orEmpty()
+                if (code == 401) throw TwitchAuthException()
+                if (code !in 200..299) throw IOException("Twitch validate: HTTP " + code)
+                val root = JSONObject(body)
+                if (root.optString("client_id") != clientId) {
+                    throw TwitchAuthException("Twitch Client ID mismatch")
+                }
+
+                val scopes = linkedSetOf<String>()
+                val scopesArray = root.optJSONArray("scopes")
+                if (scopesArray != null) {
+                    for (i in 0 until scopesArray.length()) {
+                        scopesArray.optString(i).takeIf { it.isNotBlank() }?.let(scopes::add)
+                    }
+                }
+
+                TwitchTokenInfo(
+                    login = root.optString("login"),
+                    scopes = scopes
+                )
+            } finally {
+                connection.disconnect()
+            }
         }
-        try {
-            val code = connection.responseCode
-            val body = (if (code in 200..299) connection.inputStream else connection.errorStream)
-                ?.bufferedReader()?.use { it.readText() }.orEmpty()
-            if (code == 401) throw TwitchAuthException()
-            if (code !in 200..299) throw IOException("Twitch validate: HTTP $code")
-            val root = JSONObject(body)
-            if (root.optString("client_id") != clientId) throw TwitchAuthException("Twitch Client ID mismatch")
-            root.optString("login")
-        } finally {
-            connection.disconnect()
-        }
-    }
 
     suspend fun revokeToken(clientId: String, accessToken: String) = withContext(Dispatchers.IO) {
         val body = "client_id=" + java.net.URLEncoder.encode(clientId, "UTF-8") +
