@@ -2722,7 +2722,7 @@ class MainActivity : AppCompatActivity() {
         val auth = Uri.parse("https://id.twitch.tv/oauth2/authorize").buildUpon()
             .appendQueryParameter("response_type", "token")
             .appendQueryParameter("client_id", clientId)
-            .appendQueryParameter("redirect_uri", "https://unknokable0.github.io/video-sohranenki/twitch-auth/")
+            .appendQueryParameter("redirect_uri", "sohr://twitch-auth")
             .appendQueryParameter("scope", "")
             .appendQueryParameter("state", state)
             .build()
@@ -3327,7 +3327,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val avatar = ImageView(this).apply {
-            setImageResource(R.drawable.ic_launcher_sohr)
+            setImageResource(R.drawable.ic_launcher)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             background = roundedBg(palette.surfaceAlt, 40)
             setPadding(dp(16), dp(16), dp(16), dp(16))

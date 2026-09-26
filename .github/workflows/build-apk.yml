@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 5.3 test channel: live pulse, stable home, resume progress, updater
+# SOHR 5.3 test channel: restored classic visuals + Twitch OAuth fix
 on:
   push:
     branches: [main]
@@ -44,11 +44,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 5.3.0-test3 version
+      - name: Assign SOHR 5.3.0-test4 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=503003" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=5.3.0-test3" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=503004" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=5.3.0-test4" >> "$GITHUB_ENV"
 
       - name: Build installable APK
         shell: bash
@@ -72,7 +72,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/SOHR.apk",
             "sha256": "$SHA256",
-            "notes": "SOHR $SOHR_VERSION_NAME • faster login • Twitch live status • stable sections • watch progress • refreshed loader and streak"
+            "notes": "SOHR $SOHR_VERSION_NAME • restored classic SOHR icon • restored S-loader • direct Twitch sign-in callback • OAuth return fix"
           }
           EOF
           cat update.json
