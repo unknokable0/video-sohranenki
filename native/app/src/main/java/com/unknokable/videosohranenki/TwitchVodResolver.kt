@@ -89,4 +89,79 @@ object TwitchVodResolver {
             "&sig=$encodedSig" +
             "&token=$encodedToken"
     }
+
+    suspend fun resolveLive(
+        login: String,
+        connectTimeoutMs: Int = 10_000,
+        readTimeoutMs: Int = 15_000
+    ): String = withContext(Dispatchers.IO) {
+        val channel = login.trim().lowercase()
+        require(channel.matches(Regex("[a-z0-9_]{3,25}"))) { "Некорректный Twitch login" }
+
+        val payload = JSONObject().apply {
+            put("operationName", "PlaybackAccessToken_Template")
+            put("query", PLAYBACK_QUERY)
+            put("variables", JSONObject().apply {
+                put("isLive", true)
+                put("login", channel)
+                put("isVod", false)
+                put("vodID", "")
+                put("playerType", "site")
+            })
+        }.toString()
+
+        val connection = (URL(GQL_URL).openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = connectTimeoutMs.coerceIn(1_500, 15_000)
+            readTimeout = readTimeoutMs.coerceIn(2_000, 20_000)
+            doOutput = true
+            setRequestProperty("Client-ID", TWITCH_WEB_CLIENT_ID)
+            setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("Accept", "application/json")
+            setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/139 Mobile Safari/537.36")
+        }
+
+        val body = try {
+            connection.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+            val code = connection.responseCode
+            val text = (if (code in 200..299) connection.inputStream else connection.errorStream)
+                ?.bufferedReader()?.use { it.readText() }.orEmpty()
+            if (code !in 200..299) throw IOException("Twitch live token: HTTP " + code)
+            text
+        } finally {
+            connection.disconnect()
+        }
+
+        val root = JSONObject(body)
+        if (root.has("errors")) {
+            val message = root.optJSONArray("errors")?.optJSONObject(0)?.optString("message")
+            throw IOException(message?.takeIf { it.isNotBlank() } ?: "Twitch не выдал токен прямого эфира")
+        }
+
+        val tokenNode = root.optJSONObject("data")
+            ?.optJSONObject("streamPlaybackAccessToken")
+            ?: throw IOException("Twitch не выдал доступ к прямому эфиру")
+
+        val signature = tokenNode.optString("signature")
+        val token = tokenNode.optString("value")
+        if (signature.isBlank() || token.isBlank()) {
+            throw IOException("Пустой токен прямого эфира Twitch")
+        }
+
+        val encodedSig = URLEncoder.encode(signature, "UTF-8")
+        val encodedToken = URLEncoder.encode(token, "UTF-8")
+        val randomP = (System.currentTimeMillis() % 9_000_000L + 1_000_000L).toString()
+
+        "https://usher.ttvnw.net/api/channel/hls/" + channel + ".m3u8" +
+            "?allow_source=true" +
+            "&allow_audio_only=true" +
+            "&fast_bread=true" +
+            "&playlist_include_framerate=true" +
+            "&player_backend=mediaplayer" +
+            "&supported_codecs=h264" +
+            "&p=" + randomP +
+            "&sig=" + encodedSig +
+            "&token=" + encodedToken
+    }
+
 }
