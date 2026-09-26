@@ -16,26 +16,26 @@ data class ThemePalette(
 
 object AppThemes {
     val Dark = ThemePalette(
-        background = Color.parseColor("#08070D"),
-        surface = Color.parseColor("#11101A"),
-        surfaceAlt = Color.parseColor("#181322"),
-        text = Color.parseColor("#F7F5FF"),
-        muted = Color.parseColor("#9E96AD"),
-        accent = Color.parseColor("#8B5CF6"),
-        accentSoft = Color.parseColor("#2B1D47"),
-        stroke = Color.parseColor("#262130"),
+        background = Color.parseColor("#081019"),
+        surface = Color.parseColor("#D414202B"),
+        surfaceAlt = Color.parseColor("#BF1B2A36"),
+        text = Color.parseColor("#F4FAFF"),
+        muted = Color.parseColor("#91A5B4"),
+        accent = Color.parseColor("#69B5E8"),
+        accentSoft = Color.parseColor("#5C315F7C"),
+        stroke = Color.parseColor("#80516B7A"),
         playerBackground = Color.BLACK
     )
 
     val Light = ThemePalette(
-        background = Color.parseColor("#F5F4F8"),
-        surface = Color.WHITE,
-        surfaceAlt = Color.parseColor("#ECE9F2"),
-        text = Color.parseColor("#17131F"),
-        muted = Color.parseColor("#716A7E"),
-        accent = Color.parseColor("#7C4DFF"),
-        accentSoft = Color.parseColor("#E9E0FF"),
-        stroke = Color.parseColor("#DDD8E6"),
+        background = Color.parseColor("#EDF5FA"),
+        surface = Color.parseColor("#E8FFFFFF"),
+        surfaceAlt = Color.parseColor("#D7E3EEF4"),
+        text = Color.parseColor("#152432"),
+        muted = Color.parseColor("#667D8E"),
+        accent = Color.parseColor("#3E8DBE"),
+        accentSoft = Color.parseColor("#663E8DBE"),
+        stroke = Color.parseColor("#806F91A8"),
         playerBackground = Color.BLACK
     )
 }

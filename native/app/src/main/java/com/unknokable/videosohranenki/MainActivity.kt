@@ -310,6 +310,10 @@ class MainActivity : AppCompatActivity() {
         val page = FrameLayout(this).apply {
             setBackgroundColor(bg)
         }
+        page.addView(
+            SohrGlassBackdropView(this, palette, settings.animations),
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        )
 
         val center = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -2027,8 +2031,13 @@ class MainActivity : AppCompatActivity() {
         val watchedGroups=groups(watchedVideos)
         val visibleGroups=if(videoSection==2) watchedGroups else regularGroups
 
-        val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(bg) }
-        val header=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(16),dp(16),dp(16),dp(10)); setBackgroundColor(bg) }
+        val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(Color.TRANSPARENT) }
+        val header=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            setPadding(dp(16),dp(16),dp(16),dp(12))
+            background=roundedBg(palette.surface,24)
+            elevation=dp(2).toFloat()
+        }
         header.addView(TextView(this).apply { text="SOHR"; textSize=24f; setTextColor(this@MainActivity.text); setTypeface(typeface,Typeface.BOLD) })
         header.addView(TextView(this).apply {
             val sourceName = if (settings.videoSource == "twitch") "Twitch • @t2x2" else "Telegram • @t2x2_video"
@@ -2088,17 +2097,148 @@ class MainActivity : AppCompatActivity() {
         }
         feedRefreshButton=refresh; feedRefreshLabel=refreshText; feedRefreshLoader=loader
         controls.addView(refresh,LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,dp(44)))
-        header.addView(controls); page.addView(header)
+        header.addView(controls)
+        page.addView(
+            header,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                marginStart=dp(12); marginEnd=dp(12); topMargin=dp(10); bottomMargin=dp(8)
+            }
+        )
+        if (videoSection == 1) {
+            buildContinueWatchingCard(videos)?.let { continueCard ->
+                page.addView(
+                    continueCard,
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                        marginStart=dp(12); marginEnd=dp(12); bottomMargin=dp(8)
+                    }
+                )
+            }
+        }
 
         if(feedRefreshCompletedFlash){ feedRefreshCompletedFlash=false; refresh.postDelayed({ if(feedRefreshButton===refresh&&refresh.isEnabled){ refreshText.animate().alpha(0f).setDuration(80L).withEndAction{refreshText.text="Проверить новые";refreshText.animate().alpha(1f).setDuration(120L).start()}.start() } },1100L) }
 
         if(visibleGroups.isEmpty()) {
             page.addView(TextView(this).apply { text=if(videoSection==2) "Здесь появятся видео, которые ты отметил как просмотренные." else "Непросмотренных сборников пока нет.";textSize=15f;gravity=Gravity.CENTER;setTextColor(muted);setPadding(dp(28),0,dp(28),0) },LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
         } else {
-            val list=RecyclerView(this).apply { isVerticalScrollBarEnabled=false;isHorizontalScrollBarEnabled=false;overScrollMode=View.OVER_SCROLL_NEVER;layoutManager=LinearLayoutManager(this@MainActivity);adapter=DayCollectionAdapter(visibleGroups,palette,settings.animations){showDayCollection(it)};setBackgroundColor(bg);setHasFixedSize(true);itemAnimator=if(settings.animations)itemAnimator else null }
+            val list=RecyclerView(this).apply { isVerticalScrollBarEnabled=false;isHorizontalScrollBarEnabled=false;overScrollMode=View.OVER_SCROLL_NEVER;layoutManager=LinearLayoutManager(this@MainActivity);adapter=DayCollectionAdapter(visibleGroups,palette,settings.animations){showDayCollection(it)};setBackgroundColor(Color.TRANSPARENT);setHasFixedSize(true);itemAnimator=if(settings.animations)itemAnimator else null }
             page.addView(list,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
         }
-        replaceRoot(withBottomNav(page,SohrTab.VIDEOS))
+        val glassRoot = FrameLayout(this).apply {
+            addView(
+                SohrGlassBackdropView(this@MainActivity, palette, settings.animations),
+                FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            )
+            addView(
+                page,
+                FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            )
+        }
+        replaceRoot(withBottomNav(glassRoot,SohrTab.VIDEOS))
+    }
+
+    private fun buildContinueWatchingCard(videos: List<VideoItem>): View? {
+        val item = videos
+            .asSequence()
+            .map { it to settings.playbackPosition(it.messageId) }
+            .filter { (video, pos) ->
+                pos >= 5_000L && (video.durationSeconds <= 0 || pos < video.durationSeconds * 1000L - 10_000L)
+            }
+            .maxByOrNull { (video, _) -> video.date }
+            ?: return null
+
+        val video = item.first
+        val positionMs = item.second
+        val durationMs = (video.durationSeconds.coerceAtLeast(1) * 1000L)
+        val progress = (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0.02f, 0.98f)
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(10), dp(10), dp(12), dp(10))
+            background = roundedBg(palette.surface, 22)
+            elevation = dp(2).toFloat()
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                animatePress(this)
+                openPlayer(video)
+            }
+        }
+
+        val preview = FrameLayout(this).apply {
+            background = roundedBg(palette.surfaceAlt, 16)
+            clipToOutline = true
+        }
+        val image = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            alpha = 0.92f
+        }
+        val model: Any? = when {
+            !video.thumbnailPath.isNullOrBlank() && File(video.thumbnailPath!!).exists() -> File(video.thumbnailPath!!)
+            !video.thumbnailUrl.isNullOrBlank() -> video.thumbnailUrl
+            else -> null
+        }
+        if (model != null) image.load(model) { crossfade(settings.animations) }
+        preview.addView(image, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+
+        val play = TextView(this).apply {
+            text = "▶"
+            textSize = 18f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background = roundedBg(Color.parseColor("#AA101923"), 22)
+        }
+        preview.addView(play, FrameLayout.LayoutParams(dp(42), dp(42), Gravity.CENTER))
+
+        val info = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), 0, 0, 0)
+        }
+        info.addView(TextView(this).apply {
+            text = "Продолжить просмотр"
+            textSize = 12f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(palette.accent)
+        })
+        info.addView(TextView(this).apply {
+            text = video.title.ifBlank { "Запись стрима" }
+            textSize = 15f
+            maxLines = 2
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+            setPadding(0, dp(3), 0, dp(8))
+        })
+
+        val track = FrameLayout(this).apply {
+            background = roundedBg(palette.surfaceAlt, 4)
+            clipToOutline = true
+        }
+        val fill = View(this).apply { background = roundedBg(palette.accent, 4) }
+        track.addView(fill, FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT))
+        track.post {
+            val lp = fill.layoutParams as FrameLayout.LayoutParams
+            lp.width = (track.width * progress).toInt().coerceAtLeast(dp(8))
+            fill.layoutParams = lp
+            if (settings.animations) {
+                fill.scaleX = 0f
+                fill.pivotX = 0f
+                fill.animate().scaleX(1f).setDuration(420L)
+                    .setInterpolator(android.view.animation.PathInterpolator(0.22f,1f,0.36f,1f)).start()
+            }
+        }
+        info.addView(track, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(5)))
+
+        val seconds = positionMs / 1000L
+        info.addView(TextView(this).apply {
+            text = "Продолжить с %d:%02d".format(seconds / 60L, seconds % 60L)
+            textSize = 11.5f
+            setTextColor(muted)
+            setPadding(0, dp(6), 0, 0)
+        })
+
+        card.addView(preview, LinearLayout.LayoutParams(dp(128), dp(78)))
+        card.addView(info, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        return card
     }
 
     private fun showDayCollection(collection: DayCollection) {
