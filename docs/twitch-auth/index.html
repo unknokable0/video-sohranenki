@@ -2,44 +2,57 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="color-scheme" content="dark light">
-  <title>SOHR • Twitch</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta http-equiv="Cache-Control" content="no-store, max-age=0">
+  <title>SOHR · Twitch</title>
   <style>
     :root { font-family: Inter, system-ui, -apple-system, Segoe UI, sans-serif; color-scheme: dark; }
-    body { margin:0; min-height:100vh; display:grid; place-items:center; background:#0d0b12; color:#f6f2ff; }
-    .card { width:min(92vw,420px); padding:28px; border-radius:24px; background:#17131f; box-shadow:0 18px 60px rgba(0,0,0,.35); text-align:center; }
-    h1 { margin:0 0 8px; font-size:26px; }
-    p { margin:0 0 18px; color:#b9afc9; line-height:1.45; }
-    a { display:inline-flex; align-items:center; justify-content:center; min-height:48px; padding:0 20px; border-radius:15px; background:#8b5cf6; color:#fff; text-decoration:none; font-weight:700; }
+    * { box-sizing: border-box; }
+    body { margin:0; min-height:100vh; display:grid; place-items:center; padding:24px; background:#0b0b12; color:#f7f4ff; }
+    .card { width:min(92vw,420px); padding:30px 24px; border-radius:26px; background:#17131f; border:1px solid #2b2437; box-shadow:0 18px 60px rgba(0,0,0,.38); text-align:center; }
+    .logo { width:64px; height:64px; margin:0 auto 16px; border-radius:20px; display:grid; place-items:center; background:linear-gradient(145deg,#6d28d9,#9333ea); font-size:30px; font-weight:900; }
+    h1 { margin:0 0 8px; font-size:25px; }
+    p { margin:0 0 20px; color:#b8b0c6; line-height:1.45; }
+    a { display:flex; min-height:50px; align-items:center; justify-content:center; border-radius:16px; background:linear-gradient(90deg,#6d28d9,#9333ea); color:#fff; text-decoration:none; font-weight:800; }
+    .small { margin-top:14px; font-size:12px; color:#746d7f; }
   </style>
 </head>
 <body>
   <main class="card">
-    <h1>SOHR</h1>
+    <div class="logo">S</div>
+    <h1>Возвращаемся в SOHR</h1>
     <p id="status">Проверяем вход Twitch…</p>
     <a id="open" href="sohr://twitch-auth">Открыть SOHR</a>
+    <div class="small">Если приложение не открылось автоматически, нажми кнопку.</div>
   </main>
   <script>
     (() => {
-      const hash = window.location.hash || "";
-      const query = window.location.search || "";
+      const hash = location.hash || "";
+      const query = location.search || "";
       const payload = hash || query;
       const target = "sohr://twitch-auth" + payload;
       const button = document.getElementById("open");
       const status = document.getElementById("status");
       button.href = target;
+
       if (!payload) {
-        status.textContent = "Twitch не вернул данные авторизации. Вернись в SOHR и попробуй ещё раз.";
+        status.textContent = "Twitch не вернул данные входа. Вернись в SOHR и попробуй ещё раз.";
         return;
       }
+
       const params = new URLSearchParams(payload.replace(/^[#?]/, ""));
       if (params.get("error")) {
-        status.textContent = "Вход отменён. Возвращаемся в SOHR…";
+        status.textContent = "Вход Twitch отменён. Возвращаемся в SOHR…";
+      } else if (params.get("access_token")) {
+        status.textContent = "Вход выполнен. Открываем SOHR…";
       } else {
-        status.textContent = "Вход выполнен. Теперь Twitch доступен в SOHR.";
+        status.textContent = "Получены данные Twitch. Открываем SOHR…";
       }
-      setTimeout(() => { window.location.href = target; }, 850);
+
+      const openApp = () => { location.href = target; };
+      setTimeout(openApp, 250);
+      setTimeout(openApp, 1100);
     })();
   </script>
 </body>

@@ -88,7 +88,7 @@ class MainActivity : AppCompatActivity() {
     private var lastT2x2LiveCheckedAt = 0L
     private var lastT2x2LiveUnavailable = false
     private val t2x2LiveCacheMs = 20_000L
-    private val twitchRedirectUri = "sohr://twitch-auth"
+    private val twitchRedirectUri = "https://unknokable0.github.io/video-sohranenki/twitch-auth/"
     private var pendingTwitchWelcome = false
     private var currentDay: DayCollection? = null
     private var isPlayerScreen = false

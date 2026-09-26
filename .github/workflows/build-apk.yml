@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 5.3 test channel: restored classic visuals + Twitch OAuth fix
+# SOHR 5.3 test channel: stable Twitch HTTPS OAuth bridge
 on:
   push:
     branches: [main]
@@ -47,8 +47,8 @@ jobs:
       - name: Assign SOHR 5.3.0-test5 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=503005" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=5.3.0-test5" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=503006" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=5.3.0-test6" >> "$GITHUB_ENV"
 
       - name: Build installable APK
         shell: bash
@@ -72,7 +72,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/SOHR.apk",
             "sha256": "$SHA256",
-            "notes": "SOHR 5.3.0-test5 • direct Twitch login callback • automatic video refresh • manual feed refresh removed"
+            "notes": "SOHR 5.3.0-test6 • fixed Twitch HTTPS callback bridge • automatic return to SOHR"
           }
           EOF
           cat update.json
