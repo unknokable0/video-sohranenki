@@ -96,7 +96,7 @@ class MainActivity : AppCompatActivity() {
     private var lastT2x2LiveCheckedAt = 0L
     private var lastT2x2LiveUnavailable = false
     private val t2x2LiveCacheMs = 20_000L
-    private val temporaryLivePreviewCacheMs = 10L * 60L * 1000L
+    private val temporaryLivePreviewCacheMs = 60_000L
     // TEMPORARY: test build only. Set false after LIVE card is visually verified.
     private val temporaryLivePreviewEnabled = true
     private var pendingTwitchWelcome = false

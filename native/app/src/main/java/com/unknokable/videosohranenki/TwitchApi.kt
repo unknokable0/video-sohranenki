@@ -294,7 +294,7 @@ object TwitchApi {
         }
         val candidates = if (ordinary.isNotEmpty()) ordinary else safe
 
-        val bucket = System.currentTimeMillis() / (15L * 60L * 1000L)
+        val bucket = System.currentTimeMillis() / 60_000L
         val index = (bucket % candidates.size).toInt()
         parseLiveStream(candidates[index], testStream = true)
     }
