@@ -2839,7 +2839,6 @@ class MainActivity : AppCompatActivity() {
                     if (url.isNullOrBlank()) return false
                     if (!url.startsWith(TWITCH_REDIRECT_URI, ignoreCase = true)) return false
 
-                    stopLoading()
                     handleTwitchOAuthCallback(Uri.parse(url))
                     return true
                 }
