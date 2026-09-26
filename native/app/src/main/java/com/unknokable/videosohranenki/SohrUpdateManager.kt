@@ -27,8 +27,9 @@ data class UpdateInfo(
 class SohrUpdateManager(private val context: Context) {
 
     suspend fun check(): UpdateInfo? = withContext(Dispatchers.IO) {
-        val separator = if (UPDATE_MANIFEST_URL.contains('?')) '&' else '?'
-        val json = readText(UPDATE_MANIFEST_URL + separator + "t=" + System.currentTimeMillis())
+        val url = if (BuildConfig.VERSION_CODE >= 600000) TEST_UPDATE_MANIFEST_URL else STABLE_UPDATE_MANIFEST_URL
+        val separator = if (url.contains('?')) '&' else '?'
+        val json = readText(url + separator + "t=" + System.currentTimeMillis())
         val obj = JSONObject(json)
         val info = UpdateInfo(
             versionCode = obj.getInt("versionCode"),
@@ -135,7 +136,8 @@ class SohrUpdateManager(private val context: Context) {
     }
 
     companion object {
-        private const val UPDATE_MANIFEST_URL = "https://github.com/unknokable0/video-sohranenki/releases/download/sohr-latest/update.json"
+        private const val STABLE_UPDATE_MANIFEST_URL = "https://github.com/unknokable0/video-sohranenki/releases/download/sohr-latest/update.json"
+        private const val TEST_UPDATE_MANIFEST_URL = "https://github.com/unknokable0/video-sohranenki/releases/download/sohr-test-latest/update.json"
         private const val APK_MIME = "application/vnd.android.package-archive"
     }
 }

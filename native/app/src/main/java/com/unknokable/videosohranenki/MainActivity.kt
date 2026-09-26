@@ -310,11 +310,6 @@ class MainActivity : AppCompatActivity() {
         val page = FrameLayout(this).apply {
             setBackgroundColor(bg)
         }
-        page.addView(
-            SohrGlassBackdropView(this, palette, settings.animations),
-            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-        )
-
         val center = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -2031,7 +2026,7 @@ class MainActivity : AppCompatActivity() {
         val watchedGroups=groups(watchedVideos)
         val visibleGroups=if(videoSection==2) watchedGroups else regularGroups
 
-        val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(Color.TRANSPARENT) }
+        val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(bg) }
         val header=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL
             setPadding(dp(16),dp(16),dp(16),dp(12))
@@ -2104,37 +2099,54 @@ class MainActivity : AppCompatActivity() {
                 marginStart=dp(12); marginEnd=dp(12); topMargin=dp(10); bottomMargin=dp(8)
             }
         )
-        if (videoSection == 1) {
-            buildContinueWatchingCard(videos)?.let { continueCard ->
-                page.addView(
-                    continueCard,
-                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                        marginStart=dp(12); marginEnd=dp(12); bottomMargin=dp(8)
-                    }
-                )
-            }
+        val sectionHero = if (videoSection == 1) {
+            buildContinueWatchingCard(videos) ?: buildFeedStatusCard(
+                "Продолжить просмотр",
+                "Открой видео — SOHR запомнит место и покажет его здесь."
+            )
+        } else {
+            buildFeedStatusCard(
+                "Просмотрено",
+                watchedVideos.size.toString() + " видео • " + watchedGroups.size.toString() + " сборников"
+            )
         }
+        page.addView(
+            sectionHero,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(98)).apply {
+                marginStart=dp(12); marginEnd=dp(12); bottomMargin=dp(8)
+            }
+        )
 
         if(feedRefreshCompletedFlash){ feedRefreshCompletedFlash=false; refresh.postDelayed({ if(feedRefreshButton===refresh&&refresh.isEnabled){ refreshText.animate().alpha(0f).setDuration(80L).withEndAction{refreshText.text="Проверить новые";refreshText.animate().alpha(1f).setDuration(120L).start()}.start() } },1100L) }
 
         if(visibleGroups.isEmpty()) {
             page.addView(TextView(this).apply { text=if(videoSection==2) "Здесь появятся видео, которые ты отметил как просмотренные." else "Непросмотренных сборников пока нет.";textSize=15f;gravity=Gravity.CENTER;setTextColor(muted);setPadding(dp(28),0,dp(28),0) },LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
         } else {
-            val list=RecyclerView(this).apply { isVerticalScrollBarEnabled=false;isHorizontalScrollBarEnabled=false;overScrollMode=View.OVER_SCROLL_NEVER;layoutManager=LinearLayoutManager(this@MainActivity);adapter=DayCollectionAdapter(visibleGroups,palette,settings.animations){showDayCollection(it)};setBackgroundColor(Color.TRANSPARENT);setHasFixedSize(true);itemAnimator=if(settings.animations)itemAnimator else null }
+            val list=RecyclerView(this).apply { isVerticalScrollBarEnabled=false;isHorizontalScrollBarEnabled=false;overScrollMode=View.OVER_SCROLL_NEVER;layoutManager=LinearLayoutManager(this@MainActivity);adapter=DayCollectionAdapter(visibleGroups,palette,settings.animations){showDayCollection(it)};setBackgroundColor(bg);setHasFixedSize(true);itemAnimator=if(settings.animations)itemAnimator else null }
             page.addView(list,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
         }
-        val glassRoot = FrameLayout(this).apply {
-            addView(
-                SohrGlassBackdropView(this@MainActivity, palette, settings.animations),
-                FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-            )
-            addView(
-                page,
-                FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-            )
-        }
-        replaceRoot(withBottomNav(glassRoot,SohrTab.VIDEOS))
+        replaceRoot(withBottomNav(page,SohrTab.VIDEOS))
     }
+
+    private fun buildFeedStatusCard(title: String, subtitle: String): View =
+        LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            background = roundedBg(panel, 20)
+            addView(TextView(this@MainActivity).apply {
+                text = title
+                textSize = 14f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(this@MainActivity.text)
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = subtitle
+                textSize = 12f
+                setTextColor(muted)
+                setPadding(0, dp(4), 0, 0)
+            })
+        }
 
     private fun buildContinueWatchingCard(videos: List<VideoItem>): View? {
         val item = videos
@@ -2707,9 +2719,9 @@ class MainActivity : AppCompatActivity() {
 
         val progressTitle = TextView(this).apply {
             text = if (next == null) {
-                "Максимальный уровень огня"
+                StreakFireView.levelName(streak) + " • максимальный уровень"
             } else {
-                "До следующего огня • " + (next - streak) + " дн."
+                StreakFireView.levelName(streak) + " • до следующего " + (next - streak) + " дн."
             }
             textSize = 14f
             setTypeface(typeface, Typeface.BOLD)
@@ -2778,11 +2790,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         val levelData = listOf(
-            Triple("1–9 дней", Color.parseColor("#E7E7EC"), "Белый"),
-            Triple("10–19 дней", Color.parseColor("#9A68FF"), "Фиолетовый"),
-            Triple("20–49 дней", Color.parseColor("#4D98FF"), "Синий"),
-            Triple("50–99 дней", Color.parseColor("#FF4A5E"), "Красный"),
-            Triple("100+ дней", Color.parseColor("#B7FF28"), "Кислотный")
+            Triple("1–9 дней", Color.parseColor("#F2F2F5"), "Искра"),
+            Triple("10–19 дней", Color.parseColor("#A16BFF"), "Аметист"),
+            Triple("20–49 дней", Color.parseColor("#4FA4FF"), "Синий огонь"),
+            Triple("50–99 дней", Color.parseColor("#FF5266"), "Красное пламя"),
+            Triple("100–199 дней", Color.parseColor("#B9FF32"), "Кислотный огонь"),
+            Triple("200+ дней", Color.parseColor("#65FFE8"), "Плазма")
         )
 
         levelData.forEach { entry ->
@@ -2904,6 +2917,7 @@ class MainActivity : AppCompatActivity() {
         val oldSystemColor = bg
 
         settings.lightTheme = light
+        primaryShellLightTheme = light
         val newSystemColor = bg
         animateSystemChrome(oldSystemColor, newSystemColor, light, 300L)
 

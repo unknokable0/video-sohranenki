@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: sohr-glass-test
@@ -28,8 +28,8 @@ jobs:
       SOHR_KEYSTORE_PASSWORD: ${{ secrets.SOHR_KEYSTORE_PASSWORD }}
       SOHR_KEY_ALIAS: ${{ secrets.SOHR_KEY_ALIAS }}
       SOHR_KEY_PASSWORD: ${{ secrets.SOHR_KEY_PASSWORD }}
-      SOHR_BUILD_NUMBER: "600001"
-      SOHR_VERSION_NAME: "6.0.0-test1"
+      SOHR_BUILD_NUMBER: "600002"
+      SOHR_VERSION_NAME: "6.0.0-test2"
 
     steps:
       - uses: actions/checkout@v4
@@ -55,6 +55,20 @@ jobs:
             cp native/app/build/outputs/apk/debug/app-debug.apk SOHR-Glass-Test.apk
           fi
 
+      - name: Generate test updater manifest
+        shell: bash
+        run: |
+          SHA256=$(sha256sum SOHR-Glass-Test.apk | awk '{print $1}')
+          cat > update.json <<EOF
+          {
+            "versionCode": $SOHR_BUILD_NUMBER,
+            "versionName": "$SOHR_VERSION_NAME",
+            "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-test-latest/SOHR-Test.apk",
+            "sha256": "$SHA256",
+            "notes": "SOHR $SOHR_VERSION_NAME"
+          }
+          EOF
+
       - name: Upload test APK
         uses: actions/upload-artifact@v4
         with:
@@ -62,3 +76,15 @@ jobs:
           path: SOHR-Glass-Test.apk
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish test updater channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          cp SOHR-Glass-Test.apk SOHR-Test.apk
+          if gh release view sohr-test-latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload sohr-test-latest SOHR-Test.apk update.json --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create sohr-test-latest SOHR-Test.apk update.json               --repo "$GITHUB_REPOSITORY"               --target "$GITHUB_SHA"               --title "SOHR Test Latest"               --notes "Тестовый канал обновлений SOHR."               --prerelease
+          fi
