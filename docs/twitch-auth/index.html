@@ -5,54 +5,68 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="color-scheme" content="dark">
   <meta http-equiv="Cache-Control" content="no-store, max-age=0">
+  <meta name="robots" content="noindex,nofollow">
   <title>SOHR · Twitch</title>
   <style>
     :root { font-family: Inter, system-ui, -apple-system, Segoe UI, sans-serif; color-scheme: dark; }
-    * { box-sizing: border-box; }
-    body { margin:0; min-height:100vh; display:grid; place-items:center; padding:24px; background:#0b0b12; color:#f7f4ff; }
-    .card { width:min(92vw,420px); padding:30px 24px; border-radius:26px; background:#17131f; border:1px solid #2b2437; box-shadow:0 18px 60px rgba(0,0,0,.38); text-align:center; }
-    .logo { width:64px; height:64px; margin:0 auto 16px; border-radius:20px; display:grid; place-items:center; background:linear-gradient(145deg,#6d28d9,#9333ea); font-size:30px; font-weight:900; }
-    h1 { margin:0 0 8px; font-size:25px; }
-    p { margin:0 0 20px; color:#b8b0c6; line-height:1.45; }
-    a { display:flex; min-height:50px; align-items:center; justify-content:center; border-radius:16px; background:linear-gradient(90deg,#6d28d9,#9333ea); color:#fff; text-decoration:none; font-weight:800; }
-    .small { margin-top:14px; font-size:12px; color:#746d7f; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; display:grid; place-items:center; padding:24px; background:#0b0b10; color:#f7f5ff; }
+    .card { width:min(92vw,420px); padding:30px 24px 24px; border-radius:26px; background:#17131f; border:1px solid #2c2539; text-align:center; box-shadow:0 18px 60px rgba(0,0,0,.42); }
+    .logo { width:64px; height:64px; margin:0 auto 16px; border-radius:20px; display:grid; place-items:center; background:#7c3aed; font-size:30px; font-weight:900; }
+    h1 { margin:0 0 8px; font-size:24px; }
+    p { margin:0 0 18px; color:#b9b1c7; line-height:1.45; }
+    a { display:flex; min-height:50px; align-items:center; justify-content:center; border-radius:16px; background:#7c3aed; color:#fff; text-decoration:none; font-weight:800; }
+    .small { margin-top:13px; font-size:12px; color:#81798d; }
   </style>
 </head>
 <body>
   <main class="card">
     <div class="logo">S</div>
-    <h1>Возвращаемся в SOHR</h1>
-    <p id="status">Проверяем вход Twitch…</p>
-    <a id="open" href="sohr://twitch-auth">Открыть SOHR</a>
-    <div class="small">Если приложение не открылось автоматически, нажми кнопку.</div>
+    <h1 id="title">Возвращаемся в SOHR</h1>
+    <p id="status">Завершаем вход Twitch…</p>
+    <a id="open" href="sohr://twitch-auth">Вернуться в SOHR</a>
+    <div class="small">Если SOHR не открылся сам, нажми кнопку.</div>
   </main>
   <script>
     (() => {
-      const hash = location.hash || "";
-      const query = location.search || "";
-      const payload = hash || query;
-      const target = "sohr://twitch-auth" + payload;
-      const button = document.getElementById("open");
-      const status = document.getElementById("status");
-      button.href = target;
+      const raw = location.hash || location.search || "";
+      const params = new URLSearchParams(raw.replace(/^[#?]/, ""));
+      const safe = new URLSearchParams();
 
-      if (!payload) {
+      for (const key of ["access_token", "state", "scope", "token_type", "error", "error_description"]) {
+        const value = params.get(key);
+        if (value) safe.set(key, value);
+      }
+
+      const query = safe.toString();
+      const custom = "sohr://twitch-auth" + (query ? "?" + query : "");
+      const intent = "intent://twitch-auth" + (query ? "?" + query : "") +
+        "#Intent;scheme=sohr;package=com.unknokable.videosohranenki;end";
+
+      const open = document.getElementById("open");
+      const status = document.getElementById("status");
+      open.href = custom;
+
+      if (!raw) {
         status.textContent = "Twitch не вернул данные входа. Вернись в SOHR и попробуй ещё раз.";
         return;
       }
 
-      const params = new URLSearchParams(payload.replace(/^[#?]/, ""));
       if (params.get("error")) {
         status.textContent = "Вход Twitch отменён. Возвращаемся в SOHR…";
       } else if (params.get("access_token")) {
-        status.textContent = "Вход выполнен. Открываем SOHR…";
+        status.textContent = "Готово. Открываем SOHR…";
       } else {
-        status.textContent = "Получены данные Twitch. Открываем SOHR…";
+        status.textContent = "Не удалось получить токен Twitch.";
       }
 
-      const openApp = () => { location.href = target; };
-      setTimeout(openApp, 250);
-      setTimeout(openApp, 1100);
+      // Remove OAuth data from the browser history/address bar as soon as it is copied.
+      try { history.replaceState(null, "", location.pathname); } catch (_) {}
+
+      // Android Chrome understands intent:// and can target the SOHR package directly.
+      // Fall back to the normal custom scheme and keep a visible tap target.
+      setTimeout(() => { location.replace(intent); }, 80);
+      setTimeout(() => { location.href = custom; }, 900);
     })();
   </script>
 </body>
