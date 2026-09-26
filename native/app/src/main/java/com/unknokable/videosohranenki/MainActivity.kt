@@ -95,6 +95,8 @@ class MainActivity : AppCompatActivity() {
     private var lastT2x2LiveCheckedAt = 0L
     private var lastT2x2LiveUnavailable = false
     private val t2x2LiveCacheMs = 20_000L
+    // TEMPORARY: test build only. Set false after LIVE card is visually verified.
+    private val temporaryLivePreviewEnabled = true
     private var pendingTwitchWelcome = false
     private var currentDay: DayCollection? = null
     private var isPlayerScreen = false
@@ -2346,11 +2348,17 @@ class MainActivity : AppCompatActivity() {
         twitchLiveJob = lifecycleScope.launch {
             try {
                 val channelLive = TwitchApi.loadLiveStream(clientId, token, "t2x2")
-                val live = channelLive ?: TwitchApi.loadRandomLiveStream(
-                    clientId = clientId,
-                    accessToken = token,
-                    excludeLogins = setOf("t2x2")
-                )
+                val live = if (channelLive != null) {
+                    channelLive
+                } else if (temporaryLivePreviewEnabled) {
+                    TwitchApi.loadRandomLiveStream(
+                        clientId = clientId,
+                        accessToken = token,
+                        excludeLogins = setOf("t2x2")
+                    )
+                } else {
+                    null
+                }
                 lastT2x2Live = live
                 lastT2x2LiveUnavailable = false
                 lastT2x2LiveCheckedAt = System.currentTimeMillis()
