@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 5.3 test channel: Twitch Device Code Flow
+# SOHR 5.3 test channel: in-app Twitch OAuth + verified updater
 on:
   push:
     branches: [main]
@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: sohr-build-main-v20
+  group: sohr-build-main
   cancel-in-progress: true
 
 jobs:
@@ -44,11 +44,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 5.3.0-test20 version
+      - name: Assign SOHR 5.3.0-test21 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=503020" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=5.3.0-test20" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=503021" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=5.3.0-test21" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -94,7 +94,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 5.3.0-test20 • Twitch live channel names • safe random live test • refined streak flame • active auto-check status"
+            "notes": "SOHR 5.3.0-test21 • temporary random LIVE preview for UI testing • normal @t2x2 offline behavior preserved • updater self-verification"
           }
           EOF
           cat update.json
@@ -124,3 +124,34 @@ jobs:
               --notes "Автоматический канал обновлений SOHR." \
               --prerelease
           fi
+
+
+      - name: Verify published updater channel
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf verify-release
+          mkdir verify-release
+          cd verify-release
+
+          gh release download sohr-latest \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "update.json" \
+            --pattern "$SOHR_APK_ASSET"
+
+          TEST_CODE="$(python3 -c 'import json; print(json.load(open("update.json"))["versionCode"])')"
+          TEST_NAME="$(python3 -c 'import json; print(json.load(open("update.json"))["versionName"])')"
+          TEST_URL="$(python3 -c 'import json; print(json.load(open("update.json"))["downloadUrl"])')"
+          EXPECTED_SHA="$(python3 -c 'import json; print(json.load(open("update.json"))["sha256"])')"
+          ACTUAL_SHA="$(sha256sum "$SOHR_APK_ASSET" | awk '{print $1}')"
+
+          test "$TEST_CODE" = "$SOHR_BUILD_NUMBER"
+          test "$TEST_NAME" = "$SOHR_VERSION_NAME"
+          echo "$TEST_URL" | grep -Fq "/$SOHR_APK_ASSET"
+          test "$EXPECTED_SHA" = "$ACTUAL_SHA"
+
+          echo "Updater verified: $SOHR_VERSION_NAME ($SOHR_BUILD_NUMBER)"
+          echo "Asset: $SOHR_APK_ASSET"
+          echo "SHA-256: $ACTUAL_SHA"
