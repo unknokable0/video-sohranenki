@@ -44,23 +44,30 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 5.3.0-test15 version
+      - name: Assign SOHR 5.3.0-test16 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=503015" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=503016" >> "$GITHUB_ENV"
           echo "SOHR_VERSION_NAME=5.3.0-test14" >> "$GITHUB_ENV"
 
-      - name: Verify Twitch OAuth bridge
+      - name: Verify Twitch OAuth authorize endpoint
         shell: bash
         run: |
-          CALLBACK="https://unknokable0.github.io/video-sohranenki/twitch-auth/"
-          echo "Checking $CALLBACK"
-          HTML="$(curl --silent --show-error --location --fail --max-time 20 "$CALLBACK")"
-          printf '%s' "$HTML" | grep -q 'sohr://twitch-auth' || {
-            echo "SOHR Twitch callback is not live or does not contain the app deep link." >&2
+          CLIENT_ID="${TWITCH_CLIENT_ID:-gnr3cikerodr25wpbrb04a11031qiz}"
+          REDIRECT="https://unknokable0.github.io/video-sohranenki/twitch-auth/"
+          URL="https://id.twitch.tv/oauth2/authorize?response_type=token&client_id=$CLIENT_ID&redirect_uri=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("'"$REDIRECT"'", safe=""))')&scope=&state=sohr-build-check"
+          CODE="$(curl --silent --show-error --location --max-time 20 --output /tmp/twitch-oauth.html --write-out '%{http_code}' "$URL" || true)"
+          if [ "$CODE" -ge 400 ] || [ "$CODE" -lt 200 ]; then
+            echo "Twitch OAuth authorize endpoint failed with HTTP $CODE" >&2
+            cat /tmp/twitch-oauth.html >&2 || true
             exit 1
-          }
-          echo "SOHR Twitch callback is live"
+          fi
+          if grep -Eqi 'invalid redirect|redirect uri.*invalid|invalid client' /tmp/twitch-oauth.html; then
+            echo "Twitch rejected OAuth client or redirect URI" >&2
+            cat /tmp/twitch-oauth.html >&2
+            exit 1
+          fi
+          echo "Twitch OAuth authorize endpoint reachable (HTTP $CODE)"
 
       - name: Build installable APK
         shell: bash
@@ -87,7 +94,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 5.3.0-test15 • restored Twitch implicit OAuth • direct return to SOHR • stable updater assets"
+            "notes": "SOHR 5.3.0-test16 • in-app Twitch implicit OAuth • callback interception • token validation • stable updater assets"
           }
           EOF
           cat update.json
