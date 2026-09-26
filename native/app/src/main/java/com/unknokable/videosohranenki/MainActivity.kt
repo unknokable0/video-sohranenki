@@ -2392,8 +2392,8 @@ class MainActivity : AppCompatActivity() {
             val offline = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(12), dp(10), dp(12), dp(10))
-                background = roundedBg(panel, 18)
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                background = roundedBg(palette.surface, 22)
             }
 
             val pulse = LivePulseView(this).apply {
@@ -2401,8 +2401,8 @@ class MainActivity : AppCompatActivity() {
             }
             offline.addView(
                 pulse,
-                LinearLayout.LayoutParams(dp(24), dp(24)).apply {
-                    marginEnd = dp(10)
+                LinearLayout.LayoutParams(dp(22), dp(22)).apply {
+                    marginEnd = dp(9)
                 }
             )
 
@@ -2411,7 +2411,7 @@ class MainActivity : AppCompatActivity() {
             }
             labels.addView(TextView(this).apply {
                 text = "t2x2"
-                textSize = 14.5f
+                textSize = 15f
                 setTypeface(typeface, Typeface.BOLD)
                 setTextColor(this@MainActivity.text)
             })
@@ -2427,7 +2427,7 @@ class MainActivity : AppCompatActivity() {
                 offline,
                 FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(72)
+                    dp(76)
                 )
             )
             return
@@ -2435,17 +2435,18 @@ class MainActivity : AppCompatActivity() {
 
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = roundedBg(panel, 20)
+            background = roundedBg(palette.surface, 26)
             clipToOutline = true
             isClickable = true
             isFocusable = true
+            elevation = dp(1).toFloat()
             setOnClickListener {
                 animatePress(this)
                 openTwitchLivePlayer(live)
             }
         }
 
-        val previewHeight = ((resources.displayMetrics.widthPixels - dp(32)) * 9f / 16f).toInt()
+        val previewHeight = ((resources.displayMetrics.widthPixels - dp(40)) * 9f / 16f).toInt()
         val preview = TwitchLivePreviewView(
             context = this,
             live = live,
@@ -2458,45 +2459,42 @@ class MainActivity : AppCompatActivity() {
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 previewHeight
-            )
+            ).apply {
+                marginStart = dp(4)
+                marginEnd = dp(4)
+                topMargin = dp(4)
+            }
         )
 
         val meta = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(10), dp(12), dp(11))
+            setPadding(dp(14), dp(12), dp(12), dp(13))
         }
-
-        val pulse = LivePulseView(this).apply {
-            setState(true, settings.animations)
-        }
-        meta.addView(
-            pulse,
-            LinearLayout.LayoutParams(dp(24), dp(24)).apply {
-                marginEnd = dp(8)
-            }
-        )
 
         val info = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_VERTICAL
         }
+
         info.addView(TextView(this).apply {
             text = live.displayName.ifBlank { live.login }
-            textSize = 14.5f
+            textSize = 17f
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(this@MainActivity.text)
         })
+
         info.addView(TextView(this).apply {
-            text = "@" + live.login + " • В эфире • " + live.viewerCount + " зрителей"
-            textSize = 11.3f
+            text = "@" + live.login + "  •  " + live.viewerCount + " зрителей"
+            textSize = 11.5f
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
             setTextColor(purple)
-            setPadding(0, dp(3), 0, 0)
+            setPadding(0, dp(4), 0, 0)
         })
+
         if (live.gameName.isNotBlank() || live.title.isNotBlank()) {
             info.addView(TextView(this).apply {
                 text = listOfNotNull(
@@ -2507,26 +2505,27 @@ class MainActivity : AppCompatActivity() {
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
                 setTextColor(muted)
-                setPadding(0, dp(3), 0, 0)
+                setPadding(0, dp(4), 0, 0)
             })
         }
+
         meta.addView(
             info,
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         )
 
         val open = TextView(this).apply {
-            text = "Открыть"
+            text = "Смотреть"
             textSize = 11f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            background = roundedBg(purple, 14)
+            setTextColor(purple)
+            background = roundedBg(palette.accentSoft, 16)
         }
         meta.addView(
             open,
-            LinearLayout.LayoutParams(dp(68), dp(34)).apply {
-                marginStart = dp(8)
+            LinearLayout.LayoutParams(dp(78), dp(36)).apply {
+                marginStart = dp(10)
             }
         )
 
@@ -2541,11 +2540,15 @@ class MainActivity : AppCompatActivity() {
 
         if (animateIn && settings.animations) {
             card.alpha = 0f
-            card.translationY = dp(5).toFloat()
+            card.translationY = dp(7).toFloat()
+            card.scaleX = 0.99f
+            card.scaleY = 0.99f
             card.animate()
                 .alpha(1f)
                 .translationY(0f)
-                .setDuration(210L)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(240L)
                 .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
                 .start()
         }
