@@ -5,6 +5,9 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.content.pm.ActivityInfo
+import android.os.Handler
+import android.os.Looper
 import android.text.Spannable
 import android.text.Spanned
 import android.text.SpannableStringBuilder
@@ -19,6 +22,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -50,10 +54,14 @@ class TwitchLivePlayerScreen(
 
     private val playerCard = FrameLayout(activity)
     private val playerView = PlayerView(activity)
-    private val loader = LoadingWaveView(activity, Color.parseColor("#FF5F7E"))
+    private val loader = LoadingWaveView(activity, palette.accent)
     private val playPause = ImageButton(activity)
-    private val muteButton = ImageButton(activity)
+    private val audioToggle = LiveAudioToggleView(activity, palette.accent)
     private val fullscreenButton = ImageButton(activity)
+    private val controlsOverlay = FrameLayout(activity)
+    private val handler = Handler(Looper.getMainLooper())
+    private var controlsVisible = true
+    private val hideControlsRunnable = Runnable { hideControls() }
 
     private val chatStatus = TextView(activity)
     private val chatScroll = ScrollView(activity)
@@ -78,6 +86,11 @@ class TwitchLivePlayerScreen(
             setBackgroundColor(Color.BLACK)
             background = rounded(Color.BLACK, 18)
             clipToOutline = true
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                if (controlsVisible) hideControls() else showControls(autoHide = player?.isPlaying == true)
+            }
         }
 
         playerView.apply {
@@ -100,7 +113,20 @@ class TwitchLivePlayerScreen(
         )
 
         playerCard.addView(
-            buildPlayerOverlay(),
+            buildLiveStatusPill(),
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                dp(30),
+                Gravity.TOP or Gravity.START
+            ).apply {
+                leftMargin = dp(10)
+                topMargin = dp(10)
+            }
+        )
+
+        buildPlayerOverlay()
+        playerCard.addView(
+            controlsOverlay,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -161,9 +187,9 @@ class TwitchLivePlayerScreen(
             setTextColor(palette.text)
         })
         titles.addView(TextView(activity).apply {
-            text = "@" + live.login + " • LIVE"
+            text = "@" + live.login + " • В эфире"
             textSize = 11.5f
-            setTextColor(Color.parseColor("#FF5F7E"))
+            setTextColor(palette.accent)
             setPadding(0, dp(2), 0, 0)
         })
 
@@ -181,46 +207,58 @@ class TwitchLivePlayerScreen(
         return row
     }
 
-    private fun buildPlayerOverlay(): View {
-        val overlay = FrameLayout(activity).apply {
-            setBackgroundColor(Color.parseColor("#14000000"))
+    private fun buildLiveStatusPill(): View {
+        val pill = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(8), 0, dp(10), 0)
+            background = rounded(Color.parseColor("#514E57"), 13)
         }
+
+        val pulse = LivePulseView(activity).apply {
+            setState(true, animationsEnabled)
+        }
+        pill.addView(
+            pulse,
+            LinearLayout.LayoutParams(dp(20), dp(20)).apply {
+                marginEnd = dp(3)
+            }
+        )
+        pill.addView(TextView(activity).apply {
+            text = "В эфире"
+            textSize = 10.5f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+        })
+        return pill
+    }
+
+    private fun buildPlayerOverlay() {
+        controlsOverlay.setBackgroundColor(Color.parseColor("#17000000"))
+        controlsOverlay.alpha = 1f
+        controlsOverlay.visibility = View.VISIBLE
 
         playPause.apply {
             setImageResource(R.drawable.ic_pause)
             imageTintList = ColorStateList.valueOf(Color.WHITE)
-            background = rounded(Color.parseColor("#840A0A0E"), 27)
+            background = rounded(palette.accent, 27)
             setPadding(dp(14), dp(14), dp(14), dp(14))
             contentDescription = "Пауза"
             setOnClickListener {
                 val p = player ?: return@setOnClickListener
-                if (p.isPlaying) p.pause() else p.play()
+                pulseButton(this)
+                if (p.isPlaying) {
+                    p.pause()
+                    showControls(autoHide = false)
+                } else {
+                    jumpToLiveEdgeAndPlay()
+                    showControls(autoHide = true)
+                }
             }
         }
-        overlay.addView(
+        controlsOverlay.addView(
             playPause,
             FrameLayout.LayoutParams(dp(54), dp(54), Gravity.CENTER)
-        )
-
-        val liveBadge = TextView(activity).apply {
-            text = "LIVE"
-            textSize = 10.5f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            setPadding(dp(9), 0, dp(9), 0)
-            background = rounded(Color.parseColor("#E84F70"), 11)
-        }
-        overlay.addView(
-            liveBadge,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                dp(28),
-                Gravity.BOTTOM or Gravity.START
-            ).apply {
-                leftMargin = dp(10)
-                bottomMargin = dp(10)
-            }
         )
 
         val actions = LinearLayout(activity).apply {
@@ -228,25 +266,28 @@ class TwitchLivePlayerScreen(
             gravity = Gravity.CENTER
         }
 
-        muteButton.apply {
-            setImageResource(R.drawable.ic_volume_on)
-            imageTintList = ColorStateList.valueOf(Color.WHITE)
-            background = rounded(Color.parseColor("#840A0A0E"), 20)
-            setPadding(dp(10), dp(10), dp(10), dp(10))
-            contentDescription = "Выключить звук"
-            setOnClickListener { toggleMute() }
+        audioToggle.apply {
+            setMuted(false, animate = false)
+            onMutedChanged = { muted ->
+                this@TwitchLivePlayerScreen.muted = muted
+                player?.volume = if (muted) 0f else 1f
+                showControls(autoHide = player?.isPlaying == true)
+            }
         }
+        actions.addView(audioToggle, LinearLayout.LayoutParams(dp(42), dp(42)))
 
         fullscreenButton.apply {
             setImageResource(R.drawable.ic_fullscreen)
             imageTintList = ColorStateList.valueOf(Color.WHITE)
-            background = rounded(Color.parseColor("#840A0A0E"), 20)
+            background = rounded(withAlpha(palette.accent, 205), 20)
             setPadding(dp(10), dp(10), dp(10), dp(10))
             contentDescription = "Полный экран"
-            setOnClickListener { setFullscreenMode(!fullscreen) }
+            setOnClickListener {
+                pulseButton(this)
+                setFullscreenMode(!fullscreen)
+                showControls(autoHide = player?.isPlaying == true)
+            }
         }
-
-        actions.addView(muteButton, LinearLayout.LayoutParams(dp(42), dp(42)))
         actions.addView(
             fullscreenButton,
             LinearLayout.LayoutParams(dp(42), dp(42)).apply {
@@ -254,7 +295,7 @@ class TwitchLivePlayerScreen(
             }
         )
 
-        overlay.addView(
+        controlsOverlay.addView(
             actions,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -265,7 +306,6 @@ class TwitchLivePlayerScreen(
                 bottomMargin = dp(10)
             }
         )
-        return overlay
     }
 
     private fun buildStreamInfo(): View {
@@ -363,7 +403,7 @@ class TwitchLivePlayerScreen(
                 if (destroyed) return@launch
 
                 val loadControl = DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(7_000, 30_000, 500, 1_000)
+                    .setBufferDurationsMs(5_000, 20_000, 400, 800)
                     .setPrioritizeTimeOverSizeThresholds(true)
                     .build()
 
@@ -372,18 +412,46 @@ class TwitchLivePlayerScreen(
                     .build()
                 player = exo
                 playerView.player = exo
-                exo.volume = 1f
+                exo.volume = if (muted) 0f else 1f
                 exo.playWhenReady = true
-                exo.setMediaItem(MediaItem.fromUri(hlsUrl))
+
+                val mediaItem = MediaItem.Builder()
+                    .setUri(hlsUrl)
+                    .setLiveConfiguration(
+                        MediaItem.LiveConfiguration.Builder()
+                            .setTargetOffsetMs(3_500L)
+                            .setMinPlaybackSpeed(0.98f)
+                            .setMaxPlaybackSpeed(1.04f)
+                            .build()
+                    )
+                    .build()
+
+                exo.setMediaItem(mediaItem)
                 exo.prepare()
                 exo.addListener(object : Player.Listener {
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
                         playPause.setImageResource(if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
                         playPause.contentDescription = if (isPlaying) "Пауза" else "Продолжить"
+                        if (isPlaying) {
+                            scheduleControlsHide()
+                        } else {
+                            showControls(autoHide = false)
+                        }
                     }
 
                     override fun onRenderedFirstFrame() {
                         loader.visibility = View.GONE
+                        scheduleControlsHide()
+                    }
+
+                    override fun onPlayerError(error: PlaybackException) {
+                        if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
+                            exo.seekToDefaultPosition()
+                            exo.prepare()
+                            exo.play()
+                        } else {
+                            showPlayerError(error.message ?: "Не удалось продолжить эфир")
+                        }
                     }
                 })
             } catch (e: Exception) {
@@ -492,17 +560,15 @@ class TwitchLivePlayerScreen(
         )
     }
 
-    private fun toggleMute() {
-        muted = !muted
-        player?.volume = if (muted) 0f else 1f
-        muteButton.setImageResource(if (muted) R.drawable.ic_volume_off else R.drawable.ic_volume_on)
-        muteButton.contentDescription = if (muted) "Включить звук" else "Выключить звук"
-    }
-
     fun setFullscreenMode(enabled: Boolean) {
         if (fullscreen == enabled) return
         fullscreen = enabled
-        onFullscreen(enabled)
+
+        if (enabled) {
+            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        } else {
+            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
 
         val params = playerCard.layoutParams as LinearLayout.LayoutParams
         if (enabled) {
@@ -510,30 +576,101 @@ class TwitchLivePlayerScreen(
                 val child = root.getChildAt(i)
                 child.visibility = if (child === playerCard) View.VISIBLE else View.GONE
             }
+            root.setPadding(0, 0, 0, 0)
+            playerCard.background = null
+            playerCard.clipToOutline = false
+            params.width = ViewGroup.LayoutParams.MATCH_PARENT
             params.height = 0
             params.weight = 1f
             params.marginStart = 0
             params.marginEnd = 0
         } else {
-            for (i in 0 until root.childCount) {
-                root.getChildAt(i).visibility = View.VISIBLE
-            }
+            for (i in 0 until root.childCount) root.getChildAt(i).visibility = View.VISIBLE
+            playerCard.background = rounded(Color.BLACK, 18)
+            playerCard.clipToOutline = true
             val width = activity.resources.displayMetrics.widthPixels
+            params.width = ViewGroup.LayoutParams.MATCH_PARENT
             params.height = (width * 9f / 16f).toInt()
             params.weight = 0f
             params.marginStart = dp(12)
             params.marginEnd = dp(12)
         }
         playerCard.layoutParams = params
+        onFullscreen(enabled)
+        showControls(autoHide = player?.isPlaying == true)
     }
 
     fun exitFullscreen() {
         setFullscreenMode(false)
     }
 
+    private fun jumpToLiveEdgeAndPlay() {
+        val p = player ?: return
+        p.seekToDefaultPosition()
+        if (p.playbackState == Player.STATE_IDLE) p.prepare()
+        p.play()
+    }
+
+    private fun showControls(autoHide: Boolean) {
+        handler.removeCallbacks(hideControlsRunnable)
+        controlsVisible = true
+        controlsOverlay.visibility = View.VISIBLE
+        controlsOverlay.animate().cancel()
+        controlsOverlay.animate()
+            .alpha(1f)
+            .setDuration(if (animationsEnabled) 150L else 0L)
+            .start()
+        if (autoHide) scheduleControlsHide()
+    }
+
+    private fun hideControls() {
+        handler.removeCallbacks(hideControlsRunnable)
+        if (!controlsVisible) return
+        controlsVisible = false
+        controlsOverlay.animate().cancel()
+        controlsOverlay.animate()
+            .alpha(0f)
+            .setDuration(if (animationsEnabled) 170L else 0L)
+            .withEndAction {
+                if (!controlsVisible) controlsOverlay.visibility = View.GONE
+            }
+            .start()
+    }
+
+    private fun scheduleControlsHide() {
+        handler.removeCallbacks(hideControlsRunnable)
+        handler.postDelayed(hideControlsRunnable, 2_300L)
+    }
+
+    private fun pulseButton(view: View) {
+        if (!animationsEnabled) return
+        view.animate().cancel()
+        view.animate()
+            .scaleX(0.92f)
+            .scaleY(0.92f)
+            .setDuration(55L)
+            .withEndAction {
+                view.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(140L)
+                    .start()
+            }
+            .start()
+    }
+
+    private fun withAlpha(color: Int, alpha: Int): Int =
+        (color and 0x00FFFFFF) or (alpha.coerceIn(0, 255) shl 24)
+
     fun destroy() {
         if (destroyed) return
         destroyed = true
+        handler.removeCallbacksAndMessages(null)
+        if (fullscreen) {
+            fullscreen = false
+            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            onFullscreen(false)
+        }
         chatClient.close()
         scope.cancel()
         playerView.player = null
