@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.Spannable
+import android.text.Spanned
 import android.text.SpannableStringBuilder
 import android.text.style.ForegroundColorSpan
 import android.text.style.StyleSpan
@@ -30,7 +31,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
-@androidx.annotation.OptIn(UnstableApi::class)
+@OptIn(UnstableApi::class)
 class TwitchLivePlayerScreen(
     private val activity: Activity,
     private val live: TwitchLiveStream,
@@ -433,13 +434,13 @@ class TwitchLivePlayerScreen(
                 ForegroundColorSpan(message.color),
                 0,
                 nameEnd,
-                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
             )
             text.setSpan(
                 StyleSpan(Typeface.BOLD),
                 0,
                 nameEnd,
-                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
             )
         }
 
