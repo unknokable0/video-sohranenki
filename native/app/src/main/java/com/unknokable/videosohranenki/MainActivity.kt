@@ -96,6 +96,7 @@ class MainActivity : AppCompatActivity() {
     private var lastT2x2LiveCheckedAt = 0L
     private var lastT2x2LiveUnavailable = false
     private val t2x2LiveCacheMs = 20_000L
+    private val temporaryLivePreviewCacheMs = 10L * 60L * 1000L
     // TEMPORARY: test build only. Set false after LIVE card is visually verified.
     private val temporaryLivePreviewEnabled = true
     private var pendingTwitchWelcome = false
@@ -2339,7 +2340,8 @@ class MainActivity : AppCompatActivity() {
         twitchLiveJob?.cancel()
 
         val now = System.currentTimeMillis()
-        if (lastT2x2LiveCheckedAt > 0L && now - lastT2x2LiveCheckedAt < t2x2LiveCacheMs) {
+        val cacheMs = if (temporaryLivePreviewEnabled) temporaryLivePreviewCacheMs else t2x2LiveCacheMs
+        if (lastT2x2LiveCheckedAt > 0L && now - lastT2x2LiveCheckedAt < cacheMs) {
             renderT2x2Live(slot, lastT2x2Live, lastT2x2LiveUnavailable)
             return
         }
