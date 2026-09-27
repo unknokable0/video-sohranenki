@@ -30,6 +30,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultLivePlaybackSpeedControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -549,8 +550,14 @@ class TwitchLivePlayerScreen(
                 if (destroyed) return@launch
 
                 val loadControl = DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(2_500, 8_000, 450, 800)
+                    .setBufferDurationsMs(5_000, 20_000, 700, 1_500)
                     .setPrioritizeTimeOverSizeThresholds(true)
+                    .build()
+
+                val liveSpeedControl = DefaultLivePlaybackSpeedControl.Builder()
+                    .setFallbackMinPlaybackSpeed(0.98f)
+                    .setFallbackMaxPlaybackSpeed(1.03f)
+                    .setTargetLiveOffsetIncrementOnRebufferMs(1_200L)
                     .build()
 
                 val renderersFactory = DefaultRenderersFactory(activity)
@@ -559,6 +566,7 @@ class TwitchLivePlayerScreen(
 
                 val exo = ExoPlayer.Builder(activity, renderersFactory)
                     .setLoadControl(loadControl)
+                    .setLivePlaybackSpeedControl(liveSpeedControl)
                     .build()
 
                 player = exo
@@ -572,8 +580,12 @@ class TwitchLivePlayerScreen(
                 exo.addListener(object : Player.Listener {
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
                         updatePlayIcon()
-                        if (isPlaying) scheduleControlsHide()
-                        else showControls(autoHide = false)
+                        if (isPlaying) {
+                            scheduleControlsHide()
+                        } else if (exo.playbackState == Player.STATE_READY) {
+                            // Only show paused controls for a real pause, not for network buffering.
+                            showControls(autoHide = false)
+                        }
                     }
 
                     override fun onRenderedFirstFrame() {
@@ -588,11 +600,7 @@ class TwitchLivePlayerScreen(
                         recoveringStream = false
                         clearPlayerError()
                         scheduleControlsHide()
-                        startLiveEdgeGuard()
-                        if (live.testStream) {
-                            handler.removeCallbacks(commercialGuardRunnable)
-                            handler.postDelayed(commercialGuardRunnable, 8_000L)
-                        }
+                        handler.removeCallbacks(liveEdgeGuardRunnable)
                     }
 
                     override fun onPlaybackStateChanged(playbackState: Int) {
@@ -602,7 +610,7 @@ class TwitchLivePlayerScreen(
                                     if (!destroyed && exo.playbackState == Player.STATE_BUFFERING) {
                                         loader.visibility = View.VISIBLE
                                     }
-                                }, 650L)
+                                }, 1_200L)
                             }
                             Player.STATE_READY -> {
                                 loader.visibility = View.GONE
@@ -819,11 +827,11 @@ class TwitchLivePlayerScreen(
             .setUri(url)
             .setLiveConfiguration(
                 MediaItem.LiveConfiguration.Builder()
-                    .setTargetOffsetMs(3_000L)
-                    .setMinOffsetMs(1_800L)
-                    .setMaxOffsetMs(6_000L)
+                    .setTargetOffsetMs(4_500L)
+                    .setMinOffsetMs(3_000L)
+                    .setMaxOffsetMs(9_000L)
                     .setMinPlaybackSpeed(0.98f)
-                    .setMaxPlaybackSpeed(1.04f)
+                    .setMaxPlaybackSpeed(1.03f)
                     .build()
             )
             .build()
@@ -1065,9 +1073,9 @@ class TwitchLivePlayerScreen(
     }
 
     private fun startLiveEdgeGuard() {
+        // Media3's LivePlaybackSpeedControl owns normal live-edge correction.
         handler.removeCallbacks(liveEdgeGuardRunnable)
         farBehindSamples = 0
-        handler.postDelayed(liveEdgeGuardRunnable, 5_000L)
     }
 
     private fun showControls(autoHide: Boolean) {
