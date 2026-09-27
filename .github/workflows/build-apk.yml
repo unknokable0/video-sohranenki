@@ -1,6 +1,7 @@
 name: Build Android APK
 
 # SOHR 5.3 test channel: in-app Twitch OAuth + verified updater
+# Rebuild marker: test34 runner restart
 on:
   push:
     branches: [main]
