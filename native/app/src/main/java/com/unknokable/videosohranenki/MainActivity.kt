@@ -336,20 +336,27 @@ class MainActivity : AppCompatActivity() {
         if (!hasPlayer) return false
         if (playerBackInProgress) return true
 
-        if (fullScreen ||
+        val playerActuallyFullscreen =
             playerScreen?.isFullscreen == true ||
             twitchPlayerScreen?.isFullscreen == true ||
             twitchLivePlayerScreen?.isFullscreen == true
-        ) {
+
+        if (playerActuallyFullscreen) {
             if (playerScreen?.dismissFullscreenSettingsIfOpen() == true) return true
 
             when {
                 twitchLivePlayerScreen?.isFullscreen == true -> twitchLivePlayerScreen?.exitFullscreen()
                 twitchPlayerScreen?.isFullscreen == true -> twitchPlayerScreen?.exitFullscreen()
                 playerScreen?.isFullscreen == true -> playerScreen?.exitFullscreen()
-                else -> setFullscreen(false)
             }
             return true
+        }
+
+        // OEM rotation/config changes can leave the Activity fullscreen flag stale
+        // even though the player has already returned to inline mode.
+        // Repair that state, but keep processing this same Back press.
+        if (fullScreen) {
+            setFullscreen(false)
         }
 
         playerBackInProgress = true
@@ -377,12 +384,15 @@ class MainActivity : AppCompatActivity() {
         }
 
         root.postDelayed({
-            outgoingPlayer?.destroy()
-            outgoingTwitchPlayer?.destroy()
-            outgoingTwitchLivePlayer?.destroy()
-            currentStreamingItem?.let { streamed -> streamServer?.release(streamed) }
-            currentStreamingItem = null
-            playerBackInProgress = false
+            try {
+                outgoingPlayer?.destroy()
+                outgoingTwitchPlayer?.destroy()
+                outgoingTwitchLivePlayer?.destroy()
+                currentStreamingItem?.let { streamed -> streamServer?.release(streamed) }
+                currentStreamingItem = null
+            } finally {
+                playerBackInProgress = false
+            }
         }, if (settings.animations) 230L else 0L)
 
         return true
