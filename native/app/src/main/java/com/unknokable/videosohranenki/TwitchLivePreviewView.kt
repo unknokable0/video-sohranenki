@@ -218,7 +218,7 @@ class TwitchLivePreviewView(
                 if (released) return@launch
 
                 val loadControl = DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(4_000, 12_000, 600, 1_000)
+                    .setBufferDurationsMs(3_000, 9_000, 500, 900)
                     .setPrioritizeTimeOverSizeThresholds(true)
                     .build()
 
@@ -238,11 +238,11 @@ class TwitchLivePreviewView(
                         .setUri(hls)
                         .setLiveConfiguration(
                             MediaItem.LiveConfiguration.Builder()
-                                .setTargetOffsetMs(4_500L)
-                                .setMinOffsetMs(3_000L)
-                                .setMaxOffsetMs(9_000L)
-                                .setMinPlaybackSpeed(0.98f)
-                                .setMaxPlaybackSpeed(1.03f)
+                                .setTargetOffsetMs(2_500L)
+                                .setMinOffsetMs(1_500L)
+                                .setMaxOffsetMs(5_000L)
+                                .setMinPlaybackSpeed(0.99f)
+                                .setMaxPlaybackSpeed(1.06f)
                                 .build()
                         )
                         .build()

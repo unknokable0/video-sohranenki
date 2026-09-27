@@ -661,14 +661,14 @@ class TwitchLivePlayerScreen(
                 if (destroyed) return@launch
 
                 val loadControl = DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(5_000, 20_000, 700, 1_500)
+                    .setBufferDurationsMs(3_500, 12_000, 600, 1_100)
                     .setPrioritizeTimeOverSizeThresholds(true)
                     .build()
 
                 val liveSpeedControl = DefaultLivePlaybackSpeedControl.Builder()
-                    .setFallbackMinPlaybackSpeed(0.98f)
-                    .setFallbackMaxPlaybackSpeed(1.03f)
-                    .setTargetLiveOffsetIncrementOnRebufferMs(1_200L)
+                    .setFallbackMinPlaybackSpeed(0.99f)
+                    .setFallbackMaxPlaybackSpeed(1.06f)
+                    .setTargetLiveOffsetIncrementOnRebufferMs(650L)
                     .build()
 
                 val renderersFactory = DefaultRenderersFactory(activity)
@@ -1007,13 +1007,13 @@ class TwitchLivePlayerScreen(
                 color = Color.parseColor("#43D18D")
                 active = true
             }
-            offset <= 4_500L -> {
+            offset <= 3_500L -> {
                 bucket = "low"
                 label = "LIVE • %.1fс".format(offset / 1000.0)
                 color = Color.parseColor("#43D18D")
                 active = true
             }
-            offset <= 8_000L -> {
+            offset <= 5_500L -> {
                 bucket = "medium"
                 label = "Задержка • %.1fс".format(offset / 1000.0)
                 color = Color.parseColor("#F0B24A")
@@ -1080,11 +1080,11 @@ class TwitchLivePlayerScreen(
             .setUri(url)
             .setLiveConfiguration(
                 MediaItem.LiveConfiguration.Builder()
-                    .setTargetOffsetMs(4_500L)
-                    .setMinOffsetMs(3_000L)
-                    .setMaxOffsetMs(9_000L)
-                    .setMinPlaybackSpeed(0.98f)
-                    .setMaxPlaybackSpeed(1.03f)
+                    .setTargetOffsetMs(2_500L)
+                    .setMinOffsetMs(1_500L)
+                    .setMaxOffsetMs(5_000L)
+                    .setMinPlaybackSpeed(0.99f)
+                    .setMaxPlaybackSpeed(1.06f)
                     .build()
             )
             .build()
