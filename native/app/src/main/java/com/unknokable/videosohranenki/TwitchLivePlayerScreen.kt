@@ -67,6 +67,7 @@ class TwitchLivePlayerScreen(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val chatClient = TwitchChatClient()
+    private val lowLatencyProxy = TwitchLowLatencyProxy()
     private val handler = Handler(Looper.getMainLooper())
 
     private val playerCard = FrameLayout(activity)
@@ -301,6 +302,7 @@ class TwitchLivePlayerScreen(
             }
         )
 
+        lowLatencyProxy.ensureStarted()
         updateFullscreenIcon()
         updateLatencyIndicator()
         handler.post(latencyRunnable)
@@ -874,7 +876,7 @@ class TwitchLivePlayerScreen(
                 exo.volume = if (muted) 0f else 1f
                 exo.playWhenReady = true
 
-                exo.setMediaItem(createLiveMediaItem(hlsUrl))
+                exo.setMediaItem(createLiveMediaItem(playbackUrl(hlsUrl)))
                 exo.prepare()
 
                 exo.addListener(object : Player.Listener {
@@ -988,7 +990,7 @@ class TwitchLivePlayerScreen(
                     return@launch
                 }
 
-                exo.setMediaItem(createLiveMediaItem(freshUrl), true)
+                exo.setMediaItem(createLiveMediaItem(playbackUrl(freshUrl)), true)
                 exo.prepare()
                 exo.seekToDefaultPosition()
                 exo.play()
@@ -1371,14 +1373,21 @@ class TwitchLivePlayerScreen(
         }
     }
 
+    private fun playbackUrl(upstreamUrl: String): String =
+        if (lowLatencyProxy.ensureStarted()) {
+            lowLatencyProxy.playlistUrl(upstreamUrl)
+        } else {
+            upstreamUrl
+        }
+
     private fun createLiveMediaItem(url: String): MediaItem =
         MediaItem.Builder()
             .setUri(url)
             .setLiveConfiguration(
                 MediaItem.LiveConfiguration.Builder()
-                    .setTargetOffsetMs(1_200L)
-                    .setMinOffsetMs(650L)
-                    .setMaxOffsetMs(3_000L)
+                    .setTargetOffsetMs(900L)
+                    .setMinOffsetMs(350L)
+                    .setMaxOffsetMs(2_400L)
                     .setMinPlaybackSpeed(0.995f)
                     .setMaxPlaybackSpeed(1.10f)
                     .build()
@@ -1413,7 +1422,7 @@ class TwitchLivePlayerScreen(
                 if (destroyed) return@launch
                 currentHlsUrl = freshUrl
 
-                exo.setMediaItem(createLiveMediaItem(freshUrl), true)
+                exo.setMediaItem(createLiveMediaItem(playbackUrl(freshUrl)), true)
                 exo.prepare()
                 exo.seekToDefaultPosition()
                 exo.play()
@@ -1750,6 +1759,7 @@ class TwitchLivePlayerScreen(
         playerCard.animate().cancel()
         root.animate().cancel()
         chatClient.close()
+        runCatching { lowLatencyProxy.stop() }
         scope.cancel()
 
         val oldPlayer = player
