@@ -212,7 +212,7 @@ class TwitchLivePreviewView(
                 if (released) return@launch
 
                 val loadControl = DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(3_000, 12_000, 300, 650)
+                    .setBufferDurationsMs(1_200, 5_000, 150, 350)
                     .setPrioritizeTimeOverSizeThresholds(true)
                     .build()
 
@@ -227,7 +227,20 @@ class TwitchLivePreviewView(
                 playerView.player = exo
                 exo.volume = 0f
                 exo.playWhenReady = true
-                exo.setMediaItem(MediaItem.fromUri(hls))
+                exo.setMediaItem(
+                    MediaItem.Builder()
+                        .setUri(hls)
+                        .setLiveConfiguration(
+                            MediaItem.LiveConfiguration.Builder()
+                                .setTargetOffsetMs(2_000L)
+                                .setMinOffsetMs(900L)
+                                .setMaxOffsetMs(3_800L)
+                                .setMinPlaybackSpeed(0.97f)
+                                .setMaxPlaybackSpeed(1.08f)
+                                .build()
+                        )
+                        .build()
+                )
                 exo.prepare()
 
                 exo.addListener(object : Player.Listener {
