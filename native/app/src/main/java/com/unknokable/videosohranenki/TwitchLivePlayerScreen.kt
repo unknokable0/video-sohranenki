@@ -67,6 +67,12 @@ class TwitchLivePlayerScreen(
     private val loader = LoadingWaveView(activity, palette.accent)
     private val controlsOverlay = FrameLayout(activity)
     private val playPause = ImageButton(activity)
+    private val audioToggle = LiveAudioToggleView(
+        activity,
+        palette.accent,
+        Color.parseColor("#66181322"),
+        Color.WHITE
+    )
     private val fullscreenButton = ImageButton(activity)
     private lateinit var qualityButton: TextView
 
@@ -77,7 +83,9 @@ class TwitchLivePlayerScreen(
     private val chatRows = mutableListOf<View>()
 
     private var player: ExoPlayer? = null
+    private var muted = false
     private var qualitySelection = 0
+    private var farBehindSamples = 0
     private var fullscreen = false
     private var destroyed = false
     private var controlsVisible = true
@@ -112,15 +120,23 @@ class TwitchLivePlayerScreen(
             val p = player
             if (!destroyed && p != null) {
                 val offset = p.currentLiveOffset
-                if (
+                val genuinelyFarBehind =
                     p.isPlaying &&
+                    p.playbackState == Player.STATE_READY &&
                     offset != C.TIME_UNSET &&
-                    offset > 3_800L
-                ) {
+                    offset > 10_000L
+
+                farBehindSamples = if (genuinelyFarBehind) farBehindSamples + 1 else 0
+
+                // ExoPlayer's live-speed control handles normal 2–6 second drift smoothly.
+                // Only hard-jump after several consecutive checks when the stream is truly stale.
+                if (farBehindSamples >= 3) {
+                    farBehindSamples = 0
                     p.seekToDefaultPosition()
-                    p.play()
+                    if (!p.isPlaying) p.play()
                 }
-                handler.postDelayed(this, 2_000L)
+
+                handler.postDelayed(this, 5_000L)
             }
         }
     }
@@ -350,9 +366,19 @@ class TwitchLivePlayerScreen(
             }
         }
 
+        audioToggle.apply {
+            setMuted(false, animate = false)
+            onMutedChanged = { nowMuted ->
+                muted = nowMuted
+                player?.volume = if (nowMuted) 0f else 1f
+                showControls(autoHide = player?.isPlaying == true)
+            }
+        }
+
         times.addView(liveLabel, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)))
         times.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
         times.addView(qualityButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)))
+        times.addView(audioToggle, LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginStart = dp(4) })
         times.addView(settingsButton, LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginStart = dp(4) })
         times.addView(fullscreenButton, LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginStart = dp(4) })
 
@@ -523,7 +549,7 @@ class TwitchLivePlayerScreen(
                 if (destroyed) return@launch
 
                 val loadControl = DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(1_200, 5_000, 150, 350)
+                    .setBufferDurationsMs(2_500, 8_000, 450, 800)
                     .setPrioritizeTimeOverSizeThresholds(true)
                     .build()
 
@@ -537,7 +563,7 @@ class TwitchLivePlayerScreen(
 
                 player = exo
                 playerView.player = exo
-                exo.volume = 1f
+                exo.volume = if (muted) 0f else 1f
                 exo.playWhenReady = true
 
                 exo.setMediaItem(createLiveMediaItem(hlsUrl))
@@ -576,7 +602,7 @@ class TwitchLivePlayerScreen(
                                     if (!destroyed && exo.playbackState == Player.STATE_BUFFERING) {
                                         loader.visibility = View.VISIBLE
                                     }
-                                }, 180L)
+                                }, 650L)
                             }
                             Player.STATE_READY -> {
                                 loader.visibility = View.GONE
@@ -793,11 +819,11 @@ class TwitchLivePlayerScreen(
             .setUri(url)
             .setLiveConfiguration(
                 MediaItem.LiveConfiguration.Builder()
-                    .setTargetOffsetMs(1_900L)
-                    .setMinOffsetMs(900L)
-                    .setMaxOffsetMs(3_500L)
-                    .setMinPlaybackSpeed(0.97f)
-                    .setMaxPlaybackSpeed(1.08f)
+                    .setTargetOffsetMs(3_000L)
+                    .setMinOffsetMs(1_800L)
+                    .setMaxOffsetMs(6_000L)
+                    .setMinPlaybackSpeed(0.98f)
+                    .setMaxPlaybackSpeed(1.04f)
                     .build()
             )
             .build()
@@ -1040,7 +1066,8 @@ class TwitchLivePlayerScreen(
 
     private fun startLiveEdgeGuard() {
         handler.removeCallbacks(liveEdgeGuardRunnable)
-        handler.postDelayed(liveEdgeGuardRunnable, 2_000L)
+        farBehindSamples = 0
+        handler.postDelayed(liveEdgeGuardRunnable, 5_000L)
     }
 
     private fun showControls(autoHide: Boolean) {

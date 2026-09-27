@@ -44,11 +44,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 5.3.0-test30 version
+      - name: Assign SOHR 5.3.0-test31 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=503030" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=5.3.0-test30" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=503031" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=5.3.0-test31" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -166,7 +166,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 5.3.0-test30 • Twitch live player matched to Telegram video UI • lower live latency • commercial auto-skip • BlueStacks verified"
+            "notes": "SOHR 5.3.0-test31 • stable low-latency Twitch playback • no aggressive live-edge seeking • SOHR audio button • commercial auto-skip • BlueStacks verified"
           }
           EOF
           cat update.json
