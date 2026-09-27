@@ -8,6 +8,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
+class TwitchCommercialBreakException : IOException("На эфире сейчас реклама Twitch")
+
 object TwitchVodResolver {
     private const val GQL_URL = "https://gql.twitch.tv/gql"
 
@@ -90,6 +92,27 @@ object TwitchVodResolver {
             "&token=$encodedToken"
     }
 
+    suspend fun resolveLiveChecked(
+        login: String,
+        connectTimeoutMs: Int = 10_000,
+        readTimeoutMs: Int = 15_000
+    ): String = withContext(Dispatchers.IO) {
+        val hlsUrl = resolveLive(login, connectTimeoutMs, readTimeoutMs)
+        if (containsCommercialBreak(hlsUrl, connectTimeoutMs, readTimeoutMs)) {
+            throw TwitchCommercialBreakException()
+        }
+        hlsUrl
+    }
+
+    suspend fun isCommercialBreak(
+        login: String,
+        connectTimeoutMs: Int = 8_000,
+        readTimeoutMs: Int = 10_000
+    ): Boolean = withContext(Dispatchers.IO) {
+        val hlsUrl = resolveLive(login, connectTimeoutMs, readTimeoutMs)
+        containsCommercialBreak(hlsUrl, connectTimeoutMs, readTimeoutMs)
+    }
+
     suspend fun resolveLive(
         login: String,
         connectTimeoutMs: Int = 10_000,
@@ -162,6 +185,79 @@ object TwitchVodResolver {
             "&p=" + randomP +
             "&sig=" + encodedSig +
             "&token=" + encodedToken
+    }
+
+    private fun containsCommercialBreak(
+        masterUrl: String,
+        connectTimeoutMs: Int,
+        readTimeoutMs: Int
+    ): Boolean {
+        return runCatching {
+            val master = fetchPlaylistText(masterUrl, connectTimeoutMs, readTimeoutMs)
+            if (hasCommercialMarkers(master)) return@runCatching true
+
+            val mediaUrl = selectMediaPlaylist(masterUrl, master) ?: return@runCatching false
+            val media = fetchPlaylistText(mediaUrl, connectTimeoutMs, readTimeoutMs)
+            hasCommercialMarkers(media)
+        }.getOrDefault(false)
+    }
+
+    private fun fetchPlaylistText(
+        url: String,
+        connectTimeoutMs: Int,
+        readTimeoutMs: Int
+    ): String {
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = connectTimeoutMs.coerceIn(1_500, 15_000)
+            readTimeout = readTimeoutMs.coerceIn(2_000, 20_000)
+            setRequestProperty("Accept", "application/vnd.apple.mpegurl,application/x-mpegURL,text/plain,*/*")
+            setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/139 Mobile Safari/537.36")
+        }
+        return try {
+            val code = connection.responseCode
+            if (code !in 200..299) return ""
+            connection.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun selectMediaPlaylist(masterUrl: String, master: String): String? {
+        val lines = master.lineSequence().map { it.trim() }.toList()
+        var fallback: String? = null
+
+        for (i in lines.indices) {
+            val header = lines[i]
+            if (!header.startsWith("#EXT-X-STREAM-INF", ignoreCase = true)) continue
+
+            var j = i + 1
+            while (j < lines.size && (lines[j].isBlank() || lines[j].startsWith("#"))) j++
+            if (j >= lines.size) continue
+
+            val uri = lines[j]
+            val absolute = runCatching { URL(URL(masterUrl), uri).toString() }.getOrNull() ?: continue
+            if (fallback == null) fallback = absolute
+
+            if (!header.contains("audio_only", ignoreCase = true)) {
+                return absolute
+            }
+        }
+        return fallback
+    }
+
+    private fun hasCommercialMarkers(playlist: String): Boolean {
+        if (playlist.isBlank()) return false
+        val lower = playlist.lowercase()
+        return listOf(
+            "stitched-ad",
+            "commercial break in progress",
+            "x-tv-twitch-ad",
+            "twitch-ad",
+            "amazon-adsystem",
+            "ad-signifier",
+            "server-ads"
+        ).any(lower::contains)
     }
 
 }

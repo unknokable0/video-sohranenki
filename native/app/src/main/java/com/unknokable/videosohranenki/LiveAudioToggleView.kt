@@ -119,22 +119,22 @@ class LiveAudioToggleView(
 
         val cx = width / 2f
         val cy = height / 2f
-        val u = size / 40f
+        val u = size / 44f
 
         backgroundPaint.color = controlBackgroundColor
         canvas.drawCircle(cx, cy, size * 0.5f, backgroundPaint)
 
         speaker.reset()
-        speaker.moveTo(cx - 9f * u, cy - 4f * u)
-        speaker.lineTo(cx - 5f * u, cy - 4f * u)
-        speaker.lineTo(cx + 1f * u, cy - 9f * u)
-        speaker.lineTo(cx + 1f * u, cy + 9f * u)
-        speaker.lineTo(cx - 5f * u, cy + 4f * u)
-        speaker.lineTo(cx - 9f * u, cy + 4f * u)
+        speaker.moveTo(cx - 8.5f * u, cy - 4.2f * u)
+        speaker.lineTo(cx - 4.4f * u, cy - 4.2f * u)
+        speaker.lineTo(cx + 1.8f * u, cy - 9.0f * u)
+        speaker.lineTo(cx + 1.8f * u, cy + 9.0f * u)
+        speaker.lineTo(cx - 4.4f * u, cy + 4.2f * u)
+        speaker.lineTo(cx - 8.5f * u, cy + 4.2f * u)
         speaker.close()
         canvas.drawPath(speaker, speakerPaint)
 
-        linePaint.strokeWidth = 1.7f * u
+        linePaint.strokeWidth = 1.8f * u
 
         val soundAlpha = ((1f - mutedProgress) * 255f).toInt().coerceIn(0, 255)
         linePaint.color = withAlpha(controlIconColor, soundAlpha)
@@ -157,17 +157,25 @@ class LiveAudioToggleView(
 
         if (mutedProgress > 0.001f) {
             linePaint.color = withAlpha(
-                Color.WHITE,
+                controlIconColor,
                 (mutedProgress * 255f).toInt().coerceIn(0, 255)
             )
-            linePaint.strokeWidth = 2.05f * u
+            linePaint.strokeWidth = 2.0f * u
 
-            val slide = (1f - mutedProgress) * 2f * u
+            val xCenter = cx + 8.2f * u
+            val arm = 3.6f * u
             canvas.drawLine(
-                cx - 7f * u + slide,
-                cy - 8f * u,
-                cx + 10f * u + slide,
-                cy + 8f * u,
+                xCenter - arm,
+                cy - arm,
+                xCenter + arm,
+                cy + arm,
+                linePaint
+            )
+            canvas.drawLine(
+                xCenter + arm,
+                cy - arm,
+                xCenter - arm,
+                cy + arm,
                 linePaint
             )
         }

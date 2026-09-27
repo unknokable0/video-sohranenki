@@ -48,7 +48,8 @@ class TwitchLivePlayerScreen(
     private val animationsEnabled: Boolean,
     private val onBack: () -> Unit,
     private val onFullscreen: (Boolean) -> Unit,
-    private val onChatScopeMissing: () -> Unit
+    private val onChatScopeMissing: () -> Unit,
+    private val onTestStreamBlocked: (TwitchLiveStream) -> Unit = {}
 ) {
     val root = LinearLayout(activity)
 
@@ -92,6 +93,26 @@ class TwitchLivePlayerScreen(
     private var streamRecoveryAttempts = 0
     private var recoveringStream = false
     private var playerErrorView: TextView? = null
+    private var commercialSwitchRequested = false
+
+    private val commercialGuardRunnable: Runnable = object : Runnable {
+        override fun run() {
+            if (destroyed || commercialSwitchRequested || !live.testStream) return
+            val self = this
+            scope.launch {
+                val commercial = runCatching {
+                    TwitchVodResolver.isCommercialBreak(live.login)
+                }.getOrDefault(false)
+
+                if (destroyed || commercialSwitchRequested) return@launch
+                if (commercial) {
+                    handleCommercialBreak()
+                } else {
+                    handler.postDelayed(self, 12_000L)
+                }
+            }
+        }
+    }
 
     private val hideControlsRunnable = Runnable { hideControls() }
     private val liveEdgeGuardRunnable = object : Runnable {
@@ -514,7 +535,7 @@ class TwitchLivePlayerScreen(
     private fun startPlayer() {
         scope.launch {
             try {
-                val hlsUrl = TwitchVodResolver.resolveLive(live.login)
+                val hlsUrl = TwitchVodResolver.resolveLiveChecked(live.login)
                 if (destroyed) return@launch
 
                 val loadControl = DefaultLoadControl.Builder()
@@ -552,6 +573,10 @@ class TwitchLivePlayerScreen(
                         clearPlayerError()
                         scheduleControlsHide()
                         startLiveEdgeGuard()
+                        if (live.testStream) {
+                            handler.removeCallbacks(commercialGuardRunnable)
+                            handler.postDelayed(commercialGuardRunnable, 8_000L)
+                        }
                     }
 
                     override fun onPlaybackStateChanged(playbackState: Int) {
@@ -573,10 +598,38 @@ class TwitchLivePlayerScreen(
                         }
                     }
                 })
+            } catch (_: TwitchCommercialBreakException) {
+                handleCommercialBreak()
             } catch (e: Exception) {
                 loader.visibility = View.GONE
                 showPlayerError(e.message ?: "Не удалось открыть эфир")
             }
+        }
+    }
+
+    private fun handleCommercialBreak() {
+        if (destroyed || commercialSwitchRequested) return
+
+        if (live.testStream) {
+            commercialSwitchRequested = true
+            handler.removeCallbacks(commercialGuardRunnable)
+            player?.pause()
+            loader.visibility = View.VISIBLE
+            showPlayerError("На этом эфире реклама Twitch • переключаем…")
+            scope.launch {
+                delay(220L)
+                if (!destroyed) onTestStreamBlocked(live)
+            }
+        } else {
+            loader.visibility = View.GONE
+            showPlayerError("На канале сейчас реклама Twitch. Попробуем снова автоматически.")
+            handler.postDelayed({
+                if (!destroyed) {
+                    clearPlayerError()
+                    loader.visibility = View.VISIBLE
+                    startPlayer()
+                }
+            }, 12_000L)
         }
     }
 
@@ -768,7 +821,7 @@ class TwitchLivePlayerScreen(
             )
 
             try {
-                val freshUrl = TwitchVodResolver.resolveLive(live.login)
+                val freshUrl = TwitchVodResolver.resolveLiveChecked(live.login)
                 if (destroyed) return@launch
 
                 exo.setMediaItem(createLiveMediaItem(freshUrl), true)
@@ -776,6 +829,9 @@ class TwitchLivePlayerScreen(
                 exo.seekToDefaultPosition()
                 exo.play()
                 recoveringStream = false
+            } catch (_: TwitchCommercialBreakException) {
+                recoveringStream = false
+                handleCommercialBreak()
             } catch (_: Exception) {
                 recoveringStream = false
                 if (streamRecoveryAttempts >= 3) {

@@ -97,6 +97,7 @@ class MainActivity : AppCompatActivity() {
     private var lastT2x2LiveUnavailable = false
     private val t2x2LiveCacheMs = 20_000L
     private val temporaryLivePreviewCacheMs = 60_000L
+    private val temporaryBlockedLiveLogins = linkedSetOf<String>()
     // TEMPORARY: test build only. Set false after LIVE card is visually verified.
     private val temporaryLivePreviewEnabled = true
     private var pendingTwitchWelcome = false
@@ -2359,11 +2360,33 @@ class MainActivity : AppCompatActivity() {
         twitchLiveJob = lifecycleScope.launch {
             try {
                 val live = if (temporaryLivePreviewEnabled) {
-                    TwitchApi.loadRandomLiveStream(
-                        clientId = clientId,
-                        accessToken = token,
-                        excludeLogins = setOf("t2x2")
-                    )
+                    var selected: TwitchLiveStream? = null
+                    val excluded = linkedSetOf<String>().apply {
+                        add("t2x2")
+                        addAll(temporaryBlockedLiveLogins)
+                    }
+
+                    for (attempt in 0 until 6) {
+                        val candidate = TwitchApi.loadRandomLiveStream(
+                            clientId = clientId,
+                            accessToken = token,
+                            excludeLogins = excluded
+                        ) ?: break
+
+                        val commercial = runCatching {
+                            TwitchVodResolver.isCommercialBreak(candidate.login)
+                        }.getOrDefault(false)
+
+                        if (commercial) {
+                            blockTemporaryLive(candidate.login)
+                            excluded.add(candidate.login.lowercase())
+                            continue
+                        }
+
+                        selected = candidate
+                        break
+                    }
+                    selected
                 } else {
                     TwitchApi.loadLiveStream(clientId, token, "t2x2")
                 }
@@ -2383,6 +2406,25 @@ class MainActivity : AppCompatActivity() {
                 if (slot.isAttachedToWindow) renderT2x2Live(slot, null, unavailable = true)
             }
         }
+    }
+
+    private fun blockTemporaryLive(login: String) {
+        val normalized = login.trim().lowercase()
+        if (normalized.isBlank()) return
+        temporaryBlockedLiveLogins.remove(normalized)
+        temporaryBlockedLiveLogins.add(normalized)
+        while (temporaryBlockedLiveLogins.size > 12) {
+            temporaryBlockedLiveLogins.remove(temporaryBlockedLiveLogins.first())
+        }
+    }
+
+    private fun skipBlockedTemporaryPreview(slot: FrameLayout, live: TwitchLiveStream) {
+        if (!temporaryLivePreviewEnabled || !live.testStream) return
+        blockTemporaryLive(live.login)
+        lastT2x2Live = null
+        lastT2x2LiveUnavailable = false
+        lastT2x2LiveCheckedAt = 0L
+        if (slot.isAttachedToWindow) refreshT2x2Live(slot)
     }
 
     private fun renderT2x2Live(slot: FrameLayout, live: TwitchLiveStream?, unavailable: Boolean = false) {
@@ -2454,7 +2496,8 @@ class MainActivity : AppCompatActivity() {
             live = live,
             palette = palette,
             animationsEnabled = settings.animations,
-            onOpen = { openTwitchLivePlayer(live) }
+            onOpen = { openTwitchLivePlayer(live) },
+            onBlocked = { blocked -> skipBlockedTemporaryPreview(slot, blocked) }
         )
         card.addView(
             preview,
@@ -2844,6 +2887,9 @@ class MainActivity : AppCompatActivity() {
                     onChatScopeMissing = {
                         pendingTwitchLiveAfterAuth = live
                         startTwitchLogin()
+                    },
+                    onTestStreamBlocked = { blocked ->
+                        switchToAnotherTemporaryLive(blocked)
                     }
                 )
 
@@ -2865,6 +2911,70 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+
+    private fun switchToAnotherTemporaryLive(blocked: TwitchLiveStream) {
+        if (!temporaryLivePreviewEnabled || !blocked.testStream) return
+        blockTemporaryLive(blocked.login)
+
+        val clientId = BuildConfig.TWITCH_CLIENT_ID.trim()
+        val token = settings.twitchAccessToken
+        if (clientId.isBlank() || token.isNullOrBlank()) {
+            isPlayerScreen = false
+            showMessage("Не удалось переключить эфир", "Twitch сейчас недоступен.")
+            return
+        }
+
+        showLoading("На эфире реклама Twitch • ищем другой…")
+        lifecycleScope.launch {
+            try {
+                var next: TwitchLiveStream? = null
+                val excluded = linkedSetOf<String>().apply {
+                    add("t2x2")
+                    addAll(temporaryBlockedLiveLogins)
+                }
+
+                for (attempt in 0 until 7) {
+                    val candidate = TwitchApi.loadRandomLiveStream(
+                        clientId = clientId,
+                        accessToken = token,
+                        excludeLogins = excluded
+                    ) ?: break
+
+                    val commercial = runCatching {
+                        TwitchVodResolver.isCommercialBreak(candidate.login)
+                    }.getOrDefault(false)
+
+                    if (commercial) {
+                        blockTemporaryLive(candidate.login)
+                        excluded.add(candidate.login.lowercase())
+                        continue
+                    }
+
+                    next = candidate
+                    break
+                }
+
+                if (next != null) {
+                    lastT2x2Live = next
+                    lastT2x2LiveUnavailable = false
+                    lastT2x2LiveCheckedAt = System.currentTimeMillis()
+                    openTwitchLivePlayer(next)
+                } else {
+                    isPlayerScreen = false
+                    showMessage(
+                        "Тестовые эфиры заняты рекламой",
+                        "SOHR не нашёл подходящий эфир без рекламной паузы. Обнови экран чуть позже."
+                    )
+                }
+            } catch (e: Exception) {
+                isPlayerScreen = false
+                showMessage(
+                    "Не удалось переключить эфир",
+                    e.message ?: "Ошибка Twitch"
+                )
+            }
+        }
+    }
 
     private fun showSelectedVideoSource(forceRefresh: Boolean = false) {
         currentDay = null

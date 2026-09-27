@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -32,10 +34,12 @@ class TwitchLivePreviewView(
     private val live: TwitchLiveStream,
     private val palette: ThemePalette,
     private val animationsEnabled: Boolean,
-    private val onOpen: () -> Unit
+    private val onOpen: () -> Unit,
+    private val onBlocked: (TwitchLiveStream) -> Unit = {}
 ) : FrameLayout(context) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val handler = Handler(Looper.getMainLooper())
     private val playerView = PlayerView(context)
     private val poster = ImageView(context)
     private val loader = LoadingWaveView(context, palette.accent)
@@ -49,6 +53,26 @@ class TwitchLivePreviewView(
     private var player: ExoPlayer? = null
     private var released = false
     private var muted = true
+    private var blockedReported = false
+
+    private val commercialGuardRunnable: Runnable = object : Runnable {
+        override fun run() {
+            if (released || blockedReported || !live.testStream) return
+            val self = this
+            scope.launch {
+                val commercial = runCatching {
+                    TwitchVodResolver.isCommercialBreak(live.login)
+                }.getOrDefault(false)
+
+                if (released || blockedReported) return@launch
+                if (commercial) {
+                    reportBlocked()
+                } else {
+                    handler.postDelayed(self, 12_000L)
+                }
+            }
+        }
+    }
 
     init {
         background = rounded(Color.BLACK, 24)
@@ -112,9 +136,9 @@ class TwitchLivePreviewView(
         }
         addView(
             audioToggle,
-            LayoutParams(dp(40), dp(40), Gravity.TOP or Gravity.END).apply {
-                rightMargin = dp(10)
-                topMargin = dp(10)
+            LayoutParams(dp(36), dp(36), Gravity.TOP or Gravity.END).apply {
+                rightMargin = dp(9)
+                topMargin = dp(9)
             }
         )
 
@@ -184,7 +208,7 @@ class TwitchLivePreviewView(
     private fun start() {
         scope.launch {
             try {
-                val hls = TwitchVodResolver.resolveLive(live.login)
+                val hls = TwitchVodResolver.resolveLiveChecked(live.login)
                 if (released) return@launch
 
                 val loadControl = DefaultLoadControl.Builder()
@@ -209,6 +233,10 @@ class TwitchLivePreviewView(
                 exo.addListener(object : Player.Listener {
                     override fun onRenderedFirstFrame() {
                         loader.visibility = View.GONE
+                        if (live.testStream) {
+                            handler.removeCallbacks(commercialGuardRunnable)
+                            handler.postDelayed(commercialGuardRunnable, 8_000L)
+                        }
                         poster.animate().cancel()
                         poster.animate()
                             .alpha(0f)
@@ -217,10 +245,21 @@ class TwitchLivePreviewView(
                             .start()
                     }
                 })
+            } catch (_: TwitchCommercialBreakException) {
+                loader.visibility = View.GONE
+                reportBlocked()
             } catch (_: Exception) {
                 loader.visibility = View.GONE
             }
         }
+    }
+
+    private fun reportBlocked() {
+        if (blockedReported || released) return
+        blockedReported = true
+        handler.removeCallbacks(commercialGuardRunnable)
+        player?.pause()
+        onBlocked(live)
     }
 
     override fun onDetachedFromWindow() {
@@ -231,6 +270,7 @@ class TwitchLivePreviewView(
     fun release() {
         if (released) return
         released = true
+        handler.removeCallbacksAndMessages(null)
         scope.cancel()
         playerView.player = null
         player?.release()
