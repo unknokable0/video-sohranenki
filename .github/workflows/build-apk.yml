@@ -14,7 +14,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: sohr-build-main
+  group: sohr-build-main-v2
   cancel-in-progress: true
 
 jobs:
