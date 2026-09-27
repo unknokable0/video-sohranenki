@@ -113,6 +113,14 @@ object TwitchVodResolver {
         containsCommercialBreak(hlsUrl, connectTimeoutMs, readTimeoutMs)
     }
 
+    suspend fun isCommercialBreakUrl(
+        masterUrl: String,
+        connectTimeoutMs: Int = 5_000,
+        readTimeoutMs: Int = 6_000
+    ): Boolean = withContext(Dispatchers.IO) {
+        containsCommercialBreak(masterUrl, connectTimeoutMs, readTimeoutMs)
+    }
+
     suspend fun resolveLive(
         login: String,
         connectTimeoutMs: Int = 10_000,
@@ -178,9 +186,15 @@ object TwitchVodResolver {
         "https://usher.ttvnw.net/api/channel/hls/" + channel + ".m3u8" +
             "?allow_source=true" +
             "&allow_audio_only=true" +
+            "&allow_spectre=true" +
             "&fast_bread=true" +
             "&playlist_include_framerate=true" +
+            "&platform=web" +
+            "&player=twitchweb" +
             "&player_backend=mediaplayer" +
+            "&reassignment_supported=true" +
+            "&rtqos=control" +
+            "&type=any" +
             "&supported_codecs=h264" +
             "&p=" + randomP +
             "&sig=" + encodedSig +
@@ -196,9 +210,13 @@ object TwitchVodResolver {
             val master = fetchPlaylistText(masterUrl, connectTimeoutMs, readTimeoutMs)
             if (hasCommercialMarkers(master)) return@runCatching true
 
-            val mediaUrl = selectMediaPlaylist(masterUrl, master) ?: return@runCatching false
-            val media = fetchPlaylistText(mediaUrl, connectTimeoutMs, readTimeoutMs)
-            hasCommercialMarkers(media)
+            val mediaUrls = selectMediaPlaylists(masterUrl, master)
+            if (mediaUrls.isEmpty()) return@runCatching false
+
+            mediaUrls.take(4).any { mediaUrl ->
+                val media = fetchPlaylistText(mediaUrl, connectTimeoutMs, readTimeoutMs)
+                hasCommercialMarkers(media)
+            }
         }.getOrDefault(false)
     }
 
@@ -223,9 +241,10 @@ object TwitchVodResolver {
         }
     }
 
-    private fun selectMediaPlaylist(masterUrl: String, master: String): String? {
+    private fun selectMediaPlaylists(masterUrl: String, master: String): List<String> {
         val lines = master.lineSequence().map { it.trim() }.toList()
-        var fallback: String? = null
+        val video = mutableListOf<String>()
+        val fallback = mutableListOf<String>()
 
         for (i in lines.indices) {
             val header = lines[i]
@@ -237,13 +256,14 @@ object TwitchVodResolver {
 
             val uri = lines[j]
             val absolute = runCatching { URL(URL(masterUrl), uri).toString() }.getOrNull() ?: continue
-            if (fallback == null) fallback = absolute
+            fallback += absolute
 
             if (!header.contains("audio_only", ignoreCase = true)) {
-                return absolute
+                video += absolute
             }
         }
-        return fallback
+
+        return (video + fallback).distinct()
     }
 
     private fun hasCommercialMarkers(playlist: String): Boolean {

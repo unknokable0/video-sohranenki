@@ -59,8 +59,7 @@ class TwitchLivePlayerScreen(
     private val animationsEnabled: Boolean,
     private val onBack: () -> Unit,
     private val onFullscreen: (Boolean) -> Unit,
-    private val onChatScopeMissing: () -> Unit,
-    private val onTestStreamBlocked: (TwitchLiveStream) -> Unit = {}
+    private val onChatScopeMissing: () -> Unit
 ) {
     val root = LinearLayout(activity)
 
@@ -113,22 +112,30 @@ class TwitchLivePlayerScreen(
     private var streamRecoveryAttempts = 0
     private var recoveringStream = false
     private var playerErrorView: TextView? = null
-    private var commercialSwitchRequested = false
+    private var currentHlsUrl: String? = null
+    private var commercialRecoveryActive = false
+    private var commercialOverlay: LinearLayout? = null
 
     private val commercialGuardRunnable: Runnable = object : Runnable {
         override fun run() {
-            if (destroyed || commercialSwitchRequested || !live.testStream) return
+            if (destroyed || exiting || commercialRecoveryActive) return
+            val url = currentHlsUrl
+            if (url.isNullOrBlank()) {
+                handler.postDelayed(this, 2_500L)
+                return
+            }
+
             val self = this
             scope.launch {
                 val commercial = runCatching {
-                    TwitchVodResolver.isCommercialBreak(live.login)
+                    TwitchVodResolver.isCommercialBreakUrl(url)
                 }.getOrDefault(false)
 
-                if (destroyed || commercialSwitchRequested) return@launch
+                if (destroyed || exiting || commercialRecoveryActive) return@launch
                 if (commercial) {
                     handleCommercialBreak()
                 } else {
-                    handler.postDelayed(self, 12_000L)
+                    handler.postDelayed(self, 2_500L)
                 }
             }
         }
@@ -659,16 +666,17 @@ class TwitchLivePlayerScreen(
             try {
                 val hlsUrl = TwitchVodResolver.resolveLiveChecked(live.login)
                 if (destroyed) return@launch
+                currentHlsUrl = hlsUrl
 
                 val loadControl = DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(3_500, 12_000, 600, 1_100)
+                    .setBufferDurationsMs(2_500, 9_000, 450, 850)
                     .setPrioritizeTimeOverSizeThresholds(true)
                     .build()
 
                 val liveSpeedControl = DefaultLivePlaybackSpeedControl.Builder()
                     .setFallbackMinPlaybackSpeed(0.99f)
-                    .setFallbackMaxPlaybackSpeed(1.06f)
-                    .setTargetLiveOffsetIncrementOnRebufferMs(650L)
+                    .setFallbackMaxPlaybackSpeed(1.08f)
+                    .setTargetLiveOffsetIncrementOnRebufferMs(500L)
                     .build()
 
                 val renderersFactory = DefaultRenderersFactory(activity)
@@ -711,7 +719,10 @@ class TwitchLivePlayerScreen(
                         streamRecoveryAttempts = 0
                         recoveringStream = false
                         clearPlayerError()
+                        hideCommercialOverlay()
                         scheduleControlsHide()
+                        handler.removeCallbacks(commercialGuardRunnable)
+                        handler.postDelayed(commercialGuardRunnable, 2_500L)
                         // Media3 owns live-edge correction; no manual seek loop.
                     }
 
@@ -759,28 +770,130 @@ class TwitchLivePlayerScreen(
     }
 
     private fun handleCommercialBreak() {
-        if (destroyed || commercialSwitchRequested) return
+        if (destroyed || exiting || commercialRecoveryActive) return
 
-        if (live.testStream) {
-            commercialSwitchRequested = true
-            handler.removeCallbacks(commercialGuardRunnable)
-            player?.pause()
-            loader.visibility = View.VISIBLE
-            showPlayerError("На этом эфире реклама Twitch • переключаем…")
-            scope.launch {
-                delay(220L)
-                if (!destroyed) onTestStreamBlocked(live)
-            }
-        } else {
-            loader.visibility = View.GONE
-            showPlayerError("На канале сейчас реклама Twitch. Попробуем снова автоматически.")
-            handler.postDelayed({
-                if (!destroyed) {
-                    clearPlayerError()
-                    loader.visibility = View.VISIBLE
+        commercialRecoveryActive = true
+        handler.removeCallbacks(commercialGuardRunnable)
+        clearPlayerError()
+        loader.visibility = View.GONE
+        showCommercialOverlay()
+
+        // Stay on the same Twitch channel. During the server-side ad break,
+        // poll for this channel's normal live playlist and jump back to its newest live edge.
+        pollSameChannelAfterCommercial()
+    }
+
+    private fun pollSameChannelAfterCommercial() {
+        if (destroyed || exiting || !commercialRecoveryActive) return
+
+        scope.launch {
+            delay(1_800L)
+            if (destroyed || exiting || !commercialRecoveryActive) return@launch
+
+            try {
+                val freshUrl = TwitchVodResolver.resolveLiveChecked(
+                    login = live.login,
+                    connectTimeoutMs = 5_000,
+                    readTimeoutMs = 6_000
+                )
+                if (destroyed || exiting || !commercialRecoveryActive) return@launch
+
+                currentHlsUrl = freshUrl
+                val exo = player
+                if (exo == null) {
+                    commercialRecoveryActive = false
+                    hideCommercialOverlay()
                     startPlayer()
+                    return@launch
                 }
-            }, 12_000L)
+
+                exo.setMediaItem(createLiveMediaItem(freshUrl), true)
+                exo.prepare()
+                exo.seekToDefaultPosition()
+                exo.play()
+
+                commercialRecoveryActive = false
+                handler.removeCallbacks(commercialGuardRunnable)
+                handler.postDelayed(commercialGuardRunnable, 2_500L)
+            } catch (_: TwitchCommercialBreakException) {
+                pollSameChannelAfterCommercial()
+            } catch (_: Exception) {
+                pollSameChannelAfterCommercial()
+            }
+        }
+    }
+
+    private fun showCommercialOverlay() {
+        playerView.alpha = 0f
+
+        val overlay = commercialOverlay ?: LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            background = rounded(Color.parseColor("#E8181620"), 17)
+
+            val pulse = LatencyPulseView(activity).apply {
+                setState(palette.accent, true, animationsEnabled)
+            }
+            addView(
+                pulse,
+                LinearLayout.LayoutParams(dp(22), dp(22)).apply {
+                    marginEnd = dp(7)
+                }
+            )
+
+            addView(TextView(activity).apply {
+                text = "Возвращаемся в LIVE…"
+                textSize = 12f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(Color.WHITE)
+            })
+
+            commercialOverlay = this
+            playerCard.addView(
+                this,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.CENTER
+                )
+            )
+        }
+
+        overlay.visibility = View.VISIBLE
+        if (animationsEnabled) {
+            overlay.animate().cancel()
+            overlay.alpha = 0f
+            overlay.scaleX = 0.97f
+            overlay.scaleY = 0.97f
+            overlay.animate()
+                .alpha(1f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(150L)
+                .start()
+        }
+    }
+
+    private fun hideCommercialOverlay() {
+        playerView.animate().cancel()
+        playerView.alpha = 1f
+
+        commercialOverlay?.let { overlay ->
+            overlay.animate().cancel()
+            if (animationsEnabled && overlay.visibility == View.VISIBLE) {
+                overlay.animate()
+                    .alpha(0f)
+                    .setDuration(120L)
+                    .withEndAction {
+                        overlay.visibility = View.GONE
+                        overlay.alpha = 1f
+                    }
+                    .start()
+            } else {
+                overlay.visibility = View.GONE
+                overlay.alpha = 1f
+            }
         }
     }
 
@@ -1080,11 +1193,11 @@ class TwitchLivePlayerScreen(
             .setUri(url)
             .setLiveConfiguration(
                 MediaItem.LiveConfiguration.Builder()
-                    .setTargetOffsetMs(2_500L)
-                    .setMinOffsetMs(1_500L)
-                    .setMaxOffsetMs(5_000L)
+                    .setTargetOffsetMs(1_500L)
+                    .setMinOffsetMs(900L)
+                    .setMaxOffsetMs(3_500L)
                     .setMinPlaybackSpeed(0.99f)
-                    .setMaxPlaybackSpeed(1.06f)
+                    .setMaxPlaybackSpeed(1.08f)
                     .build()
             )
             .build()
@@ -1115,6 +1228,7 @@ class TwitchLivePlayerScreen(
             try {
                 val freshUrl = TwitchVodResolver.resolveLiveChecked(live.login)
                 if (destroyed) return@launch
+                currentHlsUrl = freshUrl
 
                 exo.setMediaItem(createLiveMediaItem(freshUrl), true)
                 exo.prepare()
@@ -1364,6 +1478,7 @@ class TwitchLivePlayerScreen(
         exiting = true
         handler.removeCallbacks(hideControlsRunnable)
         handler.removeCallbacks(commercialGuardRunnable)
+        commercialRecoveryActive = false
         controlsOverlay.animate().cancel()
         playerErrorView?.animate()?.cancel()
         playerView.keepScreenOn = false

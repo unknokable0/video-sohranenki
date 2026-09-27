@@ -2918,9 +2918,6 @@ class MainActivity : AppCompatActivity() {
                     onChatScopeMissing = {
                         pendingTwitchLiveAfterAuth = live
                         startTwitchLogin()
-                    },
-                    onTestStreamBlocked = { blocked ->
-                        switchToAnotherTemporaryLive(blocked)
                     }
                 )
 
