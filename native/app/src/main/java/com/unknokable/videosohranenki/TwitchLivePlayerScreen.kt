@@ -63,7 +63,11 @@ class TwitchLivePlayerScreen(
     private val handler = Handler(Looper.getMainLooper())
 
     private val playerCard = FrameLayout(activity)
-    private val playerView = PlayerView(activity)
+    private val playerView = activity.layoutInflater.inflate(
+        R.layout.view_sohr_player,
+        playerCard,
+        false
+    ) as PlayerView
     private val posterImage = ImageView(activity)
     private val loader = LoadingWaveView(activity, palette.accent)
     private val controlsOverlay = FrameLayout(activity)
@@ -86,8 +90,8 @@ class TwitchLivePlayerScreen(
     private var player: ExoPlayer? = null
     private var muted = false
     private var qualitySelection = 0
-    private var farBehindSamples = 0
     private var fullscreen = false
+    private var exiting = false
     private var destroyed = false
     private var controlsVisible = true
     private var chatHasMessages = false
@@ -116,31 +120,6 @@ class TwitchLivePlayerScreen(
     }
 
     private val hideControlsRunnable = Runnable { hideControls() }
-    private val liveEdgeGuardRunnable = object : Runnable {
-        override fun run() {
-            val p = player
-            if (!destroyed && p != null) {
-                val offset = p.currentLiveOffset
-                val genuinelyFarBehind =
-                    p.isPlaying &&
-                    p.playbackState == Player.STATE_READY &&
-                    offset != C.TIME_UNSET &&
-                    offset > 10_000L
-
-                farBehindSamples = if (genuinelyFarBehind) farBehindSamples + 1 else 0
-
-                // ExoPlayer's live-speed control handles normal 2–6 second drift smoothly.
-                // Only hard-jump after several consecutive checks when the stream is truly stale.
-                if (farBehindSamples >= 3) {
-                    farBehindSamples = 0
-                    p.seekToDefaultPosition()
-                    if (!p.isPlaying) p.play()
-                }
-
-                handler.postDelayed(this, 5_000L)
-            }
-        }
-    }
 
     val isFullscreen: Boolean
         get() = fullscreen
@@ -170,6 +149,7 @@ class TwitchLivePlayerScreen(
             useController = false
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
             setBackgroundColor(Color.BLACK)
+            setKeepContentOnPlayerReset(true)
             keepScreenOn = true
         }
         playerCard.addView(
@@ -579,6 +559,7 @@ class TwitchLivePlayerScreen(
 
                 exo.addListener(object : Player.Listener {
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        if (exiting || destroyed) return
                         updatePlayIcon()
                         if (isPlaying) {
                             scheduleControlsHide()
@@ -600,10 +581,11 @@ class TwitchLivePlayerScreen(
                         recoveringStream = false
                         clearPlayerError()
                         scheduleControlsHide()
-                        handler.removeCallbacks(liveEdgeGuardRunnable)
+                        // Media3 owns live-edge correction; no manual seek loop.
                     }
 
                     override fun onPlaybackStateChanged(playbackState: Int) {
+                        if (exiting || destroyed) return
                         when (playbackState) {
                             Player.STATE_BUFFERING -> {
                                 handler.postDelayed({
@@ -623,6 +605,7 @@ class TwitchLivePlayerScreen(
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
+                        if (exiting || destroyed) return
                         if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
                             exo.seekToDefaultPosition()
                             exo.prepare()
@@ -1065,17 +1048,23 @@ class TwitchLivePlayerScreen(
         if (fullscreen) setFullscreenMode(false)
     }
 
+    fun prepareForExit() {
+        if (destroyed || exiting) return
+        exiting = true
+        handler.removeCallbacks(hideControlsRunnable)
+        handler.removeCallbacks(commercialGuardRunnable)
+        controlsOverlay.animate().cancel()
+        playerErrorView?.animate()?.cancel()
+        playerView.keepScreenOn = false
+        runCatching { player?.pause() }
+        runCatching { chatClient.close() }
+    }
+
     private fun jumpToLiveEdgeAndPlay() {
         val p = player ?: return
         p.seekToDefaultPosition()
         if (p.playbackState == Player.STATE_IDLE) p.prepare()
         p.play()
-    }
-
-    private fun startLiveEdgeGuard() {
-        // Media3's LivePlaybackSpeedControl owns normal live-edge correction.
-        handler.removeCallbacks(liveEdgeGuardRunnable)
-        farBehindSamples = 0
     }
 
     private fun showControls(autoHide: Boolean) {
@@ -1131,19 +1120,32 @@ class TwitchLivePlayerScreen(
     fun destroy() {
         if (destroyed) return
         destroyed = true
+        exiting = true
         handler.removeCallbacksAndMessages(null)
 
         if (fullscreen) {
             fullscreen = false
             activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-            onFullscreen(false)
+            if (!activity.isFinishing && !activity.isDestroyed) onFullscreen(false)
         }
 
+        controlsOverlay.animate().cancel()
+        playerCard.animate().cancel()
+        root.animate().cancel()
         chatClient.close()
         scope.cancel()
-        playerView.player = null
-        player?.release()
+
+        val oldPlayer = player
         player = null
+        playerView.keepScreenOn = false
+        playerView.player = null
+        runCatching { oldPlayer?.release() }
+
+        root.alpha = 1f
+        root.translationX = 0f
+        root.translationY = 0f
+        root.scaleX = 1f
+        root.scaleY = 1f
     }
 
     private fun rounded(color: Int, radiusDp: Int) = GradientDrawable().apply {

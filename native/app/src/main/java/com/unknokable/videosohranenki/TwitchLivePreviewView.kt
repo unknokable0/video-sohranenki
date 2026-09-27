@@ -7,6 +7,7 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
+import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -40,7 +41,11 @@ class TwitchLivePreviewView(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val handler = Handler(Looper.getMainLooper())
-    private val playerView = PlayerView(context)
+    private val playerView = LayoutInflater.from(context).inflate(
+        R.layout.view_sohr_player,
+        this,
+        false
+    ) as PlayerView
     private val poster = ImageView(context)
     private val loader = LoadingWaveView(context, palette.accent)
     private val audioToggle = LiveAudioToggleView(
@@ -85,6 +90,7 @@ class TwitchLivePreviewView(
             useController = false
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
             setBackgroundColor(Color.BLACK)
+            setKeepContentOnPlayerReset(true)
         }
         addView(
             playerView,
@@ -285,9 +291,16 @@ class TwitchLivePreviewView(
         released = true
         handler.removeCallbacksAndMessages(null)
         scope.cancel()
-        playerView.player = null
-        player?.release()
+        val oldPlayer = player
         player = null
+        playerView.player = null
+        runCatching { oldPlayer?.release() }
+        animate().cancel()
+        alpha = 1f
+        translationX = 0f
+        translationY = 0f
+        scaleX = 1f
+        scaleY = 1f
     }
 
     private fun rounded(color: Int, radiusDp: Int) = GradientDrawable().apply {

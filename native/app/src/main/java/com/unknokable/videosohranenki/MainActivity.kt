@@ -203,6 +203,7 @@ class MainActivity : AppCompatActivity() {
                     val outgoingTwitchPlayer = twitchPlayerScreen
                     val outgoingTwitchLivePlayer = twitchLivePlayerScreen
                     outgoingPlayer?.flushPlaybackPosition()
+                    outgoingTwitchLivePlayer?.prepareForExit()
                     playerScreen = null
                     twitchPlayerScreen = null
                     twitchLivePlayerScreen = null
@@ -217,7 +218,7 @@ class MainActivity : AppCompatActivity() {
                         outgoingTwitchLivePlayer?.destroy()
                         currentStreamingItem?.let { streamed -> streamServer?.release(streamed) }
                         currentStreamingItem = null
-                    }, if (settings.animations) 280L else 0L)
+                    }, if (settings.animations) 225L else 0L)
                     return
                 }
                 if (isSettingsScreen) {
@@ -4358,7 +4359,7 @@ class MainActivity : AppCompatActivity() {
                 old.setLayerType(View.LAYER_TYPE_HARDWARE, null)
                 content.setLayerType(View.LAYER_TYPE_HARDWARE, null)
 
-                val telegramInterpolator = android.view.animation.DecelerateInterpolator(1.5f)
+                val telegramInterpolator = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
                 if (sectionCrossfade) {
                     val direction = if (sectionDirection == 0) 1 else sectionDirection
                     val travel = dp(10).toFloat() * direction
@@ -4789,6 +4790,19 @@ class MainActivity : AppCompatActivity() {
         suppressNextRootAnimation = false
 
         (view.parent as? ViewGroup)?.removeView(view)
+
+        while (root.childCount > 1) {
+            val stale = root.getChildAt(0)
+            stale.animate().cancel()
+            stale.alpha = 1f
+            stale.translationX = 0f
+            stale.translationY = 0f
+            stale.scaleX = 1f
+            stale.scaleY = 1f
+            stale.setLayerType(View.LAYER_TYPE_NONE, null)
+            root.removeViewAt(0)
+        }
+
         val old = if (root.childCount > 0) root.getChildAt(root.childCount - 1) else null
 
         if (!animate || old == null || old === view) {
@@ -4837,8 +4851,8 @@ class MainActivity : AppCompatActivity() {
             old.translationX = 0f
             old.animate()
                 .alpha(0f)
-                .translationX(dp(36).toFloat())
-                .setDuration(210L)
+                .translationX(dp(24).toFloat())
+                .setDuration(220L)
                 .setInterpolator(telegramInterpolator)
                 .withEndAction {
                     old.alpha = 1f
@@ -4852,11 +4866,11 @@ class MainActivity : AppCompatActivity() {
             old.alpha = 1f
             old.translationX = 0f
             view.alpha = 0f
-            view.translationX = dp(36).toFloat()
+            view.translationX = dp(24).toFloat()
             view.animate()
                 .alpha(1f)
                 .translationX(0f)
-                .setDuration(210L)
+                .setDuration(220L)
                 .setInterpolator(telegramInterpolator)
                 .withEndAction {
                     old.setLayerType(View.LAYER_TYPE_NONE, null)
