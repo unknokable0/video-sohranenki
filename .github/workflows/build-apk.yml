@@ -44,18 +44,18 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 5.3.0-test33 version
+      - name: Assign SOHR 5.3.0-test34 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=503033" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=5.3.0-test33" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=503034" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=5.3.0-test34" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
         run: |
           CLIENT_ID="${TWITCH_CLIENT_ID:-gnr3cikerodr25wpbrb04a11031qiz}"
           REDIRECT="https://unknokable0.github.io/video-sohranenki/twitch-auth/"
-          URL="https://id.twitch.tv/oauth2/authorize?response_type=token&client_id=$CLIENT_ID&redirect_uri=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("'"$REDIRECT"'", safe=""))')&scope=&state=sohr-build-check"
+          URL="https://id.twitch.tv/oauth2/authorize?response_type=token&client_id=$CLIENT_ID&redirect_uri=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("'"$REDIRECT"'", safe=""))')&scope=chat%3Aread%20chat%3Aedit&state=sohr-build-check"
           CODE="$(curl --silent --show-error --location --max-time 20 --output /tmp/twitch-oauth.html --write-out '%{http_code}' "$URL" || true)"
           if [ "$CODE" -ge 400 ] || [ "$CODE" -lt 200 ]; then
             echo "Twitch OAuth authorize endpoint failed with HTTP $CODE" >&2
@@ -166,7 +166,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 5.3.0-test33 • TextureView live transitions • smooth back navigation • cleaned live lifecycle/resources • stable Media3 live playback • optimized animations • BlueStacks verified"
+            "notes": "SOHR 5.3.0-test34 • fullscreen chat layout fix • reliable back navigation • writable low-latency Twitch chat • animated latency status • optimized live UI • BlueStacks verified"
           }
           EOF
           cat update.json

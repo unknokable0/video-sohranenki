@@ -30,12 +30,21 @@ class TwitchChatClient {
     @Volatile
     private var socket: SSLSocket? = null
 
+    @Volatile
+    private var writer: BufferedWriter? = null
+
+    @Volatile
+    private var joinedChannel: String = ""
+
+    private val sendLock = Any()
+
     fun connect(
         accessToken: String,
         accountLogin: String,
         channelLogin: String,
         onStatus: (String) -> Unit,
-        onMessage: (TwitchChatMessage) -> Unit
+        onMessage: (TwitchChatMessage) -> Unit,
+        onNotice: (String) -> Unit = {}
     ) {
         closeConnection()
         job?.cancel()
@@ -63,14 +72,20 @@ class TwitchChatClient {
                     val reader = BufferedReader(
                         InputStreamReader(ssl.inputStream, Charsets.UTF_8)
                     )
-                    val writer = BufferedWriter(
+                    val connectionWriter = BufferedWriter(
                         OutputStreamWriter(ssl.outputStream, Charsets.UTF_8)
                     )
+                    synchronized(sendLock) {
+                        writer = connectionWriter
+                        joinedChannel = channelLogin.lowercase()
+                    }
 
                     fun send(line: String) {
-                        writer.write(line)
-                        writer.write("\r\n")
-                        writer.flush()
+                        synchronized(sendLock) {
+                            connectionWriter.write(line)
+                            connectionWriter.write("\r\n")
+                            connectionWriter.flush()
+                        }
                     }
 
                     send("PASS oauth:" + accessToken)
@@ -111,6 +126,10 @@ class TwitchChatClient {
                                 onStatus("Чат подключён")
                             }
 
+                            line.contains(" NOTICE #") -> {
+                                parseNotice(line)?.let(onNotice)
+                            }
+
                             line.contains(" PRIVMSG #") -> {
                                 if (!connected) {
                                     connected = true
@@ -148,6 +167,42 @@ class TwitchChatClient {
                 delay(delayMs)
             }
         }
+    }
+
+    fun sendMessage(
+        message: String,
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        val cleaned = message
+            .replace('\r', ' ')
+            .replace('\n', ' ')
+            .trim()
+            .take(400)
+
+        if (cleaned.isBlank()) {
+            onResult(false, "Сообщение пустое")
+            return
+        }
+
+        scope.launch {
+            val result = runCatching {
+                synchronized(sendLock) {
+                    val activeWriter = writer ?: error("Чат ещё подключается")
+                    val channel = joinedChannel.takeIf { it.isNotBlank() }
+                        ?: error("Чат ещё подключается")
+                    activeWriter.write("PRIVMSG #$channel :$cleaned")
+                    activeWriter.write("\r\n")
+                    activeWriter.flush()
+                }
+            }
+            onResult(result.isSuccess, result.exceptionOrNull()?.message)
+        }
+    }
+
+    private fun parseNotice(line: String): String? {
+        val marker = line.indexOf(" :")
+        if (marker < 0 || marker + 2 >= line.length) return null
+        return line.substring(marker + 2).trim().takeIf { it.isNotBlank() }
     }
 
     private fun parsePrivMsg(line: String): TwitchChatMessage? {
@@ -210,6 +265,11 @@ class TwitchChatClient {
             .replace("\\n", "\n")
 
     private fun closeConnection() {
+        synchronized(sendLock) {
+            runCatching { writer?.flush() }
+            writer = null
+            joinedChannel = ""
+        }
         runCatching { socket?.close() }
         socket = null
     }

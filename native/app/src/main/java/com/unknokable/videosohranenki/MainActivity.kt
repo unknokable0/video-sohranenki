@@ -104,6 +104,7 @@ class MainActivity : AppCompatActivity() {
     private var pendingTwitchLiveAfterAuth: TwitchLiveStream? = null
     private var currentDay: DayCollection? = null
     private var isPlayerScreen = false
+    private var playerBackInProgress = false
     private var isSettingsScreen = false
     private var isAccountScreen = false
     private var isStreakScreen = false
@@ -174,7 +175,8 @@ class MainActivity : AppCompatActivity() {
         ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
             if (!fullScreen) {
                 val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-                view.setPadding(0, bars.top, 0, bars.bottom)
+                val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+                view.setPadding(0, bars.top, 0, maxOf(bars.bottom, ime.bottom))
             } else {
                 view.setPadding(0, 0, 0, 0)
             }
@@ -185,42 +187,8 @@ class MainActivity : AppCompatActivity() {
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (fullScreen) {
-                    if (playerScreen?.dismissFullscreenSettingsIfOpen() == true) {
-                        return
-                    }
-                    if (twitchPlayerScreen?.isFullscreen == true) {
-                        twitchPlayerScreen?.exitFullscreen()
-                    } else if (twitchLivePlayerScreen?.isFullscreen == true) {
-                        twitchLivePlayerScreen?.exitFullscreen()
-                    } else {
-                        setFullscreen(false)
-                    }
-                    return
-                }
-                if (isPlayerScreen) {
-                    val outgoingPlayer = playerScreen
-                    val outgoingTwitchPlayer = twitchPlayerScreen
-                    val outgoingTwitchLivePlayer = twitchLivePlayerScreen
-                    outgoingPlayer?.flushPlaybackPosition()
-                    outgoingTwitchLivePlayer?.prepareForExit()
-                    playerScreen = null
-                    twitchPlayerScreen = null
-                    twitchLivePlayerScreen = null
-                    isPlayerScreen = false
-                    pendingRootSlide = -1
-                    suppressNextContentAnimation = true
-                    val day = currentDay
-                    if (day != null && day.videos.isNotEmpty()) showDayCollection(day) else { currentDay = null; showSelectedVideoSource() }
-                    root.postDelayed({
-                        outgoingPlayer?.destroy()
-                        outgoingTwitchPlayer?.destroy()
-                        outgoingTwitchLivePlayer?.destroy()
-                        currentStreamingItem?.let { streamed -> streamServer?.release(streamed) }
-                        currentStreamingItem = null
-                    }, if (settings.animations) 225L else 0L)
-                    return
-                }
+                if (closeCurrentPlayerScreen()) return
+
                 if (isSettingsScreen) {
                     isSettingsScreen = false
                     pendingRootSlide = -1
@@ -357,6 +325,68 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+
+    private fun closeCurrentPlayerScreen(): Boolean {
+        val hasPlayer =
+            isPlayerScreen ||
+            playerScreen != null ||
+            twitchPlayerScreen != null ||
+            twitchLivePlayerScreen != null
+
+        if (!hasPlayer) return false
+        if (playerBackInProgress) return true
+
+        if (fullScreen ||
+            playerScreen?.isFullscreen == true ||
+            twitchPlayerScreen?.isFullscreen == true ||
+            twitchLivePlayerScreen?.isFullscreen == true
+        ) {
+            if (playerScreen?.dismissFullscreenSettingsIfOpen() == true) return true
+
+            when {
+                twitchLivePlayerScreen?.isFullscreen == true -> twitchLivePlayerScreen?.exitFullscreen()
+                twitchPlayerScreen?.isFullscreen == true -> twitchPlayerScreen?.exitFullscreen()
+                playerScreen?.isFullscreen == true -> playerScreen?.exitFullscreen()
+                else -> setFullscreen(false)
+            }
+            return true
+        }
+
+        playerBackInProgress = true
+
+        val outgoingPlayer = playerScreen
+        val outgoingTwitchPlayer = twitchPlayerScreen
+        val outgoingTwitchLivePlayer = twitchLivePlayerScreen
+
+        outgoingPlayer?.flushPlaybackPosition()
+        outgoingTwitchLivePlayer?.prepareForExit()
+
+        playerScreen = null
+        twitchPlayerScreen = null
+        twitchLivePlayerScreen = null
+        isPlayerScreen = false
+        pendingRootSlide = -1
+        suppressNextContentAnimation = true
+
+        val day = currentDay
+        if (day != null && day.videos.isNotEmpty()) {
+            showDayCollection(day)
+        } else {
+            currentDay = null
+            showSelectedVideoSource()
+        }
+
+        root.postDelayed({
+            outgoingPlayer?.destroy()
+            outgoingTwitchPlayer?.destroy()
+            outgoingTwitchLivePlayer?.destroy()
+            currentStreamingItem?.let { streamed -> streamServer?.release(streamed) }
+            currentStreamingItem = null
+            playerBackInProgress = false
+        }, if (settings.animations) 230L else 0L)
+
+        return true
+    }
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
@@ -2755,7 +2785,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             },
-            onBack = { onBackPressedDispatcher.onBackPressed() },
+            onBack = { closeCurrentPlayerScreen() },
             onFullscreen = { setFullscreen(it) },
             onPlaybackStarted = { streakTracker.markWatched() }
         )
@@ -2819,7 +2849,7 @@ class MainActivity : AppCompatActivity() {
                     onWatchedChange = { watched, shouldBeWatched ->
                         if (shouldBeWatched) markVideoWatched(watched.messageId) else unmarkVideoWatched(watched.messageId)
                     },
-                    onBack = { onBackPressedDispatcher.onBackPressed() },
+                    onBack = { closeCurrentPlayerScreen() },
                     onFullscreen = { setFullscreen(it) },
                     onPlaybackStarted = { streakTracker.markWatched() }
                 )
@@ -2852,7 +2882,7 @@ class MainActivity : AppCompatActivity() {
                 val login = tokenInfo.login.takeIf { it.isNotBlank() }
                     ?: settings.twitchLogin.orEmpty()
 
-                if (!tokenInfo.scopes.contains("chat:read")) {
+                if (!tokenInfo.scopes.containsAll(setOf("chat:read", "chat:edit"))) {
                     pendingTwitchLiveAfterAuth = live
                     settings.twitchLogin = login.takeIf { it.isNotBlank() }
                     isPlayerScreen = false
@@ -2883,7 +2913,7 @@ class MainActivity : AppCompatActivity() {
                     accountLogin = login,
                     palette = palette,
                     animationsEnabled = settings.animations,
-                    onBack = { onBackPressedDispatcher.onBackPressed() },
+                    onBack = { closeCurrentPlayerScreen() },
                     onFullscreen = { setFullscreen(it) },
                     onChatScopeMissing = {
                         pendingTwitchLiveAfterAuth = live
@@ -3085,7 +3115,7 @@ class MainActivity : AppCompatActivity() {
             .appendQueryParameter("response_type", "token")
             .appendQueryParameter("client_id", clientId)
             .appendQueryParameter("redirect_uri", TWITCH_REDIRECT_URI)
-            .appendQueryParameter("scope", "chat:read")
+            .appendQueryParameter("scope", "chat:read chat:edit")
             .appendQueryParameter("state", state)
             .appendQueryParameter("force_verify", "false")
             .build()
@@ -4843,7 +4873,7 @@ class MainActivity : AppCompatActivity() {
         old.setLayerType(View.LAYER_TYPE_HARDWARE, null)
         view.setLayerType(View.LAYER_TYPE_HARDWARE, null)
 
-        val telegramInterpolator = android.view.animation.DecelerateInterpolator(1.5f)
+        val telegramInterpolator = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
         if (slide < 0) {
             view.alpha = 1f
             view.translationX = 0f

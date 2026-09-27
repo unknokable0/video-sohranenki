@@ -1,6 +1,7 @@
 package com.unknokable.videosohranenki
 
 import android.app.Activity
+import android.content.Context
 import android.content.pm.ActivityInfo
 import android.os.Build
 import android.content.res.ColorStateList
@@ -9,6 +10,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.text.Spanned
 import android.text.SpannableStringBuilder
 import android.text.style.ForegroundColorSpan
@@ -16,12 +18,16 @@ import android.text.style.StyleSpan
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.media3.common.C
 import androidx.media3.common.TrackGroup
 import androidx.media3.common.TrackSelectionOverride
@@ -80,11 +86,16 @@ class TwitchLivePlayerScreen(
     )
     private val fullscreenButton = ImageButton(activity)
     private lateinit var qualityButton: TextView
+    private val latencyDot = LatencyPulseView(activity)
+    private val latencyLabel = TextView(activity)
+    private val latencyPill = LinearLayout(activity)
 
     private val chatStatus = TextView(activity)
     private val chatScroll = ScrollView(activity)
     private val chatList = LinearLayout(activity)
     private val chatEmpty = TextView(activity)
+    private val chatInput = EditText(activity)
+    private val chatSendButton = TextView(activity)
     private val chatRows = mutableListOf<View>()
 
     private var player: ExoPlayer? = null
@@ -95,6 +106,10 @@ class TwitchLivePlayerScreen(
     private var destroyed = false
     private var controlsVisible = true
     private var chatHasMessages = false
+    private var chatConnected = false
+    private var chatWasNearBottomBeforeFullscreen = true
+    private var lastChatRowAnimationAt = 0L
+    private var latencyBucket = ""
     private var streamRecoveryAttempts = 0
     private var recoveringStream = false
     private var playerErrorView: TextView? = null
@@ -120,6 +135,14 @@ class TwitchLivePlayerScreen(
     }
 
     private val hideControlsRunnable = Runnable { hideControls() }
+
+    private val latencyRunnable = object : Runnable {
+        override fun run() {
+            if (destroyed || exiting) return
+            updateLatencyIndicator()
+            handler.postDelayed(this, 900L)
+        }
+    }
 
     val isFullscreen: Boolean
         get() = fullscreen
@@ -190,6 +213,18 @@ class TwitchLivePlayerScreen(
             )
         )
 
+        playerCard.addView(
+            buildLatencyIndicator(),
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                dp(30),
+                Gravity.TOP or Gravity.START
+            ).apply {
+                leftMargin = dp(10)
+                topMargin = dp(10)
+            }
+        )
+
         val width = activity.resources.displayMetrics.widthPixels
         root.addView(
             playerCard,
@@ -225,6 +260,8 @@ class TwitchLivePlayerScreen(
         )
 
         updateFullscreenIcon()
+        updateLatencyIndicator()
+        handler.post(latencyRunnable)
         startPlayer()
         startChat()
     }
@@ -376,6 +413,36 @@ class TwitchLivePlayerScreen(
         )
     }
 
+    private fun buildLatencyIndicator(): View {
+        latencyPill.apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(7), 0, dp(10), 0)
+            background = rounded(Color.parseColor("#B5181620"), 15)
+            isClickable = false
+            isFocusable = false
+        }
+
+        latencyDot.setState(palette.accent, true, animationsEnabled)
+
+        latencyLabel.apply {
+            text = "Подключаемся…"
+            textSize = 10.5f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            maxLines = 1
+        }
+
+        latencyPill.addView(
+            latencyDot,
+            LinearLayout.LayoutParams(dp(20), dp(20)).apply {
+                marginEnd = dp(3)
+            }
+        )
+        latencyPill.addView(latencyLabel)
+        return latencyPill
+    }
+
     private fun buildStreamInfoCard(): View {
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
@@ -520,6 +587,70 @@ class TwitchLivePlayerScreen(
                 1f
             )
         )
+
+        box.addView(
+            View(activity).apply {
+                setBackgroundColor(withAlpha(palette.stroke, 150))
+            },
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(1)
+            ).apply {
+                marginStart = dp(14)
+                marginEnd = dp(14)
+            }
+        )
+
+        val composer = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(10), dp(9), dp(10), dp(10))
+        }
+
+        chatInput.apply {
+            hint = "Написать в чат"
+            textSize = 13f
+            setSingleLine(true)
+            setTextColor(palette.text)
+            setHintTextColor(palette.muted)
+            setPadding(dp(13), 0, dp(13), 0)
+            background = rounded(palette.surfaceAlt, 16)
+            imeOptions = EditorInfo.IME_ACTION_SEND
+            setOnEditorActionListener { _, actionId, _ ->
+                if (actionId == EditorInfo.IME_ACTION_SEND) {
+                    sendChatMessage()
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+
+        chatSendButton.apply {
+            text = "Отправить"
+            textSize = 11.5f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            setPadding(dp(12), 0, dp(12), 0)
+            background = rounded(palette.accent, 16)
+            alpha = 0.45f
+            isEnabled = false
+            setOnClickListener {
+                pulse(this)
+                sendChatMessage()
+            }
+        }
+
+        composer.addView(chatInput, LinearLayout.LayoutParams(0, dp(40), 1f))
+        composer.addView(
+            chatSendButton,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                dp(40)
+            ).apply { marginStart = dp(7) }
+        )
+        box.addView(composer)
         return box
     }
 
@@ -681,20 +812,36 @@ class TwitchLivePlayerScreen(
                 activity.runOnUiThread {
                     if (!destroyed) appendChat(message)
                 }
+            },
+            onNotice = { notice ->
+                activity.runOnUiThread {
+                    if (!destroyed && !exiting) {
+                        Toast.makeText(activity, notice, Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
         )
     }
 
     private fun updateChatStatus(text: String, connected: Boolean) {
+        chatConnected = connected
         chatStatus.text = text
         chatStatus.setTextColor(if (connected) palette.accent else palette.muted)
         chatStatus.background = rounded(
             if (connected) palette.accentSoft else palette.surfaceAlt,
             13
         )
+        chatSendButton.isEnabled = connected
+        chatSendButton.alpha = if (connected) 1f else 0.45f
     }
 
-    private fun appendChat(message: TwitchChatMessage) {
+    private fun appendChat(
+        message: TwitchChatMessage,
+        forceScroll: Boolean = false
+    ) {
+        val shouldStickToBottom =
+            forceScroll || !chatHasMessages || isChatNearBottom()
+
         if (!chatHasMessages) {
             chatHasMessages = true
             chatList.removeView(chatEmpty)
@@ -734,14 +881,15 @@ class TwitchLivePlayerScreen(
             maxLines = 5
         })
 
-        row.addView(View(activity).apply {
-            setBackgroundColor(withAlpha(palette.stroke, 110))
-        }, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(1)
-        ).apply {
-            topMargin = dp(7)
-        })
+        row.addView(
+            View(activity).apply {
+                setBackgroundColor(withAlpha(palette.stroke, 110))
+            },
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(1)
+            ).apply { topMargin = dp(7) }
+        )
 
         chatList.addView(
             row,
@@ -751,25 +899,147 @@ class TwitchLivePlayerScreen(
             )
         )
 
-        if (animationsEnabled) {
+        val now = SystemClock.uptimeMillis()
+        if (animationsEnabled && now - lastChatRowAnimationAt > 140L) {
+            lastChatRowAnimationAt = now
             row.alpha = 0f
-            row.translationY = dp(6).toFloat()
+            row.translationY = dp(4).toFloat()
             row.animate()
                 .alpha(1f)
                 .translationY(0f)
-                .setDuration(170L)
+                .setDuration(120L)
                 .start()
         }
 
         chatRows.add(row)
-        while (chatRows.size > 80) {
+        while (chatRows.size > 100) {
             val old = chatRows.removeAt(0)
             chatList.removeView(old)
         }
 
+        if (shouldStickToBottom) scrollChatToBottom()
+    }
+
+    private fun isChatNearBottom(): Boolean {
+        if (chatScroll.height <= 0 || chatScroll.childCount == 0) return true
+        val child = chatScroll.getChildAt(0)
+        val remaining = child.height - (chatScroll.scrollY + chatScroll.height)
+        return remaining <= dp(88)
+    }
+
+    private fun scrollChatToBottom() {
         chatScroll.post {
-            chatScroll.smoothScrollTo(0, chatList.height)
+            if (!destroyed) chatScroll.fullScroll(View.FOCUS_DOWN)
         }
+    }
+
+    private fun sendChatMessage() {
+        val message = chatInput.text?.toString().orEmpty().trim()
+        if (message.isBlank()) return
+
+        if (!chatConnected) {
+            Toast.makeText(activity, "Чат ещё подключается", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        chatSendButton.isEnabled = false
+        chatSendButton.alpha = 0.55f
+
+        chatClient.sendMessage(message) { success, error ->
+            activity.runOnUiThread {
+                if (destroyed || exiting) return@runOnUiThread
+
+                chatSendButton.isEnabled = chatConnected
+                chatSendButton.alpha = if (chatConnected) 1f else 0.45f
+
+                if (success) {
+                    chatInput.text?.clear()
+                    appendChat(
+                        TwitchChatMessage(
+                            displayName = accountLogin.ifBlank { "Вы" },
+                            text = message,
+                            color = palette.accent
+                        ),
+                        forceScroll = true
+                    )
+                } else {
+                    Toast.makeText(
+                        activity,
+                        error ?: "Не удалось отправить сообщение",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
+    }
+
+    private fun updateLatencyIndicator() {
+        val p = player
+        val offset = p?.currentLiveOffset ?: C.TIME_UNSET
+
+        val bucket: String
+        val label: String
+        val color: Int
+        val active: Boolean
+
+        when {
+            p == null -> {
+                bucket = "connecting"
+                label = "Подключаемся…"
+                color = palette.accent
+                active = true
+            }
+            p.playbackState == Player.STATE_BUFFERING -> {
+                bucket = "buffering"
+                label = "Стабилизируем поток"
+                color = Color.parseColor("#F0B24A")
+                active = true
+            }
+            !p.isPlaying && p.playbackState == Player.STATE_READY -> {
+                bucket = "paused"
+                label = "Пауза"
+                color = Color.parseColor("#8E91A0")
+                active = false
+            }
+            offset == C.TIME_UNSET -> {
+                bucket = "live"
+                label = "LIVE"
+                color = Color.parseColor("#43D18D")
+                active = true
+            }
+            offset <= 4_500L -> {
+                bucket = "low"
+                label = "LIVE • %.1fс".format(offset / 1000.0)
+                color = Color.parseColor("#43D18D")
+                active = true
+            }
+            offset <= 8_000L -> {
+                bucket = "medium"
+                label = "Задержка • %.1fс".format(offset / 1000.0)
+                color = Color.parseColor("#F0B24A")
+                active = true
+            }
+            else -> {
+                bucket = "high"
+                label = "Отставание • %.1fс".format(offset / 1000.0)
+                color = Color.parseColor("#FF637B")
+                active = true
+            }
+        }
+
+        latencyDot.setState(color, active, animationsEnabled)
+        if (latencyBucket != bucket && animationsEnabled) {
+            latencyBucket = bucket
+            latencyPill.animate().cancel()
+            latencyPill.alpha = 0.72f
+            latencyPill.animate()
+                .alpha(1f)
+                .setDuration(150L)
+                .start()
+        } else {
+            latencyBucket = bucket
+        }
+        latencyLabel.text = label
     }
 
     private fun showPlayerError(message: String) {
@@ -999,6 +1269,14 @@ class TwitchLivePlayerScreen(
 
     fun setFullscreenMode(enabled: Boolean) {
         if (fullscreen == enabled) return
+
+        if (enabled) {
+            chatWasNearBottomBeforeFullscreen = isChatNearBottom()
+            val imm = activity.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+            imm?.hideSoftInputFromWindow(chatInput.windowToken, 0)
+            chatInput.clearFocus()
+        }
+
         fullscreen = enabled
 
         activity.requestedOrientation =
@@ -1031,17 +1309,50 @@ class TwitchLivePlayerScreen(
             }
             playerCard.background = rounded(Color.BLACK, 18)
             playerCard.clipToOutline = true
-            val width = activity.resources.displayMetrics.widthPixels
-            params.width = ViewGroup.LayoutParams.MATCH_PARENT
-            params.height = (width * 9f / 16f).toInt()
-            params.weight = 0f
-            params.marginStart = dp(12)
-            params.marginEnd = dp(12)
+            applyInlinePlayerLayout(params)
         }
 
         playerCard.layoutParams = params
+        root.requestLayout()
+        chatScroll.requestLayout()
         onFullscreen(enabled)
+
+        if (!enabled) {
+            root.post { restoreInlineLayoutAfterFullscreen() }
+            handler.postDelayed({
+                if (!destroyed && !fullscreen) restoreInlineLayoutAfterFullscreen()
+            }, 180L)
+        }
+
         showControls(autoHide = player?.isPlaying == true)
+    }
+
+    private fun applyInlinePlayerLayout(params: LinearLayout.LayoutParams) {
+        val metrics = activity.resources.displayMetrics
+        val inlineWidth =
+            if (shouldForceLandscape()) {
+                minOf(metrics.widthPixels, metrics.heightPixels)
+            } else {
+                root.width.takeIf { it > 0 } ?: metrics.widthPixels
+            }
+
+        params.width = ViewGroup.LayoutParams.MATCH_PARENT
+        params.height = (inlineWidth * 9f / 16f).toInt()
+        params.weight = 0f
+        params.marginStart = dp(12)
+        params.marginEnd = dp(12)
+    }
+
+    private fun restoreInlineLayoutAfterFullscreen() {
+        val params = playerCard.layoutParams as? LinearLayout.LayoutParams ?: return
+        applyInlinePlayerLayout(params)
+        playerCard.layoutParams = params
+        root.requestLayout()
+        playerCard.requestLayout()
+        chatScroll.isEnabled = true
+        chatScroll.requestLayout()
+        chatList.requestLayout()
+        if (chatWasNearBottomBeforeFullscreen) scrollChatToBottom()
     }
 
     fun exitFullscreen() {
