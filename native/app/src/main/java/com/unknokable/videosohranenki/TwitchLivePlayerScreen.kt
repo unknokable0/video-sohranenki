@@ -53,6 +53,8 @@ import kotlinx.coroutines.launch
 class TwitchLivePlayerScreen(
     private val activity: Activity,
     private val live: TwitchLiveStream,
+    private val profileImageUrl: String,
+    private val showPartnerBadge: Boolean,
     private val accessToken: String,
     private val accountLogin: String,
     private val palette: ThemePalette,
@@ -161,8 +163,8 @@ class TwitchLivePlayerScreen(
         root.addView(buildHeader())
 
         playerCard.apply {
-            background = rounded(Color.BLACK, 18)
-            clipToOutline = true
+            setBackgroundColor(Color.BLACK)
+            clipToOutline = false
             isClickable = true
             isFocusable = true
             elevation = dp(1).toFloat()
@@ -232,16 +234,49 @@ class TwitchLivePlayerScreen(
             }
         )
 
+        playerCard.addView(
+            buildLiveBadge(),
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                dp(34),
+                Gravity.TOP or Gravity.END
+            ).apply {
+                rightMargin = dp(10)
+                topMargin = dp(10)
+            }
+        )
+
+        playerCard.addView(
+            buildViewerBadge(),
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                dp(34),
+                Gravity.BOTTOM or Gravity.START
+            ).apply {
+                leftMargin = dp(10)
+                bottomMargin = dp(10)
+            }
+        )
+
+        playerCard.addView(
+            audioToggle,
+            FrameLayout.LayoutParams(
+                dp(46),
+                dp(46),
+                Gravity.BOTTOM or Gravity.END
+            ).apply {
+                rightMargin = dp(10)
+                bottomMargin = dp(8)
+            }
+        )
+
         val width = activity.resources.displayMetrics.widthPixels
         root.addView(
             playerCard,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 (width * 9f / 16f).toInt()
-            ).apply {
-                marginStart = dp(12)
-                marginEnd = dp(12)
-            }
+            )
         )
 
         root.addView(
@@ -305,14 +340,14 @@ class TwitchLivePlayerScreen(
     }
 
     private fun buildPlayerControls() {
-        controlsOverlay.setBackgroundColor(Color.parseColor("#24000000"))
+        controlsOverlay.setBackgroundColor(Color.parseColor("#12000000"))
         controlsOverlay.alpha = 1f
         controlsOverlay.visibility = View.VISIBLE
 
         playPause.apply {
             setImageResource(R.drawable.ic_pause)
             setBackgroundColor(Color.TRANSPARENT)
-            background = rounded(palette.accent, 27)
+            background = rounded(Color.parseColor("#C9181620"), 28)
             setPadding(dp(15), dp(15), dp(15), dp(15))
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setOnClickListener {
@@ -330,29 +365,6 @@ class TwitchLivePlayerScreen(
             FrameLayout.LayoutParams(dp(56), dp(56), Gravity.CENTER)
         )
 
-        val bottom = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(6), dp(14), dp(10))
-        }
-
-        val liveBar = SohrTimeBar(activity).apply {
-            setProgress(1L, 1L, 1L)
-            isClickable = false
-            isFocusable = false
-            setOnTouchListener { _, _ -> true }
-        }
-
-        val times = LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-
-        val liveLabel = timeLabel("В ЭФИРЕ").apply {
-            minWidth = dp(58)
-            gravity = Gravity.START or Gravity.CENTER_VERTICAL
-        }
-        val spacer = View(activity)
-
         qualityButton = TextView(activity).apply {
             text = "Авто"
             textSize = 10.5f
@@ -360,7 +372,7 @@ class TwitchLivePlayerScreen(
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
             setPadding(dp(10), 0, dp(10), 0)
-            background = rounded(Color.parseColor("#66181322"), 14)
+            background = rounded(Color.parseColor("#B5181620"), 15)
             setOnClickListener {
                 pulse(this)
                 showQualityPicker()
@@ -369,10 +381,10 @@ class TwitchLivePlayerScreen(
 
         val settingsButton = TextView(activity).apply {
             text = "⚙"
-            textSize = 19f
+            textSize = 18f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
-            background = rounded(Color.parseColor("#66181322"), 20)
+            background = rounded(Color.parseColor("#B5181620"), 19)
             setOnClickListener {
                 pulse(this)
                 showLiveSettings()
@@ -382,8 +394,8 @@ class TwitchLivePlayerScreen(
         fullscreenButton.apply {
             setImageResource(R.drawable.ic_fullscreen)
             setBackgroundColor(Color.TRANSPARENT)
-            background = rounded(Color.parseColor("#66181322"), 20)
-            setPadding(dp(11), dp(11), dp(11), dp(11))
+            background = rounded(Color.parseColor("#B5181620"), 19)
+            setPadding(dp(10), dp(10), dp(10), dp(10))
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setOnClickListener {
                 setFullscreenMode(!fullscreen)
@@ -395,30 +407,79 @@ class TwitchLivePlayerScreen(
             setMuted(false, animate = false)
             onMutedChanged = { nowMuted ->
                 muted = nowMuted
-                player?.volume = if (nowMuted) 0f else 1f
+                if (!commercialRecoveryActive) {
+                    player?.volume = if (nowMuted) 0f else 1f
+                }
                 showControls(autoHide = player?.isPlaying == true)
             }
         }
 
-        times.addView(liveLabel, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)))
-        times.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
-        times.addView(qualityButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)))
-        times.addView(audioToggle, LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginStart = dp(4) })
-        times.addView(settingsButton, LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginStart = dp(4) })
-        times.addView(fullscreenButton, LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginStart = dp(4) })
-
-        bottom.addView(liveBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(30)))
-        bottom.addView(times)
+        val secondary = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(8), 0, 0, 0)
+        }
+        secondary.addView(
+            qualityButton,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38))
+        )
+        secondary.addView(
+            settingsButton,
+            LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginStart = dp(5) }
+        )
+        secondary.addView(
+            fullscreenButton,
+            LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginStart = dp(5) }
+        )
 
         controlsOverlay.addView(
-            bottom,
+            secondary,
             FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM
-            )
+                dp(42),
+                Gravity.BOTTOM or Gravity.END
+            ).apply {
+                rightMargin = dp(58)
+                bottomMargin = dp(10)
+            }
         )
     }
+
+    private fun buildLiveBadge(): View {
+        val row = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(10), 0, dp(11), 0)
+            background = rounded(Color.parseColor("#B8151418"), 17)
+        }
+
+        row.addView(
+            View(activity).apply {
+                background = rounded(Color.parseColor("#FF1744"), 5)
+            },
+            LinearLayout.LayoutParams(dp(10), dp(10)).apply {
+                marginEnd = dp(7)
+            }
+        )
+        row.addView(TextView(activity).apply {
+            text = "В эфире"
+            textSize = 13f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+        })
+        return row
+    }
+
+    private fun buildViewerBadge(): View =
+        TextView(activity).apply {
+            text = formatViewerCount(live.viewerCount) + " зрителей"
+            textSize = 12.5f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            setPadding(dp(10), 0, dp(10), 0)
+            background = rounded(Color.parseColor("#B8151418"), 12)
+        }
 
     private fun buildLatencyIndicator(): View {
         latencyPill.apply {
@@ -453,28 +514,148 @@ class TwitchLivePlayerScreen(
     private fun buildStreamInfoCard(): View {
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(18), dp(16), dp(12))
+            setPadding(dp(16), dp(16), dp(16), dp(12))
+
+            val channelRow = LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+
+            val avatarFrame = FrameLayout(activity).apply {
+                background = rounded(palette.surfaceAlt, 28)
+                clipToOutline = true
+            }
+
+            avatarFrame.addView(
+                TextView(activity).apply {
+                    text = live.displayName.ifBlank { live.login }
+                        .trim()
+                        .take(1)
+                        .uppercase()
+                    textSize = 20f
+                    gravity = Gravity.CENTER
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(Color.WHITE)
+                    background = rounded(palette.accent, 28)
+                },
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
+
+            if (profileImageUrl.isNotBlank()) {
+                avatarFrame.addView(
+                    ImageView(activity).apply {
+                        scaleType = ImageView.ScaleType.CENTER_CROP
+                        background = rounded(palette.surfaceAlt, 28)
+                        clipToOutline = true
+                        load(profileImageUrl) { crossfade(animationsEnabled) }
+                    },
+                    FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                )
+            }
+
+            channelRow.addView(
+                avatarFrame,
+                LinearLayout.LayoutParams(dp(56), dp(56))
+            )
+
+            val names = LinearLayout(activity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), 0, 0, 0)
+            }
+
+            val nameLine = LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+
+            nameLine.addView(TextView(activity).apply {
+                text = live.displayName.ifBlank { live.login }
+                textSize = 22f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(palette.text)
+                maxLines = 1
+            })
+
+            if (showPartnerBadge) {
+                nameLine.addView(
+                    TextView(activity).apply {
+                        text = "✓"
+                        textSize = 11f
+                        gravity = Gravity.CENTER
+                        setTypeface(typeface, Typeface.BOLD)
+                        setTextColor(Color.WHITE)
+                        background = rounded(palette.accent, 9)
+                    },
+                    LinearLayout.LayoutParams(dp(18), dp(18)).apply {
+                        marginStart = dp(7)
+                    }
+                )
+            }
+
+            names.addView(nameLine)
+            names.addView(TextView(activity).apply {
+                text = "@" + live.login
+                textSize = 12.5f
+                setTextColor(palette.muted)
+                setPadding(0, dp(3), 0, 0)
+            })
+
+            channelRow.addView(
+                names,
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            )
+            addView(channelRow)
 
             addView(TextView(activity).apply {
                 text = live.title.ifBlank { live.displayName + " в эфире" }
-                textSize = 21f
-                maxLines = 2
+                textSize = 18f
+                maxLines = 3
                 setTypeface(typeface, Typeface.BOLD)
                 setTextColor(palette.text)
+                setPadding(0, dp(13), 0, 0)
             })
 
-            addView(TextView(activity).apply {
-                text = listOfNotNull(
-                    "LIVE",
-                    live.gameName.takeIf { it.isNotBlank() },
-                    live.viewerCount.toString() + " зрителей",
-                    "@" + live.login
-                ).joinToString(" • ")
-                textSize = 13f
-                maxLines = 2
-                setTextColor(palette.muted)
-                setPadding(0, dp(7), 0, 0)
-            })
+            val chips = LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(12), 0, 0)
+            }
+
+            chips.addView(TextView(activity).apply {
+                text = "ⓘ  Контент может включать рекламу"
+                textSize = 11.5f
+                gravity = Gravity.CENTER
+                setTextColor(palette.text)
+                setPadding(dp(10), 0, dp(10), 0)
+                background = rounded(palette.surfaceAlt, 14)
+            }, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                dp(30)
+            ))
+
+            if (live.gameName.isNotBlank()) {
+                chips.addView(TextView(activity).apply {
+                    text = live.gameName
+                    textSize = 11.5f
+                    gravity = Gravity.CENTER
+                    setTextColor(palette.text)
+                    setPadding(dp(10), 0, dp(10), 0)
+                    background = rounded(palette.surfaceAlt, 14)
+                }, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    dp(30)
+                ).apply {
+                    marginStart = dp(8)
+                })
+            }
+
+            addView(chips)
         }
     }
 
@@ -669,14 +850,14 @@ class TwitchLivePlayerScreen(
                 currentHlsUrl = hlsUrl
 
                 val loadControl = DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(2_500, 9_000, 450, 850)
+                    .setBufferDurationsMs(1_800, 7_000, 350, 650)
                     .setPrioritizeTimeOverSizeThresholds(true)
                     .build()
 
                 val liveSpeedControl = DefaultLivePlaybackSpeedControl.Builder()
-                    .setFallbackMinPlaybackSpeed(0.99f)
-                    .setFallbackMaxPlaybackSpeed(1.08f)
-                    .setTargetLiveOffsetIncrementOnRebufferMs(500L)
+                    .setFallbackMinPlaybackSpeed(0.995f)
+                    .setFallbackMaxPlaybackSpeed(1.10f)
+                    .setTargetLiveOffsetIncrementOnRebufferMs(300L)
                     .build()
 
                 val renderersFactory = DefaultRenderersFactory(activity)
@@ -825,6 +1006,7 @@ class TwitchLivePlayerScreen(
 
     private fun showCommercialOverlay() {
         playerView.alpha = 0f
+        player?.volume = 0f
 
         val overlay = commercialOverlay ?: LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -843,7 +1025,7 @@ class TwitchLivePlayerScreen(
             )
 
             addView(TextView(activity).apply {
-                text = "Возвращаемся в LIVE…"
+                text = "Синхронизация LIVE…"
                 textSize = 12f
                 setTypeface(typeface, Typeface.BOLD)
                 setTextColor(Color.WHITE)
@@ -878,6 +1060,7 @@ class TwitchLivePlayerScreen(
     private fun hideCommercialOverlay() {
         playerView.animate().cancel()
         playerView.alpha = 1f
+        player?.volume = if (muted) 0f else 1f
 
         commercialOverlay?.let { overlay ->
             overlay.animate().cancel()
@@ -1120,13 +1303,13 @@ class TwitchLivePlayerScreen(
                 color = Color.parseColor("#43D18D")
                 active = true
             }
-            offset <= 3_500L -> {
+            offset <= 2_000L -> {
                 bucket = "low"
                 label = "LIVE • %.1fс".format(offset / 1000.0)
                 color = Color.parseColor("#43D18D")
                 active = true
             }
-            offset <= 5_500L -> {
+            offset <= 3_500L -> {
                 bucket = "medium"
                 label = "Задержка • %.1fс".format(offset / 1000.0)
                 color = Color.parseColor("#F0B24A")
@@ -1193,11 +1376,11 @@ class TwitchLivePlayerScreen(
             .setUri(url)
             .setLiveConfiguration(
                 MediaItem.LiveConfiguration.Builder()
-                    .setTargetOffsetMs(1_500L)
-                    .setMinOffsetMs(900L)
-                    .setMaxOffsetMs(3_500L)
-                    .setMinPlaybackSpeed(0.99f)
-                    .setMaxPlaybackSpeed(1.08f)
+                    .setTargetOffsetMs(1_200L)
+                    .setMinOffsetMs(650L)
+                    .setMaxOffsetMs(3_000L)
+                    .setMinPlaybackSpeed(0.995f)
+                    .setMaxPlaybackSpeed(1.10f)
                     .build()
             )
             .build()
@@ -1371,6 +1554,14 @@ class TwitchLivePlayerScreen(
             background = rounded(backgroundColor, size / 2)
             setPadding(dp(12), dp(12), dp(12), dp(12))
             scaleType = ImageView.ScaleType.CENTER_INSIDE
+        }
+
+    private fun formatViewerCount(value: Int): String =
+        when {
+            value >= 1_000_000 -> "%.1f млн".format(value / 1_000_000.0)
+            value >= 10_000 -> "%.1f тыс.".format(value / 1_000.0)
+            value >= 1_000 -> "%.1f тыс.".format(value / 1_000.0)
+            else -> value.toString()
         }
 
     private fun timeLabel(value: String): TextView =

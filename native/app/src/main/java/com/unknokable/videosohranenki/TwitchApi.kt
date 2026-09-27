@@ -36,7 +36,8 @@ data class TwitchProfile(
     val id: String,
     val login: String,
     val displayName: String,
-    val profileImageUrl: String
+    val profileImageUrl: String,
+    val broadcasterType: String = ""
 )
 
 data class TwitchTokenInfo(
@@ -166,7 +167,32 @@ object TwitchApi {
             id = user.optString("id"),
             login = user.optString("login"),
             displayName = user.optString("display_name").ifBlank { user.optString("login") },
-            profileImageUrl = user.optString("profile_image_url")
+            profileImageUrl = user.optString("profile_image_url"),
+            broadcasterType = user.optString("broadcaster_type")
+        )
+    }
+
+    suspend fun loadUserProfile(
+        clientId: String,
+        accessToken: String,
+        login: String
+    ): TwitchProfile? = withContext(Dispatchers.IO) {
+        if (login.isBlank()) return@withContext null
+        val root = getJson(
+            "https://api.twitch.tv/helix/users?login=" +
+                java.net.URLEncoder.encode(login, "UTF-8"),
+            clientId,
+            accessToken
+        )
+        val data = root.optJSONArray("data") ?: return@withContext null
+        if (data.length() == 0) return@withContext null
+        val user = data.getJSONObject(0)
+        TwitchProfile(
+            id = user.optString("id"),
+            login = user.optString("login"),
+            displayName = user.optString("display_name").ifBlank { user.optString("login") },
+            profileImageUrl = user.optString("profile_image_url"),
+            broadcasterType = user.optString("broadcaster_type")
         )
     }
 

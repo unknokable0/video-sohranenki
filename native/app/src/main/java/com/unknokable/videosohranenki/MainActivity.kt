@@ -2892,6 +2892,10 @@ class MainActivity : AppCompatActivity() {
 
                 settings.twitchLogin = login.takeIf { it.isNotBlank() }
 
+                val channelProfile = runCatching {
+                    TwitchApi.loadUserProfile(clientId, token, live.login)
+                }.getOrNull()
+
                 playerScreen?.destroy()
                 playerScreen = null
                 twitchPlayerScreen?.destroy()
@@ -2909,6 +2913,8 @@ class MainActivity : AppCompatActivity() {
                 twitchLivePlayerScreen = TwitchLivePlayerScreen(
                     activity = this@MainActivity,
                     live = live,
+                    profileImageUrl = channelProfile?.profileImageUrl.orEmpty(),
+                    showPartnerBadge = channelProfile?.broadcasterType == "partner",
                     accessToken = token,
                     accountLogin = login,
                     palette = palette,
