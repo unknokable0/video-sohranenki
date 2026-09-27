@@ -398,7 +398,6 @@ class TwitchLivePlayerScreen(
     }
 
     private fun buildChatCard(): View {
-    private fun buildChatCard(): View {
         val box = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             background = roundedStroke(
