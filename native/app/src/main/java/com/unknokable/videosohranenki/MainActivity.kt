@@ -2572,7 +2572,7 @@ class MainActivity : AppCompatActivity() {
             card.isClickable = true
             card.isFocusable = true
             card.setOnClickListener {
-                animatePress(this)
+                animatePress(card)
                 openT2x2OnTwitch()
             }
         } else {
@@ -2776,12 +2776,6 @@ class MainActivity : AppCompatActivity() {
                 delay(60_000L)
             }
         }
-    }
-
-    companion object {
-        private const val T2X2_NOTIFICATION_CHANNEL = "t2x2_live"
-        private const val T2X2_NOTIFICATION_ID = 2202
-        private const val T2X2_NOTIFICATION_PERMISSION_REQUEST = 2203
     }
 
     private fun showDayCollection(collection: DayCollection) {
@@ -5173,6 +5167,8 @@ class MainActivity : AppCompatActivity() {
         twitchLivePlayerScreen = null
         twitchLiveJob?.cancel()
         twitchLiveJob = null
+        t2x2WatchJob?.cancel()
+        t2x2WatchJob = null
         twitchAuthJob?.cancel()
         twitchAuthJob = null
         streamServer?.stop()
@@ -5181,5 +5177,8 @@ class MainActivity : AppCompatActivity() {
     }
     companion object {
         private const val TWITCH_REDIRECT_URI = "https://unknokable0.github.io/video-sohranenki/twitch-auth/"
+        private const val T2X2_NOTIFICATION_CHANNEL = "t2x2_live"
+        private const val T2X2_NOTIFICATION_ID = 2202
+        private const val T2X2_NOTIFICATION_PERMISSION_REQUEST = 2203
     }
 }
