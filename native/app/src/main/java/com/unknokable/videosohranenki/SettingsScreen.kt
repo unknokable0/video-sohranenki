@@ -81,7 +81,7 @@ class SettingsScreen(
         root.addView(languageSelector())
 
         root.addView(settingRow(
-            icon = "▶",
+            iconRes = R.drawable.ic_setting_autoplay,
             iconColor = "#B89AFF",
             title = "Автовоспроизведение",
             description = t("autoplay_desc"),
@@ -89,7 +89,7 @@ class SettingsScreen(
         ) { settings.autoplay = it })
 
         root.addView(settingRow(
-            icon = "▣",
+            iconRes = R.drawable.ic_setting_previews,
             iconColor = "#58DFA0",
             title = t("previews"),
             description = t("previews_desc"),
@@ -100,7 +100,7 @@ class SettingsScreen(
         })
 
         root.addView(settingRow(
-            icon = "✦",
+            iconRes = R.drawable.ic_setting_animations,
             iconColor = "#76A9FF",
             title = t("animations"),
             description = t("animations_desc"),
@@ -108,7 +108,7 @@ class SettingsScreen(
         ) { settings.animations = it })
 
         root.addView(actionRow(
-            icon = "↓",
+            iconRes = R.drawable.ic_setting_update,
             iconColor = "#8B5CF6",
             title = "Проверить обновления",
             description = "Автопроверка активна • SOHR " + BuildConfig.VERSION_NAME
@@ -286,7 +286,7 @@ class SettingsScreen(
             if (animate && settings.animations) {
                 indicator.animate()
                     .translationX(target)
-                    .setDuration(190L)
+                    .setDuration(230L)
                     .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
                     .start()
             } else {
@@ -469,6 +469,9 @@ class SettingsScreen(
             light.imageTintList = ColorStateList.valueOf(if (lightSelected) Color.WHITE else palette.muted)
         }
 
+        var selectedLight = settings.lightTheme
+        var themeChangeToken = 0
+
         fun moveIndicator(toLight: Boolean, source: View, notify: Boolean) {
             val slot = ((selector.width - selector.paddingLeft - selector.paddingRight) / 2f).coerceAtLeast(0f)
             if (slot <= 0f) return
@@ -479,28 +482,39 @@ class SettingsScreen(
             indicator.layoutParams = params
 
             val target = if (toLight) slot else 0f
+            selectedLight = toLight
+            themeChangeToken += 1
+            val token = themeChangeToken
             updateThemeIcons(toLight)
 
             indicator.animate().cancel()
             indicator.animate()
                 .translationX(target)
-                .setDuration(if (settings.animations) 150L else 0L)
+                .setDuration(if (settings.animations) 230L else 0L)
                 .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
                 .start()
 
             if (notify && settings.lightTheme != toLight) {
-                onThemeChanged(toLight, source)
+                if (settings.animations) {
+                    source.postDelayed({
+                        if (themeChangeToken == token && selectedLight == toLight) {
+                            onThemeChanged(toLight, source)
+                        }
+                    }, 120L)
+                } else {
+                    onThemeChanged(toLight, source)
+                }
             }
         }
 
         dark.setOnClickListener {
-            if (!settings.lightTheme) return@setOnClickListener
+            if (!selectedLight) return@setOnClickListener
             animateTap(dark)
             moveIndicator(false, dark, true)
         }
 
         light.setOnClickListener {
-            if (settings.lightTheme) return@setOnClickListener
+            if (selectedLight) return@setOnClickListener
             animateTap(light)
             moveIndicator(true, light, true)
         }
@@ -572,13 +586,43 @@ class SettingsScreen(
             .start()
     }
 
+    private fun animateIconPulse(icon: View) {
+        if (!settings.animations) return
+        val ease = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
+        icon.animate().cancel()
+        icon.animate()
+            .scaleX(0.88f)
+            .scaleY(0.88f)
+            .rotation(-4f)
+            .setDuration(70L)
+            .setInterpolator(ease)
+            .withEndAction {
+                icon.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .rotation(0f)
+                    .setDuration(150L)
+                    .setInterpolator(ease)
+                    .start()
+            }
+            .start()
+    }
+
     private fun actionRow(
-        icon: String,
+        iconRes: Int,
         iconColor: String,
         title: String,
         description: String,
         onClick: () -> Unit
     ): View {
+        val iconView = ImageView(activity).apply {
+            setImageResource(iconRes)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            imageTintList = ColorStateList.valueOf(Color.parseColor(iconColor))
+            setPadding(dp(11), dp(11), dp(11), dp(11))
+            background = rounded(palette.surfaceAlt, 14)
+        }
+
         val row = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -588,17 +632,9 @@ class SettingsScreen(
             isFocusable = true
             setOnClickListener {
                 animateTap(this)
+                animateIconPulse(iconView)
                 onClick()
             }
-        }
-
-        val iconView = TextView(activity).apply {
-            text = icon
-            gravity = Gravity.CENTER
-            textSize = 20f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(Color.parseColor(iconColor))
-            background = rounded(palette.surfaceAlt, 14)
         }
 
         val labels = LinearLayout(activity).apply {
@@ -645,27 +681,28 @@ class SettingsScreen(
     }
 
     private fun settingRow(
-        icon: String,
+        iconRes: Int,
         iconColor: String,
         title: String,
         description: String,
         checked: Boolean,
         onChange: (Boolean) -> Unit
     ): View {
+        val iconView = ImageView(activity).apply {
+            setImageResource(iconRes)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            imageTintList = ColorStateList.valueOf(Color.parseColor(iconColor))
+            setPadding(dp(11), dp(11), dp(11), dp(11))
+            background = rounded(palette.surfaceAlt, 14)
+        }
+
         val row = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(14), dp(13), dp(12), dp(13))
             background = rounded(palette.surface, 18)
-        }
-
-        val iconView = TextView(activity).apply {
-            text = icon
-            gravity = Gravity.CENTER
-            textSize = 20f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(Color.parseColor(iconColor))
-            background = rounded(palette.surfaceAlt, 14)
+            isClickable = true
+            isFocusable = true
         }
 
         val labels = LinearLayout(activity).apply {
@@ -717,17 +754,22 @@ class SettingsScreen(
         )
         toggle.addView(
             thumb,
-            FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER_VERTICAL or Gravity.START).apply {
-                leftMargin = if (checked) dp(23) else dp(3)
+            FrameLayout.LayoutParams(
+                dp(22),
+                dp(22),
+                Gravity.CENTER_VERTICAL or Gravity.START
+            ).apply {
+                leftMargin = dp(3)
             }
         )
+        thumb.translationX = if (checked) dp(20).toFloat() else 0f
 
         var value = checked
 
         fun render(next: Boolean, animate: Boolean) {
             val previous = value
             value = next
-            val target = if (next) dp(23).toFloat() else dp(3).toFloat()
+            val target = if (next) dp(20).toFloat() else 0f
             val startTrack = if (previous) palette.accent else palette.surfaceAlt
             val endTrack = if (next) palette.accent else palette.surfaceAlt
             val startThumb = if (previous) Color.WHITE else palette.muted
@@ -738,7 +780,7 @@ class SettingsScreen(
                 val ease = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
 
                 android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
-                    duration = 150L
+                    duration = 205L
                     interpolator = ease
                     val evaluator = android.animation.ArgbEvaluator()
                     addUpdateListener { animator ->
@@ -752,28 +794,22 @@ class SettingsScreen(
                 }
 
                 thumb.animate()
-                    .translationX(target - (thumb.layoutParams as FrameLayout.LayoutParams).leftMargin)
-                    .setDuration(155L)
+                    .translationX(target)
+                    .setDuration(210L)
                     .setInterpolator(ease)
-                    .withEndAction {
-                        val lp = thumb.layoutParams as FrameLayout.LayoutParams
-                        lp.leftMargin = target.toInt()
-                        thumb.translationX = 0f
-                        thumb.layoutParams = lp
-                    }
                     .start()
 
                 toggle.animate().cancel()
                 toggle.animate()
-                    .scaleX(0.97f)
-                    .scaleY(0.97f)
-                    .setDuration(55L)
+                    .scaleX(0.965f)
+                    .scaleY(0.965f)
+                    .setDuration(65L)
                     .setInterpolator(ease)
                     .withEndAction {
                         toggle.animate()
                             .scaleX(1f)
                             .scaleY(1f)
-                            .setDuration(95L)
+                            .setDuration(120L)
                             .setInterpolator(ease)
                             .start()
                     }
@@ -781,16 +817,21 @@ class SettingsScreen(
             } else {
                 track.background = rounded(endTrack, 15)
                 thumb.background = rounded(endThumb, 11)
-                val lp = thumb.layoutParams as FrameLayout.LayoutParams
-                lp.leftMargin = target.toInt()
-                thumb.layoutParams = lp
+                thumb.translationX = target
             }
         }
 
-        toggle.setOnClickListener {
+        fun toggleValue() {
             val next = !value
             render(next, true)
+            animateIconPulse(iconView)
             onChange(next)
+        }
+
+        toggle.setOnClickListener { toggleValue() }
+        row.setOnClickListener {
+            animateTap(row)
+            toggleValue()
         }
 
         row.addView(iconView, LinearLayout.LayoutParams(dp(46), dp(46)))

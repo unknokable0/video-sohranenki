@@ -2312,23 +2312,47 @@ class MainActivity : AppCompatActivity() {
             textSize=12f; gravity=Gravity.CENTER_VERTICAL; setTextColor(muted); maxLines=1
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(30)))
 
-        val tabs=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(dp(3),dp(3),dp(3),dp(3)); background=roundedBg(palette.surfaceAlt,18) }
-        listOf("Главная" to 1, "Просмотренное" to 2).forEachIndexed { position,(label,section) ->
-            val selected=videoSection==section
-            val tab=TextView(this).apply {
-                text=label; textSize=12f; gravity=Gravity.CENTER; setTypeface(typeface,Typeface.BOLD)
-                setTextColor(if(selected) Color.WHITE else muted); background=roundedBg(if(selected) purple else Color.TRANSPARENT,15)
-                isClickable=true; isFocusable=true
+        val tabs = FrameLayout(this).apply {
+            setPadding(dp(3), dp(3), dp(3), dp(3))
+            background = roundedBg(palette.surfaceAlt, 18)
+            clipChildren = true
+            clipToPadding = true
+        }
+        val tabIndicator = View(this).apply {
+            background = roundedBg(purple, 15)
+            elevation = dp(1).toFloat()
+        }
+        val tabButtons = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        listOf("Главная" to 1, "Просмотренное" to 2).forEach { (label, section) ->
+            val selected = videoSection == section
+            val tab = TextView(this).apply {
+                text = label
+                textSize = 12f
+                gravity = Gravity.CENTER
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(if (selected) Color.WHITE else muted)
+                background = null
+                isClickable = true
+                isFocusable = true
                 tag = "sohr_video_section_tab"
                 var swipeStartX = 0f
                 var swipeStartY = 0f
                 setOnTouchListener { _, event ->
                     when (event.actionMasked) {
-                        MotionEvent.ACTION_DOWN -> { swipeStartX = event.x; swipeStartY = event.y; false }
+                        MotionEvent.ACTION_DOWN -> {
+                            swipeStartX = event.x
+                            swipeStartY = event.y
+                            false
+                        }
                         MotionEvent.ACTION_UP -> {
                             val dx = event.x - swipeStartX
                             val dy = event.y - swipeStartY
-                            if (kotlin.math.abs(dx) >= dp(46) && kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.25f) {
+                            if (kotlin.math.abs(dx) >= dp(46) &&
+                                kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.25f
+                            ) {
                                 switchVideoSection(if (dx < 0f) 2 else 1)
                                 true
                             } else false
@@ -2337,14 +2361,53 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 setOnClickListener {
-                    if(videoSection==section) return@setOnClickListener
+                    if (videoSection == section) return@setOnClickListener
                     animatePress(this)
                     switchVideoSection(section)
                 }
             }
-            tabs.addView(tab,LinearLayout.LayoutParams(0,dp(40),1f).apply { if(position>0) marginStart=dp(3) })
+            tabButtons.addView(tab, LinearLayout.LayoutParams(0, dp(40), 1f))
         }
-        header.addView(tabs,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(46)))
+        tabs.addView(
+            tabIndicator,
+            FrameLayout.LayoutParams(0, dp(40), Gravity.START or Gravity.CENTER_VERTICAL)
+        )
+        tabs.addView(
+            tabButtons,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(40),
+                Gravity.CENTER
+            )
+        )
+        tabs.post {
+            val usable = tabs.width - tabs.paddingLeft - tabs.paddingRight
+            val slot = (usable / 2f).coerceAtLeast(0f)
+            val params = tabIndicator.layoutParams as FrameLayout.LayoutParams
+            params.width = slot.toInt()
+            params.height = dp(40)
+            tabIndicator.layoutParams = params
+
+            val target = if (videoSection == 2) slot else 0f
+            if (pendingVideoSectionDirection != 0 && settings.animations) {
+                tabIndicator.translationX = if (videoSection == 2) 0f else slot
+                tabIndicator.animate().cancel()
+                tabIndicator.animate()
+                    .translationX(target)
+                    .setStartDelay(35L)
+                    .setDuration(245L)
+                    .setInterpolator(
+                        android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
+                    )
+                    .start()
+            } else {
+                tabIndicator.translationX = target
+            }
+        }
+        header.addView(
+            tabs,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46))
+        )
 
         feedRefreshButton = null
         feedRefreshLabel = null
@@ -2395,7 +2458,7 @@ class MainActivity : AppCompatActivity() {
 
         if (videoSection == 1) {
             val liveSlot = FrameLayout(this).apply {
-                minimumHeight = dp(84)
+                minimumHeight = dp(76)
             }
             body.addView(
                 liveSlot,
@@ -2676,8 +2739,8 @@ class MainActivity : AppCompatActivity() {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), dp(12), dp(12), dp(12))
-            background = roundedBg(palette.surface, 22)
+            setPadding(dp(14), 0, dp(12), 0)
+            background = roundedBg(palette.surface, 20)
             elevation = dp(1).toFloat()
         }
 
@@ -2686,8 +2749,8 @@ class MainActivity : AppCompatActivity() {
         }
         card.addView(
             pulse,
-            LinearLayout.LayoutParams(dp(24), dp(24)).apply {
-                marginEnd = dp(10)
+            LinearLayout.LayoutParams(dp(28), dp(28)).apply {
+                marginEnd = dp(11)
             }
         )
 
@@ -2699,30 +2762,41 @@ class MainActivity : AppCompatActivity() {
         info.addView(TextView(this).apply {
             text = "T2x2"
             textSize = 16.5f
+            includeFontPadding = false
             maxLines = 1
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(this@MainActivity.text)
         })
 
         val status = TextView(this).apply {
-            textSize = 11.8f
+            textSize = 11.4f
+            includeFontPadding = false
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
-            setPadding(0, dp(3), 0, 0)
+            setPadding(0, dp(5), 0, 0)
         }
 
-        if (live == null) {
-            status.text =
-                if (unavailable) "@t2x2 • Статус временно недоступен"
-                else "@t2x2 • Не в сети"
-            status.setTextColor(muted)
-        } else {
-            fun updateStatus() {
-                status.text = "В сети • " + formatLiveDuration(live.startedAt)
+        fun updateStatus() {
+            if (live == null) {
+                status.text =
+                    if (unavailable) "Статус временно недоступен"
+                    else "Не в сети"
+                status.setTextColor(muted)
+            } else {
+                status.text = buildString {
+                    append("В сети • ")
+                    append(formatLiveDuration(live.startedAt))
+                    append(" • ")
+                    append(formatViewerCountCompact(live.viewerCount))
+                    append(" зр.")
+                }
                 status.setTextColor(Color.parseColor("#43D18D"))
             }
-            updateStatus()
+        }
+        updateStatus()
+        info.addView(status)
 
+        if (live != null) {
             val ticker = object : Runnable {
                 override fun run() {
                     if (!slot.isAttachedToWindow || card.parent !== slot) return
@@ -2732,77 +2806,61 @@ class MainActivity : AppCompatActivity() {
             }
             slot.postDelayed(ticker, 30_000L)
         }
-        info.addView(status)
-
-        if (live != null) {
-            info.addView(TextView(this).apply {
-                text = buildString {
-                    append(formatViewerCountCompact(live.viewerCount))
-                    append(" зрителей")
-                    if (live.title.isNotBlank()) {
-                        append(" • ")
-                        append(live.title)
-                    }
-                }
-                textSize = 10.8f
-                maxLines = 1
-                ellipsize = android.text.TextUtils.TruncateAt.END
-                setTextColor(muted)
-                setPadding(0, dp(4), 0, 0)
-            })
-        }
 
         card.addView(
             info,
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         )
 
-        if (live != null) {
-            val open = TextView(this).apply {
-                text = "Twitch"
-                textSize = 11.5f
-                gravity = Gravity.CENTER
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(purple)
-                background = roundedBg(palette.accentSoft, 16)
-            }
-            card.addView(
-                open,
-                LinearLayout.LayoutParams(dp(72), dp(36)).apply {
-                    marginStart = dp(10)
-                }
+        val action = TextView(this).apply {
+            text = if (live != null) "Twitch" else "Офлайн"
+            textSize = 11.5f
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(if (live != null) purple else muted)
+            background = roundedBg(
+                if (live != null) palette.accentSoft else palette.surfaceAlt,
+                15
             )
+            alpha = if (live != null) 1f else 0.72f
+        }
+        card.addView(
+            action,
+            LinearLayout.LayoutParams(dp(76), dp(36)).apply {
+                marginStart = dp(10)
+            }
+        )
 
-            card.isClickable = true
-            card.isFocusable = true
+        card.isClickable = live != null
+        card.isFocusable = live != null
+        if (live != null) {
             card.setOnClickListener {
                 animatePress(card)
                 openT2x2OnTwitch()
             }
-        } else {
-            card.isClickable = false
-            card.isFocusable = false
         }
 
         slot.addView(
             card,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
+                dp(72),
+                Gravity.CENTER
             )
         )
 
         if (animateIn && settings.animations) {
             card.alpha = 0f
-            card.translationY = dp(5).toFloat()
-            card.scaleX = 0.992f
-            card.scaleY = 0.992f
+            card.translationY = dp(4).toFloat()
+            card.scaleX = 0.994f
+            card.scaleY = 0.994f
             card.animate()
                 .alpha(1f)
                 .translationY(0f)
                 .scaleX(1f)
                 .scaleY(1f)
-                .setDuration(210L)
+                .setDuration(220L)
                 .setInterpolator(
                     android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
                 )
@@ -4753,7 +4811,7 @@ class MainActivity : AppCompatActivity() {
                 val telegramInterpolator = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
                 if (sectionCrossfade) {
                     val direction = if (sectionDirection == 0) 1 else sectionDirection
-                    val travel = dp(10).toFloat() * direction
+                    val travel = dp(28).toFloat() * direction
                     content.alpha = 0f
                     content.translationX = travel
                     content.scaleX = 0.994f
@@ -4762,8 +4820,8 @@ class MainActivity : AppCompatActivity() {
                     old.translationX = 0f
                     old.animate()
                         .alpha(0f)
-                        .translationX(-travel * 0.15f)
-                        .setDuration(140L)
+                        .translationX(-travel * 0.42f)
+                        .setDuration(205L)
                         .setInterpolator(telegramInterpolator)
                         .start()
                     content.animate()
@@ -4771,7 +4829,7 @@ class MainActivity : AppCompatActivity() {
                         .translationX(0f)
                         .scaleX(1f)
                         .scaleY(1f)
-                        .setDuration(230L)
+                        .setDuration(265L)
                         .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
                         .withEndAction {
                             old.animate().cancel()
