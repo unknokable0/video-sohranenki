@@ -51,6 +51,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.widget.NestedScrollView
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -2261,7 +2262,36 @@ class MainActivity : AppCompatActivity() {
         val watchedGroups=groups(watchedVideos)
         val visibleGroups=if(videoSection==2) watchedGroups else regularGroups
 
-        val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(bg) }
+        val page=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            setBackgroundColor(bg)
+        }
+        val scroll=NestedScrollView(this).apply {
+            isFillViewport = true
+            overScrollMode = View.OVER_SCROLL_NEVER
+            setBackgroundColor(bg)
+        }
+        val body=LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(bg)
+            setPadding(0, 0, 0, dp(16))
+        }
+        scroll.addView(
+            body,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+        page.addView(
+            scroll,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
+
         val header=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL
             setPadding(dp(16),dp(14),dp(16),dp(8))
@@ -2278,12 +2308,12 @@ class MainActivity : AppCompatActivity() {
                 settings.videoSource == "twitch" -> "Twitch • @t2x2"
                 else -> "Telegram • @t2x2_video"
             }
-            text=if(videoSection==2) "$sourceName • ${watchedVideos.size} просмотрено • ${watchedGroups.size} сборников" else "$sourceName • Последние 7 дней • ${regularGroups.size} сборников • ${regularVideos.size} видео"
+            text=if(videoSection==2) "$sourceName • История • ${watchedVideos.size} видео" else "$sourceName • ${regularVideos.size} видео • обновляется автоматически"
             textSize=12f; gravity=Gravity.CENTER_VERTICAL; setTextColor(muted); maxLines=1
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(30)))
 
         val tabs=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(dp(3),dp(3),dp(3),dp(3)); background=roundedBg(palette.surfaceAlt,18) }
-        listOf("Сборники" to 1, "Просмотренное" to 2).forEachIndexed { position,(label,section) ->
+        listOf("Главная" to 1, "Просмотренное" to 2).forEachIndexed { position,(label,section) ->
             val selected=videoSection==section
             val tab=TextView(this).apply {
                 text=label; textSize=12f; gravity=Gravity.CENTER; setTypeface(typeface,Typeface.BOLD)
@@ -2323,7 +2353,7 @@ class MainActivity : AppCompatActivity() {
 
         val controls=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(0,dp(10),0,0) }
         controls.addView(TextView(this).apply {
-            text=if(videoSection==2) "Просмотрено по дням" else "Сборники по дням"; textSize=14f; setTypeface(typeface,Typeface.BOLD); setTextColor(muted)
+            text=if(videoSection==2) "История просмотров" else "Твоя медиатека"; textSize=14f; setTypeface(typeface,Typeface.BOLD); setTextColor(muted)
         },LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
         val autoStatus = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -2361,34 +2391,208 @@ class MainActivity : AppCompatActivity() {
         }
         controls.addView(autoStatus, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)))
         header.addView(controls, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
-        page.addView(header)
+        body.addView(header)
 
-        val liveSlot = FrameLayout(this).apply {
-            minimumHeight = dp(84)
-        }
-        page.addView(
-            liveSlot,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
-                marginStart = dp(16)
-                marginEnd = dp(16)
-                bottomMargin = dp(8)
+        if (videoSection == 1) {
+            val liveSlot = FrameLayout(this).apply {
+                minimumHeight = dp(84)
             }
-        )
-        t2x2LiveSlot = liveSlot
-        liveSlot.post { refreshT2x2Live(liveSlot) }
+            body.addView(
+                liveSlot,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    marginStart = dp(16)
+                    marginEnd = dp(16)
+                    bottomMargin = dp(6)
+                }
+            )
+            t2x2LiveSlot = liveSlot
+            liveSlot.post { refreshT2x2Live(liveSlot) }
 
-        if(visibleGroups.isEmpty()) {
-            page.addView(TextView(this).apply { text=if(videoSection==2) "Здесь появятся видео, которые ты отметил как просмотренные." else "Непросмотренных сборников пока нет.";textSize=15f;gravity=Gravity.CENTER;setTextColor(muted);setPadding(dp(28),0,dp(28),0) },LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
+            val continueVideos = videos
+                .filter { playbackProgress(it) in 0.01f..0.985f }
+                .sortedWith(
+                    compareByDescending<VideoItem> { settings.lastPlayedAt(it.messageId) }
+                        .thenByDescending { it.date }
+                )
+                .take(8)
+
+            val continueIds = continueVideos.mapTo(hashSetOf()) { it.messageId }
+            val freshVideos = regularVideos
+                .asSequence()
+                .filterNot { it.messageId in continueIds }
+                .sortedWith(
+                    compareByDescending<VideoItem> { it.date }
+                        .thenByDescending { it.messageId }
+                )
+                .take(10)
+                .toList()
+
+            if (continueVideos.isNotEmpty()) {
+                body.addView(
+                    buildHomeVideoShelf(
+                        title = "Продолжить просмотр",
+                        subtitle = "Продолжай с того места, где остановился",
+                        items = continueVideos,
+                        mode = HomeVideoShelfAdapter.Mode.CONTINUE
+                    )
+                )
+            }
+
+            if (freshVideos.isNotEmpty()) {
+                body.addView(
+                    buildHomeVideoShelf(
+                        title = "Новое",
+                        subtitle = "Свежие видео, которые ты ещё не смотрел",
+                        items = freshVideos,
+                        mode = HomeVideoShelfAdapter.Mode.NEW
+                    )
+                )
+            }
         } else {
-            val list=RecyclerView(this).apply { isVerticalScrollBarEnabled=false;isHorizontalScrollBarEnabled=false;overScrollMode=View.OVER_SCROLL_NEVER;layoutManager=LinearLayoutManager(this@MainActivity);adapter=DayCollectionAdapter(visibleGroups,palette,settings.animations){showDayCollection(it)};setBackgroundColor(bg);setHasFixedSize(true);itemAnimator=null }
-            page.addView(list,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
+            t2x2LiveSlot = null
+        }
+
+        val collectionHeader = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(16), dp(16), dp(6))
+        }
+        collectionHeader.addView(
+            TextView(this).apply {
+                text = if (videoSection == 2) "Просмотренное по дням" else "Сборники по дням"
+                textSize = 18f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(this@MainActivity.text)
+            },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        )
+        collectionHeader.addView(
+            TextView(this).apply {
+                text = "${visibleGroups.size}"
+                textSize = 11.5f
+                gravity = Gravity.CENTER
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(purple)
+                setPadding(dp(9), 0, dp(9), 0)
+                background = roundedBg(palette.accentSoft, 13)
+            },
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                dp(28)
+            )
+        )
+        body.addView(collectionHeader)
+
+        if (visibleGroups.isEmpty()) {
+            body.addView(
+                TextView(this).apply {
+                    text = if (videoSection == 2) {
+                        "Здесь появятся просмотренные видео."
+                    } else {
+                        "Новых непросмотренных видео пока нет."
+                    }
+                    textSize = 14.5f
+                    gravity = Gravity.CENTER
+                    setTextColor(muted)
+                    setPadding(dp(28), dp(32), dp(28), dp(38))
+                },
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        } else {
+            val list=RecyclerView(this).apply {
+                isVerticalScrollBarEnabled=false
+                isHorizontalScrollBarEnabled=false
+                overScrollMode=View.OVER_SCROLL_NEVER
+                isNestedScrollingEnabled = false
+                layoutManager=LinearLayoutManager(this@MainActivity)
+                adapter=DayCollectionAdapter(
+                    visibleGroups,
+                    palette,
+                    settings.animations
+                ) { showDayCollection(it) }
+                setBackgroundColor(bg)
+                setHasFixedSize(false)
+                itemAnimator=null
+            }
+            body.addView(
+                list,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
         }
         replaceRoot(withBottomNav(page,SohrTab.VIDEOS))
     }
 
+
+    private fun buildHomeVideoShelf(
+        title: String,
+        subtitle: String,
+        items: List<VideoItem>,
+        mode: HomeVideoShelfAdapter.Mode
+    ): View {
+        val section = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(10), 0, dp(4))
+        }
+
+        val heading = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), 0, dp(16), dp(8))
+        }
+        heading.addView(TextView(this).apply {
+            text = title
+            textSize = 19f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+        })
+        heading.addView(TextView(this).apply {
+            text = subtitle
+            textSize = 11.5f
+            setTextColor(muted)
+            setPadding(0, dp(3), 0, 0)
+        })
+        section.addView(heading)
+
+        val shelf = RecyclerView(this).apply {
+            overScrollMode = View.OVER_SCROLL_NEVER
+            isVerticalScrollBarEnabled = false
+            isHorizontalScrollBarEnabled = false
+            layoutManager = LinearLayoutManager(
+                this@MainActivity,
+                LinearLayoutManager.HORIZONTAL,
+                false
+            )
+            adapter = HomeVideoShelfAdapter(
+                items = items,
+                palette = palette,
+                animationsEnabled = settings.animations,
+                mode = mode,
+                progressFor = { playbackProgress(it) }
+            ) { item ->
+                openPlayer(item)
+            }
+            itemAnimator = null
+            setPadding(dp(10), 0, dp(10), 0)
+            clipToPadding = false
+        }
+
+        section.addView(
+            shelf,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(190)
+            )
+        )
+        return section
+    }
 
     private fun refreshT2x2Live(slot: FrameLayout) {
         twitchLiveJob?.cancel()
@@ -2935,7 +3139,10 @@ class MainActivity : AppCompatActivity() {
             },
             onBack = { closeCurrentPlayerScreen() },
             onFullscreen = { setFullscreen(it) },
-            onPlaybackStarted = { streakTracker.markWatched() }
+            onPlaybackStarted = {
+                settings.markPlayed(item.messageId)
+                streakTracker.markWatched()
+            }
         )
 
         pendingRootSlide = 1
@@ -2999,7 +3206,10 @@ class MainActivity : AppCompatActivity() {
                     },
                     onBack = { closeCurrentPlayerScreen() },
                     onFullscreen = { setFullscreen(it) },
-                    onPlaybackStarted = { streakTracker.markWatched() }
+                    onPlaybackStarted = {
+                settings.markPlayed(item.messageId)
+                streakTracker.markWatched()
+            }
                 )
 
                 pendingRootSlide = 1

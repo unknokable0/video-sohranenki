@@ -103,5 +103,12 @@ class AppSettings(context: Context) {
         prefs.edit().remove("playback_position_" + messageId).apply()
     }
 
+    fun markPlayed(messageId: Long, atMs: Long = System.currentTimeMillis()) {
+        prefs.edit().putLong("last_played_" + messageId, atMs).apply()
+    }
+
+    fun lastPlayedAt(messageId: Long): Long =
+        prefs.getLong("last_played_" + messageId, 0L)
+
     fun palette(): ThemePalette = if (lightTheme) AppThemes.Light else AppThemes.Dark
 }
