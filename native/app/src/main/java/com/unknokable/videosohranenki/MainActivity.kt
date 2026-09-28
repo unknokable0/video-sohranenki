@@ -1,15 +1,22 @@
 package com.unknokable.videosohranenki
 
+import android.Manifest
 import android.app.Dialog
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.PictureInPictureParams
 import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
+import android.os.Build
 import android.os.Bundle
 import android.net.Uri
 import android.telephony.TelephonyManager
@@ -92,14 +99,16 @@ class MainActivity : AppCompatActivity() {
     private var twitchAuthJob: kotlinx.coroutines.Job? = null
     private var twitchAuthDialog: Dialog? = null
     private var twitchLiveJob: kotlinx.coroutines.Job? = null
+    private var t2x2WatchJob: kotlinx.coroutines.Job? = null
+    private var t2x2LiveSlot: FrameLayout? = null
     private var lastT2x2Live: TwitchLiveStream? = null
     private var lastT2x2LiveCheckedAt = 0L
     private var lastT2x2LiveUnavailable = false
     private val t2x2LiveCacheMs = 20_000L
     private val temporaryLivePreviewCacheMs = 60_000L
     private val temporaryBlockedLiveLogins = linkedSetOf<String>()
-    // TEMPORARY: test build only. Set false after LIVE card is visually verified.
-    private val temporaryLivePreviewEnabled = true
+    // LIVE preview experiment is finished. The production card tracks T2x2 only.
+    private val temporaryLivePreviewEnabled = false
     private var pendingTwitchWelcome = false
     private var pendingTwitchLiveAfterAuth: TwitchLiveStream? = null
     private var currentDay: DayCollection? = null
@@ -171,6 +180,7 @@ class MainActivity : AppCompatActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         root = FrameLayout(this).apply { setBackgroundColor(bg) }
         setContentView(root)
+        setupT2x2Notifications()
         if (!handleTwitchAuthIntent(intent, loadAfter = false)) handleSharedIntent(intent)
         ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
             if (!fullScreen) {
@@ -273,6 +283,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        startT2x2LiveWatch()
         if (android.os.Build.VERSION.SDK_INT >= 26 && !isInPictureInPictureMode) {
             stopService(Intent(this, PlaybackKeepAliveService::class.java))
         }
@@ -2366,6 +2377,7 @@ class MainActivity : AppCompatActivity() {
                 bottomMargin = dp(8)
             }
         )
+        t2x2LiveSlot = liveSlot
         liveSlot.post { refreshT2x2Live(liveSlot) }
 
         if(visibleGroups.isEmpty()) {
@@ -2382,8 +2394,7 @@ class MainActivity : AppCompatActivity() {
         twitchLiveJob?.cancel()
 
         val now = System.currentTimeMillis()
-        val cacheMs = if (temporaryLivePreviewEnabled) temporaryLivePreviewCacheMs else t2x2LiveCacheMs
-        if (lastT2x2LiveCheckedAt > 0L && now - lastT2x2LiveCheckedAt < cacheMs) {
+        if (lastT2x2LiveCheckedAt > 0L && now - lastT2x2LiveCheckedAt < t2x2LiveCacheMs) {
             renderT2x2Live(slot, lastT2x2Live, lastT2x2LiveUnavailable)
             return
         }
@@ -2400,51 +2411,32 @@ class MainActivity : AppCompatActivity() {
 
         twitchLiveJob = lifecycleScope.launch {
             try {
-                val live = if (temporaryLivePreviewEnabled) {
-                    var selected: TwitchLiveStream? = null
-                    val excluded = linkedSetOf<String>().apply {
-                        add("t2x2")
-                        addAll(temporaryBlockedLiveLogins)
-                    }
-
-                    for (attempt in 0 until 6) {
-                        val candidate = TwitchApi.loadRandomLiveStream(
-                            clientId = clientId,
-                            accessToken = token,
-                            excludeLogins = excluded
-                        ) ?: break
-
-                        val commercial = runCatching {
-                            TwitchVodResolver.isCommercialBreak(candidate.login)
-                        }.getOrDefault(false)
-
-                        if (commercial) {
-                            blockTemporaryLive(candidate.login)
-                            excluded.add(candidate.login.lowercase())
-                            continue
-                        }
-
-                        selected = candidate
-                        break
-                    }
-                    selected
-                } else {
-                    TwitchApi.loadLiveStream(clientId, token, "t2x2")
-                }
+                val live = TwitchApi.loadLiveStream(clientId, token, "t2x2")
                 lastT2x2Live = live
                 lastT2x2LiveUnavailable = false
                 lastT2x2LiveCheckedAt = System.currentTimeMillis()
-                if (slot.isAttachedToWindow) renderT2x2Live(slot, live)
+
+                if (live != null) {
+                    maybeNotifyT2x2Live(live)
+                }
+
+                if (slot.isAttachedToWindow) {
+                    renderT2x2Live(slot, live)
+                }
             } catch (_: TwitchAuthException) {
                 lastT2x2Live = null
                 lastT2x2LiveUnavailable = true
                 lastT2x2LiveCheckedAt = System.currentTimeMillis()
-                if (slot.isAttachedToWindow) renderT2x2Live(slot, null, unavailable = true)
+                if (slot.isAttachedToWindow) {
+                    renderT2x2Live(slot, null, unavailable = true)
+                }
             } catch (_: Exception) {
                 lastT2x2Live = null
                 lastT2x2LiveUnavailable = true
                 lastT2x2LiveCheckedAt = System.currentTimeMillis()
-                if (slot.isAttachedToWindow) renderT2x2Live(slot, null, unavailable = true)
+                if (slot.isAttachedToWindow) {
+                    renderT2x2Live(slot, null, unavailable = true)
+                }
             }
         }
     }
@@ -2468,95 +2460,32 @@ class MainActivity : AppCompatActivity() {
         if (slot.isAttachedToWindow) refreshT2x2Live(slot)
     }
 
-    private fun renderT2x2Live(slot: FrameLayout, live: TwitchLiveStream?, unavailable: Boolean = false) {
+    private fun renderT2x2Live(
+        slot: FrameLayout,
+        live: TwitchLiveStream?,
+        unavailable: Boolean = false
+    ) {
         val animateIn = slot.childCount == 0
         slot.removeAllViews()
         slot.visibility = View.VISIBLE
 
-        if (live == null) {
-            val offline = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(14), dp(12), dp(14), dp(12))
-                background = roundedBg(palette.surface, 22)
-            }
-
-            val pulse = LivePulseView(this).apply {
-                setState(false, settings.animations)
-            }
-            offline.addView(
-                pulse,
-                LinearLayout.LayoutParams(dp(22), dp(22)).apply {
-                    marginEnd = dp(9)
-                }
-            )
-
-            val labels = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-            }
-            labels.addView(TextView(this).apply {
-                text = "t2x2"
-                textSize = 15f
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(this@MainActivity.text)
-            })
-            labels.addView(TextView(this).apply {
-                text = if (unavailable) "@t2x2 • Статус эфира недоступен" else "@t2x2 • Не в сети"
-                textSize = 11.5f
-                setTextColor(muted)
-                setPadding(0, dp(3), 0, 0)
-            })
-            offline.addView(labels)
-
-            slot.addView(
-                offline,
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(76)
-                )
-            )
-            return
-        }
-
         val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = roundedBg(palette.surface, 26)
-            clipToOutline = true
-            isClickable = true
-            isFocusable = true
-            elevation = dp(1).toFloat()
-            setOnClickListener {
-                animatePress(this)
-                openTwitchLivePlayer(live)
-            }
-        }
-
-        val previewHeight = ((resources.displayMetrics.widthPixels - dp(40)) * 9f / 16f).toInt()
-        val preview = TwitchLivePreviewView(
-            context = this,
-            live = live,
-            palette = palette,
-            animationsEnabled = settings.animations,
-            onOpen = { openTwitchLivePlayer(live) },
-            onBlocked = { blocked -> skipBlockedTemporaryPreview(slot, blocked) }
-        )
-        card.addView(
-            preview,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                previewHeight
-            ).apply {
-                marginStart = dp(4)
-                marginEnd = dp(4)
-                topMargin = dp(4)
-            }
-        )
-
-        val meta = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), dp(12), dp(12), dp(13))
+            setPadding(dp(14), dp(12), dp(12), dp(12))
+            background = roundedBg(palette.surface, 22)
+            elevation = dp(1).toFloat()
         }
+
+        val pulse = LivePulseView(this).apply {
+            setState(live != null, settings.animations)
+        }
+        card.addView(
+            pulse,
+            LinearLayout.LayoutParams(dp(24), dp(24)).apply {
+                marginEnd = dp(10)
+            }
+        )
 
         val info = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -2564,29 +2493,53 @@ class MainActivity : AppCompatActivity() {
         }
 
         info.addView(TextView(this).apply {
-            text = live.displayName.ifBlank { live.login }
-            textSize = 17f
+            text = "T2x2"
+            textSize = 16.5f
             maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.END
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(this@MainActivity.text)
         })
 
-        info.addView(TextView(this).apply {
-            text = "@" + live.login + "  •  " + live.viewerCount + " зрителей"
-            textSize = 11.5f
+        val status = TextView(this).apply {
+            textSize = 11.8f
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
-            setTextColor(purple)
-            setPadding(0, dp(4), 0, 0)
-        })
+            setPadding(0, dp(3), 0, 0)
+        }
 
-        if (live.gameName.isNotBlank() || live.title.isNotBlank()) {
+        if (live == null) {
+            status.text =
+                if (unavailable) "@t2x2 • Статус временно недоступен"
+                else "@t2x2 • Не в сети"
+            status.setTextColor(muted)
+        } else {
+            fun updateStatus() {
+                status.text = "В сети • " + formatLiveDuration(live.startedAt)
+                status.setTextColor(Color.parseColor("#43D18D"))
+            }
+            updateStatus()
+
+            val ticker = object : Runnable {
+                override fun run() {
+                    if (!slot.isAttachedToWindow || card.parent !== slot) return
+                    updateStatus()
+                    slot.postDelayed(this, 30_000L)
+                }
+            }
+            slot.postDelayed(ticker, 30_000L)
+        }
+        info.addView(status)
+
+        if (live != null) {
             info.addView(TextView(this).apply {
-                text = listOfNotNull(
-                    live.gameName.takeIf { it.isNotBlank() },
-                    live.title.takeIf { it.isNotBlank() }
-                ).joinToString(" • ")
+                text = buildString {
+                    append(formatViewerCountCompact(live.viewerCount))
+                    append(" зрителей")
+                    if (live.title.isNotBlank()) {
+                        append(" • ")
+                        append(live.title)
+                    }
+                }
                 textSize = 10.8f
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
@@ -2595,27 +2548,38 @@ class MainActivity : AppCompatActivity() {
             })
         }
 
-        meta.addView(
+        card.addView(
             info,
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         )
 
-        val open = TextView(this).apply {
-            text = "Смотреть"
-            textSize = 11f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(purple)
-            background = roundedBg(palette.accentSoft, 16)
-        }
-        meta.addView(
-            open,
-            LinearLayout.LayoutParams(dp(78), dp(36)).apply {
-                marginStart = dp(10)
+        if (live != null) {
+            val open = TextView(this).apply {
+                text = "Twitch"
+                textSize = 11.5f
+                gravity = Gravity.CENTER
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(purple)
+                background = roundedBg(palette.accentSoft, 16)
             }
-        )
+            card.addView(
+                open,
+                LinearLayout.LayoutParams(dp(72), dp(36)).apply {
+                    marginStart = dp(10)
+                }
+            )
 
-        card.addView(meta)
+            card.isClickable = true
+            card.isFocusable = true
+            card.setOnClickListener {
+                animatePress(this)
+                openT2x2OnTwitch()
+            }
+        } else {
+            card.isClickable = false
+            card.isFocusable = false
+        }
+
         slot.addView(
             card,
             FrameLayout.LayoutParams(
@@ -2626,18 +2590,198 @@ class MainActivity : AppCompatActivity() {
 
         if (animateIn && settings.animations) {
             card.alpha = 0f
-            card.translationY = dp(7).toFloat()
-            card.scaleX = 0.99f
-            card.scaleY = 0.99f
+            card.translationY = dp(5).toFloat()
+            card.scaleX = 0.992f
+            card.scaleY = 0.992f
             card.animate()
                 .alpha(1f)
                 .translationY(0f)
                 .scaleX(1f)
                 .scaleY(1f)
-                .setDuration(240L)
-                .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                .setDuration(210L)
+                .setInterpolator(
+                    android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
+                )
                 .start()
         }
+    }
+
+    private fun formatLiveDuration(startedAt: String): String {
+        val startMs = runCatching { Instant.parse(startedAt).toEpochMilli() }.getOrNull()
+            ?: return "эфир идёт"
+
+        val totalMinutes =
+            ((System.currentTimeMillis() - startMs).coerceAtLeast(0L) / 60_000L)
+                .coerceAtLeast(0L)
+
+        val days = totalMinutes / (24L * 60L)
+        val hours = (totalMinutes % (24L * 60L)) / 60L
+        val minutes = totalMinutes % 60L
+
+        return when {
+            days > 0L -> "$days д $hours ч"
+            hours > 0L -> "$hours ч $minutes мин"
+            else -> "$minutes мин"
+        }
+    }
+
+    private fun formatViewerCountCompact(value: Int): String =
+        when {
+            value >= 1_000_000 -> String.format(Locale.US, "%.1f млн", value / 1_000_000.0)
+            value >= 1_000 -> String.format(Locale.US, "%.1f тыс.", value / 1_000.0)
+            else -> value.toString()
+        }
+
+    private fun t2x2Intent(): Intent {
+        val url = Uri.parse("https://www.twitch.tv/t2x2")
+        val twitchApp = Intent(Intent.ACTION_VIEW, url).apply {
+            setPackage("tv.twitch.android.app")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        return if (twitchApp.resolveActivity(packageManager) != null) {
+            twitchApp
+        } else {
+            Intent(Intent.ACTION_VIEW, url).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        }
+    }
+
+    private fun openT2x2OnTwitch() {
+        runCatching {
+            startActivity(t2x2Intent())
+        }.onFailure {
+            Toast.makeText(
+                this,
+                "Не удалось открыть Twitch",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    private fun setupT2x2Notifications() {
+        if (Build.VERSION.SDK_INT >= 26) {
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(
+                NotificationChannel(
+                    T2X2_NOTIFICATION_CHANNEL,
+                    "Эфиры T2x2",
+                    NotificationManager.IMPORTANCE_DEFAULT
+                ).apply {
+                    description = "Уведомление, когда T2x2 начинает стрим"
+                    enableVibration(true)
+                }
+            )
+        }
+
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            val prefs = getSharedPreferences("sohr_runtime", MODE_PRIVATE)
+            if (!prefs.getBoolean("t2x2_notification_permission_requested", false)) {
+                prefs.edit()
+                    .putBoolean("t2x2_notification_permission_requested", true)
+                    .apply()
+                requestPermissions(
+                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                    T2X2_NOTIFICATION_PERMISSION_REQUEST
+                )
+            }
+        }
+    }
+
+    private fun maybeNotifyT2x2Live(live: TwitchLiveStream) {
+        if (!live.login.equals("t2x2", ignoreCase = true)) return
+        if (live.startedAt.isBlank()) return
+
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+
+        val prefs = getSharedPreferences("sohr_runtime", MODE_PRIVATE)
+        val previousStart = prefs.getString("last_t2x2_notified_started_at", null)
+        if (previousStart == live.startedAt) return
+
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            2202,
+            t2x2Intent(),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val manager = getSystemService(NotificationManager::class.java)
+        val builder =
+            if (Build.VERSION.SDK_INT >= 26) {
+                Notification.Builder(this, T2X2_NOTIFICATION_CHANNEL)
+            } else {
+                @Suppress("DEPRECATION")
+                Notification.Builder(this)
+            }
+
+        val notification = builder
+            .setSmallIcon(R.drawable.ic_notification_live)
+            .setContentTitle("T2x2 начал стрим")
+            .setContentText(
+                live.title.ifBlank { "T2x2 сейчас в эфире" }
+            )
+            .setStyle(
+                Notification.BigTextStyle().bigText(
+                    buildString {
+                        append(live.title.ifBlank { "T2x2 сейчас в эфире" })
+                        append("\n")
+                        append("В эфире • ")
+                        append(formatLiveDuration(live.startedAt))
+                    }
+                )
+            )
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setCategory(Notification.CATEGORY_EVENT)
+            .setOnlyAlertOnce(true)
+            .build()
+
+        manager.notify(T2X2_NOTIFICATION_ID, notification)
+        prefs.edit()
+            .putString("last_t2x2_notified_started_at", live.startedAt)
+            .apply()
+    }
+
+    private fun startT2x2LiveWatch() {
+        if (t2x2WatchJob?.isActive == true) return
+
+        t2x2WatchJob = lifecycleScope.launch {
+            delay(1_200L)
+
+            while (isActive) {
+                val clientId = BuildConfig.TWITCH_CLIENT_ID.trim()
+                val token = settings.twitchAccessToken
+
+                if (!settings.guestMode && clientId.isNotBlank() && !token.isNullOrBlank()) {
+                    runCatching {
+                        TwitchApi.loadLiveStream(clientId, token, "t2x2")
+                    }.getOrNull()?.let { live ->
+                        lastT2x2Live = live
+                        lastT2x2LiveUnavailable = false
+                        lastT2x2LiveCheckedAt = System.currentTimeMillis()
+                        maybeNotifyT2x2Live(live)
+
+                        t2x2LiveSlot
+                            ?.takeIf { it.isAttachedToWindow }
+                            ?.let { renderT2x2Live(it, live) }
+                    }
+                }
+
+                delay(60_000L)
+            }
+        }
+    }
+
+    companion object {
+        private const val T2X2_NOTIFICATION_CHANNEL = "t2x2_live"
+        private const val T2X2_NOTIFICATION_ID = 2202
+        private const val T2X2_NOTIFICATION_PERMISSION_REQUEST = 2203
     }
 
     private fun showDayCollection(collection: DayCollection) {
