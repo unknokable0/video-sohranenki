@@ -2221,7 +2221,7 @@ class MainActivity : AppCompatActivity() {
                 val cutoffEpoch = cutoffDate.atStartOfDay(zone).toEpochSecond()
 
                 val collected = linkedMapOf<Long, VideoItem>()
-                val cachedBeforeRefresh = videoCache.load()
+                val cachedBeforeRefresh = withContext(Dispatchers.IO) { videoCache.load() }
                 cachedBeforeRefresh.asSequence()
                     .filter { it.localPath != null || it.date.toLong() >= cutoffEpoch }
                     .forEach { collected[it.messageId] = it }
@@ -2256,7 +2256,7 @@ class MainActivity : AppCompatActivity() {
                     .filter { it.localPath != null || it.date.toLong() >= cutoffEpoch }
                     .sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })
 
-                val cachedById = videoCache.load().associateBy { it.messageId }
+                val cachedById = cachedBeforeRefresh.associateBy { it.messageId }
                 val videosWithCachedThumbs = videos.map { item ->
                     val cached = cachedById[item.messageId]
                     if (item.thumbnailPath.isNullOrBlank() && cached?.thumbnailPath?.let { File(it).exists() } == true) item.copy(thumbnailPath = cached.thumbnailPath) else item
@@ -2273,9 +2273,12 @@ class MainActivity : AppCompatActivity() {
                     videosWithCachedThumbs
                 }
 
+                withContext(Dispatchers.IO) {
+                    videoCache.save(preparedVideos)
+                }
+
                 withContext(Dispatchers.Main) {
                     telegramVideos = preparedVideos
-                    videoCache.save(preparedVideos)
                     updateStatsSnapshot(preparedVideos)
                     if (settings.videoSource != "telegram") return@withContext
                     val changed = currentVideos.map { it.messageId } != preparedVideos.map { it.messageId }
@@ -3900,8 +3903,9 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        if (downloadStore.entries().isNotEmpty()) {
-            action("Загрузки • " + downloadStore.entries().size, "Открыть сохранённые видео") {
+        val downloadedEntries = downloadStore.entries()
+        if (downloadedEntries.isNotEmpty()) {
+            action("Загрузки • " + downloadedEntries.size, "Открыть сохранённые видео") {
                 showDownloadCenter()
             }
         }
