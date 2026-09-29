@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -23,7 +24,8 @@ class VideoAdapter(
     private val palette: ThemePalette,
     private val animationsEnabled: Boolean,
     private val progressFor: (VideoItem) -> Float,
-    private val onClick: (VideoItem) -> Unit
+    private val onClick: (VideoItem, View) -> Unit,
+    private val onLongClick: (VideoItem, View) -> Unit
 ) : RecyclerView.Adapter<VideoAdapter.Holder>() {
 
     private val animatedIds = HashSet<Long>()
@@ -46,8 +48,10 @@ class VideoAdapter(
             setPadding(dp(context, 12), dp(context, 8), dp(context, 12), dp(context, 8))
             background = GradientDrawable().apply {
                 setColor(palette.surface)
-                cornerRadius = dp(context, 16).toFloat()
+                cornerRadius = dp(context, 18).toFloat()
+                setStroke(dp(context, 1), palette.stroke)
             }
+            elevation = dp(context, 1).toFloat()
             layoutParams = RecyclerView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -241,8 +245,48 @@ class VideoAdapter(
         holder.itemView.setOnClickListener {
             if (!holder.itemView.isEnabled) return@setOnClickListener
             holder.itemView.isEnabled = false
-            onClick(item)
+            if (animationsEnabled) {
+                holder.itemView.animate().cancel()
+                holder.itemView.animate()
+                    .scaleX(0.985f)
+                    .scaleY(0.985f)
+                    .setDuration(65L)
+                    .withEndAction {
+                        holder.itemView.animate()
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .setDuration(105L)
+                            .start()
+                        onClick(item, holder.thumbnail)
+                    }
+                    .start()
+            } else {
+                onClick(item, holder.thumbnail)
+            }
             holder.itemView.postDelayed({ holder.itemView.isEnabled = true }, 450)
+        }
+
+        holder.itemView.setOnLongClickListener {
+            holder.itemView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            if (animationsEnabled) {
+                holder.itemView.animate().cancel()
+                holder.itemView.animate()
+                    .scaleX(1.012f)
+                    .scaleY(1.012f)
+                    .translationY(-dp(holder.itemView.context, 2).toFloat())
+                    .setDuration(110L)
+                    .withEndAction {
+                        holder.itemView.animate()
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .translationY(0f)
+                            .setDuration(145L)
+                            .start()
+                    }
+                    .start()
+            }
+            onLongClick(item, holder.itemView)
+            true
         }
     }
 
