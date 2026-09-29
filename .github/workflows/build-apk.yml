@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.0.15: fast Telegram playback + verified updater
+# SOHR 6.1.0: home, PiP and interaction refresh
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.0.15 version
+      - name: Assign SOHR 6.1.0 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=600015" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.0.15" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=610000" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.1.0" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -214,6 +214,45 @@ jobs:
               if required not in player:
                   raise SystemExit(f"Player hardening missing: {required}")
 
+          sohr_main = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt"
+          ).read_text(encoding="utf-8")
+          for required in [
+              "buildTodayCard",
+              "R.drawable.ic_search",
+              "showVideoQuickActions",
+              "showFeedSkeleton",
+              "handleOnBackProgressed",
+              "prepareForPictureInPicture"
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.1 home/PiP feature missing: {required}")
+
+          player = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt"
+          ).read_text(encoding="utf-8")
+          for required in [
+              "prepareForPictureInPicture",
+              "restoreFromPictureInPicture",
+              "animateEntranceFrom",
+              "ambientGradient"
+          ]:
+              if required not in player:
+                  raise SystemExit(f"SOHR 6.1 player polish missing: {required}")
+
+          manifest = Path("native/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+          if 'android:enableOnBackInvokedCallback="true"' not in manifest:
+              raise SystemExit("Predictive Back manifest integration missing")
+
+          home_cards = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/HomeVideoShelfAdapter.kt"
+          ).read_text(encoding="utf-8")
+          video_cards = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/VideoAdapter.kt"
+          ).read_text(encoding="utf-8")
+          if "setOnLongClickListener" not in home_cards or "setOnLongClickListener" not in video_cards:
+              raise SystemExit("Video long-press actions regression")
+
           telegram_stream = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/TelegramStreamServer.kt"
           ).read_text(encoding="utf-8")
@@ -303,7 +342,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "Видео Telegram запускаются быстрее благодаря короткому стартовому диапазону • Исправлено преждевременное завершение локального потока при временной задержке TDLib • Плеер автоматически повторяет запуск после кратких сетевых ошибок • Повторное открытие использует уже загруженные TDLib-данные • Уменьшена задержка до первого кадра"
+            "notes": "Исправлен PiP: в системном окне показывается только видео • Новая карточка SOHR Сегодня • Поиск с фильтрами по медиатеке • Shared transition карточки в плеер • Predictive Back • Ambient-фон плеера • Long-press быстрые действия • Skeleton-загрузка • Улучшенные микроанимации и haptic"
           }
           EOF
           cat update.json
