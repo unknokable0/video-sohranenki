@@ -5903,26 +5903,66 @@ class MainActivity : AppCompatActivity() {
     private fun showSelectedVideoSource(forceRefresh: Boolean = false) {
         currentDay = null
         videoSection = 1
+
         if (settings.guestMode && settings.videoSource == "telegram") {
-            val cached = videoCache.load().sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })
-            telegramVideos = cached
-            currentVideos = cached
-            showFeed(cached)
+            lifecycleScope.launch {
+                val cached = withContext(Dispatchers.IO) {
+                    videoCache.load()
+                        .sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })
+                }
+                if (settings.videoSource != "telegram") return@launch
+                telegramVideos = cached
+                currentVideos = cached
+                showFeed(cached)
+            }
             return
         }
+
         if (settings.videoSource == "twitch") {
             if (!forceRefresh && twitchVideos.isNotEmpty()) {
                 currentVideos = twitchVideos
                 showFeed(twitchVideos)
-            } else loadTwitchVideos(inPlace = false)
-        } else {
-            if (!forceRefresh && telegramVideos.isNotEmpty()) {
-                currentVideos = telegramVideos
-                showFeed(telegramVideos)
             } else {
-                loadVideos(inPlace = false)
+                loadTwitchVideos(inPlace = false)
             }
-            scheduleFeedAutoRefresh(delayMs = 700L, force = forceRefresh)
+            return
+        }
+
+        if (!forceRefresh && telegramVideos.isNotEmpty()) {
+            currentVideos = telegramVideos
+            showFeed(telegramVideos)
+            scheduleFeedAutoRefresh(delayMs = 700L, force = false)
+            return
+        }
+
+        if (!forceRefresh) {
+            lifecycleScope.launch {
+                val cached = withContext(Dispatchers.IO) {
+                    videoCache.load()
+                        .sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })
+                }
+
+                if (settings.videoSource != "telegram") return@launch
+
+                if (cached.isNotEmpty()) {
+                    telegramVideos = cached
+                    currentVideos = cached
+                    suppressNextRootAnimation = true
+                    showFeed(cached)
+                    // Warm-start from local cache first, then refresh quietly in place.
+                    root.post {
+                        if (settings.videoSource == "telegram") {
+                            loadVideos(inPlace = true, quiet = true)
+                        }
+                    }
+                } else {
+                    loadVideos(inPlace = false)
+                }
+                scheduleFeedAutoRefresh(delayMs = 900L, force = false)
+            }
+        } else {
+            loadVideos(inPlace = false)
+            scheduleFeedAutoRefresh(delayMs = 700L, force = true)
         }
     }
 
