@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -25,7 +26,8 @@ class HomeVideoShelfAdapter(
     private val mode: Mode,
     private val progressFor: (VideoItem) -> Float,
     private val lastPlayedAtFor: (VideoItem) -> Long,
-    private val onClick: (VideoItem) -> Unit
+    private val onClick: (VideoItem, View) -> Unit,
+    private val onLongClick: (VideoItem, View) -> Unit
 ) : RecyclerView.Adapter<HomeVideoShelfAdapter.Holder>() {
 
     enum class Mode { CONTINUE, NEW }
@@ -47,11 +49,13 @@ class HomeVideoShelfAdapter(
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
                 setColor(palette.surface)
-                cornerRadius = dp(context, 18).toFloat()
+                cornerRadius = dp(context, 20).toFloat()
+                setStroke(dp(context, 1), palette.stroke)
             }
             clipToOutline = true
+            elevation = dp(context, 1).toFloat()
             layoutParams = RecyclerView.LayoutParams(
-                dp(context, 220),
+                dp(context, 226),
                 ViewGroup.LayoutParams.MATCH_PARENT
             ).apply {
                 setMargins(dp(context, 6), dp(context, 2), dp(context, 6), dp(context, 6))
@@ -163,7 +167,7 @@ class HomeVideoShelfAdapter(
 
         root.addView(
             preview,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(context, 124))
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(context, 128))
         )
 
         val title = TextView(context).apply {
@@ -218,9 +222,23 @@ class HomeVideoShelfAdapter(
 
         holder.thumbnail.animate().cancel()
         if (model != null) {
-            holder.thumbnail.load(model) { crossfade(animationsEnabled) }
+            holder.thumbnail.scaleX = 1.015f
+            holder.thumbnail.scaleY = 1.015f
+            holder.thumbnail.load(model) {
+                crossfade(animationsEnabled)
+                listener(onSuccess = { _, _ ->
+                    holder.thumbnail.animate().cancel()
+                    holder.thumbnail.animate()
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setDuration(if (animationsEnabled) 240L else 0L)
+                        .start()
+                })
+            }
         } else {
             holder.thumbnail.setImageDrawable(null)
+            holder.thumbnail.scaleX = 1f
+            holder.thumbnail.scaleY = 1f
         }
 
         if (progress > 0.005f && progress < 0.995f) {
@@ -273,14 +291,37 @@ class HomeVideoShelfAdapter(
                             .scaleY(1f)
                             .setDuration(100L)
                             .start()
-                        onClick(item)
+                        onClick(item, holder.thumbnail)
                     }
                     .start()
             } else {
-                onClick(item)
+                onClick(item, holder.thumbnail)
             }
 
             holder.itemView.postDelayed({ holder.itemView.isEnabled = true }, 420L)
+        }
+
+        holder.itemView.setOnLongClickListener {
+            holder.itemView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            if (animationsEnabled) {
+                holder.itemView.animate().cancel()
+                holder.itemView.animate()
+                    .scaleX(1.018f)
+                    .scaleY(1.018f)
+                    .translationY(-dp(holder.itemView.context, 2).toFloat())
+                    .setDuration(120L)
+                    .withEndAction {
+                        holder.itemView.animate()
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .translationY(0f)
+                            .setDuration(150L)
+                            .start()
+                    }
+                    .start()
+            }
+            onLongClick(item, holder.itemView)
+            true
         }
     }
 
