@@ -15,10 +15,12 @@ data class SohrDownloadEntry(
 
 class SohrDownloadStore(context: Context) {
     private val prefs = context.getSharedPreferences("sohr_download_center", Context.MODE_PRIVATE)
+    @Volatile private var cachedEntries: List<SohrDownloadEntry>? = null
 
     fun entries(): List<SohrDownloadEntry> {
+        cachedEntries?.let { return it }
         val raw = prefs.getString(KEY_ENTRIES, "[]").orEmpty()
-        return runCatching {
+        val parsed = runCatching {
             val array = JSONArray(raw)
             buildList {
                 for (i in 0 until array.length()) {
@@ -39,6 +41,8 @@ class SohrDownloadStore(context: Context) {
                 }
             }.sortedByDescending { it.downloadedAtMs }
         }.getOrDefault(emptyList())
+        cachedEntries = parsed
+        return parsed
     }
 
     fun register(item: VideoItem, file: File) {
@@ -80,6 +84,8 @@ class SohrDownloadStore(context: Context) {
                     .put("downloadedAtMs", entry.downloadedAtMs)
             )
         }
+        val normalized = entries.take(100)
+        cachedEntries = normalized
         prefs.edit().putString(KEY_ENTRIES, array.toString()).apply()
     }
 
