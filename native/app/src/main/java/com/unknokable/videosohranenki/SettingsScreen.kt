@@ -20,8 +20,7 @@ class SettingsScreen(
     private val activity: Activity,
     private val settings: AppSettings,
     private val onBack: (Boolean) -> Unit,
-    private val onThemeChanged: (Boolean, View) -> Unit,
-    private val onAccentChanged: (String, View) -> Unit,
+    private val onAppearanceChanged: (Boolean, String, View) -> Unit,
     private val onLanguageChanged: () -> Unit,
     private val onCheckUpdates: () -> Unit
 ) {
@@ -79,8 +78,7 @@ class SettingsScreen(
         root.addView(statisticsCard())
         root.addView(sourceSelector())
 
-        root.addView(themeSelector())
-        root.addView(accentSelector())
+        root.addView(appearanceSelector())
         root.addView(languageSelector())
 
         root.addView(settingRow(
@@ -412,263 +410,105 @@ class SettingsScreen(
         }
     }
 
-    private fun themeSelector(): View {
-        val box = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(14), dp(14), dp(14))
+    private fun appearanceSelector(): View {
+        val preset = AppThemes.preset(settings.themeAccent)
+        val presetIndex = AppThemes.Presets.indexOfFirst { it.key == preset.key }.coerceAtLeast(0)
+
+        val card = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(13), dp(12), dp(13))
             background = rounded(palette.surface, 18)
+            isClickable = true
+            isFocusable = true
         }
 
-        val title = TextView(activity).apply {
-            text = t("theme")
+        val icon = FrameLayout(activity).apply {
+            background = rounded(palette.surfaceAlt, 14)
+        }
+        icon.addView(
+            ImageView(activity).apply {
+                setImageResource(R.drawable.ic_setting_appearance)
+                imageTintList = ColorStateList.valueOf(palette.accent)
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+                setPadding(dp(11), dp(11), dp(11), dp(11))
+            },
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        val labels = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), 0, dp(8), 0)
+        }
+        labels.addView(TextView(activity).apply {
+            text = "Оформление"
             textSize = 15f
-            setTextColor(palette.text)
             setTypeface(typeface, Typeface.BOLD)
-        }
-
-        val subtitle = TextView(activity).apply {
-            text = t("theme_desc")
+            setTextColor(palette.text)
+        })
+        labels.addView(TextView(activity).apply {
+            text = (if (settings.lightTheme) "Светлая" else "Тёмная") + " • " + preset.label
             textSize = 12f
             setTextColor(palette.muted)
-            setPadding(0, dp(3), 0, dp(12))
-        }
+            setPadding(0, dp(3), 0, 0)
+        })
 
-        val selector = FrameLayout(activity).apply {
-            background = rounded(palette.surfaceAlt, 16)
-            setPadding(dp(4), dp(4), dp(4), dp(4))
-            clipChildren = true
-            clipToPadding = true
-        }
-
-        val indicator = View(activity).apply {
-            background = rounded(palette.accent, 13)
-        }
-
-        val buttons = LinearLayout(activity).apply {
+        val preview = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
         }
-
-        val dark = themeOption(R.drawable.ic_theme_moon, !settings.lightTheme, "Тёмная")
-        val light = themeOption(R.drawable.ic_theme_sun, settings.lightTheme, "Светлая")
-
-        buttons.addView(dark, LinearLayout.LayoutParams(0, dp(46), 1f))
-        buttons.addView(light, LinearLayout.LayoutParams(0, dp(46), 1f))
-
-        selector.addView(
-            indicator,
-            FrameLayout.LayoutParams(0, dp(46), Gravity.START or Gravity.CENTER_VERTICAL)
-        )
-        selector.addView(
-            buttons,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(46),
-                Gravity.CENTER
-            )
-        )
-
-        fun updateThemeIcons(lightSelected: Boolean) {
-            dark.imageTintList = ColorStateList.valueOf(if (!lightSelected) Color.WHITE else palette.muted)
-            light.imageTintList = ColorStateList.valueOf(if (lightSelected) Color.WHITE else palette.muted)
-        }
-
-        var selectedLight = settings.lightTheme
-        var themeChangeToken = 0
-
-        fun moveIndicator(toLight: Boolean, source: View, notify: Boolean) {
-            val slot = ((selector.width - selector.paddingLeft - selector.paddingRight) / 2f).coerceAtLeast(0f)
-            if (slot <= 0f) return
-
-            val params = indicator.layoutParams as FrameLayout.LayoutParams
-            params.width = slot.toInt()
-            params.height = dp(46)
-            indicator.layoutParams = params
-
-            val target = if (toLight) slot else 0f
-            selectedLight = toLight
-            themeChangeToken += 1
-            val token = themeChangeToken
-            updateThemeIcons(toLight)
-
-            indicator.animate().cancel()
-            indicator.animate()
-                .translationX(target)
-                .setDuration(if (settings.animations) 230L else 0L)
-                .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
-                .start()
-
-            if (notify && settings.lightTheme != toLight) {
-                if (settings.animations) {
-                    source.postDelayed({
-                        if (themeChangeToken == token && selectedLight == toLight) {
-                            onThemeChanged(toLight, source)
-                        }
-                    }, 120L)
-                } else {
-                    onThemeChanged(toLight, source)
-                }
-            }
-        }
-
-        dark.setOnClickListener {
-            if (!selectedLight) return@setOnClickListener
-            animateTap(dark)
-            moveIndicator(false, dark, true)
-        }
-
-        light.setOnClickListener {
-            if (selectedLight) return@setOnClickListener
-            animateTap(light)
-            moveIndicator(true, light, true)
-        }
-
-        selector.post {
-            val slot = ((selector.width - selector.paddingLeft - selector.paddingRight) / 2f).coerceAtLeast(0f)
-            val params = indicator.layoutParams as FrameLayout.LayoutParams
-            params.width = slot.toInt()
-            params.height = dp(46)
-            indicator.layoutParams = params
-            indicator.translationX = if (settings.lightTheme) slot else 0f
-            updateThemeIcons(settings.lightTheme)
-        }
-
-        box.addView(title)
-        box.addView(subtitle)
-        box.addView(
-            selector,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(54)
-            )
-        )
-
-        return LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(box)
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(10) }
-        }
-    }
-
-    private fun accentSelector(): View {
-        val box = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(14), dp(14), dp(14))
-            background = rounded(palette.surface, 18)
-        }
-
-        box.addView(TextView(activity).apply {
-            text = "Цвет SOHR"
-            textSize = 15f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(palette.text)
-        })
-        box.addView(TextView(activity).apply {
-            text = "Акцент меняет кнопки, индикаторы и выделения"
-            textSize = 12f
-            setTextColor(palette.muted)
-            setPadding(0, dp(3), 0, dp(12))
-        })
-
-        val row = LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-
-        AppThemes.Presets.forEach { preset ->
-            val selected = preset.key == settings.themeAccent
-            val item = LinearLayout(activity).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                setPadding(dp(5), dp(5), dp(5), dp(5))
-                isClickable = true
-                isFocusable = true
-            }
-
-            val swatchFrame = FrameLayout(activity).apply {
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(palette.surfaceAlt)
-                    setStroke(
-                        dp(if (selected) 2 else 1),
-                        if (selected) preset.previewColor else palette.stroke
-                    )
-                }
-            }
-
-            swatchFrame.addView(
+        listOf(
+            AppThemes.Presets[presetIndex % AppThemes.Presets.size].previewColor,
+            AppThemes.Presets[(presetIndex + 1) % AppThemes.Presets.size].previewColor,
+            AppThemes.Presets[(presetIndex + 2) % AppThemes.Presets.size].previewColor
+        ).forEach { color ->
+            preview.addView(
                 View(activity).apply {
                     background = GradientDrawable().apply {
                         shape = GradientDrawable.OVAL
-                        setColor(preset.previewColor)
+                        setColor(color)
                     }
                 },
-                FrameLayout.LayoutParams(dp(34), dp(34), Gravity.CENTER)
-            )
-
-            if (selected) {
-                swatchFrame.addView(
-                    ImageView(activity).apply {
-                        setImageResource(R.drawable.ic_check)
-                        imageTintList = ColorStateList.valueOf(Color.WHITE)
-                        setPadding(dp(13), dp(13), dp(13), dp(13))
-                    },
-                    FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                )
-            }
-
-            val label = TextView(activity).apply {
-                text = preset.label
-                textSize = 10.5f
-                gravity = Gravity.CENTER
-                includeFontPadding = false
-                maxLines = 1
-                setTextColor(if (selected) palette.text else palette.muted)
-                setTypeface(typeface, if (selected) Typeface.BOLD else Typeface.NORMAL)
-                setPadding(0, dp(6), 0, 0)
-            }
-
-            item.addView(swatchFrame, LinearLayout.LayoutParams(dp(52), dp(52)))
-            item.addView(label, LinearLayout.LayoutParams(dp(72), dp(24)))
-
-            item.setOnClickListener {
-                if (preset.key == settings.themeAccent) return@setOnClickListener
-                animateTap(item)
-                onAccentChanged(preset.key, item)
-            }
-
-            row.addView(
-                item,
-                LinearLayout.LayoutParams(dp(82), dp(88)).apply {
-                    marginEnd = dp(5)
+                LinearLayout.LayoutParams(dp(12), dp(12)).apply {
+                    marginStart = dp(3)
                 }
             )
         }
 
-        val scroll = HorizontalScrollView(activity).apply {
-            isHorizontalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_NEVER
-            clipToPadding = false
-            addView(row)
+        val arrow = ImageView(activity).apply {
+            setImageResource(R.drawable.ic_chevron_right)
+            imageTintList = ColorStateList.valueOf(palette.muted)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(8), dp(8), dp(8), dp(8))
         }
 
-        box.addView(
-            scroll,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(92)
-            )
-        )
+        card.addView(icon, LinearLayout.LayoutParams(dp(46), dp(46)))
+        card.addView(labels, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        card.addView(preview, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)))
+        card.addView(arrow, LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginStart = dp(5) })
+
+        card.setOnClickListener {
+            animateTap(card)
+            ModernDialogs.showAppearancePicker(
+                context = activity,
+                palette = palette,
+                lightTheme = settings.lightTheme,
+                accentKey = settings.themeAccent,
+                presets = AppThemes.Presets
+            ) { light, accent ->
+                val normalized = AppThemes.preset(accent).key
+                if (light != settings.lightTheme || normalized != settings.themeAccent) {
+                    onAppearanceChanged(light, normalized, card)
+                }
+            }
+        }
 
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            addView(box)
+            addView(card)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
