@@ -2924,6 +2924,7 @@ class MainActivity : AppCompatActivity() {
 
             val now = System.currentTimeMillis()
             val downloaded = downloadedVideoIds()
+            val searchSavedIds = watchLaterIds() + favoriteIds()
             val filtered = videos.filter { item ->
                 val watchedItem = watched.contains(item.messageId.toString())
                 val ageMs = (now - item.date.toLong() * 1000L).coerceAtLeast(0L)
@@ -2932,6 +2933,7 @@ class MainActivity : AppCompatActivity() {
                     "unwatched" -> !watchedItem
                     "watched" -> watchedItem
                     "downloaded" -> item.localPath != null || downloaded.contains(item.messageId.toString())
+                    "saved" -> searchSavedIds.contains(item.messageId.toString())
                     else -> true
                 }
                 val dateText = Instant.ofEpochSecond(item.date.toLong())
@@ -2939,10 +2941,21 @@ class MainActivity : AppCompatActivity() {
                     .toLocalDate()
                     .format(DateTimeFormatter.ofPattern("d MMMM yyyy", Locale("ru")))
                     .lowercase(Locale("ru"))
+                val searchableText = buildString {
+                    append(item.title.lowercase(Locale.getDefault()))
+                    append(' ')
+                    append(dateText)
+                    append(' ')
+                    append(item.source.lowercase(Locale.getDefault()))
+                    append(' ')
+                    if (item.source == "telegram") append("@t2x2_video")
+                    if (item.source == "twitch") append("@t2x2 twitch")
+                }
+                    .replace('\n', ' ')
+                    .replace(Regex("\\s+"), " ")
                 filterMatch && (
                     query.isBlank() ||
-                        item.title.lowercase(Locale.getDefault()).contains(query) ||
-                        dateText.contains(query)
+                        searchableText.contains(query)
                     )
             }.sortedWith(
                 compareByDescending<VideoItem> { it.date }
@@ -3007,6 +3020,7 @@ class MainActivity : AppCompatActivity() {
             "new" to "Новые",
             "unwatched" to "Не смотрел",
             "watched" to "Просмотрено",
+            "saved" to "Сохранено",
             "downloaded" to "Скачано"
         ).forEach { (key, label) ->
             val chip = TextView(this).apply {
@@ -3718,6 +3732,27 @@ class MainActivity : AppCompatActivity() {
         return added
     }
 
+    private fun favoriteIds(): Set<String> =
+        getSharedPreferences("sohr_favorites", MODE_PRIVATE)
+            .getStringSet("ids", emptySet())
+            ?.toSet()
+            ?: emptySet()
+
+    private fun toggleFavorite(item: VideoItem): Boolean {
+        val prefs = getSharedPreferences("sohr_favorites", MODE_PRIVATE)
+        val ids = prefs.getStringSet("ids", emptySet())?.toMutableSet() ?: mutableSetOf()
+        val key = item.messageId.toString()
+        val added = if (ids.contains(key)) {
+            ids.remove(key)
+            false
+        } else {
+            ids.add(key)
+            true
+        }
+        prefs.edit().putStringSet("ids", ids).apply()
+        return added
+    }
+
     private fun downloadedVideoIds(): Set<String> {
         val legacy = getSharedPreferences("sohr_downloaded", MODE_PRIVATE)
             .getStringSet("ids", emptySet())
@@ -3809,6 +3844,19 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(
                 this,
                 if (added) "Добавлено в «Смотреть позже»" else "Убрано из «Смотреть позже»",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+
+        val favorite = favoriteIds().contains(item.messageId.toString())
+        action(
+            if (favorite) "Убрать из избранного" else "В избранное",
+            if (favorite) "Оставить только в других списках" else "Закрепить в сохранённых"
+        ) {
+            val added = toggleFavorite(item)
+            Toast.makeText(
+                this,
+                if (added) "Добавлено в избранное" else "Убрано из избранного",
                 Toast.LENGTH_SHORT
             ).show()
         }
