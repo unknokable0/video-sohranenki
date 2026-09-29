@@ -54,10 +54,9 @@ class HomeVideoShelfAdapter(
             background = GradientDrawable().apply {
                 setColor(palette.surface)
                 cornerRadius = dp(context, 18).toFloat()
-                setStroke(dp(context, 1), palette.stroke)
             }
             clipToOutline = true
-            elevation = dp(context, 1).toFloat()
+            elevation = dp(context, 0).toFloat()
             layoutParams = RecyclerView.LayoutParams(
                 cardWidth,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -191,21 +190,21 @@ class HomeVideoShelfAdapter(
         )
 
         val title = TextView(context).apply {
-            textSize = 13.5f
+            textSize = 13f
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
             includeFontPadding = false
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(palette.text)
-            setPadding(dp(context, 10), dp(context, 8), dp(context, 10), 0)
+            setPadding(dp(context, 10), dp(context, 7), dp(context, 10), 0)
         }
         val meta = TextView(context).apply {
-            textSize = 10.3f
+            textSize = 10f
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
             includeFontPadding = false
             setTextColor(palette.muted)
-            setPadding(dp(context, 10), dp(context, 3), dp(context, 10), dp(context, 8))
+            setPadding(dp(context, 10), dp(context, 3), dp(context, 10), dp(context, 9))
         }
         root.addView(title)
         root.addView(meta)
