@@ -44,10 +44,8 @@ class HomeVideoShelfAdapter(
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
         val context = parent.context
-        val screenWidth = context.resources.displayMetrics.widthPixels
-        val cardWidth = (screenWidth - dp(context, 52))
-            .coerceIn(dp(context, 270), dp(context, 340))
-        val previewHeight = (cardWidth * 9f / 16f).toInt()
+        val cardWidth = dp(context, 226)
+        val previewHeight = dp(context, 128)
 
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -176,7 +174,7 @@ class HomeVideoShelfAdapter(
 
         val title = TextView(context).apply {
             textSize = 14.5f
-            maxLines = 2
+            maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
             includeFontPadding = false
             setTypeface(typeface, Typeface.BOLD)
@@ -334,13 +332,23 @@ class HomeVideoShelfAdapter(
     }
 
     private fun cleanTitle(raw: String, position: Int): String {
-        val looksLikeFileName = raw.matches(
+        val normalized = raw.replace("\r\n", "\n").replace('\r', '\n').trim()
+        val firstLine = normalized
+            .lineSequence()
+            .map { it.trim() }
+            .firstOrNull { it.isNotBlank() }
+            .orEmpty()
+        val looksLikeFileName = firstLine.matches(
             Regex(
                 """\d{4}-\d{2}-\d{2}[_-].*\.(mp4|mkv|mov|webm)""",
                 RegexOption.IGNORE_CASE
             )
         )
-        return if (looksLikeFileName) "Запись стрима • часть ${position + 1}" else raw
+        return when {
+            looksLikeFileName -> "Запись стрима • часть ${position + 1}"
+            firstLine.isNotBlank() -> firstLine
+            else -> "Видео"
+        }
     }
 
     private fun formatDuration(seconds: Int): String {
