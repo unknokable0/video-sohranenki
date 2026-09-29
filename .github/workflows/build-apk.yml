@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.3.3 version
+      - name: Assign SOHR 6.3.4 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=630003" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.3.3" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=630004" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.3.4" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -162,7 +162,7 @@ jobs:
                   "R.drawable.ic_close", "R.drawable.ic_check", "fun showAppearancePicker"
               ],
               "native/app/src/main/java/com/unknokable/videosohranenki/LoadingWaveView.kt": [
-                  "syncAnimator", "outlinePath", "segmentPath", "PathMeasure", "segmentPaint", "cycleMs = 1750L", "SystemClock.uptimeMillis()"
+                  "syncAnimator", "outlinePath", "segmentPath", "PathMeasure", "segmentPaint", "cycleMs = 1850L", "SystemClock.uptimeMillis()"
               ],
               "native/app/src/main/java/com/unknokable/videosohranenki/SohrBottomNavView.kt": [
                   "syncSelected", "private fun requestIndex(target: Int)"
@@ -239,6 +239,9 @@ jobs:
           ]:
               if required not in player:
                   raise SystemExit(f"SOHR 6.1 player polish missing: {required}")
+          if "topMargin = dp(13)" in player:
+              raise SystemExit("SOHR 6.3.4 player regression: detached strip above Telegram player returned")
+
 
           manifest = Path("native/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
           if 'android:enableOnBackInvokedCallback="true"' not in manifest:
@@ -287,8 +290,31 @@ jobs:
               if required not in sohr_main:
                   raise SystemExit(f"SOHR 6.3.2 top-tabs/search/cache regression: {required}")
 
+          for required in [
+              "Crossfade only:",
+              "SohrBackgroundCheckWorker.schedule(this)",
+              'UPDATE_NOTIFICATION_CHANNEL = "sohr_updates"',
+              'setContentTitle("T2x2 в эфире")',
+              "consumeUpdateNotificationIntent"
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.3.4 smooth-tabs/notification regression: {required}")
+          if "val travel = dp(20).toFloat()" in sohr_main:
+              raise SystemExit("SOHR 6.3.4 top-tab regression: horizontal page travel returned")
+
+
           if 'sohr_brand_logo' in loader or 'ImageView' in loader:
               raise SystemExit("SOHR 6.3.1 regression: launcher artwork returned to cloud loading animation")
+
+          for required in [
+              "baseStroke = (minDp * 0.055f)",
+              "activeStroke = (minDp * 0.076f)",
+              "cycleMs = 1850L",
+              "0.052f * sin",
+              "val segmentLength = length * 0.235f"
+          ]:
+              if required not in loader:
+                  raise SystemExit(f"SOHR 6.3.4 premium cloud-loader regression: {required}")
           if "setStroke(dp(context, 1), palette.stroke)" in home_cards:
               raise SystemExit("Home card outline regression")
           if "compactPreviewHeight + dp(68)" not in sohr_main:
@@ -392,6 +418,29 @@ jobs:
 
           if "var smartDownloads: Boolean" not in app_settings:
               raise SystemExit("SOHR 6.3.0 smart-download setting regression")
+
+          background_worker = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/SohrBackgroundCheckWorker.kt"
+          ).read_text(encoding="utf-8")
+          for required in [
+              "PeriodicWorkRequestBuilder<SohrBackgroundCheckWorker>",
+              "NetworkType.CONNECTED",
+              "ExistingPeriodicWorkPolicy.UPDATE",
+              "SohrUpdateManager(applicationContext).check()",
+              'TwitchApi.loadLiveStream(clientId, token, "t2x2")',
+              'KEY_LAST_UPDATE_NOTIFICATION = "last_update_notified_code"',
+              'KEY_LAST_T2X2_NOTIFICATION = "last_t2x2_notified_started_at"',
+              '"Доступно обновление SOHR',
+              '"T2x2 в эфире"'
+          ]:
+              if required not in background_worker:
+                  raise SystemExit(f"SOHR 6.3.4 background notification regression: {required}")
+
+          gradle_app = Path("native/app/build.gradle.kts").read_text(encoding="utf-8")
+          if "androidx.work:work-runtime-ktx:2.10.1" not in gradle_app:
+              raise SystemExit("SOHR 6.3.4 WorkManager dependency regression")
+          if not Path("native/app/src/main/res/drawable/ic_notification_update.xml").is_file():
+              raise SystemExit("SOHR 6.3.4 update notification icon missing")
 
           for required in [
               "nav.translationY = 0f",
@@ -529,11 +578,11 @@ jobs:
               "basePaint",
               "segmentPaint",
               "LinearInterpolator()",
-              "cycleMs = 1750L",
+              "cycleMs = 1850L",
               "duration = 60_000L",
               "SystemClock.uptimeMillis()",
-              "0.038f * sin",
-              "val segmentLength = length * 0.25f"
+              "0.052f * sin",
+              "val segmentLength = length * 0.235f"
           ]:
               if required not in loader:
                   raise SystemExit(f"SOHR 6.3.2 cloud-loader regression: {required}")
@@ -788,6 +837,9 @@ jobs:
           for required in ["availableWidth", "showPlayerSettings()", "9f / 16f"]:
               if required not in twitch_player:
                   raise SystemExit(f"Adaptive Twitch player UI missing: {required}")
+          if "topMargin = dp(2)" in twitch_player:
+              raise SystemExit("SOHR 6.3.4 Twitch player regression: header gap returned")
+
 
           splash = Path("native/app/src/main/res/values-v31/styles.xml")
           if not splash.is_file():
@@ -810,7 +862,7 @@ jobs:
 
           icon = Path("native/app/src/main/res/drawable-nodpi/sohr_brand_logo_v2.webp")
           if not icon.is_file() or icon.stat().st_size < 4096:
-              raise SystemExit(f"SOHR 6.3.3 launcher asset missing or too small: {icon}")
+              raise SystemExit(f"SOHR 6.3.4 launcher asset missing or too small: {icon}")
 
           print(f"SOHR 6 UI assets verified; launcher={icon.stat().st_size} bytes")
           PY
@@ -825,7 +877,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "Новая сине-голубая ава SOHR подключена отдельным launcher-ресурсом • Моменты полностью удалены, в плеере обычная кнопка Скачать • Telegram ручные и умные загрузки отделены от streaming range-запросов • старая облачная загрузка без картинки и неона сохранена, сегмент больше не замирает на цикле • умное скачивание получило отдельную иконку облака с автоматизацией"
+            "notes": "Верхние вкладки переключаются чистым crossfade без рывков • убран отдельный зазор между шапкой и видео • облачная загрузка стала плотнее без неона и без картинки • добавлены фоновые уведомления о новых версиях SOHR • уведомления о старте T2x2 работают и после закрытия приложения через периодическую фоновую проверку • уведомления не дублируются на одну версию или один эфир"
           }
           EOF
           cat update.json
