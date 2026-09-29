@@ -4291,6 +4291,66 @@ class MainActivity : AppCompatActivity() {
                     }
                 }, LinearLayout.LayoutParams(dp(36), dp(36)).apply { marginStart = dp(7) })
 
+                row.setOnLongClickListener {
+                    SohrHaptics.longPress(row)
+                    val renameDialog = BottomSheetDialog(this@MainActivity)
+                    val sheet = LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setPadding(dp(16), dp(14), dp(16), dp(18))
+                        background = roundedBg(panel, 24)
+                    }
+                    sheet.addView(TextView(this@MainActivity).apply {
+                        text = "Название момента"
+                        textSize = 17f
+                        includeFontPadding = false
+                        setTypeface(typeface, Typeface.BOLD)
+                        setTextColor(this@MainActivity.text)
+                    })
+                    val input = EditText(this@MainActivity).apply {
+                        hint = "Например: лучший момент"
+                        setText(moment.label)
+                        setTextColor(this@MainActivity.text)
+                        setHintTextColor(muted)
+                        textSize = 14f
+                        singleLine = true
+                        setPadding(dp(12), dp(10), dp(12), dp(10))
+                        background = roundedBg(palette.surfaceAlt, 15)
+                    }
+                    sheet.addView(input, LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        dp(48)
+                    ).apply {
+                        topMargin = dp(12)
+                        bottomMargin = dp(10)
+                    })
+                    sheet.addView(TextView(this@MainActivity).apply {
+                        text = "Сохранить"
+                        textSize = 13f
+                        gravity = Gravity.CENTER
+                        setTypeface(typeface, Typeface.BOLD)
+                        setTextColor(Color.WHITE)
+                        background = roundedBg(purple, 16)
+                        isClickable = true
+                        setOnClickListener {
+                            momentsStore.rename(moment.id, input.text?.toString().orEmpty())
+                            renameDialog.dismiss()
+                            suppressNextRootAnimation = true
+                            showMoments(filterMessageId)
+                        }
+                    }, LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        dp(46)
+                    ))
+                    renameDialog.setContentView(sheet)
+                    renameDialog.setOnShowListener {
+                        renameDialog.findViewById<FrameLayout>(
+                            com.google.android.material.R.id.design_bottom_sheet
+                        )?.background = ColorDrawable(Color.TRANSPARENT)
+                    }
+                    renameDialog.show()
+                    true
+                }
+
                 row.setOnClickListener {
                     val item = allItems[moment.messageId]
                     if (item != null) {
@@ -4692,7 +4752,7 @@ class MainActivity : AppCompatActivity() {
                     setTextColor(this@MainActivity.text)
                 }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                 row.addView(TextView(this).apply {
-                    text = formatBytes(entry.sizeBytes)
+                    text = (if (entry.autoManaged) "Авто • " else "") + formatBytes(entry.sizeBytes)
                     textSize = 10.5f
                     setTextColor(muted)
                     setPadding(dp(8), 0, dp(8), 0)
