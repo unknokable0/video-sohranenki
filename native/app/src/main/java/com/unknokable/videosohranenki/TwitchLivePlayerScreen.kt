@@ -211,7 +211,7 @@ class TwitchLivePlayerScreen(
         loader.alpha = 0.92f
         playerCard.addView(
             loader,
-            FrameLayout.LayoutParams(dp(40), dp(40), Gravity.CENTER)
+            FrameLayout.LayoutParams(dp(44), dp(44), Gravity.CENTER)
         )
 
         buildPlayerControls()
@@ -374,7 +374,7 @@ class TwitchLivePlayerScreen(
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
             setPadding(dp(10), 0, dp(10), 0)
-            background = rounded(Color.parseColor("#B5181620"), 15)
+            background = rounded(Color.parseColor("#7A241B34"), 15)
             setOnClickListener {
                 pulse(this)
                 showQualityPicker()
@@ -385,8 +385,8 @@ class TwitchLivePlayerScreen(
             setImageResource(R.drawable.ic_player_settings)
             imageTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(10), dp(10), dp(10), dp(10))
-            background = rounded(Color.parseColor("#B5181620"), 19)
+            setPadding(dp(9), dp(9), dp(9), dp(9))
+            background = rounded(Color.parseColor("#7A241B34"), 19)
             contentDescription = "Настройки плеера"
             setOnClickListener {
                 pulse(this)
@@ -397,8 +397,8 @@ class TwitchLivePlayerScreen(
         fullscreenButton.apply {
             setImageResource(R.drawable.ic_fullscreen)
             setBackgroundColor(Color.TRANSPARENT)
-            background = rounded(Color.parseColor("#B5181620"), 19)
-            setPadding(dp(10), dp(10), dp(10), dp(10))
+            background = rounded(Color.parseColor("#7A241B34"), 19)
+            setPadding(dp(9), dp(9), dp(9), dp(9))
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setOnClickListener {
                 setFullscreenMode(!fullscreen)
@@ -420,26 +420,27 @@ class TwitchLivePlayerScreen(
         val secondary = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(8), 0, 0, 0)
+            setPadding(dp(3), dp(3), dp(3), dp(3))
+            background = rounded(Color.parseColor("#8F100E17"), 20)
         }
         secondary.addView(
             qualityButton,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38))
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(34))
         )
         secondary.addView(
             settingsButton,
-            LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginStart = dp(5) }
+            LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginStart = dp(3) }
         )
         secondary.addView(
             fullscreenButton,
-            LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginStart = dp(5) }
+            LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginStart = dp(3) }
         )
 
         controlsOverlay.addView(
             secondary,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                dp(42),
+                dp(40),
                 Gravity.BOTTOM or Gravity.END
             ).apply {
                 rightMargin = dp(58)

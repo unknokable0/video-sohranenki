@@ -320,14 +320,14 @@ class TwitchPlayerScreen(
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
             setPadding(dp(10), 0, dp(10), 0)
-            background = rounded(Color.parseColor("#66181322"), 14)
+            background = rounded(Color.parseColor("#7A241B34"), 15)
             setOnClickListener {
                 pulse(this)
                 showQualityPicker()
             }
         }
 
-        val settingsButton = iconButton(R.drawable.ic_player_settings, Color.parseColor("#66181322"), 40).apply {
+        val settingsButton = iconButton(R.drawable.ic_player_settings, Color.parseColor("#7A241B34"), 38).apply {
             contentDescription = "Настройки плеера"
             setOnClickListener {
                 pulse(this)
@@ -335,25 +335,38 @@ class TwitchPlayerScreen(
             }
         }
 
-        fullscreenButton = iconButton(R.drawable.ic_fullscreen, Color.parseColor("#66181322"), 40).apply {
+        fullscreenButton = iconButton(R.drawable.ic_fullscreen, Color.parseColor("#7A241B34"), 38).apply {
             setOnClickListener {
                 pulse(this)
                 onFullscreen(!fullscreen)
             }
         }
 
+        val actionGroup = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(3), dp(3), dp(3), dp(3))
+            background = rounded(Color.parseColor("#241D2C"), 19)
+        }
+        actionGroup.addView(
+            qualityButton,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(34))
+        )
+        actionGroup.addView(
+            settingsButton,
+            LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginStart = dp(3) }
+        )
+        actionGroup.addView(
+            fullscreenButton,
+            LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginStart = dp(3) }
+        )
+
         times.addView(currentTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)))
-        times.addView(View(activity), LinearLayout.LayoutParams(0, 1, 1f))
-        times.addView(qualityButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(34)))
         times.addView(totalTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)).apply {
-            marginStart = dp(8)
+            marginStart = dp(6)
         })
-        times.addView(settingsButton, LinearLayout.LayoutParams(dp(38), dp(38)).apply {
-            marginStart = dp(5)
-        })
-        times.addView(fullscreenButton, LinearLayout.LayoutParams(dp(38), dp(38)).apply {
-            marginStart = dp(5)
-        })
+        times.addView(View(activity), LinearLayout.LayoutParams(0, 1, 1f))
+        times.addView(actionGroup, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)))
         box.addView(times)
 
         val transport = LinearLayout(activity).apply {

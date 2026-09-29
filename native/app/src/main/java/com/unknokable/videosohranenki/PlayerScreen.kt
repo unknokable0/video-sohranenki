@@ -227,7 +227,7 @@ class PlayerScreen(
         }
         playerCard.addView(
             bufferingLoader,
-            FrameLayout.LayoutParams(dp(40), dp(40), Gravity.CENTER)
+            FrameLayout.LayoutParams(dp(44), dp(44), Gravity.CENTER)
         )
 
         speedBadge = TextView(activity).apply {
@@ -424,7 +424,7 @@ class PlayerScreen(
 
     private fun buildOverlay(): FrameLayout {
         val frame = FrameLayout(activity).apply {
-            setBackgroundColor(Color.parseColor("#24000000"))
+            setBackgroundColor(Color.parseColor("#18000000"))
         }
 
         val center = LinearLayout(activity).apply {
@@ -452,7 +452,8 @@ class PlayerScreen(
 
         val bottom = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(6), dp(14), dp(10))
+            setPadding(dp(10), dp(6), dp(10), dp(8))
+            background = rounded("#5A0B0911", 18)
         }
 
         seekBar = SohrTimeBar(activity).apply {
@@ -501,32 +502,58 @@ class PlayerScreen(
 
         qualityButton = TextView(activity).apply {
             text = "Авто"
-            textSize = 10.5f
+            textSize = 11f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
+            minWidth = dp(48)
             setPadding(dp(10), 0, dp(10), 0)
-            background = rounded("#66181322", 14)
-            setOnClickListener { showQualityPicker() }
+            background = rounded("#7A241B34", 15)
+            contentDescription = "Качество видео"
+            setOnClickListener { pulse(this); showQualityPicker() }
         }
 
-        val settingsButton = iconButton(R.drawable.ic_player_settings, "#66181322", 40).apply {
+        val settingsButton = iconButton(R.drawable.ic_player_settings, "#7A241B34", 38).apply {
             contentDescription = "Настройки плеера"
             setOnClickListener { pulse(this); showSettingsSheet() }
         }
 
-        val fullscreenButton = iconButton(R.drawable.ic_fullscreen, "#66181322", 40).apply {
+        val fullscreenButton = iconButton(R.drawable.ic_fullscreen, "#7A241B34", 38).apply {
+            contentDescription = "Полный экран"
             setOnClickListener {
                 onFullscreen(!fullscreen)
                 pulse(this)
             }
         }
 
+        val actionGroup = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(3), dp(3), dp(3), dp(3))
+            background = rounded("#4D0D0A13", 19)
+        }
+        actionGroup.addView(
+            qualityButton,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(34))
+        )
+        actionGroup.addView(
+            settingsButton,
+            LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginStart = dp(3) }
+        )
+        actionGroup.addView(
+            fullscreenButton,
+            LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginStart = dp(3) }
+        )
+
         times.addView(currentTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)))
+        times.addView(totalTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)).apply {
+            marginStart = dp(6)
+        })
         times.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
-        times.addView(totalTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)))
-        times.addView(settingsButton, LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginStart = dp(4) })
-        times.addView(fullscreenButton, LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginStart = dp(4) })
+        times.addView(
+            actionGroup,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40))
+        )
 
         bottom.addView(seekBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(30)))
         bottom.addView(times)
@@ -537,7 +564,11 @@ class PlayerScreen(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.BOTTOM
-            )
+            ).apply {
+                leftMargin = dp(8)
+                rightMargin = dp(8)
+                bottomMargin = dp(8)
+            }
         )
         return frame
     }
@@ -1125,15 +1156,15 @@ class PlayerScreen(
 
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(12), dp(18), dp(22))
+            setPadding(dp(14), dp(10), dp(14), dp(18))
             background = roundedInt(palette.surface, 24)
 
             addView(TextView(activity).apply {
                 text = "Настройки видео"
-                textSize = 20f
+                textSize = 19f
                 setTypeface(typeface, Typeface.BOLD)
                 setTextColor(palette.text)
-                setPadding(dp(6), dp(6), dp(6), dp(14))
+                setPadding(dp(4), dp(4), dp(4), dp(12))
             })
 
             items.forEachIndexed { index, pair ->
@@ -1143,9 +1174,9 @@ class PlayerScreen(
                     },
                     LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
-                        dp(56)
+                        dp(54)
                     ).apply {
-                        bottomMargin = dp(6)
+                        bottomMargin = dp(5)
                     }
                 )
             }
@@ -1318,8 +1349,8 @@ class PlayerScreen(
         LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), 0, dp(10), 0)
-            background = roundedInt(palette.surfaceAlt, 16)
+            setPadding(dp(14), 0, dp(8), 0)
+            background = roundedInt(palette.surfaceAlt, 18)
             isClickable = true
             isFocusable = true
 
@@ -1339,9 +1370,12 @@ class PlayerScreen(
 
             addView(TextView(activity).apply {
                 text = value
-                textSize = 13f
-                setTextColor(palette.muted)
-                gravity = Gravity.CENTER_VERTICAL
+                textSize = 12f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(palette.accent)
+                gravity = Gravity.CENTER
+                setPadding(dp(8), dp(4), dp(8), dp(4))
+                background = roundedInt(palette.surface, 11)
             })
 
             addView(
@@ -1350,10 +1384,10 @@ class PlayerScreen(
                     imageTintList =
                         android.content.res.ColorStateList.valueOf(palette.muted)
                     scaleType = ImageView.ScaleType.CENTER_INSIDE
-                    setPadding(dp(7), dp(7), dp(7), dp(7))
+                    setPadding(dp(6), dp(6), dp(6), dp(6))
                 },
-                LinearLayout.LayoutParams(dp(30), dp(30)).apply {
-                    marginStart = dp(4)
+                LinearLayout.LayoutParams(dp(28), dp(28)).apply {
+                    marginStart = dp(5)
                 }
             )
 
@@ -1843,7 +1877,8 @@ class PlayerScreen(
                 .onFailure { setImageDrawable(null) }
             setBackgroundColor(Color.TRANSPARENT)
             background = rounded(backgroundColor, size / 2)
-            setPadding(dp(12), dp(12), dp(12), dp(12))
+            val inset = if (size <= 40) 10 else 12
+            setPadding(dp(inset), dp(inset), dp(inset), dp(inset))
             scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
         }
 

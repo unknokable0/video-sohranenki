@@ -45,11 +45,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.0.9 version
+      - name: Assign SOHR 6.0.10 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=600009" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.0.9" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=600010" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.0.10" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -140,7 +140,7 @@ jobs:
                   "R.drawable.ic_close", "R.drawable.ic_check", "fun showAppearancePicker"
               ],
               "native/app/src/main/java/com/unknokable/videosohranenki/LoadingWaveView.kt": [
-                  "LinearInterpolator", "syncAnimator", "PathMeasure", "segmentPath"
+                  "AccelerateDecelerateInterpolator", "syncAnimator", "PathMeasure", "basePath", "segmentPath"
               ],
               "native/app/src/main/java/com/unknokable/videosohranenki/SohrBottomNavView.kt": [
                   "requestLocked", "syncSelected"
@@ -164,6 +164,16 @@ jobs:
               missing = [needle for needle in needles if needle not in text]
               if missing:
                   raise SystemExit(f"{file_name}: missing {missing}")
+
+          loader = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/LoadingWaveView.kt"
+          ).read_text(encoding="utf-8")
+          forbidden_loader_patterns = ["segmentGlowPaint", "headPaint", "drawCircle("]
+          found_loader_forbidden = [p for p in forbidden_loader_patterns if p in loader]
+          if found_loader_forbidden:
+              raise SystemExit(
+                  f"Loader glow/head regression detected: {found_loader_forbidden}"
+              )
 
           player = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt"
@@ -209,7 +219,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.0.9 • formal Вы-address across UI • clean player settings sliders icon • smaller minimal S loader without glow/outline • yellow first streak fire • expanded streak levels through 5000+ • lighter streak copy"
+            "notes": "SOHR 6.0.10 • restored full clean S loader without glow or leading dot • modern tune settings icon • visible quality control • unified compact video controls • cleaner video settings sheet • Twitch player control polish"
           }
           EOF
           cat update.json
