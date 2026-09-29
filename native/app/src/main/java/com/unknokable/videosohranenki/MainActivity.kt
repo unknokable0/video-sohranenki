@@ -187,6 +187,7 @@ class MainActivity : AppCompatActivity() {
     private var searchSystemBackCallback: android.window.OnBackInvokedCallback? = null
     private var predictiveBackTarget: View? = null
     private var twitchNetworkCooldownUntilElapsed = 0L
+    private val activeManualDownloads = linkedSetOf<Int>()
 
     private val palette get() = settings.palette()
     private val bg get() = palette.background
@@ -2838,7 +2839,7 @@ class MainActivity : AppCompatActivity() {
         )
 
         scroll.setOnScrollChangeListener(
-            NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
+            NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
                 val shrink = (scrollY.toFloat() / dp(90).coerceAtLeast(1)).coerceIn(0f, 1f)
                 titleRow.pivotX = 0f
                 titleRow.pivotY = 0f
@@ -2846,29 +2847,10 @@ class MainActivity : AppCompatActivity() {
                 titleRow.scaleY = 1f - 0.045f * shrink
                 titleRow.alpha = 1f - 0.10f * shrink
 
-                val nav = primaryNav
-                if (nav != null && settings.animations) {
-                    val atBottom = !scroll.canScrollVertically(1)
-                    val scrollingUp = scrollY < oldScrollY - dp(2)
-                    val nearTop = scrollY < dp(70)
-
-                    if (atBottom || scrollingUp || nearTop) {
-                        nav.animate().cancel()
-                        nav.animate()
-                            .translationY(0f)
-                            .alpha(1f)
-                            .setDuration(SohrMotion.NORMAL)
-                            .setInterpolator(SohrMotion.smooth())
-                            .start()
-                    } else if (scrollY > oldScrollY + dp(2) && scrollY > dp(110)) {
-                        nav.animate().cancel()
-                        nav.animate()
-                            .translationY(dp(30).toFloat())
-                            .alpha(0.92f)
-                            .setDuration(SohrMotion.NORMAL)
-                            .setInterpolator(SohrMotion.smooth())
-                            .start()
-                    }
+                primaryNav?.let { nav ->
+                    nav.animate().cancel()
+                    nav.translationY = 0f
+                    nav.alpha = 1f
                 }
             }
         )
@@ -3266,10 +3248,6 @@ class MainActivity : AppCompatActivity() {
                 )
             }
 
-            val recap = experienceStore.recap()
-            if (recap.watchedMs > 0L || recap.playStarts > 0) {
-                contentHost.addView(buildRecapTeaser(recap))
-            }
         } else {
             t2x2LiveSlot = null
             todayLiveStatusView = null
@@ -3554,211 +3532,6 @@ class MainActivity : AppCompatActivity() {
         inlinePreviewPlayer?.runCatching {
             pause()
             clearMediaItems()
-        }
-    }
-
-    private fun buildRecapTeaser(recap: SohrMonthlyRecap): View {
-        val monthName = recap.month.atDay(1)
-            .format(DateTimeFormatter.ofPattern("LLLL", Locale("ru")))
-            .replaceFirstChar { it.titlecase(Locale("ru")) }
-
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), dp(13), dp(14), dp(13))
-            background = android.graphics.drawable.GradientDrawable(
-                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                intArrayOf(palette.accentSoft, panel)
-            ).apply {
-                cornerRadius = dp(21).toFloat()
-            }
-            isClickable = true
-            isFocusable = true
-            setOnClickListener {
-                SohrMotion.press(this, settings.animations)
-                showMonthlyRecap()
-            }
-        }
-
-        val copy = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        copy.addView(TextView(this).apply {
-            text = monthName + " в SOHR"
-            textSize = 16f
-            includeFontPadding = false
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(this@MainActivity.text)
-        })
-        copy.addView(TextView(this).apply {
-            text = formatWatchTime(recap.watchedMs) + " • " + recap.uniqueVideos + " видео"
-            textSize = 11.5f
-            includeFontPadding = false
-            setTextColor(muted)
-            setPadding(0, dp(4), 0, 0)
-        })
-        card.addView(copy, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        card.addView(TextView(this).apply {
-            text = "›"
-            textSize = 26f
-            gravity = Gravity.CENTER
-            setTextColor(purple)
-        }, LinearLayout.LayoutParams(dp(34), dp(40)))
-
-        return FrameLayout(this).apply {
-            addView(
-                card,
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    marginStart = dp(16)
-                    marginEnd = dp(16)
-                    topMargin = dp(10)
-                    bottomMargin = dp(5)
-                }
-            )
-        }
-    }
-
-    private fun showMonthlyRecap() {
-        auxiliaryScreen = "recap"
-        stopInlinePreview()
-        val recap = experienceStore.recap()
-        val monthName = recap.month.atDay(1)
-            .format(DateTimeFormatter.ofPattern("LLLL yyyy", Locale("ru")))
-            .replaceFirstChar { it.titlecase(Locale("ru")) }
-
-        val scroll = ScrollView(this).apply {
-            isVerticalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_NEVER
-            setBackgroundColor(bg)
-        }
-        val page = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(14), dp(16), dp(28))
-            setBackgroundColor(bg)
-        }
-
-        page.addView(TextView(this).apply {
-            text = "SOHR Recap"
-            textSize = 26f
-            includeFontPadding = false
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(this@MainActivity.text)
-        })
-        page.addView(TextView(this).apply {
-            text = monthName
-            textSize = 13f
-            setTextColor(muted)
-            setPadding(0, dp(4), 0, dp(14))
-        })
-
-        val hero = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(18), dp(24), dp(18), dp(24))
-            background = android.graphics.drawable.GradientDrawable(
-                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                intArrayOf(palette.accentSoft, panel)
-            ).apply {
-                cornerRadius = dp(28).toFloat()
-            }
-        }
-        hero.addView(TextView(this).apply {
-            text = formatWatchTime(recap.watchedMs)
-            textSize = 38f
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(purple)
-        })
-        hero.addView(TextView(this).apply {
-            text = "просмотра за месяц"
-            textSize = 13f
-            gravity = Gravity.CENTER
-            setTextColor(this@MainActivity.text)
-            setPadding(0, dp(5), 0, 0)
-        })
-        page.addView(hero)
-
-        val grid = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(0, dp(12), 0, 0)
-        }
-
-        fun statCard(title: String, value: String): View =
-            LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(14), dp(13), dp(14), dp(13))
-                background = roundedBg(panel, 19)
-                addView(TextView(this@MainActivity).apply {
-                    text = value
-                    textSize = 19f
-                    includeFontPadding = false
-                    setTypeface(typeface, Typeface.BOLD)
-                    setTextColor(this@MainActivity.text)
-                })
-                addView(TextView(this@MainActivity).apply {
-                    text = title
-                    textSize = 11.5f
-                    includeFontPadding = false
-                    setTextColor(muted)
-                    setPadding(0, dp(4), 0, 0)
-                })
-            }
-
-        val row1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        row1.addView(statCard("Уникальных видео", recap.uniqueVideos.toString()),
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(6) })
-        row1.addView(statCard("Запусков плеера", recap.playStarts.toString()),
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(6) })
-        grid.addView(row1)
-
-        val activeDay = recap.mostActiveDay?.let {
-            runCatching {
-                LocalDate.parse(it).format(DateTimeFormatter.ofPattern("d MMMM", Locale("ru")))
-            }.getOrNull()
-        } ?: "—"
-        val row2 = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, dp(12), 0, 0)
-        }
-        row2.addView(statCard("Самая длинная сессия", formatWatchTime(recap.longestSessionMs)),
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(6) })
-        row2.addView(statCard("Самый активный день", activeDay),
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(6) })
-        grid.addView(row2)
-
-        val row3 = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, dp(12), 0, 0)
-        }
-        row3.addView(statCard("Текущий стрик", streakTracker.currentStreak().toString() + " дн."),
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(6) })
-        row3.addView(statCard("Лучший стрик", streakTracker.longestStreak().toString() + " дн."),
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(6) })
-        grid.addView(row3)
-
-        page.addView(grid)
-        page.addView(TextView(this).apply {
-            text = "Recap считает только реальное время воспроизведения в SOHR."
-            textSize = 11f
-            gravity = Gravity.CENTER
-            setTextColor(muted)
-            setPadding(dp(12), dp(16), dp(12), 0)
-        })
-
-        scroll.addView(page)
-        replaceRoot(withBottomNav(scroll, SohrTab.VIDEOS))
-    }
-
-    private fun formatWatchTime(ms: Long): String {
-        val totalMinutes = (ms.coerceAtLeast(0L) / 60_000L)
-        val hours = totalMinutes / 60L
-        val minutes = totalMinutes % 60L
-        return when {
-            hours > 0L && minutes > 0L -> hours.toString() + " ч " + minutes + " мин"
-            hours > 0L -> hours.toString() + " ч"
-            else -> minutes.toString() + " мин"
         }
     }
 
@@ -4083,18 +3856,49 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun downloadVideoQuick(item: VideoItem) {
+        if (item.fileId > 0 && !activeManualDownloads.add(item.fileId)) {
+            Toast.makeText(this, "Видео уже загружается", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         lifecycleScope.launch {
+            if (item.fileId > 0) {
+                Toast.makeText(this@MainActivity, "Загрузка началась", Toast.LENGTH_SHORT).show()
+            }
+
             val result = runCatching {
                 withContext(Dispatchers.IO) {
                     val source = item.localPath
                         ?.let(::File)
                         ?.takeIf { it.exists() }
                         ?: run {
-                            check(telegramReady && item.fileId > 0) { "Видео пока недоступно для скачивания" }
-                            val file = client.send(TdApi.DownloadFile(item.fileId, 1, 0, 0, true))
-                            File(file.local.path).takeIf {
-                                file.local.isDownloadingCompleted && it.exists()
-                            } ?: error("Telegram не завершил загрузку файла")
+                            check(telegramReady && item.fileId > 0 && channelChatId != 0L) {
+                                "Видео пока недоступно для скачивания"
+                            }
+
+                            var file = client.send(
+                                TdApi.AddFileToDownloads(
+                                    item.fileId,
+                                    channelChatId,
+                                    item.messageId,
+                                    32
+                                )
+                            )
+
+                            var checks = 0
+                            while (!file.local.isDownloadingCompleted) {
+                                if (!isActive) error("Загрузка отменена")
+                                if (!file.local.isDownloadingActive && !file.local.canBeDownloaded) {
+                                    error("Telegram не смог загрузить файл")
+                                }
+                                delay(250L)
+                                file = client.send(TdApi.GetFile(item.fileId))
+                                checks++
+                                if (checks > 14_400) error("Загрузка заняла слишком много времени")
+                            }
+
+                            File(file.local.path).takeIf { it.exists() }
+                                ?: error("Загруженный файл не найден")
                         }
 
                     val ext = when {
@@ -4112,9 +3916,15 @@ class MainActivity : AppCompatActivity() {
                         .ifBlank { "video_" + item.messageId }
                     val target = File(dir, safeName + "_" + item.messageId + "." + ext)
                     source.copyTo(target, overwrite = true)
+
+                    if (item.fileId > 0) {
+                        runCatching { client.send(TdApi.RemoveFileFromDownloads(item.fileId, false)) }
+                    }
                     target
                 }
             }
+
+            if (item.fileId > 0) activeManualDownloads.remove(item.fileId)
 
             result.onSuccess { file ->
                 markDownloaded(item)
@@ -4124,10 +3934,10 @@ class MainActivity : AppCompatActivity() {
                     "Скачано • " + file.name,
                     Toast.LENGTH_SHORT
                 ).show()
-            }.onFailure { error ->
+            }.onFailure {
                 Toast.makeText(
                     this@MainActivity,
-                    error.message ?: "Не удалось скачать видео",
+                    "Не удалось скачать видео. Проверьте интернет и попробуйте ещё раз.",
                     Toast.LENGTH_LONG
                 ).show()
             }
@@ -5120,13 +4930,6 @@ class MainActivity : AppCompatActivity() {
                     openPlayer(next)
                 },
                 onDownloadRequested = { requested -> downloadVideoQuick(requested) },
-                onWatchTime = { watchedMs, sessionMs ->
-                    experienceStore.recordWatchTime(
-                        messageId = item.messageId,
-                        watchedMs = watchedMs,
-                        sessionMs = sessionMs
-                    )
-                },
                 isWatched = isVideoWatched(item.messageId),
                 onWatchedChange = { watched, shouldBeWatched ->
                     if (shouldBeWatched) {
@@ -5161,7 +4964,6 @@ class MainActivity : AppCompatActivity() {
                 onFullscreen = { setFullscreen(it) },
                 onPlaybackStarted = {
                     settings.markPlayed(item.messageId)
-                    experienceStore.recordPlayStart(item.messageId)
                     streakTracker.markWatched()
                 }
             )
@@ -7116,6 +6918,9 @@ class MainActivity : AppCompatActivity() {
         val shell = primaryShell!!
         val host = primaryContentHost!!
         val nav = primaryNav!!
+        nav.animate().cancel()
+        nav.translationY = 0f
+        nav.alpha = 1f
 
         val slide = pendingRootSlide
         pendingRootSlide = 0
