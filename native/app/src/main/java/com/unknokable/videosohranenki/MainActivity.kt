@@ -2724,7 +2724,7 @@ class MainActivity : AppCompatActivity() {
         }
         chipsScroll.addView(
             chips,
-            android.widget.HorizontalScrollView.LayoutParams(
+            FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
