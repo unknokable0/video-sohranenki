@@ -10,6 +10,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.drinkless.tdlib.TdApi
+import java.io.IOException
 import java.io.InputStream
 import java.io.RandomAccessFile
 import kotlin.math.min
@@ -28,17 +29,20 @@ class TelegramStreamServer(
     fun release(item: VideoItem) {
         if (item.fileId <= 0) return
         scope.launch {
+            // Stop network work, but keep already downloaded TDLib bytes on disk.
+            // Deleting them here made every reopen cold-start from Telegram again.
             runCatching { client.send(TdApi.CancelDownloadFile(item.fileId, false)) }
-            runCatching { client.send(TdApi.DeleteFile(item.fileId)) }
         }
     }
 
     fun prefetch(item: VideoItem) {
-        if (item.fileSize <= 0L) return
+        if (item.fileId <= 0 || item.fileSize <= 0L) return
         scope.launch {
             runCatching {
-                val limit = minOf(12L * 1024L * 1024L, item.fileSize)
-                client.send(TdApi.DownloadFile(item.fileId, 30, 0, limit, false))
+                // Prime only a small startup range. A large 12 MB request could make
+                // a following synchronous read wait several seconds before first frame.
+                val limit = minOf(768L * 1024L, item.fileSize)
+                client.send(TdApi.DownloadFile(item.fileId, 32, 0, limit, false))
             }
         }
     }
@@ -84,11 +88,10 @@ private class TelegramFileInputStream(
     private var raf: RandomAccessFile? = null
     private var bufferedStart = -1L
     private var bufferedEndExclusive = -1L
-    private var prefetchedStart = -1L
-    private var prefetchedLimit = 0L
-    private val firstWindow = 2L * 1024L * 1024L
-    private val steadyWindow = 12L * 1024L * 1024L
-    private val prefetchThreshold = 4L * 1024L * 1024L
+    private val startupWindow = 256L * 1024L
+    private val steadyWindow = 1L * 1024L * 1024L
+    private val backgroundWindow = 4L * 1024L * 1024L
+    private val prefetchThreshold = 512L * 1024L
 
     override fun read(): Int { val one = ByteArray(1); return if (read(one, 0, 1) == 1) one[0].toInt() and 0xff else -1 }
 
@@ -97,31 +100,73 @@ private class TelegramFileInputStream(
         val wanted = min(length.toLong(), endInclusive - position + 1).toInt()
         if (wanted <= 0) return -1
         ensureRange(position, wanted.toLong())
-        val file = raf ?: return -1
+        val file = raf ?: throw IOException("Telegram stream file is unavailable")
         file.seek(position)
-        val maxReadable = minOf(wanted.toLong(), (bufferedEndExclusive - position).coerceAtLeast(0L)).toInt()
-        if (maxReadable <= 0) return -1
+        val maxReadable = minOf(
+            wanted.toLong(),
+            (bufferedEndExclusive - position).coerceAtLeast(0L)
+        ).toInt()
+        if (maxReadable <= 0) {
+            // Returning -1 here means real EOF to ExoPlayer and can turn a temporary
+            // Telegram range delay into a fatal/truncated-media error.
+            throw IOException("Telegram range is not ready at byte $position")
+        }
         val count = file.read(buffer, offset, maxReadable)
-        if (count > 0) { position += count; maybePrefetchNext() }
+        if (count <= 0 && position <= endInclusive) {
+            throw IOException("Telegram stream returned no data at byte $position")
+        }
+        if (count > 0) {
+            position += count
+            maybePrefetchNext()
+        }
         return count
     }
 
     private fun ensureRange(offset: Long, requested: Long) {
         val requestedEnd = min(endInclusive + 1, offset + requested)
-        if (offset >= bufferedStart && requestedEnd <= bufferedEndExclusive) return
-        val usePrefetch = offset == prefetchedStart && prefetchedLimit > 0L
-        val windowStart = if (usePrefetch) prefetchedStart else offset
-        val windowLimit = if (usePrefetch) prefetchedLimit else min(if (offset < firstWindow) firstWindow else steadyWindow, endInclusive - offset + 1)
-        val result = runBlocking { client.send(TdApi.DownloadFile(fileId, 32, windowStart, windowLimit, true)) }
-        applyLocalRange(result.local)
+        if (covers(offset, requestedEnd)) return
+
+        val baseWindow = if (offset < 1024L * 1024L) startupWindow else steadyWindow
         var attempts = 0
-        while (bufferedEndExclusive < requestedEnd && attempts < 3) {
-            val retryLimit = minOf(maxOf(requested, firstWindow), endInclusive - offset + 1)
-            applyLocalRange(runBlocking { client.send(TdApi.DownloadFile(fileId, 32, offset, retryLimit, true)) }.local)
+        var lastError: Throwable? = null
+
+        while (!covers(offset, requestedEnd) && attempts < 5) {
+            val windowLimit = minOf(
+                maxOf(requested, baseWindow),
+                endInclusive - offset + 1
+            )
+            try {
+                val result = runBlocking {
+                    client.send(TdApi.DownloadFile(fileId, 32, offset, windowLimit, true))
+                }
+                applyLocalRange(result.local)
+            } catch (error: Throwable) {
+                lastError = error
+            }
+
+            if (!covers(offset, requestedEnd) && attempts < 4) {
+                try {
+                    Thread.sleep(35L * (attempts + 1))
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    break
+                }
+            }
             attempts++
         }
-        if (usePrefetch) { prefetchedStart = -1L; prefetchedLimit = 0L }
+
+        if (!covers(offset, requestedEnd)) {
+            throw IOException(
+                "Telegram did not provide requested bytes $offset..${requestedEnd - 1}",
+                lastError
+            )
+        }
     }
+
+    private fun covers(start: Long, endExclusive: Long): Boolean =
+        bufferedStart >= 0L &&
+            start >= bufferedStart &&
+            endExclusive <= bufferedEndExclusive
 
     private fun applyLocalRange(local: TdApi.LocalFile) {
         val path = local.path
@@ -132,12 +177,23 @@ private class TelegramFileInputStream(
     }
 
     private fun maybePrefetchNext() {
-        if (bufferedEndExclusive <= 0L || bufferedEndExclusive > endInclusive || bufferedEndExclusive - position > prefetchThreshold || prefetchedStart == bufferedEndExclusive) return
-        val nextStart = bufferedEndExclusive
-        val nextLimit = min(steadyWindow, endInclusive - nextStart + 1)
+        if (
+            bufferedEndExclusive <= 0L ||
+            bufferedEndExclusive > endInclusive ||
+            bufferedEndExclusive - position > prefetchThreshold
+        ) return
+
+        val nextStart = bufferedEndExclusive.coerceAtLeast(position)
+        val nextLimit = min(backgroundWindow, endInclusive - nextStart + 1)
         if (nextLimit <= 0L) return
-        prefetchedStart = nextStart; prefetchedLimit = nextLimit
-        runBlocking { runCatching { client.send(TdApi.DownloadFile(fileId, 24, nextStart, nextLimit, false)) } }
+
+        // Fire-and-forget read-ahead. Blocking reads above still request only a small
+        // window, so first frame and seeks don't wait for a multi-megabyte download.
+        runBlocking {
+            runCatching {
+                client.send(TdApi.DownloadFile(fileId, 24, nextStart, nextLimit, false))
+            }
+        }
     }
 
     override fun close() { raf?.close(); raf = null; super.close() }
@@ -152,16 +208,21 @@ private class TelegramMediaDataSource(
     private var filePath: String? = null
     private var cachedStart = -1L
     private var cachedEndExclusive = -1L
-    private val chunkSize = 2L * 1024L * 1024L
+    private val chunkSize = 512L * 1024L
 
     @Synchronized override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {
         if (position < 0 || position >= fileSize) return -1
         if (size <= 0) return 0
         val wanted = minOf(size.toLong(), fileSize - position).toInt()
         ensureRange(position, maxOf(wanted.toLong(), chunkSize))
-        val file = raf ?: return -1
+        val file = raf ?: throw IOException("Telegram preview file is unavailable")
         file.seek(position)
-        return file.read(buffer, offset, wanted)
+        val readable = minOf(
+            wanted.toLong(),
+            (cachedEndExclusive - position).coerceAtLeast(0L)
+        ).toInt()
+        if (readable <= 0) throw IOException("Telegram preview range is not ready")
+        return file.read(buffer, offset, readable)
     }
 
     @Synchronized private fun ensureRange(position: Long, requested: Long) {
