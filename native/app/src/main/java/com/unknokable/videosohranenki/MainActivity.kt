@@ -3338,7 +3338,7 @@ class MainActivity : AppCompatActivity() {
                 false
             )
             adapter = HomeVideoShelfAdapter(
-                items = items,
+                source = items,
                 palette = palette,
                 animationsEnabled = settings.animations,
                 mode = mode,
@@ -4312,7 +4312,7 @@ class MainActivity : AppCompatActivity() {
                         setTextColor(this@MainActivity.text)
                         setHintTextColor(muted)
                         textSize = 14f
-                        singleLine = true
+                        setSingleLine(true)
                         setPadding(dp(12), dp(10), dp(12), dp(10))
                         background = roundedBg(palette.surfaceAlt, 15)
                     }
@@ -6904,6 +6904,11 @@ class MainActivity : AppCompatActivity() {
                 animateSettingsPaletteReveal(nextLight, nextAccent, nextSource)
             },
             onLanguageChanged = { showSettings() },
+            onOpenMoments = { showMoments() },
+            onOpenRecap = { showRecap() },
+            onSmartDownloadsChanged = { enabled ->
+                if (enabled) scheduleSmartDownloads(telegramVideos) else smartDownloadJob?.cancel()
+            },
             onCheckUpdates = { checkForUpdates() }
         ).build()
 
