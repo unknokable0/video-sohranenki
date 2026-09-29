@@ -2346,6 +2346,7 @@ class MainActivity : AppCompatActivity() {
                 val file = content.video.video
                 VideoItem(
                     messageId = message.id,
+                    chatId = message.chatId,
                     title = content.caption.text.trim().ifBlank {
                         content.video.fileName.ifBlank { "Запись стрима" }
                     },
@@ -2368,6 +2369,7 @@ class MainActivity : AppCompatActivity() {
                 val file = animation.animation
                 VideoItem(
                     messageId = message.id,
+                    chatId = message.chatId,
                     title = content.caption.text.trim().ifBlank {
                         name.ifBlank { "Запись стрима" }
                     },
@@ -2392,6 +2394,7 @@ class MainActivity : AppCompatActivity() {
                 val file = doc.document
                 VideoItem(
                     messageId = message.id,
+                    chatId = message.chatId,
                     title = content.caption.text.trim().ifBlank {
                         name.ifBlank { "Запись стрима" }
                     },
