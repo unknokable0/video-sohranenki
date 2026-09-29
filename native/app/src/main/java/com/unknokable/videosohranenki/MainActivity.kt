@@ -2120,30 +2120,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun animatePress(view: View) {
-        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-        if (!settings.animations) return
-
-        view.animate().cancel()
-        view.scaleX = 1f
-        view.scaleY = 1f
-        view.rotation = 0f
-
-        val ease = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
-
-        view.animate()
-            .scaleX(0.955f)
-            .scaleY(0.955f)
-            .setDuration(65L)
-            .setInterpolator(ease)
-            .withEndAction {
-                view.animate()
-                    .scaleX(1f)
-                    .scaleY(1f)
-                    .setDuration(125L)
-                    .setInterpolator(ease)
-                    .start()
-            }
-            .start()
+        SohrMotion.press(view, settings.animations)
     }
 
     private fun friendlyAuthError(raw: String?): String {
@@ -7302,9 +7279,9 @@ class MainActivity : AppCompatActivity() {
                             v.animate()
                                 .scaleX(0.972f)
                                 .scaleY(0.972f)
-                                .alpha(0.92f)
-                                .setDuration(55L)
-                                .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                                .alpha(0.94f)
+                                .setDuration(SohrMotion.FAST / 2)
+                                .setInterpolator(SohrMotion.smooth())
                                 .start()
                         }
                         MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -7313,8 +7290,8 @@ class MainActivity : AppCompatActivity() {
                                 .scaleX(1f)
                                 .scaleY(1f)
                                 .alpha(1f)
-                                .setDuration(115L)
-                                .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                                .setDuration(SohrMotion.FAST)
+                                .setInterpolator(SohrMotion.smooth())
                                 .start()
                         }
                     }
