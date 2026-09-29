@@ -805,7 +805,7 @@ class PlayerScreen(
             box.addView(TextView(activity).apply {
                 text = descriptionText
                 textSize = 14.5f
-                lineSpacing = dp(2).toFloat()
+                setLineSpacing(dp(2).toFloat(), 1f)
                 includeFontPadding = false
                 maxLines = 5
                 ellipsize = android.text.TextUtils.TruncateAt.END
