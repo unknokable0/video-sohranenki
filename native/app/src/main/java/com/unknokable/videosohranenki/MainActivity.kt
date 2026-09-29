@@ -146,7 +146,7 @@ class MainActivity : AppCompatActivity() {
     private var feedRefreshCompletedFlash = false
     private var feedAutoRefreshJob: kotlinx.coroutines.Job? = null
     private var lastFeedAutoRefreshAt = 0L
-    private val telegramAutoRefreshIntervalMs = 45_000L
+    private val telegramAutoRefreshIntervalMs = 15_000L
     private val twitchAutoRefreshIntervalMs = 180_000L
     private var startupUpdateCheckDone = false
     private var updateAutoCheckJob: kotlinx.coroutines.Job? = null
@@ -340,22 +340,66 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun scheduleFeedAutoRefresh(delayMs: Long = 900L, force: Boolean = false) {
-        if (settings.guestMode || isPlayerScreen || isSettingsScreen || isAccountScreen || isStreakScreen) return
+        if (settings.guestMode) return
         if (settings.videoSource == "telegram" && !telegramReady) return
 
-        val now = System.currentTimeMillis()
-        val minInterval = if (settings.videoSource == "twitch") twitchAutoRefreshIntervalMs else telegramAutoRefreshIntervalMs
-        if (!force && lastFeedAutoRefreshAt > 0L && now - lastFeedAutoRefreshAt < minInterval) return
-
+        if (feedAutoRefreshJob?.isActive == true && !force) return
         feedAutoRefreshJob?.cancel()
+
         feedAutoRefreshJob = lifecycleScope.launch {
-            delay(delayMs)
-            if (isPlayerScreen || isSettingsScreen || isAccountScreen || isStreakScreen) return@launch
-            lastFeedAutoRefreshAt = System.currentTimeMillis()
-            if (settings.videoSource == "twitch") {
-                loadTwitchVideos(inPlace = true)
-            } else if (telegramReady) {
-                loadVideos(inPlace = true)
+            if (delayMs > 0L) delay(delayMs)
+            var forceNext = force
+
+            while (isActive) {
+                if (
+                    isPlayerScreen ||
+                    isSettingsScreen ||
+                    isAccountScreen ||
+                    isStreakScreen
+                ) {
+                    delay(1_000L)
+                    continue
+                }
+
+                if (settings.videoSource == "telegram" && !telegramReady) {
+                    delay(1_000L)
+                    continue
+                }
+
+                val minInterval =
+                    if (settings.videoSource == "twitch") {
+                        twitchAutoRefreshIntervalMs
+                    } else {
+                        telegramAutoRefreshIntervalMs
+                    }
+
+                val now = System.currentTimeMillis()
+                val elapsed = now - lastFeedAutoRefreshAt
+                if (!forceNext && lastFeedAutoRefreshAt > 0L && elapsed < minInterval) {
+                    delay((minInterval - elapsed).coerceAtLeast(250L))
+                    continue
+                }
+
+                forceNext = false
+                lastFeedAutoRefreshAt = System.currentTimeMillis()
+
+                if (settings.videoSource == "twitch") {
+                    if (twitchLoadJob?.isActive != true) {
+                        loadTwitchVideos(inPlace = true)
+                    }
+                    while (isActive && twitchLoadJob?.isActive == true) {
+                        delay(250L)
+                    }
+                } else if (telegramReady) {
+                    if (loadJob?.isActive != true) {
+                        loadVideos(inPlace = true)
+                    }
+                    while (isActive && loadJob?.isActive == true) {
+                        delay(250L)
+                    }
+                }
+
+                delay(350L)
             }
         }
     }
@@ -2069,30 +2113,37 @@ class MainActivity : AppCompatActivity() {
             try {
                 val chat = client.send(TdApi.SearchPublicChat("t2x2_video"))
                 channelChatId = chat.id
+                runCatching { client.send(TdApi.OpenChat(chat.id)) }
 
                 val zone = ZoneId.systemDefault()
                 val cutoffDate = LocalDate.now(zone).minusDays(6)
                 val cutoffEpoch = cutoffDate.atStartOfDay(zone).toEpochSecond()
 
                 val collected = linkedMapOf<Long, VideoItem>()
-                videoCache.load().asSequence().filter { it.localPath != null }.forEach { collected[it.messageId] = it }
+                val cachedBeforeRefresh = videoCache.load()
+                cachedBeforeRefresh.asSequence()
+                    .filter { it.localPath != null || it.date.toLong() >= cutoffEpoch }
+                    .forEach { collected[it.messageId] = it }
+
                 var fromMessageId = 0L
                 var page = 0
-                var reachedOldMessages = false
+                var consecutiveOldPages = 0
 
-                while (page < 20 && !reachedOldMessages) {
+                while (page < 24 && consecutiveOldPages < 2) {
                     val history = client.send(
                         TdApi.GetChatHistory(chat.id, fromMessageId, 0, 100, false)
                     )
                     if (history.messages.isEmpty()) break
 
+                    var recentMessagesOnPage = 0
                     for (message in history.messages) {
-                        if (message.date.toLong() < cutoffEpoch) {
-                            reachedOldMessages = true
-                            continue
-                        }
+                        if (message.date.toLong() < cutoffEpoch) continue
+                        recentMessagesOnPage++
                         messageToVideo(message)?.let { collected[it.messageId] = it }
                     }
+
+                    consecutiveOldPages =
+                        if (recentMessagesOnPage == 0) consecutiveOldPages + 1 else 0
 
                     val last = history.messages.lastOrNull() ?: break
                     if (last.id == fromMessageId) break
@@ -2191,6 +2242,28 @@ class MainActivity : AppCompatActivity() {
                     fileSize = if (file.size > 0) file.size else file.expectedSize,
                     mimeType = content.video.mimeType.ifBlank { "video/mp4" },
                     thumbnailFileId = content.video.thumbnail?.file?.id
+                )
+            }
+            is TdApi.MessageAnimation -> {
+                val animation = content.animation
+                val mime = animation.mimeType.ifBlank { "video/mp4" }
+                val name = animation.fileName
+                val isVideo = mime.startsWith("video/") ||
+                    name.endsWith(".mp4", true) ||
+                    name.endsWith(".webm", true)
+                if (!isVideo) return null
+                val file = animation.animation
+                VideoItem(
+                    messageId = message.id,
+                    title = content.caption.text.trim().ifBlank {
+                        name.ifBlank { "Запись стрима" }
+                    },
+                    date = message.date,
+                    durationSeconds = animation.duration,
+                    fileId = file.id,
+                    fileSize = if (file.size > 0) file.size else file.expectedSize,
+                    mimeType = mime,
+                    thumbnailFileId = animation.thumbnail?.file?.id
                 )
             }
             is TdApi.MessageDocument -> {
