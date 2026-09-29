@@ -46,7 +46,7 @@ class SohrBottomNavView(
     private var selectedIndex = tabs.indexOf(selected).coerceAtLeast(0)
     private var indicatorAnimator: ValueAnimator? = null
 
-    private val smoothInterpolator = PathInterpolator(0.22f, 1f, 0.36f, 1f)
+    private val smoothInterpolator = SohrMotion.smooth()
     private val streakTracker = StreakTracker(context)
 
     private val indicator = View(context).apply {
@@ -159,7 +159,7 @@ class SohrBottomNavView(
     private fun requestIndex(target: Int) {
         if (target !in tabs.indices) return
 
-        performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        SohrHaptics.select(this)
 
         // Always forward the tap. If visual state got ahead of the screen during
         // a fast transition, tapping the same tab retries navigation instead of
@@ -206,7 +206,7 @@ class SohrBottomNavView(
             val from = indicator.translationX
             val to = target * slot
             indicatorAnimator = ValueAnimator.ofFloat(from, to).apply {
-                duration = 205L
+                duration = SohrMotion.NORMAL
                 interpolator = smoothInterpolator
                 addUpdateListener { indicator.translationX = it.animatedValue as Float }
                 start()
@@ -232,13 +232,13 @@ class SohrBottomNavView(
         column.animate()
             .scaleX(0.955f)
             .scaleY(0.955f)
-            .setDuration(65L)
+            .setDuration(SohrMotion.FAST / 2)
             .setInterpolator(smoothInterpolator)
             .withEndAction {
                 column.animate()
                     .scaleX(1f)
                     .scaleY(1f)
-                    .setDuration(125L)
+                    .setDuration(SohrMotion.FAST)
                     .setInterpolator(smoothInterpolator)
                     .start()
             }
@@ -247,12 +247,12 @@ class SohrBottomNavView(
         if (icon !is StreakFireView) {
             icon.animate()
                 .rotation(-2.5f)
-                .setDuration(70L)
+                .setDuration(SohrMotion.FAST / 2)
                 .setInterpolator(smoothInterpolator)
                 .withEndAction {
                     icon.animate()
                         .rotation(0f)
-                        .setDuration(115L)
+                        .setDuration(SohrMotion.FAST)
                         .setInterpolator(smoothInterpolator)
                         .start()
                 }
@@ -307,14 +307,14 @@ class SohrBottomNavView(
             val to = selectedIndex * slot
             indicator.scaleY = 0.94f
             indicatorAnimator = ValueAnimator.ofFloat(from, to).apply {
-                duration = 220L
+                duration = SohrMotion.NORMAL
                 interpolator = smoothInterpolator
                 addUpdateListener { indicator.translationX = it.animatedValue as Float }
                 start()
             }
             indicator.animate()
                 .scaleY(1f)
-                .setDuration(220L)
+                .setDuration(SohrMotion.NORMAL)
                 .setInterpolator(smoothInterpolator)
                 .start()
         } else {
