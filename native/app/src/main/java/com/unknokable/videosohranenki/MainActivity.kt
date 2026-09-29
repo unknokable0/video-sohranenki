@@ -153,6 +153,7 @@ class MainActivity : AppCompatActivity() {
     private var videoSection = 1 // 1 collections, 2 watched
     private var pendingVideoSectionCrossfade = false
     private var pendingVideoSectionDirection = 0
+    private var videoSectionSwitchLocked = false
 
     private val palette get() = settings.palette()
     private val bg get() = palette.background
@@ -2229,13 +2230,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun switchVideoSection(section: Int) {
-        if (section !in 1..2 || videoSection == section) return
+        if (section !in 1..2 || videoSection == section || videoSectionSwitchLocked) return
+
+        videoSectionSwitchLocked = true
         pendingVideoSectionCrossfade = true
         pendingVideoSectionDirection = if (section > videoSection) 1 else -1
         pendingRootSlide = 0
         suppressNextContentAnimation = false
         videoSection = section
         showFeed(currentVideos)
+
+        root.postDelayed({
+            videoSectionSwitchLocked = false
+        }, if (settings.animations) 330L else 40L)
     }
 
     private fun showFeed(videos: List<VideoItem>) {
@@ -2261,6 +2268,7 @@ class MainActivity : AppCompatActivity() {
         val regularGroups=groups(regularVideos)
         val watchedGroups=groups(watchedVideos)
         val visibleGroups=if(videoSection==2) watchedGroups else regularGroups
+        val sectionTransitionDirection = pendingVideoSectionDirection
 
         val page=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL
@@ -2320,11 +2328,12 @@ class MainActivity : AppCompatActivity() {
         }
         val tabIndicator = View(this).apply {
             background = roundedBg(purple, 15)
-            elevation = dp(1).toFloat()
+            elevation = 0f
         }
         val tabButtons = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            elevation = dp(2).toFloat()
         }
         listOf("Главная" to 1, "Просмотренное" to 2).forEach { (label, section) ->
             val selected = videoSection == section
@@ -2389,13 +2398,13 @@ class MainActivity : AppCompatActivity() {
             tabIndicator.layoutParams = params
 
             val target = if (videoSection == 2) slot else 0f
-            if (pendingVideoSectionDirection != 0 && settings.animations) {
+            if (sectionTransitionDirection != 0 && settings.animations) {
                 tabIndicator.translationX = if (videoSection == 2) 0f else slot
                 tabIndicator.animate().cancel()
                 tabIndicator.animate()
                     .translationX(target)
-                    .setStartDelay(35L)
-                    .setDuration(245L)
+                    .setStartDelay(16L)
+                    .setDuration(275L)
                     .setInterpolator(
                         android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
                     )
@@ -4811,17 +4820,17 @@ class MainActivity : AppCompatActivity() {
                 val telegramInterpolator = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
                 if (sectionCrossfade) {
                     val direction = if (sectionDirection == 0) 1 else sectionDirection
-                    val travel = dp(28).toFloat() * direction
-                    content.alpha = 0f
+                    val travel = dp(46).toFloat() * direction
+                    content.alpha = 0.58f
                     content.translationX = travel
-                    content.scaleX = 0.994f
-                    content.scaleY = 0.994f
+                    content.scaleX = 0.992f
+                    content.scaleY = 0.992f
                     old.alpha = 1f
                     old.translationX = 0f
                     old.animate()
-                        .alpha(0f)
-                        .translationX(-travel * 0.42f)
-                        .setDuration(205L)
+                        .alpha(0.42f)
+                        .translationX(-travel * 0.38f)
+                        .setDuration(235L)
                         .setInterpolator(telegramInterpolator)
                         .start()
                     content.animate()
@@ -4829,7 +4838,7 @@ class MainActivity : AppCompatActivity() {
                         .translationX(0f)
                         .scaleX(1f)
                         .scaleY(1f)
-                        .setDuration(265L)
+                        .setDuration(295L)
                         .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
                         .withEndAction {
                             old.animate().cancel()
