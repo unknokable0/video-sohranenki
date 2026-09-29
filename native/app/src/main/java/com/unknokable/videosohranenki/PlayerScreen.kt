@@ -305,6 +305,7 @@ class PlayerScreen(
             ).apply {
                 marginStart = playerMargin
                 marginEnd = playerMargin
+                topMargin = dp(9)
             }
         )
 
