@@ -173,7 +173,7 @@ class SettingsScreen(
             setTextColor(palette.text)
         })
         card.addView(TextView(activity).apply {
-            text = "Коротко о твоём просмотре в SOHR"
+            text = "Коротко о ваших просмотрах в SOHR"
             textSize = 12f
             setTextColor(palette.muted)
             setPadding(0, dp(3), 0, dp(12))
