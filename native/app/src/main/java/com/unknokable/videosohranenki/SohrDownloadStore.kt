@@ -10,7 +10,8 @@ data class SohrDownloadEntry(
     val title: String,
     val path: String,
     val sizeBytes: Long,
-    val downloadedAtMs: Long
+    val downloadedAtMs: Long,
+    val autoManaged: Boolean = false
 )
 
 class SohrDownloadStore(context: Context) {
@@ -35,7 +36,8 @@ class SohrDownloadStore(context: Context) {
                             title = obj.optString("title", "Видео"),
                             path = path,
                             sizeBytes = file.length().takeIf { it > 0L } ?: obj.optLong("sizeBytes", 0L),
-                            downloadedAtMs = obj.optLong("downloadedAtMs", 0L)
+                            downloadedAtMs = obj.optLong("downloadedAtMs", 0L),
+                            autoManaged = obj.optBoolean("autoManaged", false)
                         )
                     )
                 }
@@ -45,7 +47,7 @@ class SohrDownloadStore(context: Context) {
         return parsed
     }
 
-    fun register(item: VideoItem, file: File) {
+    fun register(item: VideoItem, file: File, autoManaged: Boolean = false) {
         val list = entries().filterNot { it.messageId == item.messageId }.toMutableList()
         list.add(
             0,
@@ -54,7 +56,8 @@ class SohrDownloadStore(context: Context) {
                 title = item.title.ifBlank { "Видео" },
                 path = file.absolutePath,
                 sizeBytes = file.length(),
-                downloadedAtMs = System.currentTimeMillis()
+                downloadedAtMs = System.currentTimeMillis(),
+                autoManaged = autoManaged
             )
         )
         save(list)
@@ -70,6 +73,8 @@ class SohrDownloadStore(context: Context) {
 
     fun contains(messageId: Long): Boolean = entries().any { it.messageId == messageId }
 
+    fun autoEntries(): List<SohrDownloadEntry> = entries().filter { it.autoManaged }
+
     fun totalBytes(): Long = entries().sumOf { it.sizeBytes }
 
     private fun save(entries: List<SohrDownloadEntry>) {
@@ -82,6 +87,7 @@ class SohrDownloadStore(context: Context) {
                     .put("path", entry.path)
                     .put("sizeBytes", entry.sizeBytes)
                     .put("downloadedAtMs", entry.downloadedAtMs)
+                    .put("autoManaged", entry.autoManaged)
             )
         }
         val normalized = entries.take(100)
