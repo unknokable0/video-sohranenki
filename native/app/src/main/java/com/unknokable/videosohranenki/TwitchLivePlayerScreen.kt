@@ -211,7 +211,7 @@ class TwitchLivePlayerScreen(
         loader.alpha = 0.92f
         playerCard.addView(
             loader,
-            FrameLayout.LayoutParams(dp(54), dp(54), Gravity.CENTER)
+            FrameLayout.LayoutParams(dp(40), dp(40), Gravity.CENTER)
         )
 
         buildPlayerControls()
