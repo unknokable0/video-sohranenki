@@ -45,11 +45,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.0.11 version
+      - name: Assign SOHR 6.0.12 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=600011" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.0.11" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=600012" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.0.12" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -218,6 +218,20 @@ jobs:
           ).read_text(encoding="utf-8")
           if "chunked(3)" not in dialogs or "dp(context, 96)" not in dialogs:
               raise SystemExit("Appearance palette readability regression")
+          if "LinearLayout.LayoutParams(dp(context, 38), dp(context, 4))" in dialogs:
+              raise SystemExit("Legacy dialog top handle regression")
+
+          if "BitmapFactory.decodeFile" in player:
+              raise SystemExit("Synchronous thumbnail decoding regression")
+
+          twitch_player = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/TwitchPlayerScreen.kt"
+          ).read_text(encoding="utf-8")
+          if "dp(300)" in twitch_player:
+              raise SystemExit("Fixed-height Twitch player regression")
+          for required in ["availableWidth", "showPlayerSettings()", "9f / 16f"]:
+              if required not in twitch_player:
+                  raise SystemExit(f"Adaptive Twitch player UI missing: {required}")
 
           splash = Path("native/app/src/main/res/values-v31/styles.xml")
           if not splash.is_file() or "windowSplashScreenAnimatedIcon" not in splash.read_text(encoding="utf-8"):
@@ -240,7 +254,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "В интерфейсе завершён переход на обращение на «вы» • В статистике убран лишний текст под полосой прогресса • После обновления появилась кнопка «Список» с перечнем изменений • Окно завершения обновления стало аккуратнее и удобнее"
+            "notes": "Видео-интерфейс стал компактнее и ровнее • Twitch-записи теперь используют адаптивный формат 16:9 • Во всех основных диалогах убрана верхняя полоска • Окна выбора стали компактнее и меньше перекрывают экран • Исправлена кнопка настроек Twitch-видео • Локальные превью больше не декодируются синхронно на UI-потоке"
           }
           EOF
           cat update.json

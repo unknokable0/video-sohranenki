@@ -74,7 +74,7 @@ class TwitchPlayerScreen(
         override fun run() {
             if (destroyed) return
             pollPlayerState()
-            handler.postDelayed(this, if (paused) 850L else 350L)
+            handler.postDelayed(this, if (paused) 1_000L else 500L)
         }
     }
 
@@ -144,22 +144,22 @@ class TwitchPlayerScreen(
 
         if (animationsEnabled) {
             playerCard.alpha = 0f
-            playerCard.translationY = dp(8).toFloat()
+            playerCard.translationY = dp(6).toFloat()
             controlsCard.alpha = 0f
-            controlsCard.translationY = dp(8).toFloat()
+            controlsCard.translationY = dp(6).toFloat()
             playerCard.post {
                 val ease = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
                 playerCard.animate()
                     .alpha(1f)
                     .translationY(0f)
-                    .setDuration(240L)
+                    .setDuration(190L)
                     .setInterpolator(ease)
                     .start()
                 controlsCard.animate()
                     .alpha(1f)
                     .translationY(0f)
-                    .setStartDelay(55L)
-                    .setDuration(240L)
+                    .setStartDelay(35L)
+                    .setDuration(190L)
                     .setInterpolator(ease)
                     .start()
             }
@@ -170,15 +170,15 @@ class TwitchPlayerScreen(
         val row = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), dp(10), dp(14), dp(8))
+            setPadding(dp(10), dp(8), dp(10), dp(7))
             setBackgroundColor(palette.background)
         }
 
         val back = ImageButton(activity).apply {
             setImageResource(R.drawable.ic_back)
             imageTintList = ColorStateList.valueOf(palette.text)
-            background = rounded(palette.surfaceAlt, 22)
-            setPadding(dp(11), dp(11), dp(11), dp(11))
+            background = rounded(palette.surfaceAlt, 19)
+            setPadding(dp(9), dp(9), dp(9), dp(9))
             contentDescription = "Назад"
             setOnClickListener {
                 pulse(this)
@@ -188,24 +188,24 @@ class TwitchPlayerScreen(
 
         val titleBox = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), 0, dp(8), 0)
+            setPadding(dp(10), 0, dp(6), 0)
         }
         titleBox.addView(TextView(activity).apply {
             text = "Запись стрима"
-            textSize = 17f
+            textSize = 16f
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(palette.text)
         })
         titleBox.addView(TextView(activity).apply {
             text = "Twitch • @t2x2"
-            textSize = 11.5f
+            textSize = 11f
             setTextColor(palette.muted)
             setPadding(0, dp(2), 0, 0)
         })
 
-        row.addView(back, LinearLayout.LayoutParams(dp(44), dp(44)))
+        row.addView(back, LinearLayout.LayoutParams(dp(38), dp(38)))
         row.addView(titleBox, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row.addView(View(activity), LinearLayout.LayoutParams(dp(44), dp(44)))
+        row.addView(View(activity), LinearLayout.LayoutParams(dp(38), dp(38)))
         return row
     }
 
@@ -269,8 +269,8 @@ class TwitchPlayerScreen(
     private fun buildControls(): LinearLayout {
         val box = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(9), dp(14), dp(12))
-            background = rounded(Color.parseColor("#14111B"), 18)
+            setPadding(dp(10), dp(6), dp(10), dp(8))
+            background = rounded(Color.parseColor("#14111B"), 16)
         }
 
         seekBar = SohrTimeBar(activity).apply {
@@ -297,7 +297,7 @@ class TwitchPlayerScreen(
         seekBar.setProgress(currentMs, durationMs, bufferedMs)
         box.addView(
             seekBar,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(30))
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(24))
         )
 
         val times = LinearLayout(activity).apply {
@@ -305,37 +305,37 @@ class TwitchPlayerScreen(
             gravity = Gravity.CENTER_VERTICAL
         }
         currentTime = timeLabel(formatMs(currentMs)).apply {
-            minWidth = dp(46)
+            minWidth = dp(40)
             gravity = Gravity.START or Gravity.CENTER_VERTICAL
         }
         totalTime = timeLabel(formatMs(durationMs)).apply {
-            minWidth = dp(50)
+            minWidth = dp(44)
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
         }
 
         qualityButton = TextView(activity).apply {
             text = "Авто"
-            textSize = 10.5f
+            textSize = 10f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
-            setPadding(dp(10), 0, dp(10), 0)
-            background = rounded(Color.parseColor("#7A241B34"), 15)
+            setPadding(dp(7), 0, dp(7), 0)
+            background = rounded(Color.parseColor("#55221A30"), 13)
             setOnClickListener {
                 pulse(this)
                 showQualityPicker()
             }
         }
 
-        val settingsButton = iconButton(R.drawable.ic_player_settings, Color.parseColor("#7A241B34"), 38).apply {
+        val settingsButton = iconButton(R.drawable.ic_player_settings, Color.parseColor("#55221A30"), 34).apply {
             contentDescription = "Настройки плеера"
             setOnClickListener {
                 pulse(this)
-                showQualityPicker()
+                showPlayerSettings()
             }
         }
 
-        fullscreenButton = iconButton(R.drawable.ic_fullscreen, Color.parseColor("#7A241B34"), 38).apply {
+        fullscreenButton = iconButton(R.drawable.ic_fullscreen, Color.parseColor("#55221A30"), 34).apply {
             setOnClickListener {
                 pulse(this)
                 onFullscreen(!fullscreen)
@@ -345,28 +345,28 @@ class TwitchPlayerScreen(
         val actionGroup = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(3), dp(3), dp(3), dp(3))
-            background = rounded(Color.parseColor("#241D2C"), 19)
+            setPadding(0, 0, 0, 0)
+            setBackgroundColor(Color.TRANSPARENT)
         }
         actionGroup.addView(
             qualityButton,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(34))
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(30))
         )
         actionGroup.addView(
             settingsButton,
-            LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginStart = dp(3) }
+            LinearLayout.LayoutParams(dp(30), dp(30)).apply { marginStart = dp(2) }
         )
         actionGroup.addView(
             fullscreenButton,
-            LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginStart = dp(3) }
+            LinearLayout.LayoutParams(dp(30), dp(30)).apply { marginStart = dp(2) }
         )
 
-        times.addView(currentTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)))
-        times.addView(totalTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)).apply {
-            marginStart = dp(6)
+        times.addView(currentTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)))
+        times.addView(totalTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)).apply {
+            marginStart = dp(4)
         })
         times.addView(View(activity), LinearLayout.LayoutParams(0, 1, 1f))
-        times.addView(actionGroup, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)))
+        times.addView(actionGroup, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)))
         box.addView(times)
 
         val transport = LinearLayout(activity).apply {
@@ -375,21 +375,21 @@ class TwitchPlayerScreen(
             setPadding(0, dp(4), 0, 0)
         }
 
-        val rewind = iconButton(R.drawable.ic_replay_10, Color.parseColor("#66181322"), 46).apply {
+        val rewind = iconButton(R.drawable.ic_replay_10, Color.parseColor("#4D181322"), 40).apply {
             contentDescription = "Назад на 10 секунд"
             setOnClickListener {
                 pulse(this)
                 seekBy(-10_000L)
             }
         }
-        playPause = iconButton(R.drawable.ic_play, Color.parseColor("#8B5CF6"), 54).apply {
+        playPause = iconButton(R.drawable.ic_play, Color.parseColor("#8B5CF6"), 48).apply {
             setOnClickListener {
                 pulse(this)
                 if (paused) runJs("window.sohr&&window.sohr.play()")
                 else runJs("window.sohr&&window.sohr.pause()")
             }
         }
-        val forward = iconButton(R.drawable.ic_forward_10, Color.parseColor("#66181322"), 46).apply {
+        val forward = iconButton(R.drawable.ic_forward_10, Color.parseColor("#4D181322"), 40).apply {
             contentDescription = "Вперёд на 10 секунд"
             setOnClickListener {
                 pulse(this)
@@ -397,9 +397,9 @@ class TwitchPlayerScreen(
             }
         }
 
-        transport.addView(rewind, LinearLayout.LayoutParams(dp(54), dp(46)).apply { marginEnd = dp(18) })
-        transport.addView(playPause, LinearLayout.LayoutParams(dp(56), dp(56)))
-        transport.addView(forward, LinearLayout.LayoutParams(dp(54), dp(46)).apply { marginStart = dp(18) })
+        transport.addView(rewind, LinearLayout.LayoutParams(dp(42), dp(40)).apply { marginEnd = dp(12) })
+        transport.addView(playPause, LinearLayout.LayoutParams(dp(50), dp(50)))
+        transport.addView(forward, LinearLayout.LayoutParams(dp(42), dp(40)).apply { marginStart = dp(12) })
         box.addView(transport)
         return box
     }
@@ -501,6 +501,30 @@ class TwitchPlayerScreen(
         }
     }
 
+    private fun showPlayerSettings() {
+        val quality = qualityLabel(currentQuality.ifBlank { "auto" })
+        ModernDialogs.showChoices(
+            activity,
+            palette,
+            "Настройки видео",
+            listOf(
+                "Качество • $quality",
+                "Смотреть сначала"
+            ),
+            -1
+        ) { which ->
+            when (which) {
+                0 -> showQualityPicker()
+                1 -> {
+                    seekTo(0L)
+                    currentMs = 0L
+                    currentTime.text = formatMs(0L)
+                    seekBar.setProgress(0L, durationMs, bufferedMs)
+                }
+            }
+        }
+    }
+
     private fun qualityLabel(raw: String): String = when (raw.lowercase()) {
         "auto" -> "Авто"
         "chunked" -> "Оригинал"
@@ -590,12 +614,17 @@ class TwitchPlayerScreen(
         settings.savePlaybackPosition(item.messageId, currentMs, durationMs)
     }
 
-    private fun normalPlayerLayoutParams() =
-        LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(300)).apply {
-            marginStart = dp(12)
-            marginEnd = dp(12)
-            topMargin = dp(4)
+    private fun normalPlayerLayoutParams(): LinearLayout.LayoutParams {
+        val horizontalMargins = dp(20)
+        val availableWidth =
+            (activity.resources.displayMetrics.widthPixels - horizontalMargins).coerceAtLeast(dp(240))
+        val height = (availableWidth * 9f / 16f).toInt()
+        return LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, height).apply {
+            marginStart = dp(10)
+            marginEnd = dp(10)
+            topMargin = dp(2)
         }
+    }
 
     private fun transportButton(label: String): TextView =
         TextView(activity).apply {
@@ -612,7 +641,12 @@ class TwitchPlayerScreen(
             setImageResource(resId)
             imageTintList = ColorStateList.valueOf(Color.WHITE)
             background = rounded(backgroundColor, size / 2)
-            setPadding(dp(12), dp(12), dp(12), dp(12))
+            val inset = when {
+                size <= 36 -> 8
+                size <= 42 -> 9
+                else -> 11
+            }
+            setPadding(dp(inset), dp(inset), dp(inset), dp(inset))
             scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
         }
 

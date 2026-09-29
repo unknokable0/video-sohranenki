@@ -6,7 +6,6 @@ import android.content.Context
 import android.net.Uri
 import android.os.Environment
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -200,7 +199,7 @@ class PlayerScreen(
             setBackgroundColor(Color.BLACK)
             val localThumb = item.thumbnailPath?.takeIf { it.isNotBlank() }
             when {
-                localThumb != null -> runCatching { BitmapFactory.decodeFile(localThumb) }.getOrNull()?.let { setImageBitmap(it) }
+                localThumb != null -> load(java.io.File(localThumb)) { crossfade(settings.animations) }
                 !item.thumbnailUrl.isNullOrBlank() -> load(item.thumbnailUrl) { crossfade(settings.animations) }
             }
         }
@@ -396,17 +395,17 @@ class PlayerScreen(
         val row = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setPadding(dp(10), dp(8), dp(10), dp(8))
             setBackgroundColor(palette.background)
         }
 
-        val back = iconButton(R.drawable.ic_back, "#181322", 42).apply {
+        val back = iconButton(R.drawable.ic_back, "#181322", 38).apply {
             setOnClickListener { pulse(this); onBack() }
         }
 
         val title = TextView(activity).apply {
             text = cleanTitle(item.title)
-            textSize = 15f
+            textSize = 14.5f
             setTextColor(palette.text)
             setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
@@ -416,15 +415,15 @@ class PlayerScreen(
 
         val spacer = View(activity)
 
-        row.addView(back, LinearLayout.LayoutParams(dp(42), dp(42)))
+        row.addView(back, LinearLayout.LayoutParams(dp(38), dp(38)))
         row.addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row.addView(spacer, LinearLayout.LayoutParams(dp(42), dp(42)))
+        row.addView(spacer, LinearLayout.LayoutParams(dp(38), dp(38)))
         return row
     }
 
     private fun buildOverlay(): FrameLayout {
         val frame = FrameLayout(activity).apply {
-            setBackgroundColor(Color.parseColor("#18000000"))
+            setBackgroundColor(Color.parseColor("#12000000"))
         }
 
         val center = LinearLayout(activity).apply {
@@ -432,14 +431,14 @@ class PlayerScreen(
             gravity = Gravity.CENTER
         }
 
-        playPause = iconButton(R.drawable.ic_play, "#8B5CF6", 54).apply {
+        playPause = iconButton(R.drawable.ic_play, "#8B5CF6", 48).apply {
             setOnClickListener {
                 if (player.isPlaying) player.pause() else player.play()
                 pulse(this)
             }
         }
 
-        center.addView(playPause, LinearLayout.LayoutParams(dp(56), dp(56)))
+        center.addView(playPause, LinearLayout.LayoutParams(dp(50), dp(50)))
 
         frame.addView(
             center,
@@ -452,8 +451,8 @@ class PlayerScreen(
 
         val bottom = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), dp(6), dp(10), dp(8))
-            background = rounded("#5A0B0911", 18)
+            setPadding(dp(8), dp(4), dp(8), dp(5))
+            background = rounded("#660A0810", 14)
         }
 
         seekBar = SohrTimeBar(activity).apply {
@@ -490,35 +489,35 @@ class PlayerScreen(
             gravity = Gravity.CENTER_VERTICAL
         }
         currentTime = timeLabel("0:00").apply {
-            minWidth = dp(42)
+            minWidth = dp(38)
             gravity = Gravity.START or Gravity.CENTER_VERTICAL
         }
         totalTime = timeLabel(initialDurationLabel()).apply {
-            minWidth = dp(48)
+            minWidth = dp(42)
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
-            setPadding(dp(6), 0, dp(8), 0)
+            setPadding(dp(4), 0, dp(5), 0)
         }
         val spacer = View(activity)
 
         qualityButton = TextView(activity).apply {
             text = "Авто"
-            textSize = 11f
+            textSize = 10.5f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
-            minWidth = dp(48)
-            setPadding(dp(10), 0, dp(10), 0)
-            background = rounded("#7A241B34", 15)
+            minWidth = dp(44)
+            setPadding(dp(7), 0, dp(7), 0)
+            background = rounded("#55221A30", 13)
             contentDescription = "Качество видео"
             setOnClickListener { pulse(this); showQualityPicker() }
         }
 
-        val settingsButton = iconButton(R.drawable.ic_player_settings, "#7A241B34", 38).apply {
+        val settingsButton = iconButton(R.drawable.ic_player_settings, "#55221A30", 34).apply {
             contentDescription = "Настройки плеера"
             setOnClickListener { pulse(this); showSettingsSheet() }
         }
 
-        val fullscreenButton = iconButton(R.drawable.ic_fullscreen, "#7A241B34", 38).apply {
+        val fullscreenButton = iconButton(R.drawable.ic_fullscreen, "#55221A30", 34).apply {
             contentDescription = "Полный экран"
             setOnClickListener {
                 onFullscreen(!fullscreen)
@@ -529,33 +528,33 @@ class PlayerScreen(
         val actionGroup = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(3), dp(3), dp(3), dp(3))
-            background = rounded("#4D0D0A13", 19)
+            setPadding(0, 0, 0, 0)
+            setBackgroundColor(Color.TRANSPARENT)
         }
         actionGroup.addView(
             qualityButton,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(34))
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(30))
         )
         actionGroup.addView(
             settingsButton,
-            LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginStart = dp(3) }
+            LinearLayout.LayoutParams(dp(30), dp(30)).apply { marginStart = dp(2) }
         )
         actionGroup.addView(
             fullscreenButton,
-            LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginStart = dp(3) }
+            LinearLayout.LayoutParams(dp(30), dp(30)).apply { marginStart = dp(2) }
         )
 
-        times.addView(currentTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)))
-        times.addView(totalTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)).apply {
-            marginStart = dp(6)
+        times.addView(currentTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)))
+        times.addView(totalTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)).apply {
+            marginStart = dp(4)
         })
         times.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
         times.addView(
             actionGroup,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40))
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32))
         )
 
-        bottom.addView(seekBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(30)))
+        bottom.addView(seekBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(24)))
         bottom.addView(times)
 
         frame.addView(
@@ -565,9 +564,9 @@ class PlayerScreen(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.BOTTOM
             ).apply {
-                leftMargin = dp(8)
-                rightMargin = dp(8)
-                bottomMargin = dp(8)
+                leftMargin = dp(6)
+                rightMargin = dp(6)
+                bottomMargin = dp(6)
             }
         )
         return frame
@@ -714,19 +713,19 @@ class PlayerScreen(
     private fun buildDetails(): LinearLayout {
         val box = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(18), dp(16), dp(12))
+            setPadding(dp(14), dp(14), dp(14), dp(10))
         }
 
         val title = TextView(activity).apply {
             text = cleanTitle(item.title)
-            textSize = 21f
+            textSize = 20f
             setTextColor(palette.text)
             setTypeface(typeface, Typeface.BOLD)
         }
 
         val meta = TextView(activity).apply {
             text = buildMeta()
-            textSize = 13f
+            textSize = 12.5f
             setTextColor(palette.muted)
             setPadding(0, dp(7), 0, 0)
         }
@@ -801,7 +800,7 @@ class PlayerScreen(
         if (item.source == "twitch") {
             row.addView(
                 watchedButton.root,
-                LinearLayout.LayoutParams(0, dp(44), 1f)
+                LinearLayout.LayoutParams(0, dp(42), 1f)
             )
         } else {
             val downloadButton = actionPill(
@@ -811,13 +810,13 @@ class PlayerScreen(
 
             row.addView(
                 watchedButton.root,
-                LinearLayout.LayoutParams(0, dp(44), 1.35f).apply {
+                LinearLayout.LayoutParams(0, dp(42), 1.35f).apply {
                     marginEnd = dp(6)
                 }
             )
             row.addView(
                 downloadButton.root,
-                LinearLayout.LayoutParams(0, dp(44), 0.85f)
+                LinearLayout.LayoutParams(0, dp(42), 0.85f)
             )
         }
         return row
@@ -830,7 +829,7 @@ class PlayerScreen(
 
             addView(TextView(activity).apply {
                 text = "Следующие видео"
-                textSize = 17f
+                textSize = 16f
                 setTypeface(typeface, Typeface.BOLD)
                 setTextColor(palette.text)
                 setPadding(dp(4), dp(4), dp(4), dp(10))
@@ -860,7 +859,7 @@ class PlayerScreen(
                     clipToOutline=true
                     val localThumb = next.thumbnailPath?.takeIf { it.isNotBlank() }
                     when {
-                        localThumb != null -> runCatching { BitmapFactory.decodeFile(localThumb) }.getOrNull()?.let { setImageBitmap(it) }
+                        localThumb != null -> load(java.io.File(localThumb)) { crossfade(settings.animations) }
                         !next.thumbnailUrl.isNullOrBlank() -> load(next.thumbnailUrl) { crossfade(settings.animations) }
                     }
                 }
@@ -1126,8 +1125,8 @@ class PlayerScreen(
         dialog.setContentView(scroll)
         dialog.show()
 
-        val maxHeight = (activity.resources.displayMetrics.heightPixels * 0.82f).toInt()
-        val comfortableHeight = minOf(maxHeight, dp(430))
+        val maxHeight = (activity.resources.displayMetrics.heightPixels * 0.72f).toInt()
+        val comfortableHeight = minOf(maxHeight, dp(390))
         dialog.findViewById<FrameLayout>(
             com.google.android.material.R.id.design_bottom_sheet
         )?.let { sheet ->
@@ -1156,15 +1155,15 @@ class PlayerScreen(
 
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(10), dp(14), dp(18))
-            background = roundedInt(palette.surface, 24)
+            setPadding(dp(12), dp(10), dp(12), dp(14))
+            background = roundedInt(palette.surface, 22)
 
             addView(TextView(activity).apply {
                 text = "Настройки видео"
-                textSize = 19f
+                textSize = 18f
                 setTypeface(typeface, Typeface.BOLD)
                 setTextColor(palette.text)
-                setPadding(dp(4), dp(4), dp(4), dp(12))
+                setPadding(dp(3), dp(3), dp(3), dp(9))
             })
 
             items.forEachIndexed { index, pair ->
@@ -1174,9 +1173,9 @@ class PlayerScreen(
                     },
                     LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
-                        dp(54)
+                        dp(50)
                     ).apply {
-                        bottomMargin = dp(5)
+                        bottomMargin = dp(4)
                     }
                 )
             }
@@ -1839,14 +1838,14 @@ class PlayerScreen(
     }
 
     private fun showOverlay() {
-        handler.removeCallbacks(autoHideControls); overlay.visibility=View.VISIBLE; overlay.animate().cancel(); overlay.animate().alpha(1f).setDuration(if(settings.animations)240 else 0).start()
+        handler.removeCallbacks(autoHideControls); overlay.visibility=View.VISIBLE; overlay.animate().cancel(); overlay.animate().alpha(1f).setDuration(if(settings.animations)180 else 0).start()
         if(player.isPlaying) handler.postDelayed(autoHideControls,3_000L)
     }
 
     private fun hideOverlay() {
         handler.removeCallbacks(autoHideControls); overlay.animate().cancel(); overlay.animate()
             .alpha(0f)
-            .setDuration(if (settings.animations) 240 else 0)
+            .setDuration(if (settings.animations) 180 else 0)
             .withEndAction { overlay.visibility = View.GONE }
             .start()
     }
@@ -1877,7 +1876,11 @@ class PlayerScreen(
                 .onFailure { setImageDrawable(null) }
             setBackgroundColor(Color.TRANSPARENT)
             background = rounded(backgroundColor, size / 2)
-            val inset = if (size <= 40) 10 else 12
+            val inset = when {
+                size <= 36 -> 8
+                size <= 40 -> 9
+                else -> 12
+            }
             setPadding(dp(inset), dp(inset), dp(inset), dp(inset))
             scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
         }
