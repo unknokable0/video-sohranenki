@@ -8,6 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -81,25 +82,60 @@ class TelegramStreamServer(
     suspend fun downloadFully(item: VideoItem): File = withContext(Dispatchers.IO) {
         require(item.fileId > 0 && item.fileSize > 0L) { "Видео недоступно для скачивания" }
 
-        val chunkSize = 8L * 1024L * 1024L
-        var offset = 0L
-        var lastFile: TdApi.File? = null
+        var finalFile: TdApi.File? = null
+        var addedToDownloads = false
 
-        while (offset < item.fileSize) {
-            val limit = minOf(chunkSize, item.fileSize - offset)
-            lastFile = TelegramDownloadCoordinator.withFile(item.fileId) {
-                client.send(TdApi.DownloadFile(item.fileId, 28, offset, limit, true))
+        try {
+            if (item.chatId != 0L && item.messageId > 0L) {
+                // TDLib's persistent download list is independent of partial
+                // downloadFile() range requests used by the player. This prevents
+                // "Canceled by another downloadFile request" while watching.
+                client.send(
+                    TdApi.AddFileToDownloads(
+                        item.fileId,
+                        item.chatId,
+                        item.messageId,
+                        32
+                    )
+                )
+                addedToDownloads = true
+
+                while (true) {
+                    val state = client.send(TdApi.GetFile(item.fileId))
+                    finalFile = state
+                    if (state.local.isDownloadingCompleted) break
+
+                    check(
+                        state.local.isDownloadingActive || state.local.canBeDownloaded
+                    ) { "Telegram остановил загрузку файла" }
+
+                    delay(250L)
+                }
+            } else {
+                // Fallback for old cached items which don't have chatId yet.
+                // One unlimited synchronous request is safer than a chain of
+                // offset/limit requests, because changing offset/limit cancels
+                // an existing synchronous TDLib download.
+                finalFile = TelegramDownloadCoordinator.withFile(item.fileId) {
+                    client.send(TdApi.DownloadFile(item.fileId, 32, 0, 0, true))
+                }
             }
-            offset += limit
-        }
 
-        val finalFile = TelegramDownloadCoordinator.withFile(item.fileId) {
-            client.send(TdApi.GetFile(item.fileId))
+            val completed = finalFile ?: client.send(TdApi.GetFile(item.fileId))
+            val path = completed.local.path
+            require(
+                completed.local.isDownloadingCompleted && path.isNotBlank()
+            ) { "Telegram не завершил загрузку файла" }
+
+            File(path).takeIf { it.exists() }
+                ?: error("Загруженный файл не найден")
+        } finally {
+            if (addedToDownloads) {
+                runCatching {
+                    client.send(TdApi.RemoveFileFromDownloads(item.fileId, false))
+                }
+            }
         }
-        val path = finalFile.local.path.ifBlank { lastFile?.local?.path.orEmpty() }
-        require(path.isNotBlank()) { "Telegram не вернул путь к файлу" }
-        File(path).takeIf { it.exists() }
-            ?: error("Загруженный файл не найден")
     }
 
     override fun stop() { scope.cancel(); super.stop() }
