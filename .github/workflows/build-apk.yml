@@ -45,11 +45,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.0.12 version
+      - name: Assign SOHR 6.0.13 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=600012" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.0.12" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=600013" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.0.13" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -213,6 +213,30 @@ jobs:
               if required not in player:
                   raise SystemExit(f"Player hardening missing: {required}")
 
+          telegram_main = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt"
+          ).read_text(encoding="utf-8")
+          telegram_required = [
+              "telegramAutoRefreshIntervalMs = 15_000L",
+              "TdApi.OpenChat(chat.id)",
+              "consecutiveOldPages",
+              "cachedBeforeRefresh",
+              "is TdApi.MessageAnimation",
+              "scheduleFeedAutoRefresh(delayMs = 2_000L, force = false)"
+          ]
+          for required in telegram_required:
+              if required not in telegram_main:
+                  raise SystemExit(f"Telegram refresh hardening missing: {required}")
+
+          sync_script = Path("scripts/sync-videos.js").read_text(encoding="utf-8")
+          for required in [
+              "Keeping the previous catalog",
+              "stableVideos(previous.videos)",
+              "Catalog is already current"
+          ]:
+              if required not in sync_script:
+                  raise SystemExit(f"Telegram sync safety missing: {required}")
+
           dialogs = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/ModernDialogs.kt"
           ).read_text(encoding="utf-8")
@@ -254,7 +278,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "Видео-интерфейс стал компактнее и ровнее • Twitch-записи теперь используют адаптивный формат 16:9 • Во всех основных диалогах убрана верхняя полоска • Окна выбора стали компактнее и меньше перекрывают экран • Исправлена кнопка настроек Twitch-видео • Локальные превью больше не декодируются синхронно на UI-потоке"
+            "notes": "Telegram-сборники теперь проверяются автоматически каждые 15 секунд • Новое сообщение канала запускает ускоренный refresh • Канал принудительно открывается через TDLib перед чтением истории • История больше не обрывается из-за единичного старого сообщения • Недавний кэш безопасно объединяется с новыми данными • Поддержаны Telegram-видео типа Animation • GitHub-синк больше не публикует пустой каталог"
           }
           EOF
           cat update.json
