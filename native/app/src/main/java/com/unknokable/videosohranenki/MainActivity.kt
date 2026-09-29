@@ -163,7 +163,9 @@ class MainActivity : AppCompatActivity() {
     private var videoSectionSwitchLocked = false
     private var settingsScrollY = 0
     private var todayLiveStatusView: TextView? = null
-    private var todayLiveDot: View? = null
+    private var todayLiveDot: LivePulseView? = null
+    private var feedSearchOpen = false
+    private var closeFeedSearch: (() -> Boolean)? = null
     private var predictiveBackTarget: View? = null
 
     private val palette get() = settings.palette()
@@ -252,6 +254,17 @@ class MainActivity : AppCompatActivity() {
 
             override fun handleOnBackPressed() {
                 resetPredictiveBackSurface(animated = false)
+                if (
+                    feedSearchOpen &&
+                    !isPlayerScreen &&
+                    !isSettingsScreen &&
+                    !isAccountScreen &&
+                    !isStreakScreen &&
+                    currentDay == null &&
+                    closeFeedSearch?.invoke() == true
+                ) {
+                    return
+                }
                 if (closeCurrentPlayerScreen()) return
 
                 if (isSettingsScreen) {
@@ -2467,6 +2480,8 @@ class MainActivity : AppCompatActivity() {
 
         startupPhase = false
         startupStatusView = null
+        feedSearchOpen = false
+        closeFeedSearch = null
         isPlayerScreen = false
         isSettingsScreen = false
         isAccountScreen = false
@@ -2876,10 +2891,43 @@ class MainActivity : AppCompatActivity() {
             override fun afterTextChanged(s: Editable?) = Unit
         })
 
+        fun closeSearch(): Boolean {
+            if (!feedSearchOpen && searchPanel.visibility != View.VISIBLE) return false
+            feedSearchOpen = false
+            searchInput.setText("")
+            searchFilter = "all"
+            updateChipStates()
+            searchPanel.animate().cancel()
+            if (settings.animations && searchPanel.visibility == View.VISIBLE) {
+                searchPanel.animate()
+                    .alpha(0f)
+                    .translationY(-dp(5).toFloat())
+                    .setDuration(145L)
+                    .withEndAction {
+                        searchPanel.visibility = View.GONE
+                        searchPanel.alpha = 1f
+                        searchPanel.translationY = 0f
+                    }
+                    .start()
+            } else {
+                searchPanel.visibility = View.GONE
+                searchPanel.alpha = 1f
+                searchPanel.translationY = 0f
+            }
+            searchResultsHost.visibility = View.GONE
+            contentHost.visibility = View.VISIBLE
+            (getSystemService(INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager)
+                ?.hideSoftInputFromWindow(searchInput.windowToken, 0)
+            return true
+        }
+
+        closeFeedSearch = { closeSearch() }
+
         searchButton.setOnClickListener {
             animatePress(searchButton)
-            val opening = searchPanel.visibility != View.VISIBLE
+            val opening = !feedSearchOpen
             if (opening) {
+                feedSearchOpen = true
                 searchPanel.visibility = View.VISIBLE
                 if (settings.animations) {
                     searchPanel.alpha = 0f
@@ -2900,38 +2948,14 @@ class MainActivity : AppCompatActivity() {
                         ?.showSoftInput(searchInput, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
                 }
             } else {
-                searchInput.setText("")
-                searchFilter = "all"
-                updateChipStates()
-                searchPanel.animate().cancel()
-                searchPanel.visibility = View.GONE
-                searchResultsHost.visibility = View.GONE
-                contentHost.visibility = View.VISIBLE
-                (getSystemService(INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager)
-                    ?.hideSoftInputFromWindow(searchInput.windowToken, 0)
+                closeSearch()
             }
         }
 
         if (videoSection == 1) {
             contentHost.addView(buildTodayCard(regularVideos))
-
-            val liveSlot = FrameLayout(this).apply {
-                minimumHeight = dp(76)
-            }
-            contentHost.addView(
-                liveSlot,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    marginStart = dp(16)
-                    marginEnd = dp(16)
-                    topMargin = dp(4)
-                    bottomMargin = dp(6)
-                }
-            )
-            t2x2LiveSlot = liveSlot
-            liveSlot.post { refreshT2x2Live(liveSlot) }
+            t2x2LiveSlot = null
+            contentHost.post { refreshT2x2Live() }
 
             val continueVideos = videos
                 .filter { playbackProgress(it) in 0.01f..0.985f }
@@ -3141,7 +3165,7 @@ class MainActivity : AppCompatActivity() {
             isFocusable = true
             setOnClickListener {
                 animatePress(this)
-                if (lastT2x2Live != null) openT2x2OnTwitch()
+                openT2x2OnTwitch()
             }
         }
 
@@ -3175,29 +3199,26 @@ class MainActivity : AppCompatActivity() {
         val livePill = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(dp(10), 0, dp(11), 0)
-            background = roundedBg(palette.surfaceAlt, 15)
+            setPadding(dp(8), 0, dp(11), 0)
+            background = roundedBg(palette.surfaceAlt, 16)
         }
-        val liveDot = View(this).apply {
-            background = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(muted)
-            }
+        val liveDot = LivePulseView(this).apply {
+            setState(lastT2x2Live != null, settings.animations)
         }
         val liveText = TextView(this).apply {
-            text = "T2x2"
+            text = "Антон не в сети"
             textSize = 11f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(muted)
         }
-        livePill.addView(liveDot, LinearLayout.LayoutParams(dp(7), dp(7)).apply {
-            marginEnd = dp(6)
+        livePill.addView(liveDot, LinearLayout.LayoutParams(dp(25), dp(25)).apply {
+            marginEnd = dp(2)
         })
         livePill.addView(liveText)
         card.addView(
             livePill,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(34))
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(36))
         )
 
         todayLiveDot = liveDot
@@ -3226,31 +3247,14 @@ class MainActivity : AppCompatActivity() {
     ) {
         val label = todayLiveStatusView ?: return
         val dot = todayLiveDot
-        when {
-            live != null -> {
-                label.text = "LIVE"
-                label.setTextColor(Color.parseColor("#50D99A"))
-                dot?.background = android.graphics.drawable.GradientDrawable().apply {
-                    shape = android.graphics.drawable.GradientDrawable.OVAL
-                    setColor(Color.parseColor("#50D99A"))
-                }
-            }
-            unavailable -> {
-                label.text = "T2x2 • ?"
-                label.setTextColor(muted)
-                dot?.background = android.graphics.drawable.GradientDrawable().apply {
-                    shape = android.graphics.drawable.GradientDrawable.OVAL
-                    setColor(muted)
-                }
-            }
-            else -> {
-                label.text = "T2x2 • OFF"
-                label.setTextColor(muted)
-                dot?.background = android.graphics.drawable.GradientDrawable().apply {
-                    shape = android.graphics.drawable.GradientDrawable.OVAL
-                    setColor(muted)
-                }
-            }
+        val isLive = live != null
+        dot?.setState(isLive, settings.animations)
+        if (isLive) {
+            label.text = "Антон в сети"
+            label.setTextColor(Color.parseColor("#FF4458"))
+        } else {
+            label.text = "Антон не в сети"
+            label.setTextColor(muted)
         }
     }
 
