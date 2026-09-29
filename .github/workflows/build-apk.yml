@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.2.0: queue, MediaSession, previews, downloads, Recap and motion
+# SOHR 6.2.1: bottom-nav, Today text, downloads back and preview settings polish
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.2.0 version
+      - name: Assign SOHR 6.2.1 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=620000" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.2.0" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=620001" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.2.1" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -341,6 +341,23 @@ jobs:
               raise SystemExit("SOHR 6.2 preview-mode persistence regression")
 
           for required in [
+              "val atBottom = !scroll.canScrollVertically(1)",
+              ".translationY(dp(30).toFloat())",
+              'else -> unwatchedVideos.size.toString() + " новых"',
+              'contentDescription = "Назад"'
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.2.1 UI polish regression: {required}")
+
+          for required in [
+              "fun modeLabel(mode: String)",
+              "ModernDialogs.showChoices",
+              '"Тихое превью • " + modeLabel(settings.previewMode)'
+          ]:
+              if required not in settings_screen:
+                  raise SystemExit(f"SOHR 6.2.1 compact preview-setting regression: {required}")
+
+          for required in [
               '"С прошлого раза"',
               "showPlaybackQueue",
               "showDownloadCenter",
@@ -453,7 +470,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "С прошлого раза • MediaSession и системное управление • Улучшенный LIVE T2x2 • Управляемая очередь • Оптимизированная предзагрузка до 15% • Inline-превью Wi‑Fi/Всегда/Выкл • Центр загрузок • Единая motion/haptic система • Адаптивная прокрутка интерфейса • SOHR Recap с реальным временем просмотра"
+            "notes": "Нижняя панель больше не обрезается у самого низа страницы • Текст SOHR Сегодня стал компактнее без лишнего многоточия • В Загрузках добавлена нормальная кнопка Назад • Настройка превью стала компактной строкой с аккуратным окном выбора"
           }
           EOF
           cat update.json
