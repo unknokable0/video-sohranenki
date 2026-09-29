@@ -2997,6 +2997,19 @@ class MainActivity : AppCompatActivity() {
             t2x2LiveSlot = null
             contentHost.post { refreshT2x2Live() }
 
+            val sinceLastVisit = regularVideos
+                .asSequence()
+                .filter {
+                    previousVisitAtMs > 0L &&
+                        it.date.toLong() * 1000L > previousVisitAtMs
+                }
+                .sortedWith(
+                    compareByDescending<VideoItem> { it.date }
+                        .thenByDescending { it.messageId }
+                )
+                .take(8)
+                .toList()
+
             val continueVideos = videos
                 .filter { playbackProgress(it) in 0.01f..0.985f }
                 .sortedWith(
@@ -3005,16 +3018,32 @@ class MainActivity : AppCompatActivity() {
                 )
                 .take(8)
 
+            val sinceVisitIds = sinceLastVisit.mapTo(hashSetOf()) { it.messageId }
             val continueIds = continueVideos.mapTo(hashSetOf()) { it.messageId }
             val freshVideos = regularVideos
                 .asSequence()
-                .filterNot { it.messageId in continueIds }
+                .filterNot { it.messageId in continueIds || it.messageId in sinceVisitIds }
                 .sortedWith(
                     compareByDescending<VideoItem> { it.date }
                         .thenByDescending { it.messageId }
                 )
                 .take(10)
                 .toList()
+
+            if (sinceLastVisit.isNotEmpty()) {
+                contentHost.addView(
+                    buildHomeVideoShelf(
+                        title = "С прошлого раза",
+                        subtitle = if (sinceLastVisit.size == 1) {
+                            "1 новое видео после прошлого захода"
+                        } else {
+                            sinceLastVisit.size.toString() + " новых видео после прошлого захода"
+                        },
+                        items = sinceLastVisit,
+                        mode = HomeVideoShelfAdapter.Mode.NEW
+                    )
+                )
+            }
 
             if (continueVideos.isNotEmpty()) {
                 contentHost.addView(
