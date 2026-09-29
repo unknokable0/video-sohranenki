@@ -8,6 +8,7 @@ import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PathMeasure
+import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.view.View
 import android.view.animation.LinearInterpolator
@@ -43,10 +44,12 @@ class LoadingWaveView(
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
+    private val headPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val headPos = FloatArray(2)
 
     private var phase = 0f
     private val animator = ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = 1320L
+        duration = 1180L
         repeatCount = ValueAnimator.INFINITE
         interpolator = LinearInterpolator()
         addUpdateListener {
@@ -106,13 +109,13 @@ class LoadingWaveView(
 
         shadowPaint.shader = null
         shadowPaint.color = withAlpha(color, (12 + breathe * 9).toInt())
-        shadowPaint.strokeWidth = 10.2f * unit
+        shadowPaint.strokeWidth = 9.4f * unit
         canvas.drawPath(sPath, shadowPaint)
 
-        railPaint.strokeWidth = 5.8f * unit
+        railPaint.strokeWidth = 5.1f * unit
         canvas.drawPath(sPath, railPaint)
 
-        val segmentLength = length * .19f
+        val segmentLength = length * .165f
         val start = phase * length
         val end = start + segmentLength
 
@@ -145,8 +148,26 @@ class LoadingWaveView(
 
         corePaint.shader = null
         corePaint.color = withAlpha(Color.WHITE, 160)
-        corePaint.strokeWidth = 1.65f * unit
+        corePaint.strokeWidth = 1.45f * unit
         canvas.drawPath(tailPath, corePaint)
+
+        val headDistance = end % length
+        if (measure.getPosTan(headDistance, headPos, null)) {
+            val radius = 7.5f * unit
+            headPaint.shader = RadialGradient(
+                headPos[0],
+                headPos[1],
+                radius,
+                intArrayOf(
+                    Color.WHITE,
+                    withAlpha(lighten(color, .56f), 210),
+                    withAlpha(color, 0)
+                ),
+                floatArrayOf(0f, .30f, 1f),
+                Shader.TileMode.CLAMP
+            )
+            canvas.drawCircle(headPos[0], headPos[1], radius, headPaint)
+        }
     }
 
     private fun addWrappedSegment(path: Path, start: Float, end: Float, length: Float) {

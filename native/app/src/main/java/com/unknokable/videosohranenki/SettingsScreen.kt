@@ -153,6 +153,12 @@ class SettingsScreen(
         val streak = tracker.currentStreak()
         val bestStreak = tracker.longestStreak()
         val activeDays = tracker.totalWatchedDays()
+        val completion = if (videos > 0) {
+            ((watched.toFloat() / videos.toFloat()) * 100f).toInt().coerceIn(0, 100)
+        } else 0
+        val averageMinutes = if (activeDays > 0) {
+            (seconds / 60L / activeDays.toLong()).coerceAtLeast(0L)
+        } else 0L
 
         val card = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
@@ -240,12 +246,54 @@ class SettingsScreen(
             statCell(R.drawable.ic_stat_trophy, bestStreak.toString(), "Лучший стрик")
         )
 
+        val progressHeader = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(2), dp(4), dp(2), dp(7))
+        }
+        progressHeader.addView(TextView(activity).apply {
+            text = "Прогресс медиатеки"
+            textSize = 12f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(palette.text)
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        progressHeader.addView(TextView(activity).apply {
+            text = completion.toString() + "%"
+            textSize = 12f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(palette.accent)
+        })
+        card.addView(progressHeader)
+
+        val progressTrack = FrameLayout(activity).apply {
+            background = rounded(palette.surfaceAlt, 5)
+            clipToOutline = true
+        }
+        val progressFill = View(activity).apply {
+            background = rounded(palette.accent, 5)
+        }
+        progressTrack.addView(
+            progressFill,
+            FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT)
+        )
+        card.addView(
+            progressTrack,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(8))
+        )
+        progressTrack.post {
+            val params = progressFill.layoutParams as FrameLayout.LayoutParams
+            params.width = (progressTrack.width * (completion / 100f)).toInt()
+            progressFill.layoutParams = params
+        }
+
         card.addView(TextView(activity).apply {
-            text = "Активных дней: $activeDays  •  текущий стрик: $streak"
-            textSize = 11.5f
+            text = "Активных дней: " + activeDays +
+                "  •  текущий стрик: " + streak +
+                "  •  в среднем " + averageMinutes + "м/день"
+            textSize = 11f
             gravity = Gravity.CENTER
             setTextColor(palette.muted)
-            setPadding(dp(4), dp(2), dp(4), 0)
+            setPadding(dp(4), dp(9), dp(4), 0)
         })
 
         return LinearLayout(activity).apply {

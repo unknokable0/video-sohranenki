@@ -699,7 +699,8 @@ class PlayerScreen(
         lateinit var watchedButton: TextView
 
         fun syncWatchedAction(animated: Boolean = false) {
-            val nextText = if (watched) "↩  В сборники" else "✓  В просмотренные"
+            val nextText = if (watched) "В сборники" else "В просмотренные"
+            val nextIcon = if (watched) R.drawable.ic_action_restore else R.drawable.ic_check
             val nextBackground = if (watched) palette.accent else palette.surfaceAlt
             val nextTextColor = if (watched) Color.WHITE else palette.text
             watchedButton.animate().cancel()
@@ -709,6 +710,9 @@ class PlayerScreen(
                     .setDuration(70L)
                     .withEndAction {
                         watchedButton.text = nextText
+                        watchedButton.setCompoundDrawablesRelativeWithIntrinsicBounds(nextIcon, 0, 0, 0)
+                        watchedButton.compoundDrawableTintList =
+                            android.content.res.ColorStateList.valueOf(nextTextColor)
                         watchedButton.setTextColor(nextTextColor)
                         watchedButton.background = roundedInt(nextBackground, 14)
                         watchedButton.animate()
@@ -719,6 +723,9 @@ class PlayerScreen(
                     }.start()
             } else {
                 watchedButton.text = nextText
+                watchedButton.setCompoundDrawablesRelativeWithIntrinsicBounds(nextIcon, 0, 0, 0)
+                watchedButton.compoundDrawableTintList =
+                    android.content.res.ColorStateList.valueOf(nextTextColor)
                 watchedButton.setTextColor(nextTextColor)
                 watchedButton.background = roundedInt(nextBackground, 14)
                 watchedButton.alpha = 1f
@@ -736,7 +743,7 @@ class PlayerScreen(
         if (item.source == "twitch") {
             row.addView(watchedButton, LinearLayout.LayoutParams(0, dp(44), 1f))
         } else {
-            val downloadButton = actionPill("↓  Скачать") { enqueueDownload() }
+            val downloadButton = actionPill("Скачать", R.drawable.ic_action_download) { enqueueDownload() }
             row.addView(watchedButton, LinearLayout.LayoutParams(0, dp(44), 1.35f).apply { marginEnd = dp(6) })
             row.addView(downloadButton, LinearLayout.LayoutParams(0, dp(44), 0.85f))
         }
@@ -850,9 +857,9 @@ class PlayerScreen(
         }
 
         val speedLabel = if (speed == 1f) "1×  Скорость" else speed.toString() + "×  Скорость"
-        val speedBtn = actionPill(speedLabel) { showSpeedPicker() }
+        val speedBtn = actionPill(speedLabel, R.drawable.ic_player_speed) { showSpeedPicker() }
         speedActionButton = speedBtn
-        val sleepBtn = actionPill("◷  Таймер") { showSleepPicker() }
+        val sleepBtn = actionPill("Таймер", R.drawable.ic_player_timer) { showSleepPicker() }
 
         row.addView(
             speedBtn,
@@ -865,7 +872,11 @@ class PlayerScreen(
         return row
     }
 
-    private fun actionPill(label: String, onClick: (View) -> Unit): TextView =
+    private fun actionPill(
+        label: String,
+        iconRes: Int? = null,
+        onClick: (View) -> Unit
+    ): TextView =
         TextView(activity).apply {
             text = label
             textSize = 12f
@@ -873,6 +884,12 @@ class PlayerScreen(
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(palette.text)
             background = roundedInt(palette.surfaceAlt, 14)
+            compoundDrawablePadding = dp(7)
+            if (iconRes != null) {
+                setCompoundDrawablesRelativeWithIntrinsicBounds(iconRes, 0, 0, 0)
+                compoundDrawableTintList =
+                    android.content.res.ColorStateList.valueOf(palette.text)
+            }
             setOnClickListener {
                 pulse(this)
                 onClick(this)

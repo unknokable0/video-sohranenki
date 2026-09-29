@@ -49,7 +49,7 @@ class SohrBottomNavView(
     private var indicatorAnimator: ValueAnimator? = null
 
     private val smoothInterpolator = PathInterpolator(0.22f, 1f, 0.36f, 1f)
-    private val streakColor = StreakFireView.colorForStreak(StreakTracker(context).currentStreak())
+    private val streakTracker = StreakTracker(context)
 
     private val indicator = View(context).apply {
         background = GradientDrawable().apply {
@@ -135,8 +135,12 @@ class SohrBottomNavView(
         }
 
         val icon: View = if (tab == SohrTab.STREAK) {
-            StreakFireView(context, streakColor).apply {
+            StreakFireView(
+                context,
+                StreakFireView.colorForStreak(streakTracker.currentStreak())
+            ).apply {
                 contentDescription = "Стрик"
+                setLit(streakTracker.watchedToday(), animate = false)
             }
         } else {
             ImageView(context).apply {
@@ -174,7 +178,7 @@ class SohrBottomNavView(
         if (target !in tabs.indices || target == selectedIndex || requestLocked) return
 
         requestLocked = true
-        animatePress(target)
+        selectIndex(target, animate = true, notify = false)
         onSelect(tabs[target])
 
         postDelayed({
@@ -187,6 +191,8 @@ class SohrBottomNavView(
         if (target < 0) return
 
         requestLocked = false
+        indicatorAnimator?.cancel()
+        indicator.animate().cancel()
 
         if (target == selectedIndex) {
             updateStates(selectedIndex)
@@ -278,7 +284,10 @@ class SohrBottomNavView(
                     if (selected) palette.accent else withAlpha(palette.muted, 220)
                 )
             } else if (icon is StreakFireView) {
-                icon.setFlameColor(streakColor)
+                icon.setFlameColor(
+                    StreakFireView.colorForStreak(streakTracker.currentStreak())
+                )
+                icon.setLit(streakTracker.watchedToday(), animate = false)
                 icon.alpha = if (selected) 1f else 0.58f
             }
 
@@ -306,12 +315,16 @@ class SohrBottomNavView(
         indicator.layoutParams = params
 
         if (animate) {
+            indicatorAnimator?.cancel()
+            indicator.animate().cancel()
             indicator.animate()
                 .translationX(selectedIndex * slot)
                 .setDuration(190L)
                 .setInterpolator(smoothInterpolator)
                 .start()
         } else {
+            indicatorAnimator?.cancel()
+            indicator.animate().cancel()
             indicator.translationX = selectedIndex * slot
         }
     }

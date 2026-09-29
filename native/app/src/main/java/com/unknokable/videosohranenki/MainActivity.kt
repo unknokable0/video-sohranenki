@@ -3894,7 +3894,10 @@ class MainActivity : AppCompatActivity() {
             background = roundedBg(panel, 26)
         }
 
-        val fire = StreakFireView(this, flameColor)
+        val shouldIgniteToday = watchedToday && streakTracker.consumeIgnition()
+        val fire = StreakFireView(this, flameColor).apply {
+            setLit(watchedToday, animate = false)
+        }
 
         val levelBadge = TextView(this).apply {
             text = streakLevelName(streak)
@@ -4013,6 +4016,54 @@ class MainActivity : AppCompatActivity() {
             )
         )
 
+        val weekTitle = TextView(this).apply {
+            text = "Последние 7 дней"
+            textSize = 15f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+            setPadding(dp(2), dp(18), 0, dp(10))
+        }
+
+        val weekCard = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(8), dp(10), dp(8), dp(10))
+            background = roundedBg(panel, 20)
+        }
+
+        val dayNames = listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
+        streakTracker.recentDays(7).forEach { (date, done) ->
+            val isToday = date == java.time.LocalDate.now()
+            val cell = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setPadding(dp(3), dp(5), dp(3), dp(5))
+                background = if (isToday) roundedBg(palette.surfaceAlt, 14) else null
+            }
+            val mini = StreakFireView(this, flameColor, animated = false).apply {
+                setLit(done, animate = false)
+            }
+            cell.addView(
+                mini,
+                LinearLayout.LayoutParams(dp(30), dp(30)).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL
+                }
+            )
+            cell.addView(TextView(this).apply {
+                text = dayNames[(date.dayOfWeek.value - 1).coerceIn(0, 6)]
+                textSize = 10.5f
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                setTypeface(typeface, if (isToday) Typeface.BOLD else Typeface.NORMAL)
+                setTextColor(if (done) this@MainActivity.text else muted)
+                setPadding(0, dp(4), 0, 0)
+            })
+            weekCard.addView(
+                cell,
+                LinearLayout.LayoutParams(0, dp(58), 1f)
+            )
+        }
+
         val levelsTitle = TextView(this).apply {
             text = "Уровни огня"
             textSize = 15f
@@ -4045,7 +4096,9 @@ class MainActivity : AppCompatActivity() {
                 setPadding(dp(8), dp(8), dp(8), dp(8))
                 background = if (active) roundedBg(palette.surfaceAlt, 16) else null
             }
-            val miniFire = StreakFireView(this, entry.color)
+            val miniFire = StreakFireView(this, entry.color, animated = false).apply {
+                setLit(active, animate = false)
+            }
             val labels = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(10), 0, 0, 0)
@@ -4077,6 +4130,8 @@ class MainActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(12) }
         )
+        page.addView(weekTitle)
+        page.addView(weekCard)
         page.addView(levelsTitle)
         page.addView(levels)
 
@@ -4101,6 +4156,9 @@ class MainActivity : AppCompatActivity() {
 
         if (settings.animations) {
             hero.post {
+                if (shouldIgniteToday) {
+                    fire.postDelayed({ fire.playIgnition() }, 120L)
+                }
                 val ease = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
                 hero.animate().alpha(1f).translationY(0f).setDuration(300L).setInterpolator(ease).start()
                 progressCard.animate().alpha(1f).translationY(0f).setStartDelay(70L).setDuration(300L).setInterpolator(ease).start()

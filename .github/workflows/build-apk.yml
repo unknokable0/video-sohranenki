@@ -48,8 +48,8 @@ jobs:
       - name: Assign SOHR 6.0.3 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=600003" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.0.3" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=600004" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.0.4" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -247,7 +247,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.0.3 • stable bottom navigation • scroll-safe appearance • 18 palettes • unclipped dialogs • smarter NEW badge • refined S loader and player icons • BlueStacks verified"
+            "notes": "SOHR 6.0.4 • exact new S icon • hardened bottom navigation • ignition streak + 7-day strip • richer stats • vector video actions • refined S loader • BlueStacks verified"
           }
           EOF
           cat update.json

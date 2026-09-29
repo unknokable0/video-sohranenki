@@ -11,7 +11,10 @@ class StreakTracker(context: Context) {
         val set = prefs.getStringSet(KEY_DAYS, emptySet()).orEmpty().toMutableSet()
         val value = date.toString()
         if (!set.add(value)) return false
-        prefs.edit().putStringSet(KEY_DAYS, set).apply()
+        prefs.edit()
+            .putStringSet(KEY_DAYS, set)
+            .putString(KEY_PENDING_IGNITION_DAY, value)
+            .apply()
         return true
     }
 
@@ -67,7 +70,15 @@ class StreakTracker(context: Context) {
     fun watchedToday(today: LocalDate = LocalDate.now()): Boolean = today in watchedDays()
     fun lastWatchedDay(): LocalDate? = watchedDays().maxOrNull()
 
+    fun consumeIgnition(date: LocalDate = LocalDate.now()): Boolean {
+        val expected = date.toString()
+        if (prefs.getString(KEY_PENDING_IGNITION_DAY, null) != expected) return false
+        prefs.edit().remove(KEY_PENDING_IGNITION_DAY).apply()
+        return true
+    }
+
     companion object {
         private const val KEY_DAYS = "watched_days"
+        private const val KEY_PENDING_IGNITION_DAY = "pending_ignition_day"
     }
 }
