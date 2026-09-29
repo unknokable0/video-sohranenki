@@ -101,7 +101,7 @@ class SohrBottomNavView(
                     val dx = event.x - downX
                     if (abs(dx) > dp(44)) {
                         val target = if (dx < 0) selectedIndex + 1 else selectedIndex - 1
-                        selectIndex(target.coerceIn(0, tabs.lastIndex), true, true)
+                        requestIndex(target.coerceIn(0, tabs.lastIndex))
                     }
                     performClick()
                     true
@@ -123,7 +123,7 @@ class SohrBottomNavView(
             isClickable = true
             isFocusable = true
             contentDescription = labels[index]
-            setOnClickListener { selectIndex(index, true, true) }
+            setOnClickListener { requestIndex(index) }
         }
 
         val column = LinearLayout(context).apply {
@@ -168,10 +168,18 @@ class SohrBottomNavView(
         return slot
     }
 
+    private fun requestIndex(target: Int) {
+        if (target !in tabs.indices || target == selectedIndex) return
+        animatePress(target)
+        onSelect(tabs[target])
+    }
+
     fun syncSelected(tab: SohrTab, animate: Boolean = false) {
         val target = tabs.indexOf(tab)
-        if (target < 0 || target == selectedIndex) {
+        if (target < 0) return
+        if (target == selectedIndex) {
             updateStates(selectedIndex)
+            positionIndicator(false)
             return
         }
         selectIndex(target, animate, false)
