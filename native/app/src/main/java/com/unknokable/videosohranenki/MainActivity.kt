@@ -2462,31 +2462,47 @@ class MainActivity : AppCompatActivity() {
                 )
             }, 420L)
         }
-        startupPhase=false; startupStatusView=null; isPlayerScreen=false; isSettingsScreen=false; isAccountScreen=false; isStreakScreen=false
-        currentDay=null; setFullscreen(false); applySystemTheme()
 
-        val zone=ZoneId.systemDefault()
-        val watched=watchedVideoIds()
-        val watchedVideos=videos.filter { watched.contains(it.messageId.toString()) }
-        val regularVideos=videos.filterNot { watched.contains(it.messageId.toString()) }
-        fun groups(source: List<VideoItem>) = source.groupBy { Instant.ofEpochSecond(it.date.toLong()).atZone(zone).toLocalDate() }
-            .map { (date,items) -> DayCollection(date,items.sortedWith(compareBy<VideoItem>{it.date}.thenBy{it.messageId})) }
-            .sortedByDescending { it.date }
-        val regularGroups=groups(regularVideos)
-        val watchedGroups=groups(watchedVideos)
-        val visibleGroups=if(videoSection==2) watchedGroups else regularGroups
+        startupPhase = false
+        startupStatusView = null
+        isPlayerScreen = false
+        isSettingsScreen = false
+        isAccountScreen = false
+        isStreakScreen = false
+        currentDay = null
+        setFullscreen(false)
+        applySystemTheme()
+
+        val zone = ZoneId.systemDefault()
+        val watched = watchedVideoIds()
+        val watchedVideos = videos.filter { watched.contains(it.messageId.toString()) }
+        val regularVideos = videos.filterNot { watched.contains(it.messageId.toString()) }
+
+        fun groups(source: List<VideoItem>) =
+            source.groupBy {
+                Instant.ofEpochSecond(it.date.toLong()).atZone(zone).toLocalDate()
+            }.map { (date, items) ->
+                DayCollection(
+                    date,
+                    items.sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })
+                )
+            }.sortedByDescending { it.date }
+
+        val regularGroups = groups(regularVideos)
+        val watchedGroups = groups(watchedVideos)
+        val visibleGroups = if (videoSection == 2) watchedGroups else regularGroups
         val sectionTransitionDirection = pendingVideoSectionDirection
 
-        val page=LinearLayout(this).apply {
-            orientation=LinearLayout.VERTICAL
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             setBackgroundColor(bg)
         }
-        val scroll=NestedScrollView(this).apply {
+        val scroll = NestedScrollView(this).apply {
             isFillViewport = true
             overScrollMode = View.OVER_SCROLL_NEVER
             setBackgroundColor(bg)
         }
-        val body=LinearLayout(this).apply {
+        val body = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(bg)
             setPadding(0, 0, 0, dp(16))
@@ -2507,25 +2523,74 @@ class MainActivity : AppCompatActivity() {
             )
         )
 
-        val header=LinearLayout(this).apply {
-            orientation=LinearLayout.VERTICAL
-            setPadding(dp(16),dp(14),dp(16),dp(8))
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(12), dp(16), dp(8))
             setBackgroundColor(bg)
-            minimumHeight = dp(174)
         }
-        header.addView(TextView(this).apply {
-            text="SOHR"; textSize=24f; gravity=Gravity.CENTER_VERTICAL
-            setTextColor(this@MainActivity.text); setTypeface(typeface,Typeface.BOLD)
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(34)))
-        header.addView(TextView(this).apply {
-            val sourceName = when {
-                settings.guestMode && settings.videoSource == "telegram" -> "Гость • локальный режим"
-                settings.videoSource == "twitch" -> "Twitch • @t2x2"
-                else -> "Telegram • @t2x2_video"
+
+        val titleRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        titleRow.addView(
+            TextView(this).apply {
+                text = "SOHR"
+                textSize = 25f
+                gravity = Gravity.CENTER_VERTICAL
+                includeFontPadding = false
+                setTextColor(this@MainActivity.text)
+                setTypeface(typeface, Typeface.BOLD)
+            },
+            LinearLayout.LayoutParams(0, dp(42), 1f)
+        )
+
+        feedRefreshButton = null
+        feedRefreshLabel = null
+        feedRefreshCompletedFlash = false
+        val syncLoader = LoadingWaveView(this, purple).apply {
+            visibility = View.GONE
+            alpha = 0f
+            scaleX = 0.58f
+            scaleY = 0.58f
+            contentDescription = "Синхронизация"
+        }
+        feedRefreshLoader = syncLoader
+        titleRow.addView(syncLoader, LinearLayout.LayoutParams(dp(34), dp(34)).apply {
+            marginEnd = dp(4)
+        })
+
+        val searchButton = ImageButton(this).apply {
+            setImageResource(R.drawable.ic_search)
+            imageTintList = ColorStateList.valueOf(muted)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+            background = roundedBg(palette.surfaceAlt, 18)
+            contentDescription = "Поиск"
+        }
+        titleRow.addView(searchButton, LinearLayout.LayoutParams(dp(40), dp(40)))
+        header.addView(titleRow)
+
+        val sourceName = when {
+            settings.guestMode && settings.videoSource == "telegram" -> "Гость • локальный режим"
+            settings.videoSource == "twitch" -> "Twitch • @t2x2"
+            else -> "Telegram • @t2x2_video"
+        }
+        header.addView(
+            TextView(this).apply {
+                text = if (videoSection == 2) {
+                    sourceName + " • " + watchedVideos.size + " просмотрено"
+                } else {
+                    sourceName + " • " + regularVideos.size + " не просмотрено"
+                }
+                textSize = 11.8f
+                gravity = Gravity.CENTER_VERTICAL
+                setTextColor(muted)
+                maxLines = 1
+                includeFontPadding = false
+                setPadding(0, dp(2), 0, dp(10))
             }
-            text=if(videoSection==2) "$sourceName • История • ${watchedVideos.size} видео" else "$sourceName • ${regularVideos.size} видео • обновляется автоматически"
-            textSize=12f; gravity=Gravity.CENTER_VERTICAL; setTextColor(muted); maxLines=1
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(30)))
+        )
 
         val tabs = FrameLayout(this).apply {
             setPadding(dp(3), dp(3), dp(3), dp(3))
@@ -2542,6 +2607,7 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
             elevation = dp(2).toFloat()
         }
+
         listOf("Главная" to 1, "Просмотренное" to 2).forEach { (label, section) ->
             val selected = videoSection == section
             val tab = TextView(this).apply {
@@ -2566,7 +2632,8 @@ class MainActivity : AppCompatActivity() {
                         MotionEvent.ACTION_UP -> {
                             val dx = event.x - swipeStartX
                             val dy = event.y - swipeStartY
-                            if (kotlin.math.abs(dx) >= dp(46) &&
+                            if (
+                                kotlin.math.abs(dx) >= dp(46) &&
                                 kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.25f
                             ) {
                                 switchVideoSection(if (dx < 0f) 2 else 1)
@@ -2584,6 +2651,7 @@ class MainActivity : AppCompatActivity() {
             }
             tabButtons.addView(tab, LinearLayout.LayoutParams(0, dp(40), 1f))
         }
+
         tabs.addView(
             tabIndicator,
             FrameLayout.LayoutParams(0, dp(40), Gravity.START or Gravity.CENTER_VERTICAL)
@@ -2603,7 +2671,6 @@ class MainActivity : AppCompatActivity() {
             params.width = slot.toInt()
             params.height = dp(40)
             tabIndicator.layoutParams = params
-
             val target = if (videoSection == 2) slot else 0f
             if (sectionTransitionDirection != 0 && settings.animations) {
                 tabIndicator.translationX = if (videoSection == 2) 0f else slot
@@ -2612,9 +2679,7 @@ class MainActivity : AppCompatActivity() {
                     .translationX(target)
                     .setStartDelay(16L)
                     .setDuration(275L)
-                    .setInterpolator(
-                        android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
-                    )
+                    .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
                     .start()
             } else {
                 tabIndicator.translationX = target
@@ -2625,58 +2690,233 @@ class MainActivity : AppCompatActivity() {
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46))
         )
 
-        feedRefreshButton = null
-        feedRefreshLabel = null
-        feedRefreshLoader = null
-        feedRefreshCompletedFlash = false
+        val searchPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            alpha = 0f
+            translationY = -dp(6).toFloat()
+            setPadding(0, dp(10), 0, 0)
+        }
+        val searchInput = EditText(this).apply {
+            hint = "Найти видео или дату"
+            setSingleLine(true)
+            textSize = 14.5f
+            setTextColor(this@MainActivity.text)
+            setHintTextColor(muted)
+            setPadding(dp(14), 0, dp(14), 0)
+            background = roundedBg(palette.surfaceAlt, 17)
+        }
+        searchPanel.addView(
+            searchInput,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46))
+        )
 
-        val controls=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(0,dp(10),0,0) }
-        controls.addView(TextView(this).apply {
-            text=if(videoSection==2) "История просмотров" else "Ваша медиатека"; textSize=14f; setTypeface(typeface,Typeface.BOLD); setTextColor(muted)
-        },LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
-        val autoStatus = LinearLayout(this).apply {
+        val chipsScroll = android.widget.HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            setPadding(0, dp(8), 0, 0)
+        }
+        val chips = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(dp(10), 0, dp(11), 0)
-            background = roundedBg(palette.surfaceAlt, 14)
-            contentDescription = "Автопроверка видео и обновлений активна"
+            gravity = Gravity.CENTER_VERTICAL
         }
-        val autoDot = View(this).apply {
-            background = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(Color.parseColor("#58DFA0"))
-            }
-        }
-        autoStatus.addView(autoDot, LinearLayout.LayoutParams(dp(7), dp(7)).apply {
-            marginEnd = dp(7)
-        })
-        autoStatus.addView(TextView(this).apply {
-            text = "Автопроверка активна"
-            textSize = 10.5f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(muted)
-        })
-        if (settings.animations) {
-            autoDot.animate()
-                .alpha(0.45f)
-                .setDuration(820L)
-                .withEndAction {
-                    if (autoDot.isAttachedToWindow) {
-                        autoDot.animate().alpha(1f).setDuration(820L).start()
-                    }
-                }
-                .start()
-        }
-        controls.addView(autoStatus, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)))
-        header.addView(controls, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
+        chipsScroll.addView(
+            chips,
+            android.widget.HorizontalScrollView.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+        searchPanel.addView(
+            chipsScroll,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46))
+        )
+        header.addView(searchPanel)
         body.addView(header)
 
+        val searchResultsHost = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setPadding(0, dp(4), 0, dp(10))
+        }
+        body.addView(searchResultsHost)
+
+        val contentHost = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        body.addView(contentHost)
+
+        var searchFilter = "all"
+        val chipViews = linkedMapOf<String, TextView>()
+
+        fun updateChipStates() {
+            chipViews.forEach { (key, chip) ->
+                val selected = key == searchFilter
+                chip.setTextColor(if (selected) Color.WHITE else muted)
+                chip.background = roundedBg(
+                    if (selected) purple else palette.surfaceAlt,
+                    15
+                )
+            }
+        }
+
+        fun renderSearchResults() {
+            val query = searchInput.text?.toString().orEmpty().trim().lowercase(Locale.getDefault())
+            val active = query.isNotBlank() || searchFilter != "all"
+            if (!active) {
+                searchResultsHost.visibility = View.GONE
+                contentHost.visibility = View.VISIBLE
+                return
+            }
+
+            val now = System.currentTimeMillis()
+            val downloaded = downloadedVideoIds()
+            val filtered = videos.filter { item ->
+                val watchedItem = watched.contains(item.messageId.toString())
+                val ageMs = (now - item.date.toLong() * 1000L).coerceAtLeast(0L)
+                val filterMatch = when (searchFilter) {
+                    "new" -> !watchedItem && ageMs <= 24L * 60L * 60L * 1000L
+                    "unwatched" -> !watchedItem
+                    "watched" -> watchedItem
+                    "downloaded" -> item.localPath != null || downloaded.contains(item.messageId.toString())
+                    else -> true
+                }
+                val dateText = Instant.ofEpochSecond(item.date.toLong())
+                    .atZone(zone)
+                    .toLocalDate()
+                    .format(DateTimeFormatter.ofPattern("d MMMM yyyy", Locale("ru")))
+                    .lowercase(Locale("ru"))
+                filterMatch && (
+                    query.isBlank() ||
+                        item.title.lowercase(Locale.getDefault()).contains(query) ||
+                        dateText.contains(query)
+                    )
+            }.sortedWith(
+                compareByDescending<VideoItem> { it.date }
+                    .thenByDescending { it.messageId }
+            )
+
+            searchResultsHost.removeAllViews()
+            searchResultsHost.addView(
+                TextView(this).apply {
+                    text = if (filtered.isEmpty()) "Ничего не найдено" else "Найдено • " + filtered.size
+                    textSize = 13f
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(if (filtered.isEmpty()) muted else this@MainActivity.text)
+                    setPadding(dp(16), dp(10), dp(16), dp(6))
+                }
+            )
+
+            if (filtered.isNotEmpty()) {
+                searchResultsHost.addView(
+                    RecyclerView(this).apply {
+                        isNestedScrollingEnabled = false
+                        overScrollMode = View.OVER_SCROLL_NEVER
+                        layoutManager = LinearLayoutManager(this@MainActivity)
+                        adapter = VideoAdapter(
+                            items = filtered,
+                            palette = palette,
+                            animationsEnabled = settings.animations,
+                            progressFor = { playbackProgress(it) },
+                            onClick = { item, source -> openPlayer(item, sourceView = source) },
+                            onLongClick = { item, source -> showVideoQuickActions(item, source) }
+                        )
+                        itemAnimator = null
+                    },
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                )
+            }
+
+            contentHost.visibility = View.GONE
+            searchResultsHost.visibility = View.VISIBLE
+        }
+
+        listOf(
+            "all" to "Все",
+            "new" to "Новые",
+            "unwatched" to "Не смотрел",
+            "watched" to "Просмотрено",
+            "downloaded" to "Скачано"
+        ).forEach { (key, label) ->
+            val chip = TextView(this).apply {
+                text = label
+                textSize = 11.5f
+                gravity = Gravity.CENTER
+                setTypeface(typeface, Typeface.BOLD)
+                setPadding(dp(12), 0, dp(12), 0)
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    searchFilter = key
+                    updateChipStates()
+                    renderSearchResults()
+                }
+            }
+            chipViews[key] = chip
+            chips.addView(chip, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)).apply {
+                marginEnd = dp(7)
+            })
+        }
+        updateChipStates()
+
+        searchInput.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                (searchInput.tag as? Runnable)?.let { searchInput.removeCallbacks(it) }
+                val render = Runnable { renderSearchResults() }
+                searchInput.tag = render
+                searchInput.postDelayed(render, 90L)
+            }
+            override fun afterTextChanged(s: Editable?) = Unit
+        })
+
+        searchButton.setOnClickListener {
+            animatePress(searchButton)
+            val opening = searchPanel.visibility != View.VISIBLE
+            if (opening) {
+                searchPanel.visibility = View.VISIBLE
+                if (settings.animations) {
+                    searchPanel.alpha = 0f
+                    searchPanel.translationY = -dp(6).toFloat()
+                    searchPanel.animate()
+                        .alpha(1f)
+                        .translationY(0f)
+                        .setDuration(190L)
+                        .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                        .start()
+                } else {
+                    searchPanel.alpha = 1f
+                    searchPanel.translationY = 0f
+                }
+                searchInput.requestFocus()
+                searchInput.post {
+                    (getSystemService(INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager)
+                        ?.showSoftInput(searchInput, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+                }
+            } else {
+                searchInput.setText("")
+                searchFilter = "all"
+                updateChipStates()
+                searchPanel.animate().cancel()
+                searchPanel.visibility = View.GONE
+                searchResultsHost.visibility = View.GONE
+                contentHost.visibility = View.VISIBLE
+                (getSystemService(INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager)
+                    ?.hideSoftInputFromWindow(searchInput.windowToken, 0)
+            }
+        }
+
         if (videoSection == 1) {
+            contentHost.addView(buildTodayCard(regularVideos))
+
             val liveSlot = FrameLayout(this).apply {
                 minimumHeight = dp(76)
             }
-            body.addView(
+            contentHost.addView(
                 liveSlot,
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -2684,6 +2924,7 @@ class MainActivity : AppCompatActivity() {
                 ).apply {
                     marginStart = dp(16)
                     marginEnd = dp(16)
+                    topMargin = dp(4)
                     bottomMargin = dp(6)
                 }
             )
@@ -2710,10 +2951,10 @@ class MainActivity : AppCompatActivity() {
                 .toList()
 
             if (continueVideos.isNotEmpty()) {
-                body.addView(
+                contentHost.addView(
                     buildHomeVideoShelf(
                         title = "Продолжить просмотр",
-                        subtitle = "Продолжайте с того места, где остановились",
+                        subtitle = "С того места, где остановились",
                         items = continueVideos,
                         mode = HomeVideoShelfAdapter.Mode.CONTINUE
                     )
@@ -2721,10 +2962,10 @@ class MainActivity : AppCompatActivity() {
             }
 
             if (freshVideos.isNotEmpty()) {
-                body.addView(
+                contentHost.addView(
                     buildHomeVideoShelf(
                         title = "Новое",
-                        subtitle = "Свежие видео, которые вы ещё не смотрели",
+                        subtitle = "Свежие видео, которые ещё не смотрели",
                         items = freshVideos,
                         mode = HomeVideoShelfAdapter.Mode.NEW
                     )
@@ -2732,6 +2973,8 @@ class MainActivity : AppCompatActivity() {
             }
         } else {
             t2x2LiveSlot = null
+            todayLiveStatusView = null
+            todayLiveDot = null
         }
 
         val collectionHeader = LinearLayout(this).apply {
@@ -2750,7 +2993,7 @@ class MainActivity : AppCompatActivity() {
         )
         collectionHeader.addView(
             TextView(this).apply {
-                text = "${visibleGroups.size}"
+                text = visibleGroups.size.toString()
                 textSize = 11.5f
                 gravity = Gravity.CENTER
                 setTypeface(typeface, Typeface.BOLD)
@@ -2758,15 +3001,12 @@ class MainActivity : AppCompatActivity() {
                 setPadding(dp(9), 0, dp(9), 0)
                 background = roundedBg(palette.accentSoft, 13)
             },
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                dp(28)
-            )
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(28))
         )
-        body.addView(collectionHeader)
+        contentHost.addView(collectionHeader)
 
         if (visibleGroups.isEmpty()) {
-            body.addView(
+            contentHost.addView(
                 TextView(this).apply {
                     text = if (videoSection == 2) {
                         "Здесь появятся просмотренные видео."
@@ -2784,32 +3024,31 @@ class MainActivity : AppCompatActivity() {
                 )
             )
         } else {
-            val list=RecyclerView(this).apply {
-                isVerticalScrollBarEnabled=false
-                isHorizontalScrollBarEnabled=false
-                overScrollMode=View.OVER_SCROLL_NEVER
-                isNestedScrollingEnabled = false
-                layoutManager=LinearLayoutManager(this@MainActivity)
-                adapter=DayCollectionAdapter(
-                    visibleGroups,
-                    palette,
-                    settings.animations
-                ) { showDayCollection(it) }
-                setBackgroundColor(bg)
-                setHasFixedSize(false)
-                itemAnimator=null
-            }
-            body.addView(
-                list,
+            contentHost.addView(
+                RecyclerView(this).apply {
+                    isVerticalScrollBarEnabled = false
+                    isHorizontalScrollBarEnabled = false
+                    overScrollMode = View.OVER_SCROLL_NEVER
+                    isNestedScrollingEnabled = false
+                    layoutManager = LinearLayoutManager(this@MainActivity)
+                    adapter = DayCollectionAdapter(
+                        visibleGroups,
+                        palette,
+                        settings.animations
+                    ) { showDayCollection(it) }
+                    setBackgroundColor(bg)
+                    setHasFixedSize(false)
+                    itemAnimator = null
+                },
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 )
             )
         }
-        replaceRoot(withBottomNav(page,SohrTab.VIDEOS))
-    }
 
+        replaceRoot(withBottomNav(page, SohrTab.VIDEOS))
+    }
 
     private fun buildHomeVideoShelf(
         title: String,
@@ -2855,10 +3094,10 @@ class MainActivity : AppCompatActivity() {
                 animationsEnabled = settings.animations,
                 mode = mode,
                 progressFor = { playbackProgress(it) },
-                lastPlayedAtFor = { settings.lastPlayedAt(it.messageId) }
-            ) { item ->
-                openPlayer(item)
-            }
+                lastPlayedAtFor = { settings.lastPlayedAt(it.messageId) },
+                onClick = { item, source -> openPlayer(item, sourceView = source) },
+                onLongClick = { item, source -> showVideoQuickActions(item, source) }
+            )
             itemAnimator = null
             setPadding(dp(10), 0, dp(10), 0)
             clipToPadding = false
@@ -2868,10 +3107,149 @@ class MainActivity : AppCompatActivity() {
             shelf,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(190)
+                dp(196)
             )
         )
         return section
+    }
+
+    private fun buildTodayCard(unwatchedVideos: List<VideoItem>): View {
+        val hour = java.time.LocalTime.now().hour
+        val greeting = when (hour) {
+            in 5..11 -> "Доброе утро"
+            in 12..17 -> "Добрый день"
+            in 18..23 -> "Добрый вечер"
+            else -> "Доброй ночи"
+        }
+        val streak = streakTracker.currentStreak()
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(17), dp(14), dp(14), dp(14))
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                intArrayOf(palette.accentSoft, palette.surface)
+            ).apply {
+                cornerRadius = dp(24).toFloat()
+                setStroke(dp(1), palette.stroke)
+            }
+            elevation = dp(2).toFloat()
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                animatePress(this)
+                if (lastT2x2Live != null) openT2x2OnTwitch()
+            }
+        }
+
+        val copy = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        copy.addView(TextView(this).apply {
+            text = greeting
+            textSize = 20f
+            includeFontPadding = false
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+        })
+        copy.addView(TextView(this).apply {
+            val newText = when (unwatchedVideos.size) {
+                0 -> "Всё просмотрено"
+                1 -> "1 непросмотренное видео"
+                else -> unwatchedVideos.size.toString() + " непросмотренных видео"
+            }
+            text = newText + " • Стрик " + streak
+            textSize = 11.8f
+            includeFontPadding = false
+            setTextColor(muted)
+            setPadding(0, dp(6), 0, 0)
+        })
+        card.addView(
+            copy,
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        )
+
+        val livePill = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(10), 0, dp(11), 0)
+            background = roundedBg(palette.surfaceAlt, 15)
+        }
+        val liveDot = View(this).apply {
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(muted)
+            }
+        }
+        val liveText = TextView(this).apply {
+            text = "T2x2"
+            textSize = 11f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(muted)
+        }
+        livePill.addView(liveDot, LinearLayout.LayoutParams(dp(7), dp(7)).apply {
+            marginEnd = dp(6)
+        })
+        livePill.addView(liveText)
+        card.addView(
+            livePill,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(34))
+        )
+
+        todayLiveDot = liveDot
+        todayLiveStatusView = liveText
+        updateTodayLiveSummary(lastT2x2Live, lastT2x2LiveUnavailable)
+
+        val wrapper = FrameLayout(this)
+        wrapper.addView(
+            card,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(92)
+            ).apply {
+                marginStart = dp(16)
+                marginEnd = dp(16)
+                topMargin = dp(8)
+                bottomMargin = dp(4)
+            }
+        )
+        return wrapper
+    }
+
+    private fun updateTodayLiveSummary(
+        live: TwitchLiveStream?,
+        unavailable: Boolean = false
+    ) {
+        val label = todayLiveStatusView ?: return
+        val dot = todayLiveDot
+        when {
+            live != null -> {
+                label.text = "LIVE"
+                label.setTextColor(Color.parseColor("#50D99A"))
+                dot?.background = android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.OVAL
+                    setColor(Color.parseColor("#50D99A"))
+                }
+            }
+            unavailable -> {
+                label.text = "T2x2 • ?"
+                label.setTextColor(muted)
+                dot?.background = android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.OVAL
+                    setColor(muted)
+                }
+            }
+            else -> {
+                label.text = "T2x2 • OFF"
+                label.setTextColor(muted)
+                dot?.background = android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.OVAL
+                    setColor(muted)
+                }
+            }
+        }
     }
 
     private fun refreshT2x2Live(slot: FrameLayout) {
