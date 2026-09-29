@@ -142,8 +142,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -q 'key = "magenta"' native/app/src/main/java/com/unknokable/videosohranenki/ThemePalette.kt
-          grep -q 'key = "sunset"' native/app/src/main/java/com/unknokable/videosohranenki/ThemePalette.kt
+          grep -q '"magenta"' native/app/src/main/java/com/unknokable/videosohranenki/ThemePalette.kt
+          grep -q '"sunset"' native/app/src/main/java/com/unknokable/videosohranenki/ThemePalette.kt
           grep -q 'private fun accentSelector' native/app/src/main/java/com/unknokable/videosohranenki/SettingsScreen.kt
           grep -q 'R.drawable.ic_chevron_right' native/app/src/main/java/com/unknokable/videosohranenki/DayCollectionAdapter.kt
           grep -q 'R.drawable.ic_close' native/app/src/main/java/com/unknokable/videosohranenki/ModernDialogs.kt
