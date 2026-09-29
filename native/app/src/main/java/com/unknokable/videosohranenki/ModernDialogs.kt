@@ -288,11 +288,11 @@ object ModernDialogs {
                     tile.addView(swatch, LinearLayout.LayoutParams(dp(context, 44), dp(context, 44)))
                     tile.addView(TextView(context).apply {
                         text = preset.label
-                        textSize = 10.5f
+                        textSize = 11f
                         gravity = Gravity.CENTER
                         includeFontPadding = false
                         maxLines = 2
-                        minHeight = dp(context, 28)
+                        minHeight = dp(context, 32)
                         setLineSpacing(0f, 1.02f)
                         setTextColor(if (selected) palette.text else palette.muted)
                         setPadding(dp(context, 2), dp(context, 5), dp(context, 2), 0)
@@ -306,11 +306,11 @@ object ModernDialogs {
                         selectedAccent = preset.key
                         rebuildGrid()
                     }
-                    row.addView(tile, LinearLayout.LayoutParams(0, dp(context, 88), 1f))
+                    row.addView(tile, LinearLayout.LayoutParams(0, dp(context, 96), 1f))
                 }
 
                 repeat(3 - chunk.size) {
-                    row.addView(View(context), LinearLayout.LayoutParams(0, dp(context, 88), 1f))
+                    row.addView(View(context), LinearLayout.LayoutParams(0, dp(context, 96), 1f))
                 }
                 grid.addView(row)
             }
@@ -323,7 +323,7 @@ object ModernDialogs {
             addView(grid)
         }
         box.addView(scroll)
-        scroll.limitHeight((context.resources.displayMetrics.heightPixels * 0.40f).toInt())
+        scroll.limitHeight((context.resources.displayMetrics.heightPixels * 0.43f).toInt())
 
         val apply = compactButton(context, palette.accent, Color.WHITE, "Применить")
         apply.setOnClickListener {

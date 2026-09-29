@@ -45,11 +45,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.0.6 version
+      - name: Assign SOHR 6.0.7 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=600006" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.0.6" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=600007" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.0.7" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -186,6 +186,29 @@ jobs:
               if missing:
                   raise SystemExit(f"{file_name}: missing {missing}")
 
+          player = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt"
+          ).read_text(encoding="utf-8")
+          forbidden_player_patterns = [
+              "forceEnableMediaCodecAsynchronousQueueing",
+              "setCompoundDrawablesRelative(",
+              "setCompoundDrawablesRelativeWithIntrinsicBounds("
+          ]
+          found_forbidden = [p for p in forbidden_player_patterns if p in player]
+          if found_forbidden:
+              raise SystemExit(
+                  f"Unsafe player regression detected: {found_forbidden}"
+              )
+          for required in ["PlayerActionPill", "setActionIconSafely", "ExoPlayer.Builder(activity)"]:
+              if required not in player:
+                  raise SystemExit(f"Player hardening missing: {required}")
+
+          dialogs = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/ModernDialogs.kt"
+          ).read_text(encoding="utf-8")
+          if "chunked(3)" not in dialogs or "dp(context, 96)" not in dialogs:
+              raise SystemExit("Appearance palette readability regression")
+
           splash = Path("native/app/src/main/res/values-v31/styles.xml")
           if not splash.is_file() or "windowSplashScreenAnimatedIcon" not in splash.read_text(encoding="utf-8"):
               raise SystemExit("Android 12 splash override missing")
@@ -247,7 +270,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.0.6 • player crash guard • safe vector actions • readable 3-column palettes • clearer streak ignition/colors • no-jump appearance • refined S loader • exact S icon • BlueStacks verified"
+            "notes": "SOHR 6.0.7 • video crash hardening • device-safe Media3 codec mode • safe standalone player icons • readable palettes • classic S light-runner loader • exact new S icon • streak/nav polish • BlueStacks verified"
           }
           EOF
           cat update.json

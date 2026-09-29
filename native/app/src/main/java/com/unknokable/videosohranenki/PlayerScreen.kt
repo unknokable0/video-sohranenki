@@ -31,7 +31,6 @@ import android.widget.Toast
 import coil.load
 import coil.transform.RoundedCornersTransformation
 import androidx.media3.common.C
-import androidx.core.graphics.drawable.DrawableCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
@@ -39,7 +38,6 @@ import androidx.media3.common.TrackGroup
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
-import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -132,6 +130,12 @@ class PlayerScreen(
     private var playbackCounted = false
     private var lastProgressPersistAt = 0L
     private var speedActionButton: TextView? = null
+
+    private data class PlayerActionPill(
+        val root: LinearLayout,
+        val icon: ImageView?,
+        val label: TextView
+    )
     private val showBufferingRunnable = Runnable {
         if (::bufferingLoader.isInitialized && player.playbackState == Player.STATE_BUFFERING) {
             bufferingLoader.visibility = View.VISIBLE
@@ -297,10 +301,9 @@ class PlayerScreen(
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
-        val renderersFactory = DefaultRenderersFactory(activity)
-            .forceEnableMediaCodecAsynchronousQueueing()
-
-        player = ExoPlayer.Builder(activity, renderersFactory)
+        // Let Media3 choose the safest MediaCodec queueing mode for the device.
+        // Forcing async queueing can crash on some vendor codec implementations.
+        player = ExoPlayer.Builder(activity)
             .setLoadControl(loadControl)
             .setSeekBackIncrementMs(10_000)
             .setSeekForwardIncrementMs(10_000)
@@ -708,56 +711,87 @@ class PlayerScreen(
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(12), dp(2), dp(12), dp(10))
         }
+
         var watched = isWatched
-        lateinit var watchedButton: TextView
+        lateinit var watchedButton: PlayerActionPill
 
         fun syncWatchedAction(animated: Boolean = false) {
             val nextText = if (watched) "В сборники" else "В просмотренные"
             val nextIcon = if (watched) R.drawable.ic_action_restore else R.drawable.ic_check
             val nextBackground = if (watched) palette.accent else palette.surfaceAlt
             val nextTextColor = if (watched) Color.WHITE else palette.text
-            watchedButton.animate().cancel()
+
+            watchedButton.root.animate().cancel()
+
+            fun applyState() {
+                watchedButton.label.text = nextText
+                watchedButton.label.setTextColor(nextTextColor)
+                watchedButton.root.background = roundedInt(nextBackground, 14)
+                setActionIconSafely(watchedButton.icon, nextIcon, nextTextColor)
+            }
+
             if (animated && settings.animations) {
-                watchedButton.animate()
-                    .alpha(0.55f).scaleX(0.96f).scaleY(0.96f)
+                watchedButton.root.animate()
+                    .alpha(0.56f)
+                    .scaleX(0.965f)
+                    .scaleY(0.965f)
                     .setDuration(70L)
                     .withEndAction {
-                        watchedButton.text = nextText
-                        applyActionIcon(watchedButton, nextIcon, nextTextColor)
-                        watchedButton.setTextColor(nextTextColor)
-                        watchedButton.background = roundedInt(nextBackground, 14)
-                        watchedButton.animate()
-                            .alpha(1f).scaleX(1f).scaleY(1f)
-                            .setDuration(130L)
-                            .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                        applyState()
+                        watchedButton.root.animate()
+                            .alpha(1f)
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .setDuration(135L)
+                            .setInterpolator(
+                                android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
+                            )
                             .start()
-                    }.start()
+                    }
+                    .start()
             } else {
-                watchedButton.text = nextText
-                applyActionIcon(watchedButton, nextIcon, nextTextColor)
-                watchedButton.setTextColor(nextTextColor)
-                watchedButton.background = roundedInt(nextBackground, 14)
-                watchedButton.alpha = 1f
-                watchedButton.scaleX = 1f
-                watchedButton.scaleY = 1f
+                applyState()
+                watchedButton.root.alpha = 1f
+                watchedButton.root.scaleX = 1f
+                watchedButton.root.scaleY = 1f
             }
         }
 
-        watchedButton = actionPill("") {
+        watchedButton = actionPill(
+            label = "",
+            iconRes = if (watched) R.drawable.ic_action_restore else R.drawable.ic_check
+        ) {
             watched = !watched
             onWatchedChange?.invoke(item, watched)
             syncWatchedAction(animated = true)
         }
         syncWatchedAction()
+
         if (item.source == "twitch") {
-            row.addView(watchedButton, LinearLayout.LayoutParams(0, dp(44), 1f))
+            row.addView(
+                watchedButton.root,
+                LinearLayout.LayoutParams(0, dp(44), 1f)
+            )
         } else {
-            val downloadButton = actionPill("Скачать", R.drawable.ic_action_download) { enqueueDownload() }
-            row.addView(watchedButton, LinearLayout.LayoutParams(0, dp(44), 1.35f).apply { marginEnd = dp(6) })
-            row.addView(downloadButton, LinearLayout.LayoutParams(0, dp(44), 0.85f))
+            val downloadButton = actionPill(
+                "Скачать",
+                R.drawable.ic_action_download
+            ) { enqueueDownload() }
+
+            row.addView(
+                watchedButton.root,
+                LinearLayout.LayoutParams(0, dp(44), 1.35f).apply {
+                    marginEnd = dp(6)
+                }
+            )
+            row.addView(
+                downloadButton.root,
+                LinearLayout.LayoutParams(0, dp(44), 0.85f)
+            )
         }
         return row
     }
+
     private fun buildNextVideosBlock(): LinearLayout {
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
@@ -865,17 +899,27 @@ class PlayerScreen(
             setPadding(dp(12), 0, dp(12), dp(14))
         }
 
-        val speedLabel = if (speed == 1f) "1×  Скорость" else speed.toString() + "×  Скорость"
-        val speedBtn = actionPill(speedLabel, R.drawable.ic_player_speed) { showSpeedPicker() }
-        speedActionButton = speedBtn
-        val sleepBtn = actionPill("Таймер", R.drawable.ic_player_timer) { showSleepPicker() }
+        val speedLabel =
+            if (speed == 1f) "1×  Скорость" else speed.toString() + "×  Скорость"
+        val speedBtn = actionPill(
+            speedLabel,
+            R.drawable.ic_player_speed
+        ) { showSpeedPicker() }
+        speedActionButton = speedBtn.label
+
+        val sleepBtn = actionPill(
+            "Таймер",
+            R.drawable.ic_player_timer
+        ) { showSleepPicker() }
 
         row.addView(
-            speedBtn,
-            LinearLayout.LayoutParams(0, dp(42), 1f).apply { marginEnd = dp(6) }
+            speedBtn.root,
+            LinearLayout.LayoutParams(0, dp(42), 1f).apply {
+                marginEnd = dp(6)
+            }
         )
         row.addView(
-            sleepBtn,
+            sleepBtn.root,
             LinearLayout.LayoutParams(0, dp(42), 1f)
         )
         return row
@@ -885,23 +929,70 @@ class PlayerScreen(
         label: String,
         iconRes: Int? = null,
         onClick: (View) -> Unit
-    ): TextView =
-        TextView(activity).apply {
+    ): PlayerActionPill {
+        val root = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(10), 0, dp(10), 0)
+            background = roundedInt(palette.surfaceAlt, 14)
+            isClickable = true
+            isFocusable = true
+        }
+
+        val iconView = iconRes?.let { resId ->
+            ImageView(activity).apply {
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+                setActionIconSafely(this, resId, palette.text)
+            }.also {
+                root.addView(
+                    it,
+                    LinearLayout.LayoutParams(dp(18), dp(18)).apply {
+                        marginEnd = dp(7)
+                    }
+                )
+            }
+        }
+
+        val labelView = TextView(activity).apply {
             text = label
             textSize = 12f
             gravity = Gravity.CENTER
+            includeFontPadding = false
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(palette.text)
-            background = roundedInt(palette.surfaceAlt, 14)
-            compoundDrawablePadding = dp(7)
-            if (iconRes != null) {
-                applyActionIcon(this, iconRes, palette.text)
-            }
-            setOnClickListener {
-                pulse(this)
-                onClick(this)
-            }
+            maxLines = 1
         }
+        root.addView(
+            labelView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        root.setOnClickListener {
+            pulse(root)
+            onClick(root)
+        }
+
+        return PlayerActionPill(root, iconView, labelView)
+    }
+
+    private fun setActionIconSafely(target: ImageView?, resId: Int, tint: Int) {
+        if (target == null) return
+        val success = runCatching {
+            target.setImageResource(resId)
+            target.imageTintList =
+                android.content.res.ColorStateList.valueOf(tint)
+            target.visibility = View.VISIBLE
+        }.isSuccess
+
+        if (!success) {
+            // A decorative icon must never be allowed to crash video playback.
+            target.setImageDrawable(null)
+            target.visibility = View.GONE
+        }
+    }
 
     private fun installGestures() {
         gestureOverlay = PlayerGestureOverlay(
@@ -1746,21 +1837,10 @@ class PlayerScreen(
             .start()
     }
 
-    private fun applyActionIcon(target: TextView, resId: Int, tint: Int) {
-        val drawable = runCatching {
-            activity.getDrawable(resId)?.mutate()?.also {
-                DrawableCompat.setTint(it, tint)
-                val size = dp(18)
-                it.setBounds(0, 0, size, size)
-            }
-        }.getOrNull()
-
-        target.setCompoundDrawablesRelative(drawable, null, null, null)
-    }
-
     private fun iconButton(resId: Int, backgroundColor: String, size: Int = 48): ImageButton =
         ImageButton(activity).apply {
-            setImageResource(resId)
+            runCatching { setImageResource(resId) }
+                .onFailure { setImageDrawable(null) }
             setBackgroundColor(Color.TRANSPARENT)
             background = rounded(backgroundColor, size / 2)
             setPadding(dp(12), dp(12), dp(12), dp(12))
