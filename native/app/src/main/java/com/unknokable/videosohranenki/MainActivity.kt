@@ -449,18 +449,10 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
         }
 
-        val logo = ImageView(this).apply {
-            setImageResource(R.drawable.ic_launcher)
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            background = roundedBg(palette.surfaceAlt, 28)
-            clipToOutline = true
-            alpha = 0f
-            scaleX = 0.88f
-            scaleY = 0.88f
-        }
-
         val loader = LoadingWaveView(this, purple).apply {
             alpha = 0f
+            scaleX = 0.94f
+            scaleY = 0.94f
         }
 
         val status = TextView(this).apply {
@@ -474,13 +466,8 @@ class MainActivity : AppCompatActivity() {
         startupStatusView = status
 
         center.addView(
-            logo,
-            LinearLayout.LayoutParams(dp(104), dp(104))
-        )
-        center.addView(
             loader,
-            LinearLayout.LayoutParams(dp(56), dp(56)).apply {
-                topMargin = dp(18)
+            LinearLayout.LayoutParams(dp(96), dp(96)).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
             }
         )
@@ -509,22 +496,16 @@ class MainActivity : AppCompatActivity() {
             )
         )
 
-        logo.animate()
+        loader.animate()
             .alpha(1f)
             .scaleX(1f)
             .scaleY(1f)
-            .setDuration(320L)
+            .setDuration(300L)
             .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
-            .start()
-
-        loader.animate()
-            .alpha(1f)
-            .setStartDelay(120L)
-            .setDuration(220L)
             .start()
         status.animate()
             .alpha(1f)
-            .setStartDelay(200L)
+            .setStartDelay(120L)
             .setDuration(220L)
             .start()
     }
@@ -4180,6 +4161,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         val oldShell = primaryShell
+        val oldSettingsScrollY =
+            oldShell?.findViewWithTag<ScrollView>("sohr_settings_scroll")?.scrollY ?: 0
         val oldSystemColor = bg
 
         settings.lightTheme = light
@@ -4277,6 +4260,8 @@ class MainActivity : AppCompatActivity() {
         val cy = sourceLocation[1] - rootLocation[1] + source.height / 2
 
         nextShell.post {
+            nextContent.findViewWithTag<ScrollView>("sohr_settings_scroll")
+                ?.scrollTo(0, oldSettingsScrollY)
             nextShell.visibility = View.VISIBLE
             nextShell.animate()
                 .alpha(1f)

@@ -120,6 +120,7 @@ class SettingsScreen(
         })
 
         val scroll = ScrollView(activity).apply {
+            tag = "sohr_settings_scroll"
             isVerticalScrollBarEnabled = false
             isHorizontalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
