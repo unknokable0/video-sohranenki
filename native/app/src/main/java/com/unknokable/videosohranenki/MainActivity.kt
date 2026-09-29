@@ -3224,38 +3224,82 @@ class MainActivity : AppCompatActivity() {
         val savedStartMs = settings.playbackPosition(item.messageId)
         val resumePositionMs = if (requestedStartMs > 0L) requestedStartMs else savedStartMs
 
-        playerScreen = PlayerScreen(
-            activity = this,
-            item = item,
-            mediaUrl = localFile?.let { Uri.fromFile(it).toString() } ?: server!!.url(item),
-            previewDataSourceFactory = { localFile?.let { LocalFileMediaDataSource(it) } ?: server!!.mediaDataSource(item) },
-            settings = settings,
-            startPositionMs = resumePositionMs,
-            nextItem = nextItem,
-            onPlayNext = { next -> openPlayer(next) },
-            isWatched = isVideoWatched(item.messageId),
-            onWatchedChange = { watched, shouldBeWatched ->
-                if (shouldBeWatched) markVideoWatched(watched.messageId) else unmarkVideoWatched(watched.messageId)
-                val belongsToOpenSection = (videoSection == 1 && !shouldBeWatched) || (videoSection == 2 && shouldBeWatched)
-                currentDay = currentDay?.let { day ->
-                    if (belongsToOpenSection) {
-                        if (day.videos.any { it.messageId == watched.messageId }) day
-                        else day.copy(videos = (day.videos + watched).sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId }))
+        val createdPlayer = runCatching {
+            PlayerScreen(
+                activity = this,
+                item = item,
+                mediaUrl = localFile?.let { Uri.fromFile(it).toString() } ?: server!!.url(item),
+                previewDataSourceFactory = {
+                    localFile?.let { LocalFileMediaDataSource(it) }
+                        ?: server!!.mediaDataSource(item)
+                },
+                settings = settings,
+                startPositionMs = resumePositionMs,
+                nextItem = nextItem,
+                onPlayNext = { next -> openPlayer(next) },
+                isWatched = isVideoWatched(item.messageId),
+                onWatchedChange = { watched, shouldBeWatched ->
+                    if (shouldBeWatched) {
+                        markVideoWatched(watched.messageId)
                     } else {
-                        day.copy(videos = day.videos.filterNot { it.messageId == watched.messageId })
+                        unmarkVideoWatched(watched.messageId)
                     }
+                    val belongsToOpenSection =
+                        (videoSection == 1 && !shouldBeWatched) ||
+                            (videoSection == 2 && shouldBeWatched)
+                    currentDay = currentDay?.let { day ->
+                        if (belongsToOpenSection) {
+                            if (day.videos.any { it.messageId == watched.messageId }) {
+                                day
+                            } else {
+                                day.copy(
+                                    videos = (day.videos + watched).sortedWith(
+                                        compareBy<VideoItem> { it.date }.thenBy { it.messageId }
+                                    )
+                                )
+                            }
+                        } else {
+                            day.copy(
+                                videos = day.videos.filterNot {
+                                    it.messageId == watched.messageId
+                                }
+                            )
+                        }
+                    }
+                },
+                onBack = { closeCurrentPlayerScreen() },
+                onFullscreen = { setFullscreen(it) },
+                onPlaybackStarted = {
+                    settings.markPlayed(item.messageId)
+                    streakTracker.markWatched()
                 }
-            },
-            onBack = { closeCurrentPlayerScreen() },
-            onFullscreen = { setFullscreen(it) },
-            onPlaybackStarted = {
-                settings.markPlayed(item.messageId)
-                streakTracker.markWatched()
-            }
-        )
+            )
+        }.getOrElse { error ->
+            currentStreamingItem?.let { streamed -> streamServer?.release(streamed) }
+            currentStreamingItem = null
+            isPlayerScreen = false
+            showMessage(
+                "Не удалось открыть видео",
+                error.message ?: "Плеер не смог запуститься. Попробуй ещё раз."
+            )
+            return
+        }
 
+        playerScreen = createdPlayer
         pendingRootSlide = 1
-        replaceRoot(playerScreen!!.root)
+        runCatching {
+            replaceRoot(createdPlayer.root)
+        }.onFailure { error ->
+            createdPlayer.destroy()
+            playerScreen = null
+            currentStreamingItem?.let { streamed -> streamServer?.release(streamed) }
+            currentStreamingItem = null
+            isPlayerScreen = false
+            showMessage(
+                "Не удалось открыть видео",
+                error.message ?: "Не удалось показать экран плеера."
+            )
+        }
     }
 
 
@@ -3937,11 +3981,29 @@ class MainActivity : AppCompatActivity() {
         }
 
         val status = TextView(this).apply {
-            text = if (watchedToday) "Сегодня уже засчитано" else "Посмотри видео сегодня, чтобы продолжить"
+            text = if (watchedToday) {
+                "Сегодня засчитано • огонь горит"
+            } else {
+                "Сегодня ещё не засчитано • посмотри любое видео"
+            }
             textSize = 12.5f
             gravity = Gravity.CENTER
-            setTextColor(muted)
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(if (watchedToday) flameColor else muted)
             setPadding(dp(8), dp(10), dp(8), 0)
+        }
+
+        val colorStatus = TextView(this).apply {
+            text = if (streak <= 0) {
+                "Цвет появится после первого засчитанного дня"
+            } else {
+                "Цвет: " + streakColorName(streak) + " • " + streakRangeLabel(streak)
+            }
+            textSize = 11.5f
+            gravity = Gravity.CENTER
+            setTextColor(if (streak > 0) flameColor else muted)
+            setPadding(dp(12), dp(7), dp(12), dp(7))
+            background = roundedBg(palette.surfaceAlt, 14)
         }
 
         hero.addView(
@@ -3957,6 +4019,16 @@ class MainActivity : AppCompatActivity() {
         hero.addView(count)
         hero.addView(daysLabel)
         hero.addView(status)
+        hero.addView(
+            colorStatus,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                topMargin = dp(10)
+            }
+        )
 
         val progressCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -4163,7 +4235,29 @@ class MainActivity : AppCompatActivity() {
         if (settings.animations) {
             hero.post {
                 if (shouldIgniteToday) {
-                    fire.postDelayed({ fire.playIgnition() }, 120L)
+                    fire.alpha = 0.62f
+                    fire.scaleX = 0.86f
+                    fire.scaleY = 0.86f
+                    fire.postDelayed({
+                        fire.playIgnition()
+                        fire.animate().cancel()
+                        fire.animate()
+                            .alpha(1f)
+                            .scaleX(1.04f)
+                            .scaleY(1.04f)
+                            .setDuration(360L)
+                            .setInterpolator(
+                                android.view.animation.PathInterpolator(0.12f, 0.9f, 0.22f, 1f)
+                            )
+                            .withEndAction {
+                                fire.animate()
+                                    .scaleX(1f)
+                                    .scaleY(1f)
+                                    .setDuration(180L)
+                                    .start()
+                            }
+                            .start()
+                    }, 120L)
                 }
                 val ease = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
                 hero.animate().alpha(1f).translationY(0f).setDuration(300L).setInterpolator(ease).start()
@@ -4185,6 +4279,26 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun streakColor(streak: Int): Int = StreakFireView.colorForStreak(streak)
+
+    private fun streakColorName(streak: Int): String = when {
+        streak <= 0 -> "неактивный"
+        streak < 10 -> "серебряный"
+        streak < 20 -> "фиолетовый"
+        streak < 50 -> "синий"
+        streak < 100 -> "красный"
+        streak < 200 -> "лаймовый"
+        else -> "голубой"
+    }
+
+    private fun streakRangeLabel(streak: Int): String = when {
+        streak <= 0 -> "0 дней"
+        streak < 10 -> "1–9 дней"
+        streak < 20 -> "10–19 дней"
+        streak < 50 -> "20–49 дней"
+        streak < 100 -> "50–99 дней"
+        streak < 200 -> "100–199 дней"
+        else -> "200+ дней"
+    }
 
     private fun nextStreakMilestone(streak: Int): Int? = when {
         streak < 10 -> 10

@@ -31,6 +31,7 @@ import android.widget.Toast
 import coil.load
 import coil.transform.RoundedCornersTransformation
 import androidx.media3.common.C
+import androidx.core.graphics.drawable.DrawableCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
@@ -333,6 +334,18 @@ class PlayerScreen(
                     .setDuration(if (settings.animations) 120L else 0L)
                     .withEndAction { posterImage.visibility = View.GONE }
                     .start()
+            }
+
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                handler.removeCallbacks(showBufferingRunnable)
+                bufferingLoader.animate().cancel()
+                bufferingLoader.visibility = View.GONE
+                root.keepScreenOn = false
+                Toast.makeText(
+                    activity,
+                    "Не удалось воспроизвести видео",
+                    Toast.LENGTH_SHORT
+                ).show()
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -710,9 +723,7 @@ class PlayerScreen(
                     .setDuration(70L)
                     .withEndAction {
                         watchedButton.text = nextText
-                        watchedButton.setCompoundDrawablesRelativeWithIntrinsicBounds(nextIcon, 0, 0, 0)
-                        watchedButton.compoundDrawableTintList =
-                            android.content.res.ColorStateList.valueOf(nextTextColor)
+                        applyActionIcon(watchedButton, nextIcon, nextTextColor)
                         watchedButton.setTextColor(nextTextColor)
                         watchedButton.background = roundedInt(nextBackground, 14)
                         watchedButton.animate()
@@ -723,9 +734,7 @@ class PlayerScreen(
                     }.start()
             } else {
                 watchedButton.text = nextText
-                watchedButton.setCompoundDrawablesRelativeWithIntrinsicBounds(nextIcon, 0, 0, 0)
-                watchedButton.compoundDrawableTintList =
-                    android.content.res.ColorStateList.valueOf(nextTextColor)
+                applyActionIcon(watchedButton, nextIcon, nextTextColor)
                 watchedButton.setTextColor(nextTextColor)
                 watchedButton.background = roundedInt(nextBackground, 14)
                 watchedButton.alpha = 1f
@@ -886,9 +895,7 @@ class PlayerScreen(
             background = roundedInt(palette.surfaceAlt, 14)
             compoundDrawablePadding = dp(7)
             if (iconRes != null) {
-                setCompoundDrawablesRelativeWithIntrinsicBounds(iconRes, 0, 0, 0)
-                compoundDrawableTintList =
-                    android.content.res.ColorStateList.valueOf(palette.text)
+                applyActionIcon(this, iconRes, palette.text)
             }
             setOnClickListener {
                 pulse(this)
@@ -1737,6 +1744,18 @@ class PlayerScreen(
                     .start()
             }
             .start()
+    }
+
+    private fun applyActionIcon(target: TextView, resId: Int, tint: Int) {
+        val drawable = runCatching {
+            activity.getDrawable(resId)?.mutate()?.also {
+                DrawableCompat.setTint(it, tint)
+                val size = dp(18)
+                it.setBounds(0, 0, size, size)
+            }
+        }.getOrNull()
+
+        target.setCompoundDrawablesRelative(drawable, null, null, null)
     }
 
     private fun iconButton(resId: Int, backgroundColor: String, size: Int = 48): ImageButton =

@@ -203,19 +203,39 @@ object ModernDialogs {
         mode.post { syncMode(false) }
         box.addView(mode, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(context, 54)))
 
-        box.addView(TextView(context).apply {
+        val colorHeader = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(context, 2), dp(context, 16), 0, dp(context, 8))
+        }
+        colorHeader.addView(TextView(context).apply {
             text = "Цвет"
             textSize = 13f
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(palette.text)
-            setPadding(dp(context, 2), dp(context, 16), 0, dp(context, 8))
-        })
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+        val selectedLabel = TextView(context).apply {
+            textSize = 11.5f
+            includeFontPadding = false
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(palette.accent)
+        }
+        colorHeader.addView(selectedLabel)
+        box.addView(colorHeader)
 
         val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
 
+        fun syncSelectedLabel() {
+            val current = presets.firstOrNull { it.key == selectedAccent }
+            selectedLabel.text = current?.label ?: "Выбран"
+            selectedLabel.setTextColor(current?.previewColor ?: palette.accent)
+        }
+
         fun rebuildGrid() {
+            syncSelectedLabel()
             grid.removeAllViews()
-            presets.chunked(4).forEach { chunk ->
+            presets.chunked(3).forEach { chunk ->
                 val row = LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER
@@ -225,7 +245,7 @@ object ModernDialogs {
                     val tile = LinearLayout(context).apply {
                         orientation = LinearLayout.VERTICAL
                         gravity = Gravity.CENTER
-                        setPadding(dp(context, 5), dp(context, 7), dp(context, 5), dp(context, 7))
+                        setPadding(dp(context, 5), dp(context, 8), dp(context, 5), dp(context, 8))
                         background = rounded(
                             if (selected) palette.accentSoft else Color.TRANSPARENT,
                             dp(context, 15).toFloat()
@@ -270,21 +290,27 @@ object ModernDialogs {
                         text = preset.label
                         textSize = 10.5f
                         gravity = Gravity.CENTER
-                        maxLines = 1
+                        includeFontPadding = false
+                        maxLines = 2
+                        minHeight = dp(context, 28)
+                        setLineSpacing(0f, 1.02f)
                         setTextColor(if (selected) palette.text else palette.muted)
-                        setPadding(0, dp(context, 4), 0, 0)
-                    })
+                        setPadding(dp(context, 2), dp(context, 5), dp(context, 2), 0)
+                    }, LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ))
 
                     tile.setOnClickListener {
                         if (selectedAccent == preset.key) return@setOnClickListener
                         selectedAccent = preset.key
                         rebuildGrid()
                     }
-                    row.addView(tile, LinearLayout.LayoutParams(0, dp(context, 70), 1f))
+                    row.addView(tile, LinearLayout.LayoutParams(0, dp(context, 88), 1f))
                 }
 
-                repeat(4 - chunk.size) {
-                    row.addView(View(context), LinearLayout.LayoutParams(0, dp(context, 70), 1f))
+                repeat(3 - chunk.size) {
+                    row.addView(View(context), LinearLayout.LayoutParams(0, dp(context, 88), 1f))
                 }
                 grid.addView(row)
             }
