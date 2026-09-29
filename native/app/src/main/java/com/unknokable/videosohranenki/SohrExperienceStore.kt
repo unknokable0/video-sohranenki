@@ -11,7 +11,9 @@ data class SohrMonthlyRecap(
     val watchedMs: Long,
     val playStarts: Int,
     val uniqueVideos: Int,
-    val longestSessionMs: Long
+    val longestSessionMs: Long,
+    val mostActiveDay: String?,
+    val mostActiveDayMs: Long
 )
 
 class SohrExperienceStore(context: Context) {
@@ -96,11 +98,19 @@ class SohrExperienceStore(context: Context) {
     ) {
         if (watchedMs <= 0L) return
         mutateMonth(atMs) { json ->
-            json.put("watchedMs", json.optLong("watchedMs", 0L) + watchedMs.coerceAtMost(10 * 60_000L))
+            val safeWatchedMs = watchedMs.coerceAtMost(10 * 60_000L)
+            json.put("watchedMs", json.optLong("watchedMs", 0L) + safeWatchedMs)
             json.put(
                 "longestSessionMs",
                 maxOf(json.optLong("longestSessionMs", 0L), sessionMs.coerceAtMost(12 * 60 * 60_000L))
             )
+            val dayKey = java.time.Instant.ofEpochMilli(atMs)
+                .atZone(ZoneId.systemDefault())
+                .toLocalDate()
+                .toString()
+            val days = json.optJSONObject("days") ?: JSONObject()
+            days.put(dayKey, days.optLong(dayKey, 0L) + safeWatchedMs)
+            json.put("days", days)
             val unique = json.optJSONArray("unique") ?: JSONArray()
             val exists = (0 until unique.length()).any { unique.optLong(it) == messageId }
             if (!exists) unique.put(messageId)
@@ -110,12 +120,26 @@ class SohrExperienceStore(context: Context) {
 
     fun recap(month: YearMonth = YearMonth.now()): SohrMonthlyRecap {
         val json = readMonth(month)
+        val days = json.optJSONObject("days") ?: JSONObject()
+        var bestDay: String? = null
+        var bestDayMs = 0L
+        val keys = days.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val value = days.optLong(key, 0L)
+            if (value > bestDayMs) {
+                bestDay = key
+                bestDayMs = value
+            }
+        }
         return SohrMonthlyRecap(
             month = month,
             watchedMs = json.optLong("watchedMs", 0L),
             playStarts = json.optInt("playStarts", 0),
             uniqueVideos = json.optJSONArray("unique")?.length() ?: 0,
-            longestSessionMs = json.optLong("longestSessionMs", 0L)
+            longestSessionMs = json.optLong("longestSessionMs", 0L),
+            mostActiveDay = bestDay,
+            mostActiveDayMs = bestDayMs
         )
     }
 
