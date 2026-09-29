@@ -24,6 +24,7 @@ class SohrVideoCache(private val context: Context) {
                 if (localPath != null && !File(localPath).exists()) continue
                 add(VideoItem(
                     messageId = o.getLong("messageId"),
+                    chatId = o.optLong("chatId", 0L),
                     title = o.optString("title", "Видео"),
                     date = o.getInt("date"),
                     durationSeconds = o.optInt("durationSeconds", 0),
@@ -45,6 +46,7 @@ class SohrVideoCache(private val context: Context) {
             items.distinctBy { it.messageId }.forEach { item ->
                 array.put(JSONObject().apply {
                     put("messageId", item.messageId)
+                    put("chatId", item.chatId)
                     put("title", item.title)
                     put("date", item.date)
                     put("durationSeconds", item.durationSeconds)
