@@ -330,9 +330,14 @@ class MainActivity : AppCompatActivity() {
                 if (closeCurrentPlayerScreen()) return
 
                 if (auxiliaryScreen != null) {
+                    val previousAux = auxiliaryScreen
                     auxiliaryScreen = null
                     pendingRootSlide = -1
-                    showSelectedVideoSource()
+                    if (previousAux == "moments" || previousAux == "recap") {
+                        showSettings()
+                    } else {
+                        showSelectedVideoSource()
+                    }
                     return
                 }
 
@@ -3924,10 +3929,11 @@ class MainActivity : AppCompatActivity() {
         val connectivity = getSystemService(android.net.ConnectivityManager::class.java)
         val network = connectivity?.activeNetwork ?: return
         val caps = connectivity.getNetworkCapabilities(network) ?: return
-        val unmetered =
-            caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+        val wifiOnly =
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) &&
+                caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
                 caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
-        if (!unmetered) return
+        if (!wifiOnly) return
 
         val watched = watchedVideoIds()
         val candidates = videos
