@@ -666,7 +666,7 @@ class MainActivity : AppCompatActivity() {
         val page = FrameLayout(this).apply {
             background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                intArrayOf(Color.parseColor("#07143A"), Color.parseColor("#090B1A"))
+                intArrayOf(Color.parseColor("#080B18"), Color.parseColor("#0A0D17"))
             )
         }
 
@@ -675,34 +675,12 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
         }
 
-        val mark = FrameLayout(this).apply {
+        val mark = LoadingWaveView(this, Color.parseColor("#7388FF")).apply {
             alpha = 0f
-            scaleX = 0.90f
-            scaleY = 0.90f
+            scaleX = 0.94f
+            scaleY = 0.94f
+            translationY = dp(4).toFloat()
         }
-
-        val outline = LoadingWaveView(this, Color.parseColor("#667CFF")).apply {
-            alpha = 0.92f
-        }
-        mark.addView(
-            outline,
-            FrameLayout.LayoutParams(dp(190), dp(160), Gravity.CENTER)
-        )
-
-        val logo = ImageView(this).apply {
-            setImageResource(R.drawable.sohr_brand_logo)
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            alpha = 0f
-            scaleX = 0.84f
-            scaleY = 0.84f
-            rotation = -2.5f
-            background = roundedBg(Color.TRANSPARENT, 28)
-            clipToOutline = true
-        }
-        mark.addView(
-            logo,
-            FrameLayout.LayoutParams(dp(116), dp(116), Gravity.CENTER)
-        )
 
         val brand = TextView(this).apply {
             text = "SOHR"
@@ -712,14 +690,14 @@ class MainActivity : AppCompatActivity() {
             setTextColor(Color.WHITE)
             alpha = 0f
             letterSpacing = 0.10f
-            setPadding(0, dp(10), 0, 0)
+            setPadding(0, dp(12), 0, 0)
         }
 
         val status = TextView(this).apply {
             text = "Запускаем SOHR…"
             textSize = 12.5f
             gravity = Gravity.CENTER
-            setTextColor(Color.parseColor("#AEB7D7"))
+            setTextColor(Color.parseColor("#AAB2C8"))
             setPadding(0, dp(7), 0, 0)
             alpha = 0f
         }
@@ -727,7 +705,7 @@ class MainActivity : AppCompatActivity() {
 
         center.addView(
             mark,
-            LinearLayout.LayoutParams(dp(220), dp(180)).apply {
+            LinearLayout.LayoutParams(dp(154), dp(132)).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
             }
         )
@@ -768,41 +746,29 @@ class MainActivity : AppCompatActivity() {
                 .alpha(1f)
                 .scaleX(1f)
                 .scaleY(1f)
+                .translationY(0f)
                 .setDuration(SohrMotion.HERO)
-                .setInterpolator(SohrMotion.smooth())
-                .start()
-
-            logo.animate()
-                .alpha(1f)
-                .scaleX(1f)
-                .scaleY(1f)
-                .rotation(0f)
-                .setStartDelay(90L)
-                .setDuration(460L)
                 .setInterpolator(SohrMotion.smooth())
                 .start()
 
             brand.animate()
                 .alpha(1f)
                 .translationY(0f)
-                .setStartDelay(170L)
+                .setStartDelay(110L)
                 .setDuration(SohrMotion.NORMAL)
                 .setInterpolator(SohrMotion.smooth())
                 .start()
 
             status.animate()
                 .alpha(1f)
-                .setStartDelay(260L)
+                .setStartDelay(190L)
                 .setDuration(SohrMotion.NORMAL)
                 .start()
         } else {
             mark.alpha = 1f
             mark.scaleX = 1f
             mark.scaleY = 1f
-            logo.alpha = 1f
-            logo.scaleX = 1f
-            logo.scaleY = 1f
-            logo.rotation = 0f
+            mark.translationY = 0f
             brand.alpha = 1f
             status.alpha = 1f
         }
@@ -7639,28 +7605,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun buildBrandLoadingMark(sizeDp: Int): View {
-        val frame = FrameLayout(this)
-        val outline = LoadingWaveView(this, purple)
-        frame.addView(
-            outline,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                Gravity.CENTER
-            )
-        )
-
-        val logoSize = (sizeDp * 0.58f).toInt().coerceAtLeast(22)
-        val logo = ImageView(this).apply {
-            setImageResource(R.drawable.sohr_brand_logo)
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            alpha = 0.96f
-            background = roundedBg(Color.TRANSPARENT, (logoSize * 0.22f).toInt().coerceAtLeast(8))
-            clipToOutline = true
+    private fun buildBrandLoadingMark(sizeDp: Int): View =
+        LoadingWaveView(this, purple).apply {
+            alpha = 0.98f
             if (settings.animations) {
-                scaleX = 0.92f
-                scaleY = 0.92f
+                scaleX = 0.95f
+                scaleY = 0.95f
                 animate()
                     .scaleX(1f)
                     .scaleY(1f)
@@ -7669,16 +7619,6 @@ class MainActivity : AppCompatActivity() {
                     .start()
             }
         }
-        frame.addView(
-            logo,
-            FrameLayout.LayoutParams(
-                dp(logoSize),
-                dp(logoSize),
-                Gravity.CENTER
-            )
-        )
-        return frame
-    }
 
     private fun showUpdateProgress(progress: Int) {
         val box = LinearLayout(this).apply {
@@ -7747,7 +7687,7 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(bg)
         }
 
-        val spinner = LoadingWaveView(this, purple)
+        val spinner = buildBrandLoadingMark(56)
         val label = TextView(this).apply {
             text = message
             setTextColor(muted)
@@ -7756,7 +7696,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, dp(18), 0, 0)
         }
 
-        box.addView(spinner, LinearLayout.LayoutParams(dp(52), dp(52)))
+        box.addView(spinner, LinearLayout.LayoutParams(dp(56), dp(56)))
         box.addView(label, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         replaceRoot(box)
     }
