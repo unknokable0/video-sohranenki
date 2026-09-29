@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.2.8: remove static system splash mark and keep classic cloud loader
+# SOHR 6.3.0: moments, precise seek, Streak 2.0, sessions, smart downloads and standalone Recap
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.2.8 version
+      - name: Assign SOHR 6.3.0 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=620008" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.2.8" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=630000" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.3.0" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -309,12 +309,59 @@ jobs:
               if forbidden in experience_store:
                   raise SystemExit(f"SOHR 6.2.6 removed Recap tracking returned: {forbidden}")
 
+          moments_store = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/SohrMomentsStore.kt"
+          ).read_text(encoding="utf-8")
+          for required in [
+              "data class SohrMoment",
+              "fun add(",
+              "fun rename(",
+              "fun remove("
+          ]:
+              if required not in moments_store:
+                  raise SystemExit(f"SOHR 6.3.0 Moments store regression: {required}")
+
+          recap_store = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/SohrRecapStore.kt"
+          ).read_text(encoding="utf-8")
+          for required in [
+              "data class SohrRecapSnapshot",
+              "fun markSessionStart",
+              "fun addWatchSlice",
+              "fun snapshot"
+          ]:
+              if required not in recap_store:
+                  raise SystemExit(f"SOHR 6.3.0 standalone Recap regression: {required}")
+
+          session_adapter = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/PlaybackSessionAdapter.kt"
+          ).read_text(encoding="utf-8")
+          for required in ["Collections.swap", "fun move(", "fun ids()"]:
+              if required not in session_adapter:
+                  raise SystemExit(f"SOHR 6.3.0 playback-session regression: {required}")
+
+          streak_tracker = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/StreakTracker.kt"
+          ).read_text(encoding="utf-8")
+          for required in [
+              "fun protectionTokens",
+              "fun protectedDays",
+              "ensureProtection",
+              "MAX_PROTECTION_TOKENS = 2"
+          ]:
+              if required not in streak_tracker:
+                  raise SystemExit(f"SOHR 6.3.0 streak protection regression: {required}")
+
           download_store = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/SohrDownloadStore.kt"
           ).read_text(encoding="utf-8")
           for required in ["SohrDownloadEntry", "fun register", "fun remove", "fun totalBytes"]:
               if required not in download_store:
                   raise SystemExit(f"SOHR 6.2 download-center regression: {required}")
+
+          for required in ["autoManaged", "fun autoEntries"]:
+              if required not in download_store:
+                  raise SystemExit(f"SOHR 6.3.0 smart-download store regression: {required}")
 
           motion = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/SohrMotion.kt"
@@ -343,6 +390,9 @@ jobs:
           if "var previewMode: String" not in app_settings:
               raise SystemExit("SOHR 6.2 preview-mode persistence regression")
 
+          if "var smartDownloads: Boolean" not in app_settings:
+              raise SystemExit("SOHR 6.3.0 smart-download setting regression")
+
           for required in [
               "nav.translationY = 0f",
               "nav.alpha = 1f",
@@ -361,6 +411,14 @@ jobs:
           ]:
               if required not in settings_screen:
                   raise SystemExit(f"SOHR 6.2.1 compact preview-setting regression: {required}")
+
+          for required in [
+              'title = "Моменты"',
+              'title = "SOHR Recap"',
+              'title = "Умное скачивание"'
+          ]:
+              if required not in settings_screen:
+                  raise SystemExit(f"SOHR 6.3.0 selected-settings regression: {required}")
 
           preview_pos = settings_screen.find("root.addView(previewModeSelector())")
           autoplay_pos = settings_screen.find('title = "Автовоспроизведение"')
@@ -516,6 +574,19 @@ jobs:
           ]:
               if required not in sohr_main:
                   raise SystemExit(f"SOHR 6.2 main-experience regression: {required}")
+
+          for required in [
+              "showMoments(",
+              "showRecap(",
+              "scheduleSmartDownloads(",
+              "TRANSPORT_WIFI",
+              ".take(2)",
+              "PlaybackSessionAdapter",
+              "ItemTouchHelper",
+              "saveRecapCard"
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.3.0 selected-features regression: {required}")
           for forbidden in ["buildRecapTeaser", "showMonthlyRecap", "experienceStore.recap()"]:
               if forbidden in sohr_main:
                   raise SystemExit(f"SOHR 6.2.6 regression: monthly Recap code returned: {forbidden}")
@@ -527,9 +598,18 @@ jobs:
           ]:
               if required not in player:
                   raise SystemExit(f"SOHR 6.2 player-experience regression: {required}")
-          for forbidden in ["sampleWatchTime", "onWatchTime", "flushWatchTime"]:
-              if forbidden in player:
-                  raise SystemExit(f"SOHR 6.2.6 regression: removed Recap sampling returned: {forbidden}")
+          for required in [
+              "sampleWatchTime",
+              "flushWatchTime",
+              "onWatchSlice",
+              "onSaveMoment",
+              "onOpenMoments",
+              "requestFilmstrip",
+              "loadPreviewFrame",
+              "previewStripImages"
+          ]:
+              if required not in player:
+                  raise SystemExit(f"SOHR 6.3.0 player moments/seek/Recap regression: {required}")
 
           for required in [
               "TdApi.AddFileToDownloads(",
@@ -552,6 +632,13 @@ jobs:
           ]:
               if required not in time_bar:
                   raise SystemExit(f"SOHR 6.2.6 compact timeline regression: {required}")
+
+          for required in [
+              "onFineScrubMode",
+              "touchStartY - event.y > dp(28f)"
+          ]:
+              if required not in time_bar:
+                  raise SystemExit(f"SOHR 6.3.0 fine-scrub regression: {required}")
           for required in [
               'background = rounded("#480A0810", 12)',
               "LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(18))"
@@ -664,7 +751,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "Полностью удалён статичный логотип перед запуском • Системный SplashScreen использует прозрачный splash_empty и нулевую длительность • Сразу после системного старта остаётся только старая облачная LoadingWaveView • Сам sohr_splash_mark.xml удалён из проекта"
+            "notes": "Моменты с переходом на точную секунду • точная перемотка с лентой кадров • Streak 2.0 с защитными щитами • drag-and-drop сессия просмотра • умное скачивание 2 свежих видео только по Wi‑Fi • отдельный SOHR Recap с сохранением PNG • новая синяя ава приложения • старая облачная загрузка без изменений"
           }
           EOF
           cat update.json
