@@ -45,12 +45,9 @@ object ModernDialogs {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(context, 14), 0, dp(context, 14), 0)
-                background = roundedStroke(
+                background = rounded(
                     if (selectedNow) palette.accentSoft else palette.surfaceAlt,
-                    if (selectedNow) palette.accent else palette.stroke,
-                    dp(context, 16).toFloat(),
-                    if (selectedNow) 1.25f else 0.75f,
-                    context
+                    dp(context, 16).toFloat()
                 )
                 isClickable = true
                 isFocusable = true
@@ -114,6 +111,204 @@ object ModernDialogs {
 
         showDialog(context, dialog, box, 0.88f)
         scroll.limitHeight((context.resources.displayMetrics.heightPixels * 0.62f).toInt())
+    }
+
+    fun showAppearancePicker(
+        context: Context,
+        palette: ThemePalette,
+        lightTheme: Boolean,
+        accentKey: String,
+        presets: List<ThemePreset>,
+        onApply: (Boolean, String) -> Unit
+    ) {
+        val dialog = Dialog(context)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+
+        val box = dialogBox(context, palette)
+        box.addView(header(context, palette, "Оформление", dialog, box))
+        box.addView(TextView(context).apply {
+            text = "Выбери режим и цвет SOHR"
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTextColor(palette.muted)
+            setPadding(0, 0, 0, dp(context, 14))
+        })
+
+        var selectedLight = lightTheme
+        var selectedAccent = AppThemes.preset(accentKey).key
+
+        val mode = FrameLayout(context).apply {
+            background = rounded(palette.surfaceAlt, dp(context, 17).toFloat())
+            setPadding(dp(context, 4), dp(context, 4), dp(context, 4), dp(context, 4))
+            clipChildren = true
+        }
+        val indicator = View(context).apply {
+            background = rounded(palette.accent, dp(context, 14).toFloat())
+        }
+        val modeButtons = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        fun modeButton(label: String): TextView = TextView(context).apply {
+            text = label
+            textSize = 13f
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            setTypeface(typeface, Typeface.BOLD)
+        }
+        val dark = modeButton("Тёмная")
+        val light = modeButton("Светлая")
+        modeButtons.addView(dark, LinearLayout.LayoutParams(0, dp(context, 46), 1f))
+        modeButtons.addView(light, LinearLayout.LayoutParams(0, dp(context, 46), 1f))
+        mode.addView(indicator, FrameLayout.LayoutParams(0, dp(context, 46), Gravity.START or Gravity.CENTER_VERTICAL))
+        mode.addView(modeButtons, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(context, 46), Gravity.CENTER))
+
+        fun syncMode(animate: Boolean) {
+            val slot = ((mode.width - mode.paddingLeft - mode.paddingRight) / 2f).coerceAtLeast(0f)
+            if (slot <= 0f) return
+            val lp = indicator.layoutParams as FrameLayout.LayoutParams
+            lp.width = slot.toInt()
+            lp.height = dp(context, 46)
+            indicator.layoutParams = lp
+            val target = if (selectedLight) slot else 0f
+            indicator.animate().cancel()
+            if (animate) {
+                indicator.animate()
+                    .translationX(target)
+                    .setDuration(230L)
+                    .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                    .start()
+            } else {
+                indicator.translationX = target
+            }
+            dark.setTextColor(if (!selectedLight) Color.WHITE else palette.muted)
+            light.setTextColor(if (selectedLight) Color.WHITE else palette.muted)
+        }
+
+        dark.setOnClickListener {
+            if (!selectedLight) return@setOnClickListener
+            selectedLight = false
+            syncMode(true)
+        }
+        light.setOnClickListener {
+            if (selectedLight) return@setOnClickListener
+            selectedLight = true
+            syncMode(true)
+        }
+        mode.post { syncMode(false) }
+        box.addView(mode, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(context, 54)))
+
+        box.addView(TextView(context).apply {
+            text = "Цвет"
+            textSize = 13f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(palette.text)
+            setPadding(dp(context, 2), dp(context, 16), 0, dp(context, 8))
+        })
+
+        val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+
+        fun rebuildGrid() {
+            grid.removeAllViews()
+            presets.chunked(3).forEach { chunk ->
+                val row = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER
+                }
+                chunk.forEach { preset ->
+                    val selected = preset.key == selectedAccent
+                    val tile = LinearLayout(context).apply {
+                        orientation = LinearLayout.VERTICAL
+                        gravity = Gravity.CENTER
+                        setPadding(dp(context, 5), dp(context, 7), dp(context, 5), dp(context, 7))
+                        background = rounded(
+                            if (selected) palette.accentSoft else Color.TRANSPARENT,
+                            dp(context, 15).toFloat()
+                        )
+                        isClickable = true
+                        isFocusable = true
+                    }
+
+                    val swatch = FrameLayout(context).apply {
+                        background = circle(
+                            if (selected) preset.previewColor else palette.surfaceAlt,
+                            if (selected) preset.previewColor else palette.stroke,
+                            context
+                        )
+                    }
+                    swatch.addView(
+                        View(context).apply {
+                            background = GradientDrawable().apply {
+                                shape = GradientDrawable.OVAL
+                                setColor(preset.previewColor)
+                            }
+                        },
+                        FrameLayout.LayoutParams(dp(context, 36), dp(context, 36), Gravity.CENTER)
+                    )
+
+                    if (selected) {
+                        swatch.addView(
+                            ImageView(context).apply {
+                                setImageResource(R.drawable.ic_check)
+                                imageTintList = ColorStateList.valueOf(Color.WHITE)
+                                setPadding(dp(context, 13), dp(context, 13), dp(context, 13), dp(context, 13))
+                            },
+                            FrameLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT
+                            )
+                        )
+                    }
+
+                    tile.addView(swatch, LinearLayout.LayoutParams(dp(context, 48), dp(context, 48)))
+                    tile.addView(TextView(context).apply {
+                        text = preset.label
+                        textSize = 10.5f
+                        gravity = Gravity.CENTER
+                        maxLines = 1
+                        setTextColor(if (selected) palette.text else palette.muted)
+                        setPadding(0, dp(context, 4), 0, 0)
+                    })
+
+                    tile.setOnClickListener {
+                        if (selectedAccent == preset.key) return@setOnClickListener
+                        selectedAccent = preset.key
+                        rebuildGrid()
+                    }
+                    row.addView(tile, LinearLayout.LayoutParams(0, dp(context, 78), 1f))
+                }
+
+                repeat(3 - chunk.size) {
+                    row.addView(View(context), LinearLayout.LayoutParams(0, dp(context, 78), 1f))
+                }
+                grid.addView(row)
+            }
+        }
+        rebuildGrid()
+
+        val scroll = ScrollView(context).apply {
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            addView(grid)
+        }
+        box.addView(scroll)
+        scroll.limitHeight((context.resources.displayMetrics.heightPixels * 0.44f).toInt())
+
+        val apply = compactButton(context, palette.accent, Color.WHITE, "Применить")
+        apply.setOnClickListener {
+            if (!apply.isEnabled) return@setOnClickListener
+            apply.isEnabled = false
+            press(apply) {
+                close(dialog, box) {
+                    onApply(selectedLight, selectedAccent)
+                }
+            }
+        }
+        box.addView(
+            apply,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(context, 48)).apply {
+                topMargin = dp(context, 12)
+            }
+        )
+
+        showDialog(context, dialog, box, 0.91f)
     }
 
     fun showNotice(
@@ -213,13 +408,8 @@ object ModernDialogs {
         LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(context, 18), dp(context, 12), dp(context, 18), dp(context, 18))
-            background = roundedStroke(
-                palette.surface,
-                palette.stroke,
-                dp(context, 28).toFloat(),
-                0.85f,
-                context
-            )
+            background = rounded(palette.surface, dp(context, 28).toFloat())
+            elevation = dp(context, 12).toFloat()
             addView(
                 View(context).apply {
                     background = rounded(palette.stroke, dp(context, 2).toFloat())
@@ -240,14 +430,17 @@ object ModernDialogs {
         box: View
     ): View {
         val frame = FrameLayout(context).apply {
+            minimumHeight = dp(context, 54)
             setPadding(0, 0, 0, dp(context, 12))
         }
 
         val titleView = TextView(context).apply {
             text = title
-            textSize = 20f
+            textSize = 19f
             gravity = Gravity.CENTER
             includeFontPadding = false
+            maxLines = 2
+            setLineSpacing(dp(context, 1).toFloat(), 1.02f)
             setTextColor(palette.text)
             setTypeface(typeface, Typeface.BOLD)
             setPadding(dp(context, 48), 0, dp(context, 48), 0)
@@ -269,7 +462,7 @@ object ModernDialogs {
             titleView,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(context, 44),
+                ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.CENTER
             )
         )
