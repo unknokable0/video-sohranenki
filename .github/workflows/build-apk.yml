@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.2.4: new branding, cloud splash and Twitch network hardening
+# SOHR 6.2.5: clean native loading without bitmap or neon
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.2.4 version
+      - name: Assign SOHR 6.2.5 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=620004" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.2.4" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=620005" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.2.5" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -423,16 +423,16 @@ jobs:
               "android.permission.ACCESS_NETWORK_STATE"
           ]:
               if required not in manifest:
-                  raise SystemExit(f"SOHR 6.2.4 manifest branding/network regression: {required}")
+                  raise SystemExit(f"SOHR 6.2.5 manifest branding/network regression: {required}")
 
           for required in [
               'name="AppTheme.Starting"',
               "windowSplashScreenAnimatedIcon",
-              "@drawable/sohr_brand_logo",
+              "@drawable/sohr_splash_mark",
               "postSplashScreenTheme"
           ]:
               if required not in styles:
-                  raise SystemExit(f"SOHR 6.2.4 splash theme regression: {required}")
+                  raise SystemExit(f"SOHR 6.2.5 splash theme regression: {required}")
 
           for required in [
               "sohr_brand.webp.hex",
@@ -441,16 +441,21 @@ jobs:
               "core-splashscreen:1.2.0"
           ]:
               if required not in gradle_file:
-                  raise SystemExit(f"SOHR 6.2.4 brand generation regression: {required}")
+                  raise SystemExit(f"SOHR 6.2.5 brand generation regression: {required}")
 
           for required in [
-              "outlinePath",
-              "segmentPath",
-              "duration = 1850L",
-              "glowPaint"
+              "cloudPath",
+              "sCutPath",
+              "fillPaint",
+              "cutPaint",
+              "PorterDuff.Mode.CLEAR",
+              "duration = 1600L"
           ]:
               if required not in loader:
-                  raise SystemExit(f"SOHR 6.2.4 cloud-loader regression: {required}")
+                  raise SystemExit(f"SOHR 6.2.5 clean-loader regression: {required}")
+          for forbidden in ["glowPaint", "segmentPaint", "segmentPath", "Paint.Style.STROKE\n        strokeCap"]:
+              if forbidden in loader:
+                  raise SystemExit(f"SOHR 6.2.5 neon/outline loader regression: {forbidden}")
 
           for required in [
               "installSplashScreen()",
@@ -464,7 +469,15 @@ jobs:
               "onReceivedError"
           ]:
               if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.2.4 branding/network regression: {required}")
+                  raise SystemExit(f"SOHR 6.2.5 branding/network regression: {required}")
+
+          startup_section = sohr_main.split("private fun showStartupSplash()", 1)[1].split("\n    private fun ", 1)[0]
+          brand_loading_section = sohr_main.split("private fun buildBrandLoadingMark", 1)[1].split("\n    private fun ", 1)[0]
+          if "sohr_brand_logo" in startup_section or "sohr_brand_logo" in brand_loading_section:
+              raise SystemExit("SOHR 6.2.5 loading regression: raster brand artwork returned to loading UI")
+          for required in ["dp(154)", "dp(132)", "LoadingWaveView(this, Color.parseColor(\"#7388FF\"))"]:
+              if required not in startup_section:
+                  raise SystemExit(f"SOHR 6.2.5 startup mark sizing/style regression: {required}")
 
           forbidden_raw_twitch = [
               'Toast.makeText(this@MainActivity, e.message ?: "Ошибка Twitch"',
@@ -473,7 +486,7 @@ jobs:
           ]
           for forbidden in forbidden_raw_twitch:
               if forbidden in sohr_main and forbidden.startswith("Toast.makeText"):
-                  raise SystemExit("SOHR 6.2.4 raw Twitch error Toast regression")
+                  raise SystemExit("SOHR 6.2.5 raw Twitch error Toast regression")
 
           for required in [
               '"С прошлого раза"',
@@ -571,6 +584,14 @@ jobs:
           if not splash.is_file() or "windowSplashScreenAnimatedIcon" not in splash.read_text(encoding="utf-8"):
               raise SystemExit("Android 12 splash override missing")
 
+          clean_splash = Path("native/app/src/main/res/drawable/sohr_splash_mark.xml")
+          if not clean_splash.is_file() or "7388FF" not in clean_splash.read_text(encoding="utf-8"):
+              raise SystemExit("SOHR 6.2.5 clean vector splash mark missing")
+
+          v31_styles = Path("native/app/src/main/res/values-v31/styles.xml").read_text(encoding="utf-8")
+          if '@drawable/sohr_splash_mark' not in v31_styles:
+              raise SystemExit("SOHR 6.2.5 Android 12 clean splash override missing")
+
           icon = Path("native/app/src/main/res/drawable-nodpi/ic_launcher.webp")
           if not icon.is_file() or icon.stat().st_size < 4096:
               raise SystemExit(f"SOHR launcher asset missing or too small: {icon}")
@@ -588,7 +609,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "Новый логотип и иконка SOHR • Фирменный SplashScreen и облачная loading-анимация • Единый бренд на loading-экранах • Twitch DNS/timeout ошибки больше не показываются сырым текстом • Фоновые Twitch-проверки работают тихо с network cooldown • Плеер/следующее видео выровнены • Поиск и fullscreen стали плавнее"
+            "notes": "Loading без вставленной картинки • Никакого неона и светящихся обводок • Нативный заполненный знак SOHR среднего размера • Чистый vector SplashScreen • Единый спокойный loading-стиль во всех экранах • Twitch network fix и player/search/fullscreen polish сохранены"
           }
           EOF
           cat update.json
