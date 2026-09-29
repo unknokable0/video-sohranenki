@@ -1125,8 +1125,8 @@ class PlayerScreen(
         dialog.setContentView(scroll)
         dialog.show()
 
-        val maxHeight = (activity.resources.displayMetrics.heightPixels * 0.82f).toInt()
-        val comfortableHeight = minOf(maxHeight, dp(430))
+        val maxHeight = (activity.resources.displayMetrics.heightPixels * 0.72f).toInt()
+        val comfortableHeight = minOf(maxHeight, dp(390))
         dialog.findViewById<FrameLayout>(
             com.google.android.material.R.id.design_bottom_sheet
         )?.let { sheet ->
@@ -1155,15 +1155,15 @@ class PlayerScreen(
 
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(10), dp(14), dp(18))
-            background = roundedInt(palette.surface, 24)
+            setPadding(dp(12), dp(10), dp(12), dp(14))
+            background = roundedInt(palette.surface, 22)
 
             addView(TextView(activity).apply {
                 text = "Настройки видео"
-                textSize = 19f
+                textSize = 18f
                 setTypeface(typeface, Typeface.BOLD)
                 setTextColor(palette.text)
-                setPadding(dp(4), dp(4), dp(4), dp(12))
+                setPadding(dp(3), dp(3), dp(3), dp(9))
             })
 
             items.forEachIndexed { index, pair ->
@@ -1173,9 +1173,9 @@ class PlayerScreen(
                     },
                     LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
-                        dp(54)
+                        dp(50)
                     ).apply {
-                        bottomMargin = dp(5)
+                        bottomMargin = dp(4)
                     }
                 )
             }
