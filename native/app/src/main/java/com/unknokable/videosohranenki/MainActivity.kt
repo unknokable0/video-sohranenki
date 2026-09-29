@@ -3254,6 +3254,315 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun watchLaterIds(): Set<String> =
+        getSharedPreferences("sohr_watch_later", MODE_PRIVATE)
+            .getStringSet("ids", emptySet())
+            ?.toSet()
+            ?: emptySet()
+
+    private fun toggleWatchLater(item: VideoItem): Boolean {
+        val prefs = getSharedPreferences("sohr_watch_later", MODE_PRIVATE)
+        val ids = prefs.getStringSet("ids", emptySet())?.toMutableSet() ?: mutableSetOf()
+        val key = item.messageId.toString()
+        val added = if (ids.contains(key)) {
+            ids.remove(key)
+            false
+        } else {
+            ids.add(key)
+            true
+        }
+        prefs.edit().putStringSet("ids", ids).apply()
+        return added
+    }
+
+    private fun downloadedVideoIds(): Set<String> =
+        getSharedPreferences("sohr_downloaded", MODE_PRIVATE)
+            .getStringSet("ids", emptySet())
+            ?.toSet()
+            ?: emptySet()
+
+    private fun markDownloaded(item: VideoItem) {
+        val prefs = getSharedPreferences("sohr_downloaded", MODE_PRIVATE)
+        val ids = prefs.getStringSet("ids", emptySet())?.toMutableSet() ?: mutableSetOf()
+        ids.add(item.messageId.toString())
+        prefs.edit().putStringSet("ids", ids).apply()
+    }
+
+    private fun showVideoQuickActions(item: VideoItem, sourceView: View) {
+        sourceView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+
+        val dialog = BottomSheetDialog(this)
+        val sheet = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(18))
+            background = roundedBg(panel, 26)
+        }
+
+        val title = TextView(this).apply {
+            text = item.title.ifBlank { "Видео" }
+            textSize = 16f
+            maxLines = 2
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+            setPadding(dp(8), dp(4), dp(8), dp(10))
+        }
+        sheet.addView(title)
+
+        fun action(
+            label: String,
+            subtitle: String? = null,
+            close: Boolean = true,
+            block: () -> Unit
+        ) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(14), dp(9), dp(14), dp(9))
+                background = roundedBg(palette.surfaceAlt, 16)
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    animatePress(this)
+                    if (close) dialog.dismiss()
+                    block()
+                }
+            }
+            row.addView(TextView(this).apply {
+                text = label
+                textSize = 14f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(this@MainActivity.text)
+            })
+            if (!subtitle.isNullOrBlank()) {
+                row.addView(TextView(this).apply {
+                    text = subtitle
+                    textSize = 11f
+                    setTextColor(muted)
+                    setPadding(0, dp(3), 0, 0)
+                })
+            }
+            sheet.addView(
+                row,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(7) }
+            )
+        }
+
+        action("Смотреть", "Открыть видео") {
+            openPlayer(item, sourceView = sourceView)
+        }
+
+        val saved = watchLaterIds().contains(item.messageId.toString())
+        action(
+            if (saved) "Убрать из «Смотреть позже»" else "Смотреть позже",
+            if (saved) "Видео останется в медиатеке" else "Сохранить на потом"
+        ) {
+            val added = toggleWatchLater(item)
+            Toast.makeText(
+                this,
+                if (added) "Добавлено в «Смотреть позже»" else "Убрано из «Смотреть позже»",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+
+        val watched = isVideoWatched(item.messageId)
+        action(
+            if (watched) "Отметить непросмотренным" else "Отметить просмотренным"
+        ) {
+            if (watched) unmarkVideoWatched(item.messageId) else markVideoWatched(item.messageId)
+            suppressNextRootAnimation = true
+            showFeed(currentVideos)
+        }
+
+        if (item.source == "telegram") {
+            action("Скачать", "Сохранить копию в папку SOHR приложения") {
+                downloadVideoQuick(item)
+            }
+        }
+
+        action("Поделиться") {
+            val shareText = item.externalUrl?.takeIf { it.isNotBlank() }
+                ?: ("SOHR • " + item.title)
+            startActivity(
+                Intent.createChooser(
+                    Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, shareText)
+                    },
+                    "Поделиться"
+                )
+            )
+        }
+
+        dialog.setContentView(sheet)
+        dialog.setOnShowListener {
+            dialog.findViewById<FrameLayout>(com.google.android.material.R.id.design_bottom_sheet)
+                ?.background = ColorDrawable(Color.TRANSPARENT)
+        }
+        dialog.show()
+    }
+
+    private fun downloadVideoQuick(item: VideoItem) {
+        lifecycleScope.launch {
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    val source = item.localPath
+                        ?.let(::File)
+                        ?.takeIf { it.exists() }
+                        ?: run {
+                            check(telegramReady && item.fileId > 0) { "Видео пока недоступно для скачивания" }
+                            val file = client.send(TdApi.DownloadFile(item.fileId, 1, 0, 0, true))
+                            File(file.local.path).takeIf {
+                                file.local.isDownloadingCompleted && it.exists()
+                            } ?: error("Telegram не завершил загрузку файла")
+                        }
+
+                    val ext = when {
+                        item.mimeType.contains("webm", true) -> "webm"
+                        item.mimeType.contains("quicktime", true) -> "mov"
+                        else -> "mp4"
+                    }
+                    val dir = File(
+                        getExternalFilesDir(Environment.DIRECTORY_MOVIES) ?: filesDir,
+                        "SOHR"
+                    ).apply { mkdirs() }
+                    val safeName = item.title
+                        .replace(Regex("""[\\/:*?"<>|]"""), "_")
+                        .take(64)
+                        .ifBlank { "video_" + item.messageId }
+                    val target = File(dir, safeName + "_" + item.messageId + "." + ext)
+                    source.copyTo(target, overwrite = true)
+                    target
+                }
+            }
+
+            result.onSuccess { file ->
+                markDownloaded(item)
+                Toast.makeText(
+                    this@MainActivity,
+                    "Скачано • " + file.name,
+                    Toast.LENGTH_SHORT
+                ).show()
+            }.onFailure { error ->
+                Toast.makeText(
+                    this@MainActivity,
+                    error.message ?: "Не удалось скачать видео",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+    private fun showFeedSkeleton(message: String) {
+        startupPhase = false
+        startupStatusView = null
+
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(bg)
+        }
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+        }
+        val body = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(24))
+        }
+        val pulseViews = mutableListOf<View>()
+
+        body.addView(TextView(this).apply {
+            text = "SOHR"
+            textSize = 25f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+        })
+        body.addView(TextView(this).apply {
+            text = message
+            textSize = 12f
+            setTextColor(muted)
+            setPadding(0, dp(5), 0, dp(14))
+        })
+
+        fun skeleton(height: Int, radius: Int = 18): View =
+            View(this).apply {
+                background = roundedBg(palette.surfaceAlt, radius)
+                pulseViews += this
+            }
+
+        body.addView(
+            skeleton(92, 24),
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(92)).apply {
+                bottomMargin = dp(18)
+            }
+        )
+
+        repeat(2) {
+            val label = skeleton(18, 9)
+            body.addView(
+                label,
+                LinearLayout.LayoutParams(dp(if (it == 0) 150 else 96), dp(18)).apply {
+                    bottomMargin = dp(9)
+                }
+            )
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+            }
+            repeat(2) {
+                row.addView(
+                    skeleton(154, 18),
+                    LinearLayout.LayoutParams(0, dp(154), 1f).apply {
+                        if (it == 0) marginEnd = dp(8) else marginStart = dp(8)
+                    }
+                )
+            }
+            body.addView(
+                row,
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(154)).apply {
+                    bottomMargin = dp(20)
+                }
+            )
+        }
+
+        scroll.addView(
+            body,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+        page.addView(
+            scroll,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+        )
+
+        val animator = android.animation.ValueAnimator.ofFloat(0.52f, 0.92f).apply {
+            duration = 720L
+            repeatCount = android.animation.ValueAnimator.INFINITE
+            repeatMode = android.animation.ValueAnimator.REVERSE
+            interpolator = android.view.animation.AccelerateDecelerateInterpolator()
+            addUpdateListener { value ->
+                val alpha = value.animatedValue as Float
+                pulseViews.forEach { it.alpha = alpha }
+            }
+        }
+        page.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {
+                if (settings.animations && !animator.isStarted) animator.start()
+            }
+            override fun onViewDetachedFromWindow(v: View) {
+                animator.cancel()
+                page.removeOnAttachStateChangeListener(this)
+            }
+        })
+
+        replaceRoot(withBottomNav(page, SohrTab.VIDEOS))
+    }
+
     private fun refreshT2x2Live(slot: FrameLayout) {
         twitchLiveJob?.cancel()
 
