@@ -89,16 +89,7 @@ class SettingsScreen(
             checked = settings.autoplay
         ) { settings.autoplay = it })
 
-        root.addView(settingRow(
-            iconRes = R.drawable.ic_setting_previews,
-            iconColor = "#58DFA0",
-            title = t("previews"),
-            description = t("previews_desc"),
-            checked = settings.previews
-        ) {
-            settings.previews = it
-            needsReload = true
-        })
+        root.addView(previewModeSelector())
 
         root.addView(settingRow(
             iconRes = R.drawable.ic_setting_animations,
@@ -437,6 +428,119 @@ class SettingsScreen(
 
         box.addView(selector, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)))
         box.addView(sourceHint)
+
+        return LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(box)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(10) }
+        }
+    }
+
+    private fun previewModeSelector(): View {
+        val box = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            background = rounded(palette.surface, 18)
+        }
+
+        val titleRow = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        titleRow.addView(ImageView(activity).apply {
+            setImageResource(R.drawable.ic_setting_previews)
+            imageTintList = ColorStateList.valueOf(Color.parseColor("#58DFA0"))
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+            background = rounded(palette.surfaceAlt, 13)
+        }, LinearLayout.LayoutParams(dp(42), dp(42)).apply { marginEnd = dp(10) })
+        titleRow.addView(LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(TextView(activity).apply {
+                text = t("previews")
+                textSize = 15f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(palette.text)
+            })
+            addView(TextView(activity).apply {
+                text = "Тихое превью после короткой паузы на карточке"
+                textSize = 11.5f
+                setTextColor(palette.muted)
+                setPadding(0, dp(3), 0, 0)
+            })
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        box.addView(titleRow)
+
+        val selector = FrameLayout(activity).apply {
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+            background = rounded(palette.surfaceAlt, 16)
+            clipChildren = true
+            clipToPadding = true
+        }
+        val indicator = View(activity).apply {
+            background = rounded(palette.accent, 13)
+        }
+        val buttons = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        val modes = listOf("wifi" to "Wi‑Fi", "always" to "Всегда", "off" to "Выкл")
+        val views = mutableListOf<TextView>()
+
+        fun update(selected: String, animate: Boolean) {
+            val slot = ((selector.width - selector.paddingLeft - selector.paddingRight) / 3f).coerceAtLeast(0f)
+            if (slot <= 0f) return
+            val index = modes.indexOfFirst { it.first == selected }.coerceAtLeast(0)
+            val params = indicator.layoutParams as FrameLayout.LayoutParams
+            params.width = slot.toInt()
+            params.height = dp(42)
+            indicator.layoutParams = params
+            val target = slot * index
+            indicator.animate().cancel()
+            if (animate && settings.animations) {
+                indicator.animate()
+                    .translationX(target)
+                    .setDuration(SohrMotion.NORMAL)
+                    .setInterpolator(SohrMotion.smooth())
+                    .start()
+            } else {
+                indicator.translationX = target
+            }
+            views.forEachIndexed { i, view ->
+                view.setTextColor(if (i == index) Color.WHITE else palette.muted)
+            }
+        }
+
+        modes.forEach { (key, label) ->
+            val view = TextView(activity).apply {
+                text = label
+                textSize = 12f
+                gravity = Gravity.CENTER
+                setTypeface(typeface, Typeface.BOLD)
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    if (settings.previewMode == key) return@setOnClickListener
+                    SohrHaptics.select(this)
+                    settings.previewMode = key
+                    needsReload = true
+                    update(key, true)
+                }
+            }
+            views += view
+            buttons.addView(view, LinearLayout.LayoutParams(0, dp(42), 1f))
+        }
+
+        selector.addView(indicator, FrameLayout.LayoutParams(0, dp(42), Gravity.START or Gravity.CENTER_VERTICAL))
+        selector.addView(buttons, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42), Gravity.CENTER))
+        selector.post { update(settings.previewMode, false) }
+
+        box.addView(selector, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)).apply {
+            topMargin = dp(12)
+        })
 
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
