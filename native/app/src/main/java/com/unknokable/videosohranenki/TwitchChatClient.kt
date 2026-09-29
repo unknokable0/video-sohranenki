@@ -108,7 +108,7 @@ class TwitchChatClient {
                                 ignoreCase = true
                             ) -> {
                                 authFailed = true
-                                onStatus("Переподключи Twitch")
+                                onStatus("Переподключите Twitch")
                                 break
                             }
 
