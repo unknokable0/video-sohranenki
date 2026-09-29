@@ -8,12 +8,24 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.runBlocking
 import org.drinkless.tdlib.TdApi
 import java.io.IOException
 import java.io.InputStream
+import java.io.File
 import java.io.RandomAccessFile
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.min
+
+private object TelegramDownloadCoordinator {
+    private val locks = ConcurrentHashMap<Int, Mutex>()
+
+    suspend fun <T> withFile(fileId: Int, block: suspend () -> T): T =
+        locks.getOrPut(fileId) { Mutex() }.withLock { block() }
+}
 
 class TelegramStreamServer(
     private val client: TdClient,
@@ -27,12 +39,10 @@ class TelegramStreamServer(
     fun mediaDataSource(item: VideoItem): MediaDataSource = TelegramMediaDataSource(client, item.fileId, item.fileSize)
 
     fun release(item: VideoItem) {
+        // Intentionally do not cancel TDLib downloads here.
+        // A manual/offline download may be using the same file and cancelling it
+        // causes "Canceled by another downloadFile request".
         if (item.fileId <= 0) return
-        scope.launch {
-            // Stop network work, but keep already downloaded TDLib bytes on disk.
-            // Deleting them here made every reopen cold-start from Telegram again.
-            runCatching { client.send(TdApi.CancelDownloadFile(item.fileId, false)) }
-        }
     }
 
     fun prefetch(item: VideoItem) {
@@ -42,7 +52,9 @@ class TelegramStreamServer(
                 // Prime only a small startup range. A large 12 MB request could make
                 // a following synchronous read wait several seconds before first frame.
                 val limit = minOf(768L * 1024L, item.fileSize)
-                client.send(TdApi.DownloadFile(item.fileId, 32, 0, limit, false))
+                TelegramDownloadCoordinator.withFile(item.fileId) {
+                    client.send(TdApi.DownloadFile(item.fileId, 32, 0, limit, true))
+                }
             }
         }
     }
@@ -59,9 +71,35 @@ class TelegramStreamServer(
                     .toLong()
                     .coerceAtLeast(768L * 1024L)
                 val limit = minOf(item.fileSize, target, maxBytes.coerceAtLeast(768L * 1024L))
-                client.send(TdApi.DownloadFile(item.fileId, 20, 0, limit, false))
+                TelegramDownloadCoordinator.withFile(item.fileId) {
+                    client.send(TdApi.DownloadFile(item.fileId, 20, 0, limit, true))
+                }
             }
         }
+    }
+
+    suspend fun downloadFully(item: VideoItem): File = withContext(Dispatchers.IO) {
+        require(item.fileId > 0 && item.fileSize > 0L) { "Видео недоступно для скачивания" }
+
+        val chunkSize = 8L * 1024L * 1024L
+        var offset = 0L
+        var lastFile: TdApi.File? = null
+
+        while (offset < item.fileSize) {
+            val limit = minOf(chunkSize, item.fileSize - offset)
+            lastFile = TelegramDownloadCoordinator.withFile(item.fileId) {
+                client.send(TdApi.DownloadFile(item.fileId, 28, offset, limit, true))
+            }
+            offset += limit
+        }
+
+        val finalFile = TelegramDownloadCoordinator.withFile(item.fileId) {
+            client.send(TdApi.GetFile(item.fileId))
+        }
+        val path = finalFile.local.path.ifBlank { lastFile?.local?.path.orEmpty() }
+        require(path.isNotBlank()) { "Telegram не вернул путь к файлу" }
+        File(path).takeIf { it.exists() }
+            ?: error("Загруженный файл не найден")
     }
 
     override fun stop() { scope.cancel(); super.stop() }
@@ -154,7 +192,9 @@ private class TelegramFileInputStream(
             )
             try {
                 val result = runBlocking {
-                    client.send(TdApi.DownloadFile(fileId, 32, offset, windowLimit, true))
+                    TelegramDownloadCoordinator.withFile(fileId) {
+                        client.send(TdApi.DownloadFile(fileId, 32, offset, windowLimit, true))
+                    }
                 }
                 applyLocalRange(result.local)
             } catch (error: Throwable) {
@@ -208,7 +248,9 @@ private class TelegramFileInputStream(
         // window, so first frame and seeks don't wait for a multi-megabyte download.
         runBlocking {
             runCatching {
-                client.send(TdApi.DownloadFile(fileId, 24, nextStart, nextLimit, false))
+                TelegramDownloadCoordinator.withFile(fileId) {
+                    client.send(TdApi.DownloadFile(fileId, 24, nextStart, nextLimit, true))
+                }
             }
         }
     }
@@ -246,7 +288,11 @@ private class TelegramMediaDataSource(
         val wantedEnd = minOf(fileSize, position + requested)
         if (cachedStart >= 0 && position >= cachedStart && wantedEnd <= cachedEndExclusive) return
         val limit = minOf(maxOf(requested, chunkSize), fileSize - position)
-        val result = runBlocking { client.send(TdApi.DownloadFile(fileId, 32, position, limit, true)) }
+        val result = runBlocking {
+            TelegramDownloadCoordinator.withFile(fileId) {
+                client.send(TdApi.DownloadFile(fileId, 32, position, limit, true))
+            }
+        }
         val path = result.local.path
         if (path.isBlank()) throw IllegalStateException("Telegram file is not ready")
         if (path != filePath) { raf?.close(); filePath = path; raf = RandomAccessFile(path, "r") }
