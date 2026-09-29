@@ -665,10 +665,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showStartupSplash() {
         val page = FrameLayout(this).apply {
-            background = android.graphics.drawable.GradientDrawable(
-                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                intArrayOf(Color.parseColor("#080B18"), Color.parseColor("#0A0D17"))
-            )
+            setBackgroundColor(bg)
         }
 
         val center = LinearLayout(this).apply {
@@ -676,46 +673,27 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
         }
 
-        val mark = LoadingWaveView(this, Color.parseColor("#7388FF")).apply {
+        val loader = LoadingWaveView(this, purple).apply {
             alpha = 0f
             scaleX = 0.94f
             scaleY = 0.94f
-            translationY = dp(4).toFloat()
-        }
-
-        val brand = TextView(this).apply {
-            text = "SOHR"
-            textSize = 18f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            alpha = 0f
-            letterSpacing = 0.10f
-            setPadding(0, dp(12), 0, 0)
         }
 
         val status = TextView(this).apply {
             text = "Запускаем SOHR…"
-            textSize = 12.5f
+            textSize = 13f
             gravity = Gravity.CENTER
-            setTextColor(Color.parseColor("#AAB2C8"))
-            setPadding(0, dp(7), 0, 0)
+            setTextColor(muted)
+            setPadding(0, dp(12), 0, 0)
             alpha = 0f
         }
         startupStatusView = status
 
         center.addView(
-            mark,
-            LinearLayout.LayoutParams(dp(154), dp(132)).apply {
+            loader,
+            LinearLayout.LayoutParams(dp(64), dp(64)).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
             }
-        )
-        center.addView(
-            brand,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
         )
         center.addView(
             status,
@@ -742,37 +720,18 @@ class MainActivity : AppCompatActivity() {
             )
         )
 
-        if (settings.animations) {
-            mark.animate()
-                .alpha(1f)
-                .scaleX(1f)
-                .scaleY(1f)
-                .translationY(0f)
-                .setDuration(SohrMotion.HERO)
-                .setInterpolator(SohrMotion.smooth())
-                .start()
-
-            brand.animate()
-                .alpha(1f)
-                .translationY(0f)
-                .setStartDelay(110L)
-                .setDuration(SohrMotion.NORMAL)
-                .setInterpolator(SohrMotion.smooth())
-                .start()
-
-            status.animate()
-                .alpha(1f)
-                .setStartDelay(190L)
-                .setDuration(SohrMotion.NORMAL)
-                .start()
-        } else {
-            mark.alpha = 1f
-            mark.scaleX = 1f
-            mark.scaleY = 1f
-            mark.translationY = 0f
-            brand.alpha = 1f
-            status.alpha = 1f
-        }
+        loader.animate()
+            .alpha(1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(300L)
+            .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+            .start()
+        status.animate()
+            .alpha(1f)
+            .setStartDelay(120L)
+            .setDuration(220L)
+            .start()
     }
 
     private fun handleAuthState(state: TdApi.AuthorizationState) {
@@ -7426,19 +7385,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun buildBrandLoadingMark(sizeDp: Int): View =
-        LoadingWaveView(this, purple).apply {
-            alpha = 0.98f
-            if (settings.animations) {
-                scaleX = 0.95f
-                scaleY = 0.95f
-                animate()
-                    .scaleX(1f)
-                    .scaleY(1f)
-                    .setDuration(SohrMotion.NORMAL)
-                    .setInterpolator(SohrMotion.smooth())
-                    .start()
-            }
-        }
+        LoadingWaveView(this, purple)
 
     private fun showUpdateProgress(progress: Int) {
         val box = LinearLayout(this).apply {
