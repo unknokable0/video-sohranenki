@@ -65,7 +65,10 @@ class PlayerScreen(
     private val settings: AppSettings,
     private val startPositionMs: Long = 0L,
     private val nextItem: VideoItem? = null,
+    private val queueItems: List<VideoItem> = emptyList(),
     private val onPlayNext: ((VideoItem) -> Unit)? = null,
+    private val onDownloadRequested: ((VideoItem) -> Unit)? = null,
+    private val onWatchTime: ((Long, Long) -> Unit)? = null,
     private val isWatched: Boolean = false,
     private val onWatchedChange: ((VideoItem, Boolean) -> Unit)? = null,
     private val onBack: () -> Unit,
@@ -139,6 +142,10 @@ class PlayerScreen(
     private var qualitySelection = 0
     private var playbackCounted = false
     private var playbackRecoveryAttempts = 0
+    private lateinit var mediaSessionBridge: SohrMediaSessionBridge
+    private var lastWatchSampleElapsed = SystemClock.elapsedRealtime()
+    private var pendingWatchMs = 0L
+    private var sessionWatchMs = 0L
     private var destroyed = false
     private var lastProgressPersistAt = 0L
     private var speedActionButton: TextView? = null
@@ -179,6 +186,7 @@ class PlayerScreen(
             .setSeekBackIncrementMs(10_000)
             .setSeekForwardIncrementMs(10_000)
             .build()
+        mediaSessionBridge = SohrMediaSessionBridge(activity, player, item, mediaUrl)
 
         header = buildHeader()
         root.addView(header)
@@ -331,7 +339,7 @@ class PlayerScreen(
 
         player.setSeekParameters(SeekParameters.CLOSEST_SYNC)
         playerView.player = player
-        player.setMediaItem(MediaItem.fromUri(mediaUrl))
+        player.setMediaItem(mediaSessionBridge.mediaItem)
         if (startPositionMs > 0) player.seekTo(startPositionMs)
         player.repeatMode = Player.REPEAT_MODE_OFF
         player.playbackParameters = PlaybackParameters(speed)
@@ -340,6 +348,7 @@ class PlayerScreen(
 
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                lastWatchSampleElapsed = SystemClock.elapsedRealtime()
                 updatePlayIcon()
                 root.keepScreenOn = isPlaying
                 if (isPlaying && ::endOverlay.isInitialized) endOverlay.visibility = View.GONE
@@ -438,7 +447,7 @@ class PlayerScreen(
             runCatching {
                 player.stop()
                 player.clearMediaItems()
-                player.setMediaItem(MediaItem.fromUri(mediaUrl))
+                player.setMediaItem(mediaSessionBridge.mediaItem)
                 if (resumeAt > 0L) player.seekTo(resumeAt)
                 player.playbackParameters = PlaybackParameters(speed)
                 player.playWhenReady = true
@@ -919,8 +928,13 @@ class PlayerScreen(
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(5), dp(16), dp(20))
 
+            val candidates = (queueItems + listOfNotNull(nextItem))
+                .filterNot { it.messageId == item.messageId }
+                .distinctBy { it.messageId }
+                .take(4)
+
             addView(TextView(activity).apply {
-                text = "Следующие видео"
+                text = if (queueItems.isNotEmpty()) "Далее • очередь" else "Следующие видео"
                 textSize = 16f
                 setTypeface(typeface, Typeface.BOLD)
                 setTextColor(palette.text)
@@ -928,8 +942,7 @@ class PlayerScreen(
                 setPadding(0, dp(5), 0, dp(11))
             })
 
-            val next = nextItem
-            if (next == null) {
+            if (candidates.isEmpty()) {
                 addView(TextView(activity).apply {
                     text = "Это последнее видео в сборнике"
                     textSize = 13f
@@ -938,63 +951,72 @@ class PlayerScreen(
                     background = roundedInt(palette.surfaceAlt, 16)
                 }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             } else {
-                addView(LinearLayout(activity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(dp(12), dp(11), dp(12), dp(11))
-                    background = roundedInt(palette.surfaceAlt, 18)
-                    isClickable = true
-                    isFocusable = true
+                candidates.forEachIndexed { index, next ->
+                    val queued = queueItems.any { it.messageId == next.messageId }
+                    addView(LinearLayout(activity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(dp(12), dp(10), dp(12), dp(10))
+                        background = roundedInt(palette.surfaceAlt, 18)
+                        isClickable = true
+                        isFocusable = true
 
-                    val thumb = ImageView(activity).apply {
-                    scaleType=ImageView.ScaleType.CENTER_CROP
-                    background=roundedInt(palette.surface,12)
-                    clipToOutline=true
-                    val localThumb = next.thumbnailPath?.takeIf { it.isNotBlank() }
-                    when {
-                        localThumb != null -> load(java.io.File(localThumb)) { crossfade(settings.animations) }
-                        !next.thumbnailUrl.isNullOrBlank() -> load(next.thumbnailUrl) { crossfade(settings.animations) }
-                    }
+                        val thumb = ImageView(activity).apply {
+                            scaleType = ImageView.ScaleType.CENTER_CROP
+                            background = roundedInt(palette.surface, 12)
+                            clipToOutline = true
+                            val localThumb = next.thumbnailPath?.takeIf { it.isNotBlank() }
+                            when {
+                                localThumb != null -> load(java.io.File(localThumb)) { crossfade(settings.animations) }
+                                !next.thumbnailUrl.isNullOrBlank() -> load(next.thumbnailUrl) { crossfade(settings.animations) }
+                            }
+                        }
+                        addView(thumb, LinearLayout.LayoutParams(dp(96), dp(54)).apply { marginEnd = dp(11) })
+
+                        val textBox = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+                        textBox.addView(TextView(activity).apply {
+                            text = cleanTitle(next.title)
+                            textSize = 13.5f
+                            maxLines = 2
+                            ellipsize = android.text.TextUtils.TruncateAt.END
+                            includeFontPadding = false
+                            setTypeface(typeface, Typeface.BOLD)
+                            setTextColor(palette.text)
+                        })
+                        textBox.addView(TextView(activity).apply {
+                            text = formatMs(next.durationSeconds * 1000L) + "  •  " +
+                                if (queued) "Очередь " + (index + 1) else "Следующее"
+                            textSize = 11.5f
+                            setTextColor(palette.muted)
+                            setPadding(0, dp(3), 0, 0)
+                        })
+                        addView(textBox, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                        addView(ImageView(activity).apply {
+                            setImageResource(R.drawable.ic_play)
+                            imageTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
+                            scaleType = ImageView.ScaleType.CENTER_INSIDE
+                            setPadding(dp(9), dp(9), dp(9), dp(9))
+                            background = roundedInt(palette.accent, 18)
+                        }, LinearLayout.LayoutParams(dp(36), dp(36)).apply { marginStart = dp(9) })
+
+                        setOnClickListener {
+                            pulse(this)
+                            onPlayNext?.invoke(next)
+                        }
+                    }, LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { if (index < candidates.lastIndex) bottomMargin = dp(7) })
                 }
-                addView(thumb,LinearLayout.LayoutParams(dp(104),dp(59)).apply{marginEnd=dp(12)})
-
-                    val textBox = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
-                    textBox.addView(TextView(activity).apply {
-                        text = cleanTitle(next.title)
-                        textSize = 14f
-                        maxLines = 2
-                        ellipsize = android.text.TextUtils.TruncateAt.END
-                        includeFontPadding = false
-                        setTypeface(typeface, Typeface.BOLD)
-                        setTextColor(palette.text)
-                    })
-                    textBox.addView(TextView(activity).apply {
-                        text = "${formatMs(next.durationSeconds * 1000L)}  •  Следующее"
-                        textSize = 12f
-                        setTextColor(palette.muted)
-                        setPadding(0, dp(4), 0, 0)
-                    })
-                    addView(textBox, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                    addView(ImageView(activity).apply {
-                        setImageResource(R.drawable.ic_play)
-                        imageTintList =
-                            android.content.res.ColorStateList.valueOf(Color.WHITE)
-                        scaleType = ImageView.ScaleType.CENTER_INSIDE
-                        setPadding(dp(10), dp(10), dp(10), dp(10))
-                        background = roundedInt(palette.accent, 20)
-                    }, LinearLayout.LayoutParams(dp(40), dp(40)).apply {
-                        marginStart = dp(10)
-                    })
-                    setOnClickListener {
-                        pulse(this)
-                        onPlayNext?.invoke(next)
-                    }
-                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             }
         }
     }
 
     private fun enqueueDownload() {
+        if (onDownloadRequested != null) {
+            onDownloadRequested.invoke(item)
+            return
+        }
         val safeTitle = cleanTitle(item.title)
             .replace(Regex("[^\\p{L}\\p{N}._ -]"), "_")
             .take(70)
@@ -1978,6 +2000,7 @@ class PlayerScreen(
         runCatching { if (pipMode || pipHost != null) restoreFromPictureInPicture() }
         runCatching { if (fullscreen || fullscreenHost != null) setFullscreenMode(false) }
         persistPlaybackPosition(force = true)
+        flushWatchTime()
         root.keepScreenOn = false
         sleepRunnable?.let { handler.removeCallbacks(it) }
         handler.removeCallbacks(showBufferingRunnable)
@@ -1992,6 +2015,7 @@ class PlayerScreen(
         runCatching { previewDataSource?.close() }
         previewRetriever = null
         previewDataSource = null
+        runCatching { mediaSessionBridge.release() }
         player.release()
     }
 
@@ -2058,9 +2082,31 @@ class PlayerScreen(
 
     private fun scheduleProgress() {
         handler.postDelayed({
+            sampleWatchTime()
             updateProgress()
             scheduleProgress()
         }, if (player.isPlaying) 250L else 850L)
+    }
+
+    private fun sampleWatchTime() {
+        val now = SystemClock.elapsedRealtime()
+        val delta = (now - lastWatchSampleElapsed).coerceIn(0L, 2_000L)
+        lastWatchSampleElapsed = now
+        if (!player.isPlaying || delta <= 0L) return
+
+        pendingWatchMs += delta
+        sessionWatchMs += delta
+        if (pendingWatchMs >= 15_000L) {
+            onWatchTime?.invoke(pendingWatchMs, sessionWatchMs)
+            pendingWatchMs = 0L
+        }
+    }
+
+    private fun flushWatchTime() {
+        if (pendingWatchMs > 0L) {
+            onWatchTime?.invoke(pendingWatchMs, sessionWatchMs)
+            pendingWatchMs = 0L
+        }
     }
 
     private fun updateProgress() {
