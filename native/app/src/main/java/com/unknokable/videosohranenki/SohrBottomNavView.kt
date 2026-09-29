@@ -178,12 +178,19 @@ class SohrBottomNavView(
         if (target !in tabs.indices || target == selectedIndex || requestLocked) return
 
         requestLocked = true
-        selectIndex(target, animate = true, notify = false)
+        animatePress(target)
+
+        // The screen is the source of truth. Do not move the selected indicator
+        // until MainActivity actually accepts the navigation and calls syncSelected().
         onSelect(tabs[target])
 
         postDelayed({
-            requestLocked = false
-        }, 320L)
+            if (requestLocked) {
+                updateStates(selectedIndex)
+                positionIndicator(false)
+                requestLocked = false
+            }
+        }, 360L)
     }
 
     fun syncSelected(tab: SohrTab, animate: Boolean = false) {

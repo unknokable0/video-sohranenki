@@ -49,7 +49,7 @@ class LoadingWaveView(
 
     private var phase = 0f
     private val animator = ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = 1180L
+        duration = 1080L
         repeatCount = ValueAnimator.INFINITE
         interpolator = LinearInterpolator()
         addUpdateListener {
@@ -109,13 +109,13 @@ class LoadingWaveView(
 
         shadowPaint.shader = null
         shadowPaint.color = withAlpha(color, (12 + breathe * 9).toInt())
-        shadowPaint.strokeWidth = 9.4f * unit
+        shadowPaint.strokeWidth = 7.8f * unit
         canvas.drawPath(sPath, shadowPaint)
 
-        railPaint.strokeWidth = 5.1f * unit
+        railPaint.strokeWidth = 4.6f * unit
         canvas.drawPath(sPath, railPaint)
 
-        val segmentLength = length * .165f
+        val segmentLength = length * .19f
         val start = phase * length
         val end = start + segmentLength
 
@@ -143,7 +143,7 @@ class LoadingWaveView(
             floatArrayOf(0f, .38f, .72f, 1f),
             Shader.TileMode.CLAMP
         )
-        movingPaint.strokeWidth = 5.2f * unit
+        movingPaint.strokeWidth = 4.9f * unit
         canvas.drawPath(movingPath, movingPaint)
 
         corePaint.shader = null
@@ -153,7 +153,7 @@ class LoadingWaveView(
 
         val headDistance = end % length
         if (measure.getPosTan(headDistance, headPos, null)) {
-            val radius = 7.5f * unit
+            val radius = 5.8f * unit
             headPaint.shader = RadialGradient(
                 headPos[0],
                 headPos[1],

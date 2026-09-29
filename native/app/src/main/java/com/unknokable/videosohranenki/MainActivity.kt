@@ -155,6 +155,7 @@ class MainActivity : AppCompatActivity() {
     private var pendingVideoSectionCrossfade = false
     private var pendingVideoSectionDirection = 0
     private var videoSectionSwitchLocked = false
+    private var settingsScrollY = 0
 
     private val palette get() = settings.palette()
     private val bg get() = palette.background
@@ -3806,10 +3807,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun showSettings() {
         val wasSettingsVisible = isSettingsScreen
-        val restoreScrollY =
-            if (wasSettingsVisible) {
-                root.findViewWithTag<ScrollView>("sohr_settings_scroll")?.scrollY ?: 0
-            } else 0
+        val visibleSettingsScroll =
+            root.findViewWithTag<ScrollView>("sohr_settings_scroll")
+                ?: primaryShell?.findViewWithTag("sohr_settings_scroll")
+        if (visibleSettingsScroll != null) {
+            settingsScrollY = visibleSettingsScroll.scrollY
+        }
+        val restoreScrollY = if (wasSettingsVisible) settingsScrollY else 0
 
         isSettingsScreen = true
         isAccountScreen = false
@@ -3832,15 +3836,17 @@ class MainActivity : AppCompatActivity() {
             onCheckUpdates = { checkForUpdates() }
         )
         val content = screen.build()
+        val settingsScroll = content.findViewWithTag<ScrollView>("sohr_settings_scroll")
+        settingsScroll?.setOnScrollChangeListener { _, _, scrollY, _, _ ->
+            settingsScrollY = scrollY
+        }
+
         replaceRoot(withBottomNav(content, SohrTab.SETTINGS))
 
         if (wasSettingsVisible && restoreScrollY > 0) {
-            content.findViewWithTag<ScrollView>("sohr_settings_scroll")?.let { scroll ->
-                scroll.post {
-                    scroll.scrollTo(0, restoreScrollY)
-                    scroll.postOnAnimation { scroll.scrollTo(0, restoreScrollY) }
-                }
-            }
+            restoreSettingsScrollPosition(settingsScroll, restoreScrollY)
+        } else if (!wasSettingsVisible) {
+            settingsScrollY = 0
         }
     }
 
@@ -4211,17 +4217,60 @@ class MainActivity : AppCompatActivity() {
         animateSettingsPaletteReveal(settings.lightTheme, AppThemes.preset(accent).key, source)
     }
 
-    private fun restoreSettingsScrollPosition(scroll: ScrollView?, scrollY: Int) {
-        val target = scrollY.coerceAtLeast(0)
-        if (scroll == null) return
-
-        scroll.scrollTo(0, target)
-        scroll.postOnAnimation {
-            if (scroll.isAttachedToWindow) scroll.scrollTo(0, target)
+    private fun restoreSettingsScrollPosition(
+        scroll: ScrollView?,
+        scrollY: Int,
+        onReady: (() -> Unit)? = null
+    ) {
+        if (scroll == null) {
+            onReady?.invoke()
+            return
         }
-        scroll.postDelayed({
-            if (scroll.isAttachedToWindow) scroll.scrollTo(0, target)
-        }, 64L)
+
+        val requested = scrollY.coerceAtLeast(0)
+        var attempts = 0
+
+        val restore = object : Runnable {
+            override fun run() {
+                if (!scroll.isAttachedToWindow) {
+                    onReady?.invoke()
+                    return
+                }
+
+                val child = scroll.getChildAt(0)
+                val maxScroll =
+                    ((child?.measuredHeight ?: 0) - scroll.measuredHeight).coerceAtLeast(0)
+                val layoutReady =
+                    scroll.measuredHeight > 0 &&
+                    child != null &&
+                    child.measuredHeight > 0 &&
+                    (requested == 0 || maxScroll >= requested || attempts >= 10)
+
+                if (!layoutReady) {
+                    attempts += 1
+                    scroll.postOnAnimation(this)
+                    return
+                }
+
+                val target = requested.coerceIn(0, maxScroll)
+                scroll.scrollTo(0, target)
+                settingsScrollY = target
+
+                scroll.postOnAnimation {
+                    if (scroll.isAttachedToWindow) {
+                        val latestMax =
+                            ((scroll.getChildAt(0)?.measuredHeight ?: 0) - scroll.measuredHeight)
+                                .coerceAtLeast(0)
+                        val latestTarget = requested.coerceIn(0, latestMax)
+                        scroll.scrollTo(0, latestTarget)
+                        settingsScrollY = latestTarget
+                    }
+                    onReady?.invoke()
+                }
+            }
+        }
+
+        scroll.post(restore)
     }
 
     private fun animateSettingsPaletteReveal(
@@ -4235,7 +4284,8 @@ class MainActivity : AppCompatActivity() {
         val oldSettingsScrollY =
             root.findViewWithTag<ScrollView>("sohr_settings_scroll")?.scrollY
                 ?: primaryShell?.findViewWithTag<ScrollView>("sohr_settings_scroll")?.scrollY
-                ?: 0
+                ?: settingsScrollY
+        settingsScrollY = oldSettingsScrollY
 
         if (!settings.animations || root.width <= 0 || root.height <= 0) {
             settings.lightTheme = light
@@ -4278,6 +4328,12 @@ class MainActivity : AppCompatActivity() {
             onLanguageChanged = { showSettings() },
             onCheckUpdates = { checkForUpdates() }
         ).build()
+
+        val nextSettingsScroll =
+            nextContent.findViewWithTag<ScrollView>("sohr_settings_scroll")
+        nextSettingsScroll?.setOnScrollChangeListener { _, _, scrollY, _, _ ->
+            settingsScrollY = scrollY
+        }
 
         val nextHost = FrameLayout(this).apply {
             clipChildren = true
@@ -4350,15 +4406,10 @@ class MainActivity : AppCompatActivity() {
         val cy = sourceLocation[1] - rootLocation[1] + source.height / 2
 
         nextShell.post {
-            val nextSettingsScroll =
-                nextContent.findViewWithTag<ScrollView>("sohr_settings_scroll")
+            restoreSettingsScrollPosition(nextSettingsScroll, oldSettingsScrollY) {
+                if (!nextShell.isAttachedToWindow) return@restoreSettingsScrollPosition
 
-            restoreSettingsScrollPosition(nextSettingsScroll, oldSettingsScrollY)
-
-            nextShell.postOnAnimation {
-                restoreSettingsScrollPosition(nextSettingsScroll, oldSettingsScrollY)
                 nextShell.visibility = View.VISIBLE
-
                 nextShell.animate()
                     .alpha(1f)
                     .scaleX(1f)
@@ -4405,6 +4456,7 @@ class MainActivity : AppCompatActivity() {
                             primaryShellLightTheme = light
                             primaryShellAccent = normalizedAccent
                             currentPrimaryTab = SohrTab.SETTINGS
+                            nextNav.syncSelected(SohrTab.SETTINGS, animate = false)
 
                             root.setBackgroundColor(bg)
                             applySystemTheme()

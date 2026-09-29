@@ -437,9 +437,10 @@ object ModernDialogs {
         dialog: Dialog,
         box: View
     ): View {
-        val frame = FrameLayout(context).apply {
-            minimumHeight = dp(context, 62)
-            setPadding(dp(context, 2), 0, 0, dp(context, 14))
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.TOP
+            setPadding(dp(context, 2), dp(context, 2), 0, dp(context, 14))
             clipChildren = false
             clipToPadding = false
         }
@@ -447,13 +448,13 @@ object ModernDialogs {
         val titleView = TextView(context).apply {
             text = title
             textSize = 18.5f
-            gravity = Gravity.START or Gravity.CENTER_VERTICAL
-            includeFontPadding = true
-            maxLines = 4
-            setLineSpacing(0f, 1.06f)
+            gravity = Gravity.START
+            includeFontPadding = false
+            maxLines = 5
+            setLineSpacing(dp(context, 1).toFloat(), 1.05f)
             setTextColor(palette.text)
             setTypeface(typeface, Typeface.BOLD)
-            setPadding(dp(context, 2), dp(context, 6), dp(context, 8), dp(context, 10))
+            setPadding(dp(context, 2), dp(context, 7), dp(context, 8), dp(context, 7))
         }
 
         val closeButton = ImageButton(context).apply {
@@ -468,28 +469,21 @@ object ModernDialogs {
             setOnClickListener { close(dialog, box) {} }
         }
 
-        frame.addView(
+        row.addView(
             titleView,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams(
+                0,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.START or Gravity.CENTER_VERTICAL
+                1f
             ).apply {
-                marginEnd = dp(context, 52)
+                marginEnd = dp(context, 10)
             }
         )
-        frame.addView(
+        row.addView(
             closeButton,
-            FrameLayout.LayoutParams(
-                dp(context, 40),
-                dp(context, 40),
-                Gravity.END or Gravity.TOP
-            ).apply {
-                topMargin = dp(context, 2)
-            }
+            LinearLayout.LayoutParams(dp(context, 40), dp(context, 40))
         )
-
-        return frame
+        return row
     }
 
     private fun messageView(context: Context, palette: ThemePalette, message: String) =
@@ -514,7 +508,7 @@ object ModernDialogs {
 
         dialog.window?.apply {
             decorView.setPadding(0, 0, 0, 0)
-            setDimAmount(0.52f)
+            setDimAmount(0.46f)
             addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
             val requestedWidth =
                 (context.resources.displayMetrics.widthPixels * widthRatio).toInt()
