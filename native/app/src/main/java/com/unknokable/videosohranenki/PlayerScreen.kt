@@ -7,6 +7,8 @@ import android.net.Uri
 import android.os.Environment
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.Rect
+import android.graphics.drawable.Drawable
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.media.MediaDataSource
@@ -15,6 +17,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -41,6 +44,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import androidx.core.graphics.drawable.toBitmap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -121,6 +125,13 @@ class PlayerScreen(
     private var settingsPanel: View? = null
     private var fullscreenOriginalIndex = -1
     private var fullscreenOriginalLayoutParams: LinearLayout.LayoutParams? = null
+    private var pipMode = false
+    private var pipHost: FrameLayout? = null
+    private var pipOriginalParent: ViewGroup? = null
+    private var pipOriginalIndex = -1
+    private var pipOriginalLayoutParams: ViewGroup.LayoutParams? = null
+    private var ambientAnimator: android.animation.ValueAnimator? = null
+    private var ambientColor: Int = palette.accent
     private var dragging = false
     private var speed = settings.playbackSpeed
     private var sleepRunnable: Runnable? = null
@@ -148,7 +159,7 @@ class PlayerScreen(
 
     init {
         root.orientation = LinearLayout.VERTICAL
-        root.setBackgroundColor(palette.background)
+        root.background = ambientGradient(palette.accent)
         root.keepScreenOn = false
 
         val loadControl = DefaultLoadControl.Builder()
@@ -201,8 +212,14 @@ class PlayerScreen(
             setBackgroundColor(Color.BLACK)
             val localThumb = item.thumbnailPath?.takeIf { it.isNotBlank() }
             when {
-                localThumb != null -> load(java.io.File(localThumb)) { crossfade(settings.animations) }
-                !item.thumbnailUrl.isNullOrBlank() -> load(item.thumbnailUrl) { crossfade(settings.animations) }
+                localThumb != null -> load(java.io.File(localThumb)) {
+                    crossfade(settings.animations)
+                    listener(onSuccess = { _, result -> updateAmbientFromDrawable(result.drawable) })
+                }
+                !item.thumbnailUrl.isNullOrBlank() -> load(item.thumbnailUrl) {
+                    crossfade(settings.animations)
+                    listener(onSuccess = { _, result -> updateAmbientFromDrawable(result.drawable) })
+                }
             }
         }
         playerCard.addView(
@@ -1626,6 +1643,178 @@ class PlayerScreen(
         seekFeedback.animate().alpha(1f).setDuration(180L).withEndAction { seekFeedback.animate().alpha(0f).setStartDelay(450L).setDuration(220L).withEndAction { seekFeedback.visibility=View.GONE }.start() }.start()
     }
 
+    fun animateEntranceFrom(sourceBounds: Rect?) {
+        if (!settings.animations || sourceBounds == null || sourceBounds.width() <= 0 || sourceBounds.height() <= 0) return
+        playerCard.post {
+            if (destroyed || pipMode || fullscreen) return@post
+            val location = IntArray(2)
+            playerCard.getLocationOnScreen(location)
+            val targetWidth = playerCard.width.coerceAtLeast(1)
+            val targetHeight = playerCard.height.coerceAtLeast(1)
+            val targetCenterX = location[0] + targetWidth / 2f
+            val targetCenterY = location[1] + targetHeight / 2f
+            val sourceCenterX = sourceBounds.exactCenterX()
+            val sourceCenterY = sourceBounds.exactCenterY()
+
+            playerCard.pivotX = targetWidth / 2f
+            playerCard.pivotY = targetHeight / 2f
+            playerCard.scaleX = (sourceBounds.width().toFloat() / targetWidth).coerceIn(0.35f, 1f)
+            playerCard.scaleY = (sourceBounds.height().toFloat() / targetHeight).coerceIn(0.35f, 1f)
+            playerCard.translationX = sourceCenterX - targetCenterX
+            playerCard.translationY = sourceCenterY - targetCenterY
+            playerCard.alpha = 0.72f
+            playerCard.animate().cancel()
+            playerCard.animate()
+                .scaleX(1f)
+                .scaleY(1f)
+                .translationX(0f)
+                .translationY(0f)
+                .alpha(1f)
+                .setDuration(320L)
+                .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                .start()
+        }
+    }
+
+    fun prepareForPictureInPicture(): Boolean {
+        if (destroyed) return false
+        if (pipMode) return true
+        if (miniMode) exitMiniPlayer()
+        if (fullscreen || fullscreenHost != null) setFullscreenMode(false)
+
+        val parent = playerCard.parent as? ViewGroup ?: return false
+        pipOriginalParent = parent
+        pipOriginalIndex = parent.indexOfChild(playerCard)
+        pipOriginalLayoutParams = playerCard.layoutParams
+
+        parent.removeView(playerCard)
+
+        val content = activity.findViewById<ViewGroup>(android.R.id.content)
+        val host = FrameLayout(activity).apply {
+            setBackgroundColor(Color.BLACK)
+            clipChildren = true
+            clipToPadding = true
+        }
+        content.addView(
+            host,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+        host.addView(
+            playerCard,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                Gravity.CENTER
+            )
+        )
+
+        pipHost = host
+        pipMode = true
+        playerCard.clipToOutline = false
+        playerCard.background = rounded("#000000", 0)
+        overlay.visibility = View.GONE
+        previewBubble.visibility = View.GONE
+        endOverlay.visibility = View.GONE
+        return true
+    }
+
+    fun restoreFromPictureInPicture() {
+        if (!pipMode) return
+        val host = pipHost
+        runCatching { host?.removeView(playerCard) }
+        runCatching { (host?.parent as? ViewGroup)?.removeView(host) }
+
+        val parent = pipOriginalParent
+        if (parent != null && playerCard.parent == null) {
+            val params = pipOriginalLayoutParams
+                ?: LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    (activity.resources.displayMetrics.widthPixels * 9f / 16f).toInt()
+                )
+            val index = pipOriginalIndex.coerceIn(0, parent.childCount)
+            parent.addView(playerCard, index, params)
+        }
+
+        pipHost = null
+        pipOriginalParent = null
+        pipOriginalIndex = -1
+        pipOriginalLayoutParams = null
+        pipMode = false
+        playerCard.clipToOutline = true
+        playerCard.background = rounded("#000000", 18)
+        showOverlay()
+    }
+
+    private fun updateAmbientFromDrawable(drawable: Drawable) {
+        runCatching {
+            val bitmap = drawable.toBitmap(32, 18, Bitmap.Config.ARGB_8888)
+            var red = 0L
+            var green = 0L
+            var blue = 0L
+            var count = 0L
+            for (y in 0 until bitmap.height step 2) {
+                for (x in 0 until bitmap.width step 2) {
+                    val color = bitmap.getPixel(x, y)
+                    red += Color.red(color)
+                    green += Color.green(color)
+                    blue += Color.blue(color)
+                    count++
+                }
+            }
+            if (count > 0L) {
+                val sampled = Color.rgb(
+                    (red / count).toInt(),
+                    (green / count).toInt(),
+                    (blue / count).toInt()
+                )
+                applyAmbientColor(sampled)
+            }
+        }
+    }
+
+    private fun applyAmbientColor(target: Int) {
+        ambientAnimator?.cancel()
+        if (!settings.animations) {
+            ambientColor = target
+            root.background = ambientGradient(target)
+            return
+        }
+        val from = ambientColor
+        ambientAnimator = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 360L
+            interpolator = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
+            addUpdateListener { animator ->
+                val f = animator.animatedFraction
+                ambientColor = Color.rgb(
+                    (Color.red(from) + (Color.red(target) - Color.red(from)) * f).toInt(),
+                    (Color.green(from) + (Color.green(target) - Color.green(from)) * f).toInt(),
+                    (Color.blue(from) + (Color.blue(target) - Color.blue(from)) * f).toInt()
+                )
+                root.background = ambientGradient(ambientColor)
+            }
+            start()
+        }
+    }
+
+    private fun ambientGradient(color: Int): GradientDrawable {
+        fun mix(base: Int, accent: Int, amount: Float): Int {
+            val a = amount.coerceIn(0f, 1f)
+            return Color.rgb(
+                (Color.red(base) * (1f - a) + Color.red(accent) * a).toInt(),
+                (Color.green(base) * (1f - a) + Color.green(accent) * a).toInt(),
+                (Color.blue(base) * (1f - a) + Color.blue(accent) * a).toInt()
+            )
+        }
+        val glow = mix(palette.background, color, if (palette === AppThemes.Light) 0.10f else 0.18f)
+        return GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(glow, palette.background, palette.background)
+        )
+    }
+
     val isFullscreen: Boolean
         get() = fullscreen
 
@@ -1758,7 +1947,9 @@ class PlayerScreen(
 
     fun destroy() {
         destroyed = true
+        ambientAnimator?.cancel()
         dismissFullscreenSettings(animated = false)
+        runCatching { if (pipMode || pipHost != null) restoreFromPictureInPicture() }
         runCatching { if (fullscreen || fullscreenHost != null) setFullscreenMode(false) }
         persistPlaybackPosition(force = true)
         root.keepScreenOn = false
@@ -1904,6 +2095,7 @@ class PlayerScreen(
     }
 
     private fun pulse(view: View) {
+        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         if (!settings.animations) return
         val ease = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
         view.animate().cancel()
