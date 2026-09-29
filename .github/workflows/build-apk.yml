@@ -2,6 +2,7 @@ name: Build Android APK
 
 # SOHR 6.0.15: fast Telegram playback + verified updater
 # Rebuild marker: test34 runner restart
+# Final release trigger: SOHR 6.0.15 playback fix
 on:
   push:
     branches: [main]
