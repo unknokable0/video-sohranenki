@@ -69,9 +69,6 @@ class PlayerScreen(
     private val queueItems: List<VideoItem> = emptyList(),
     private val onPlayNext: ((VideoItem) -> Unit)? = null,
     private val onDownloadRequested: ((VideoItem) -> Unit)? = null,
-    private val onSaveMoment: ((VideoItem, Long) -> Unit)? = null,
-    private val onOpenMoments: ((VideoItem) -> Unit)? = null,
-    private val onWatchSlice: ((Long, Long) -> Unit)? = null,
     private val isWatched: Boolean = false,
     private val onWatchedChange: ((VideoItem, Boolean) -> Unit)? = null,
     private val onBack: () -> Unit,
@@ -152,9 +149,6 @@ class PlayerScreen(
     private lateinit var mediaSessionBridge: SohrMediaSessionBridge
     private var destroyed = false
     private var lastProgressPersistAt = 0L
-    private var lastWatchSampleAt = SystemClock.elapsedRealtime()
-    private var pendingWatchMs = 0L
-    private var sessionWatchMs = 0L
     private var speedActionButton: TextView? = null
 
     private data class PlayerActionPill(
@@ -315,7 +309,7 @@ class PlayerScreen(
             ).apply {
                 marginStart = playerMargin
                 marginEnd = playerMargin
-                topMargin = dp(9)
+                topMargin = dp(13)
             }
         )
 
@@ -356,7 +350,6 @@ class PlayerScreen(
 
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                lastWatchSampleAt = SystemClock.elapsedRealtime()
                 updatePlayIcon()
                 root.keepScreenOn = isPlaying
                 if (isPlaying && ::endOverlay.isInitialized) endOverlay.visibility = View.GONE
@@ -541,8 +534,8 @@ class PlayerScreen(
 
         val bottom = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(7), dp(2), dp(7), dp(3))
-            background = rounded("#480A0810", 12)
+            setPadding(dp(6), dp(1), dp(6), dp(2))
+            background = rounded("#360A0810", 10)
         }
 
         seekBar = SohrTimeBar(activity).apply {
@@ -593,11 +586,11 @@ class PlayerScreen(
             gravity = Gravity.CENTER_VERTICAL
         }
         currentTime = timeLabel("0:00").apply {
-            minWidth = dp(38)
+            minWidth = dp(34)
             gravity = Gravity.START or Gravity.CENTER_VERTICAL
         }
         totalTime = timeLabel(initialDurationLabel()).apply {
-            minWidth = dp(42)
+            minWidth = dp(38)
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
             setPadding(dp(4), 0, dp(5), 0)
         }
@@ -609,19 +602,19 @@ class PlayerScreen(
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
-            minWidth = dp(40)
-            setPadding(dp(6), 0, dp(6), 0)
+            minWidth = dp(36)
+            setPadding(dp(5), 0, dp(5), 0)
             background = rounded("#42221A30", 12)
             contentDescription = "Качество видео"
             setOnClickListener { pulse(this); showQualityPicker() }
         }
 
-        val settingsButton = iconButton(R.drawable.ic_player_settings, "#42221A30", 32).apply {
+        val settingsButton = iconButton(R.drawable.ic_player_settings, "#36221A30", 30).apply {
             contentDescription = "Настройки плеера"
             setOnClickListener { pulse(this); showSettingsSheet() }
         }
 
-        val fullscreenButton = iconButton(R.drawable.ic_fullscreen, "#42221A30", 32).apply {
+        val fullscreenButton = iconButton(R.drawable.ic_fullscreen, "#36221A30", 30).apply {
             contentDescription = "Полный экран"
             setOnClickListener {
                 onFullscreen(!fullscreen)
@@ -637,7 +630,7 @@ class PlayerScreen(
         }
         actionGroup.addView(
             qualityButton,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(28))
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(24))
         )
         actionGroup.addView(
             settingsButton,
@@ -648,8 +641,8 @@ class PlayerScreen(
             LinearLayout.LayoutParams(dp(30), dp(30)).apply { marginStart = dp(2) }
         )
 
-        times.addView(currentTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(28)))
-        times.addView(totalTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(28)).apply {
+        times.addView(currentTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(24)))
+        times.addView(totalTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(24)).apply {
             marginStart = dp(4)
         })
         times.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
@@ -658,7 +651,7 @@ class PlayerScreen(
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(28))
         )
 
-        bottom.addView(seekBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(18)))
+        bottom.addView(seekBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(14)))
         bottom.addView(times)
 
         frame.addView(
@@ -668,9 +661,9 @@ class PlayerScreen(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.BOTTOM
             ).apply {
-                leftMargin = dp(7)
-                rightMargin = dp(7)
-                bottomMargin = dp(5)
+                leftMargin = dp(9)
+                rightMargin = dp(9)
+                bottomMargin = dp(7)
             }
         )
         return frame
@@ -1043,58 +1036,21 @@ class PlayerScreen(
         }
         syncWatchedAction()
 
-        val momentButton = actionPill(
-            "Момент",
-            R.drawable.ic_action_bookmark
-        ) {
-            val at = player.currentPosition.coerceAtLeast(0L)
-            onSaveMoment?.invoke(item, at)
-            Toast.makeText(
-                activity,
-                "Момент сохранён • " + formatMs(at),
-                Toast.LENGTH_SHORT
-            ).show()
-        }
-        momentButton.root.setOnLongClickListener {
-            SohrHaptics.longPress(momentButton.root)
-            onOpenMoments?.invoke(item)
-            true
-        }
+        val downloadButton = actionPill(
+            "Скачать",
+            R.drawable.ic_action_download
+        ) { enqueueDownload() }
 
-        if (item.source == "twitch") {
-            row.addView(
-                watchedButton.root,
-                LinearLayout.LayoutParams(0, dp(42), 1f).apply {
-                    marginEnd = dp(6)
-                }
-            )
-            row.addView(
-                momentButton.root,
-                LinearLayout.LayoutParams(0, dp(42), 0.88f)
-            )
-        } else {
-            val downloadButton = actionPill(
-                "Скачать",
-                R.drawable.ic_action_download
-            ) { enqueueDownload() }
-
-            row.addView(
-                watchedButton.root,
-                LinearLayout.LayoutParams(0, dp(42), 1.35f).apply {
-                    marginEnd = dp(6)
-                }
-            )
-            row.addView(
-                downloadButton.root,
-                LinearLayout.LayoutParams(0, dp(42), 0.82f).apply {
-                    marginEnd = dp(6)
-                }
-            )
-            row.addView(
-                momentButton.root,
-                LinearLayout.LayoutParams(0, dp(42), 0.82f)
-            )
-        }
+        row.addView(
+            watchedButton.root,
+            LinearLayout.LayoutParams(0, dp(42), 1.15f).apply {
+                marginEnd = dp(7)
+            }
+        )
+        row.addView(
+            downloadButton.root,
+            LinearLayout.LayoutParams(0, dp(42), 0.85f)
+        )
         return row
     }
 
@@ -2237,7 +2193,6 @@ class PlayerScreen(
         runCatching { if (pipMode || pipHost != null) restoreFromPictureInPicture() }
         runCatching { if (fullscreen || fullscreenHost != null) setFullscreenMode(false) }
         persistPlaybackPosition(force = true)
-        flushWatchTime()
         root.keepScreenOn = false
         sleepRunnable?.let { handler.removeCallbacks(it) }
         handler.removeCallbacks(showBufferingRunnable)
@@ -2320,32 +2275,9 @@ class PlayerScreen(
 
     private fun scheduleProgress() {
         handler.postDelayed({
-            sampleWatchTime()
             updateProgress()
             scheduleProgress()
         }, if (player.isPlaying) 250L else 850L)
-    }
-
-    private fun sampleWatchTime() {
-        val now = SystemClock.elapsedRealtime()
-        val delta = (now - lastWatchSampleAt).coerceIn(0L, 2_000L)
-        lastWatchSampleAt = now
-        if (!player.isPlaying || delta <= 0L) return
-
-        pendingWatchMs += delta
-        sessionWatchMs += delta
-        if (pendingWatchMs >= 15_000L) {
-            onWatchSlice?.invoke(pendingWatchMs, sessionWatchMs)
-            pendingWatchMs = 0L
-        }
-    }
-
-    private fun flushWatchTime() {
-        sampleWatchTime()
-        if (pendingWatchMs > 0L) {
-            onWatchSlice?.invoke(pendingWatchMs, sessionWatchMs)
-            pendingWatchMs = 0L
-        }
     }
 
     private fun updateProgress() {
