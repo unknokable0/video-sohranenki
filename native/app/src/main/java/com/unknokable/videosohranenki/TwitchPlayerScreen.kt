@@ -622,7 +622,7 @@ class TwitchPlayerScreen(
         return LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, height).apply {
             marginStart = dp(10)
             marginEnd = dp(10)
-            topMargin = dp(2)
+            topMargin = 0
         }
     }
 
