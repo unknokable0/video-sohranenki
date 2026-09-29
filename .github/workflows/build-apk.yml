@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.2.5: clean native loading without bitmap or neon
+# SOHR 6.2.6: reliable downloads, fixed nav, no Recap, compact player
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.2.5 version
+      - name: Assign SOHR 6.2.6 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=620005" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.2.5" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=620006" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.2.6" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -300,11 +300,14 @@ jobs:
           for required in [
               "fun beginVisit",
               "fun queueIds",
-              "fun recordWatchTime",
-              "mostActiveDay"
+              "fun addNext",
+              "fun addLast"
           ]:
               if required not in experience_store:
                   raise SystemExit(f"SOHR 6.2 experience-store regression: {required}")
+          for forbidden in ["SohrMonthlyRecap", "recordWatchTime", "recordPlayStart", "mostActiveDay"]:
+              if forbidden in experience_store:
+                  raise SystemExit(f"SOHR 6.2.6 removed Recap tracking returned: {forbidden}")
 
           download_store = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/SohrDownloadStore.kt"
@@ -341,13 +344,15 @@ jobs:
               raise SystemExit("SOHR 6.2 preview-mode persistence regression")
 
           for required in [
-              "val atBottom = !scroll.canScrollVertically(1)",
-              ".translationY(dp(30).toFloat())",
+              "nav.translationY = 0f",
+              "nav.alpha = 1f",
               'else -> unwatchedVideos.size.toString() + " новых"',
               'contentDescription = "Назад"'
           ]:
               if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.2.1 UI polish regression: {required}")
+                  raise SystemExit(f"SOHR 6.2.6 stable-nav/UI regression: {required}")
+          if ".translationY(dp(30).toFloat())" in sohr_main:
+              raise SystemExit("SOHR 6.2.6 regression: bottom navigation moves during feed scroll")
 
           for required in [
               "fun modeLabel(mode: String)",
@@ -408,13 +413,16 @@ jobs:
           manifest = Path("native/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
           styles = Path("native/app/src/main/res/values/styles.xml").read_text(encoding="utf-8")
           gradle_file = Path("native/app/build.gradle.kts").read_text(encoding="utf-8")
-          brand_hex = Path("native/app/src/main/brand/sohr_brand.webp.hex").read_text(encoding="utf-8").strip()
+          brand_file = Path("native/app/src/main/res/drawable-nodpi/sohr_brand_logo.webp")
           loader = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/LoadingWaveView.kt"
           ).read_text(encoding="utf-8")
 
-          if len(brand_hex) < 7000 or not brand_hex.startswith("52494646") or "57454250" not in brand_hex[:32]:
-              raise SystemExit("SOHR 6.2.4 brand artwork bytes are missing or invalid")
+          if not brand_file.is_file() or brand_file.stat().st_size < 10000:
+              raise SystemExit("SOHR 6.2.6 direct brand artwork is missing or too small")
+          brand_bytes = brand_file.read_bytes()
+          if not brand_bytes.startswith(b"RIFF") or b"WEBP" not in brand_bytes[:16]:
+              raise SystemExit("SOHR 6.2.6 brand artwork is not a valid WebP")
 
           for required in [
               'android:icon="@drawable/sohr_brand_logo"',
@@ -434,14 +442,10 @@ jobs:
               if required not in styles:
                   raise SystemExit(f"SOHR 6.2.5 splash theme regression: {required}")
 
-          for required in [
-              "sohr_brand.webp.hex",
-              "prepareSohrBrandAssets",
-              "sohr_brand_logo.webp",
-              "core-splashscreen:1.2.0"
-          ]:
-              if required not in gradle_file:
-                  raise SystemExit(f"SOHR 6.2.5 brand generation regression: {required}")
+          if "prepareSohrBrandAssets" in gradle_file or "sohr_brand.webp.hex" in gradle_file:
+              raise SystemExit("SOHR 6.2.6 regression: legacy hex brand generation returned")
+          if "core-splashscreen:1.2.0" not in gradle_file:
+              raise SystemExit("SOHR splash dependency missing")
 
           for required in [
               "cloudPath",
@@ -492,7 +496,6 @@ jobs:
               '"С прошлого раза"',
               "showPlaybackQueue",
               "showDownloadCenter",
-              "showMonthlyRecap",
               "setupInlinePreviewShelf",
               "liveElapsedLabel",
               "prefetchNextCandidate",
@@ -500,16 +503,48 @@ jobs:
           ]:
               if required not in sohr_main:
                   raise SystemExit(f"SOHR 6.2 main-experience regression: {required}")
+          for forbidden in ["buildRecapTeaser", "showMonthlyRecap", "SOHR Recap", "Сентябрь в SOHR"]:
+              if forbidden in sohr_main:
+                  raise SystemExit(f"SOHR 6.2.6 regression: monthly Recap returned: {forbidden}")
 
           for required in [
               "mediaSessionBridge",
               "queueItems",
-              "sampleWatchTime",
-              "onDownloadRequested",
-              "onWatchTime"
+              "onDownloadRequested"
           ]:
               if required not in player:
                   raise SystemExit(f"SOHR 6.2 player-experience regression: {required}")
+          for forbidden in ["sampleWatchTime", "onWatchTime", "flushWatchTime"]:
+              if forbidden in player:
+                  raise SystemExit(f"SOHR 6.2.6 regression: removed Recap sampling returned: {forbidden}")
+
+          for required in [
+              "TdApi.AddFileToDownloads(",
+              "TdApi.GetFile(item.fileId)",
+              "TdApi.RemoveFileFromDownloads(item.fileId, false)",
+              "activeManualDownloads"
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.2.6 manual-download regression: {required}")
+          if "TdApi.DownloadFile(item.fileId, 1, 0, 0, true)" in sohr_main:
+              raise SystemExit("SOHR 6.2.6 regression: manual download uses conflicting DownloadFile")
+
+          time_bar = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/SohrTimeBar.kt"
+          ).read_text(encoding="utf-8")
+          for required in [
+              "val desired = dp(22f).toInt()",
+              "dp(if (scrubbing) 3f else 2f)",
+              "dp(5.5f)"
+          ]:
+              if required not in time_bar:
+                  raise SystemExit(f"SOHR 6.2.6 compact timeline regression: {required}")
+          for required in [
+              'background = rounded("#480A0810", 12)',
+              "LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(18))"
+          ]:
+              if required not in player:
+                  raise SystemExit(f"SOHR 6.2.6 compact player chrome regression: {required}")
 
           telegram_stream = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/TelegramStreamServer.kt"
@@ -592,9 +627,9 @@ jobs:
           if '@drawable/sohr_splash_mark' not in v31_styles:
               raise SystemExit("SOHR 6.2.5 Android 12 clean splash override missing")
 
-          icon = Path("native/app/src/main/res/drawable-nodpi/ic_launcher.webp")
-          if not icon.is_file() or icon.stat().st_size < 4096:
-              raise SystemExit(f"SOHR launcher asset missing or too small: {icon}")
+          icon = Path("native/app/src/main/res/drawable-nodpi/sohr_brand_logo.webp")
+          if not icon.is_file() or icon.stat().st_size < 10000:
+              raise SystemExit(f"SOHR 6.2.6 launcher asset missing or too small: {icon}")
 
           print(f"SOHR 6 UI assets verified; launcher={icon.stat().st_size} bytes")
           PY
@@ -609,7 +644,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "Loading без вставленной картинки • Никакого неона и светящихся обводок • Нативный заполненный знак SOHR среднего размера • Чистый vector SplashScreen • Единый спокойный loading-стиль во всех экранах • Twitch network fix и player/search/fullscreen polish сохранены"
+            "notes": "Исправлено скачивание Telegram-видео без конфликта DownloadFile • Полностью удалён месячный SOHR Recap • Нижняя панель закреплена и больше не двигается при скролле • Плеер и таймлайн стали компактнее • Установлена новая фирменная ава SOHR напрямую как WebP • Loading остаётся нативным, без bitmap, неона и светящихся обводок • Twitch/search/fullscreen fixes сохранены"
           }
           EOF
           cat update.json
