@@ -239,7 +239,7 @@ class MainActivity : AppCompatActivity() {
         if (BuildConfig.TELEGRAM_API_ID == 0 || BuildConfig.TELEGRAM_API_HASH.isBlank()) {
             showMessage(
                 "Не подключены Telegram API ключи",
-                "Проверь TELEGRAM_API_ID и TELEGRAM_API_HASH в GitHub Actions Secrets."
+                "Проверьте TELEGRAM_API_ID и TELEGRAM_API_HASH в GitHub Actions Secrets."
             )
             return
         }
@@ -468,7 +468,7 @@ class MainActivity : AppCompatActivity() {
 
         center.addView(
             loader,
-            LinearLayout.LayoutParams(dp(96), dp(96)).apply {
+            LinearLayout.LayoutParams(dp(52), dp(52)).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
             }
         )
@@ -852,7 +852,7 @@ class MainActivity : AppCompatActivity() {
                 val national = input.text.toString().filter { it.isDigit() }
                 val dialDigits = prefix.text.toString().filter { it.isDigit() }
                 if (dialDigits.isBlank()) {
-                    error.text = if (settings.languageCode == "ru") "Введи код страны, например +48" else t("choose_country")
+                    error.text = if (settings.languageCode == "ru") "Введите код страны, например +48" else t("choose_country")
                     error.visibility = View.VISIBLE
                     return@setOnClickListener
                 }
@@ -916,7 +916,7 @@ class MainActivity : AppCompatActivity() {
 
         val help = TextView(this).apply {
             text = if (settings.languageCode == "ru") {
-                "Выбери страну или введи код страны вручную, затем номер и нажми «Продолжить»."
+                "Выберите страну или введите код страны вручную, затем номер и нажмите «Продолжить»."
             } else {
                 t("choose_country")
             }
@@ -1260,7 +1260,7 @@ class MainActivity : AppCompatActivity() {
         )
 
         val title = TextView(this).apply {
-            text = "Проверь Telegram"
+            text = "Проверьте Telegram"
             textSize = 27f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
@@ -1270,7 +1270,7 @@ class MainActivity : AppCompatActivity() {
 
         val subtitle = TextView(this).apply {
             text = buildString {
-                append("Введи код, который пришёл ")
+                append("Введите код, который пришёл ")
                 append(delivery)
                 if (info.phoneNumber.isNotBlank()) {
                     append("\n")
@@ -1410,7 +1410,7 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener {
                 animatePress(this)
                 val helpText = buildString {
-                    append("Сначала проверь официальный Telegram на других устройствах и уведомления. ")
+                    append("Сначала проверьте официальный Telegram на других устройствах и уведомления. ")
                     append("Текущий способ доставки: ")
                     append(delivery)
                     append(".")
@@ -1618,13 +1618,13 @@ class MainActivity : AppCompatActivity() {
             hint = "name@example.com",
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
             button = "Отправить код",
-            footer = "Введи email, который Telegram просит для этой авторизации. Код придёт на него.",
+            footer = "Введите email, который Telegram просит для этой авторизации. Код придёт на него.",
             showBack = true,
             onBack = { resetTelegramAuthorization("Смена способа входа") }
         ) { value ->
             val email = value.trim()
             if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
-                throw IllegalArgumentException("Проверь адрес email")
+                throw IllegalArgumentException("Проверьте адрес email")
             }
             client.send(TdApi.SetAuthenticationEmailAddress(email))
         }
@@ -1642,12 +1642,12 @@ class MainActivity : AppCompatActivity() {
             hint = "Код",
             inputType = InputType.TYPE_CLASS_NUMBER,
             button = "Продолжить",
-            footer = "Если письма нет, проверь Спам/Промоакции и подожди немного.",
+            footer = "Если письма нет, проверьте Спам/Промоакции и подождите немного.",
             showBack = true,
             onBack = { resetTelegramAuthorization("Смена способа входа") }
         ) { value ->
             val code = value.trim()
-            if (code.length < 3) throw IllegalArgumentException("Проверь код из email")
+            if (code.length < 3) throw IllegalArgumentException("Проверьте код из email")
             client.send(
                 TdApi.CheckAuthenticationEmailCode(
                     TdApi.EmailAddressAuthenticationCode(code)
@@ -1667,7 +1667,7 @@ class MainActivity : AppCompatActivity() {
             showBack = true,
             onBack = { resetTelegramAuthorization("Смена номера") }
         ) { value ->
-            if (value.isBlank()) throw IllegalArgumentException("Введи пароль")
+            if (value.isBlank()) throw IllegalArgumentException("Введите пароль")
             client.send(TdApi.CheckAuthenticationPassword(value))
         }
     }
@@ -1961,13 +1961,13 @@ class MainActivity : AppCompatActivity() {
     private fun friendlyAuthError(raw: String?): String {
         val text = raw.orEmpty()
         return when {
-            "PHONE_NUMBER_INVALID" in text -> "Номер телефона неверный. Введи его с + и кодом страны."
+            "PHONE_NUMBER_INVALID" in text -> "Номер телефона неверный. Введите его с + и кодом страны."
             "PHONE_NUMBER_FLOOD" in text -> "Слишком много попыток. Telegram временно ограничил отправку кода."
-            "PHONE_CODE_INVALID" in text -> "Код неверный. Проверь цифры и попробуй ещё раз."
-            "PHONE_CODE_EXPIRED" in text -> "Код уже истёк. Нажми «Отправить код ещё раз»."
+            "PHONE_CODE_INVALID" in text -> "Код неверный. Проверьте цифры и попробуйте ещё раз."
+            "PHONE_CODE_EXPIRED" in text -> "Код уже истёк. Нажмите «Отправить код ещё раз»."
             "PASSWORD_HASH_INVALID" in text -> "Неверный облачный пароль."
             "API_ID" in text -> "Ошибка Telegram API. Нужно проверить API ID/API Hash приложения."
-            text.isBlank() -> "Telegram не принял запрос. Попробуй ещё раз."
+            text.isBlank() -> "Telegram не принял запрос. Попробуйте ещё раз."
             else -> text
         }
     }
@@ -2466,7 +2466,7 @@ class MainActivity : AppCompatActivity() {
 
         val controls=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(0,dp(10),0,0) }
         controls.addView(TextView(this).apply {
-            text=if(videoSection==2) "История просмотров" else "Твоя медиатека"; textSize=14f; setTypeface(typeface,Typeface.BOLD); setTextColor(muted)
+            text=if(videoSection==2) "История просмотров" else "Ваша медиатека"; textSize=14f; setTypeface(typeface,Typeface.BOLD); setTextColor(muted)
         },LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
         val autoStatus = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -2558,7 +2558,7 @@ class MainActivity : AppCompatActivity() {
                 body.addView(
                     buildHomeVideoShelf(
                         title = "Новое",
-                        subtitle = "Свежие видео, которые ты ещё не смотрел",
+                        subtitle = "Свежие видео, которые вы ещё не смотрели",
                         items = freshVideos,
                         mode = HomeVideoShelfAdapter.Mode.NEW
                     )
@@ -3280,7 +3280,7 @@ class MainActivity : AppCompatActivity() {
             isPlayerScreen = false
             showMessage(
                 "Не удалось открыть видео",
-                error.message ?: "Плеер не смог запуститься. Попробуй ещё раз."
+                error.message ?: "Плеер не смог запуститься. Попробуйте ещё раз."
             )
             return
         }
@@ -3371,7 +3371,7 @@ class MainActivity : AppCompatActivity() {
                 isPlayerScreen = false
                 showMessage(
                     "Не удалось открыть запись Twitch",
-                    e.message ?: "Twitch не отдал видеопоток. Попробуй ещё раз."
+                    e.message ?: "Twitch не отдал видеопоток. Попробуйте ещё раз."
                 )
             }
         }
@@ -3508,7 +3508,7 @@ class MainActivity : AppCompatActivity() {
                     isPlayerScreen = false
                     showMessage(
                         "Тестовые эфиры заняты рекламой",
-                        "SOHR не нашёл подходящий эфир без рекламной паузы. Обнови экран чуть позже."
+                        "SOHR не нашёл подходящий эфир без рекламной паузы. Обновите экран чуть позже."
                     )
                 }
             } catch (e: Exception) {
@@ -3680,7 +3680,7 @@ class MainActivity : AppCompatActivity() {
         page.addView(header)
 
         page.addView(TextView(this).apply {
-            text = "Войди в Twitch и подтверди доступ. После подтверждения SOHR сам завершит вход."
+            text = "Войдите в Twitch и подтвердите доступ. После подтверждения SOHR сам завершит вход."
             textSize = 12.5f
             setTextColor(muted)
             setPadding(0, dp(7), 0, dp(10))
@@ -3785,7 +3785,7 @@ class MainActivity : AppCompatActivity() {
             settings.twitchOauthState = null
             showMessage(
                 "Не удалось подтвердить вход Twitch",
-                "Проверка безопасности входа не совпала. Попробуй ещё раз."
+                "Проверка безопасности входа не совпала. Попробуйте ещё раз."
             )
             return
         }
@@ -3981,29 +3981,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         val status = TextView(this).apply {
-            text = if (watchedToday) {
-                "Сегодня засчитано • огонь горит"
-            } else {
-                "Сегодня ещё не засчитано • посмотри любое видео"
-            }
+            text = if (watchedToday) "Сегодня засчитано" else "Сегодня ещё не засчитано"
             textSize = 12.5f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(if (watchedToday) flameColor else muted)
             setPadding(dp(8), dp(10), dp(8), 0)
-        }
-
-        val colorStatus = TextView(this).apply {
-            text = if (streak <= 0) {
-                "Цвет появится после первого засчитанного дня"
-            } else {
-                "Цвет: " + streakColorName(streak) + " • " + streakRangeLabel(streak)
-            }
-            textSize = 11.5f
-            gravity = Gravity.CENTER
-            setTextColor(if (streak > 0) flameColor else muted)
-            setPadding(dp(12), dp(7), dp(12), dp(7))
-            background = roundedBg(palette.surfaceAlt, 14)
         }
 
         hero.addView(
@@ -4019,16 +4002,6 @@ class MainActivity : AppCompatActivity() {
         hero.addView(count)
         hero.addView(daysLabel)
         hero.addView(status)
-        hero.addView(
-            colorStatus,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-                topMargin = dp(10)
-            }
-        )
 
         val progressCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -4158,12 +4131,16 @@ class MainActivity : AppCompatActivity() {
 
         data class FireLevel(val from: Int, val to: Int?, val range: String, val color: Int, val name: String)
         val levelData = listOf(
-            FireLevel(1, 9, "1–9 дней", Color.WHITE, "Белый огонь"),
-            FireLevel(10, 19, "10–19 дней", Color.parseColor("#9A68FF"), "Фиолетовый огонь"),
-            FireLevel(20, 49, "20–49 дней", Color.parseColor("#4D98FF"), "Синий огонь"),
-            FireLevel(50, 99, "50–99 дней", Color.parseColor("#FF4A5E"), "Жар"),
-            FireLevel(100, 199, "100–199 дней", Color.parseColor("#B7FF28"), "Неон"),
-            FireLevel(200, null, "200+ дней", Color.parseColor("#55E6FF"), "Аврора")
+            FireLevel(1, 9, "1–9 дней", Color.parseColor("#FFC83D"), "Жёлтая искра"),
+            FireLevel(10, 29, "10–29 дней", Color.parseColor("#A970FF"), "Фиолетовое пламя"),
+            FireLevel(30, 59, "30–59 дней", Color.parseColor("#4D98FF"), "Синее пламя"),
+            FireLevel(60, 99, "60–99 дней", Color.parseColor("#FF5367"), "Алое пламя"),
+            FireLevel(100, 199, "100–199 дней", Color.parseColor("#B7E84A"), "Лаймовое пламя"),
+            FireLevel(200, 499, "200–499 дней", Color.parseColor("#46D7C4"), "Бирюзовое пламя"),
+            FireLevel(500, 999, "500–999 дней", Color.parseColor("#FF73B9"), "Розовое пламя"),
+            FireLevel(1000, 2499, "1000–2499 дней", Color.parseColor("#9ED8FF"), "Ледяное пламя"),
+            FireLevel(2500, 4999, "2500–4999 дней", Color.parseColor("#D58CFF"), "Аметистовое пламя"),
+            FireLevel(5000, null, "5000+ дней", Color.WHITE, "Белое пламя")
         )
 
         levelData.forEach { entry ->
@@ -4270,42 +4247,58 @@ class MainActivity : AppCompatActivity() {
 
     private fun streakLevelName(streak: Int): String = when {
         streak <= 0 -> "Огонь ещё не зажжён"
-        streak < 10 -> "Белый огонь"
-        streak < 20 -> "Фиолетовый огонь"
-        streak < 50 -> "Синий огонь"
-        streak < 100 -> "Жар"
-        streak < 200 -> "Неон"
-        else -> "Аврора"
+        streak < 10 -> "Жёлтая искра"
+        streak < 30 -> "Фиолетовое пламя"
+        streak < 60 -> "Синее пламя"
+        streak < 100 -> "Алое пламя"
+        streak < 200 -> "Лаймовое пламя"
+        streak < 500 -> "Бирюзовое пламя"
+        streak < 1000 -> "Розовое пламя"
+        streak < 2500 -> "Ледяное пламя"
+        streak < 5000 -> "Аметистовое пламя"
+        else -> "Белое пламя"
     }
 
     private fun streakColor(streak: Int): Int = StreakFireView.colorForStreak(streak)
 
     private fun streakColorName(streak: Int): String = when {
         streak <= 0 -> "неактивный"
-        streak < 10 -> "белый"
-        streak < 20 -> "фиолетовый"
-        streak < 50 -> "синий"
-        streak < 100 -> "красный"
+        streak < 10 -> "жёлтый"
+        streak < 30 -> "фиолетовый"
+        streak < 60 -> "синий"
+        streak < 100 -> "алый"
         streak < 200 -> "лаймовый"
-        else -> "голубой"
+        streak < 500 -> "бирюзовый"
+        streak < 1000 -> "розовый"
+        streak < 2500 -> "ледяной"
+        streak < 5000 -> "аметистовый"
+        else -> "белый"
     }
 
     private fun streakRangeLabel(streak: Int): String = when {
         streak <= 0 -> "0 дней"
         streak < 10 -> "1–9 дней"
-        streak < 20 -> "10–19 дней"
-        streak < 50 -> "20–49 дней"
-        streak < 100 -> "50–99 дней"
+        streak < 30 -> "10–29 дней"
+        streak < 60 -> "30–59 дней"
+        streak < 100 -> "60–99 дней"
         streak < 200 -> "100–199 дней"
-        else -> "200+ дней"
+        streak < 500 -> "200–499 дней"
+        streak < 1000 -> "500–999 дней"
+        streak < 2500 -> "1000–2499 дней"
+        streak < 5000 -> "2500–4999 дней"
+        else -> "5000+ дней"
     }
 
     private fun nextStreakMilestone(streak: Int): Int? = when {
         streak < 10 -> 10
-        streak < 20 -> 20
-        streak < 50 -> 50
+        streak < 30 -> 30
+        streak < 60 -> 60
         streak < 100 -> 100
         streak < 200 -> 200
+        streak < 500 -> 500
+        streak < 1000 -> 1000
+        streak < 2500 -> 2500
+        streak < 5000 -> 5000
         else -> null
     }
 
@@ -4314,10 +4307,14 @@ class MainActivity : AppCompatActivity() {
         val end: Int
         when {
             streak < 10 -> { start = 0; end = 10 }
-            streak < 20 -> { start = 10; end = 20 }
-            streak < 50 -> { start = 20; end = 50 }
-            streak < 100 -> { start = 50; end = 100 }
+            streak < 30 -> { start = 10; end = 30 }
+            streak < 60 -> { start = 30; end = 60 }
+            streak < 100 -> { start = 60; end = 100 }
             streak < 200 -> { start = 100; end = 200 }
+            streak < 500 -> { start = 200; end = 500 }
+            streak < 1000 -> { start = 500; end = 1000 }
+            streak < 2500 -> { start = 1000; end = 2500 }
+            streak < 5000 -> { start = 2500; end = 5000 }
             else -> return 1f
         }
         return ((streak - start).toFloat() / (end - start).toFloat()).coerceIn(0f, 1f)
@@ -4607,7 +4604,7 @@ class MainActivity : AppCompatActivity() {
                 setTextColor(muted)
                 setPadding(0, dp(14), 0, 0)
             }
-            addView(spinner, LinearLayout.LayoutParams(dp(58), dp(58)))
+            addView(spinner, LinearLayout.LayoutParams(dp(42), dp(42)))
             addView(label)
         }
         replaceRoot(withBottomNav(loadingPage, SohrTab.ACCOUNT))
@@ -5377,7 +5374,7 @@ class MainActivity : AppCompatActivity() {
                                 context = this@MainActivity,
                                 palette = palette,
                                 title = "Обновлений нет",
-                                message = "У тебя последняя версия SOHR • " + BuildConfig.VERSION_NAME,
+                                message = "У вас последняя версия SOHR • " + BuildConfig.VERSION_NAME,
                                 button = "Готово"
                             )
                         }
@@ -5437,7 +5434,7 @@ class MainActivity : AppCompatActivity() {
                             context = this@MainActivity,
                             palette = palette,
                             title = "Нужна одноразовая переустановка",
-                            message = "Текущая версия SOHR была подписана старым временным ключом. Android не разрешит обновить её поверх новой версии. Один раз установи первую версию с постоянной подписью после удаления старой — дальше обновления будут ставиться поверх без этого конфликта.",
+                            message = "Текущая версия SOHR была подписана старым временным ключом. Android не разрешит обновить её поверх новой версии. Один раз установите первую версию с постоянной подписью после удаления старой — дальше обновления будут ставиться поверх без этого конфликта.",
                             button = "Понятно"
                         )
                     }
@@ -5450,7 +5447,7 @@ class MainActivity : AppCompatActivity() {
                     waitingForInstallPermission = true
                     Toast.makeText(
                         this@MainActivity,
-                        "Разреши SOHR устанавливать обновления — после возврата установка продолжится сама.",
+                        "Разрешите SOHR устанавливать обновления — после возврата установка продолжится сама.",
                         Toast.LENGTH_LONG
                     ).show()
                     startActivity(updateManager.unknownSourcesIntent())
@@ -5493,7 +5490,7 @@ class MainActivity : AppCompatActivity() {
         }
         updateProgressLabel = label
 
-        box.addView(spinner, LinearLayout.LayoutParams(dp(72), dp(72)))
+        box.addView(spinner, LinearLayout.LayoutParams(dp(46), dp(46)))
         box.addView(title)
         box.addView(label)
         replaceRoot(box)
@@ -5543,7 +5540,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, dp(18), 0, 0)
         }
 
-        box.addView(spinner, LinearLayout.LayoutParams(dp(72), dp(72)))
+        box.addView(spinner, LinearLayout.LayoutParams(dp(46), dp(46)))
         box.addView(label, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         replaceRoot(box)
     }
