@@ -33,6 +33,7 @@ class HomeVideoShelfAdapter(
     enum class Mode { CONTINUE, NEW }
 
     private val animatedIds = hashSetOf<Long>()
+    private var lastClickAtMs = 0L
 
     init { setHasStableIds(true) }
 
@@ -306,21 +307,23 @@ class HomeVideoShelfAdapter(
         }
 
         holder.itemView.setOnClickListener {
-            if (!holder.itemView.isEnabled) return@setOnClickListener
-            holder.itemView.isEnabled = false
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (now - lastClickAtMs < 320L) return@setOnClickListener
+            lastClickAtMs = now
 
             if (animationsEnabled) {
                 holder.itemView.animate().cancel()
                 holder.itemView.animate()
                     .scaleX(0.965f)
                     .scaleY(0.965f)
-                    .setDuration(70L)
+                    .setDuration(SohrMotion.FAST / 2)
+                    .setInterpolator(SohrMotion.smooth())
                     .withEndAction {
                         holder.itemView.animate()
                             .scaleX(1f)
                             .scaleY(1f)
-                            .setDuration(155L)
-                            .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                            .setDuration(SohrMotion.FAST)
+                            .setInterpolator(SohrMotion.smooth())
                             .start()
                         onClick(item, holder.thumbnail)
                     }
@@ -328,8 +331,6 @@ class HomeVideoShelfAdapter(
             } else {
                 onClick(item, holder.thumbnail)
             }
-
-            holder.itemView.postDelayed({ holder.itemView.isEnabled = true }, 420L)
         }
 
         holder.itemView.setOnLongClickListener {
