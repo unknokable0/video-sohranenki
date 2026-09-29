@@ -99,7 +99,7 @@ class StreakFireView(
         val sway = wave * w * .010f
         val tipShift = wave * w * .016f
         val bottom = h * .88f
-        val inactive = Color.parseColor("#4A4954")
+        val inactive = Color.parseColor("#4B4A53")
         val displayColor = blend(inactive, flameColor, litProgress)
 
         outer.reset()
@@ -185,12 +185,16 @@ class StreakFireView(
     companion object {
         fun colorForStreak(streak: Int): Int = when {
             streak <= 0 -> Color.parseColor("#777782")
-            streak < 10 -> Color.WHITE
-            streak < 20 -> Color.parseColor("#9A68FF")
-            streak < 50 -> Color.parseColor("#4D98FF")
-            streak < 100 -> Color.parseColor("#FF4A5E")
-            streak < 200 -> Color.parseColor("#B7FF28")
-            else -> Color.parseColor("#55E6FF")
+            streak < 10 -> Color.parseColor("#FFC83D")
+            streak < 30 -> Color.parseColor("#A970FF")
+            streak < 60 -> Color.parseColor("#4D98FF")
+            streak < 100 -> Color.parseColor("#FF5367")
+            streak < 200 -> Color.parseColor("#B7E84A")
+            streak < 500 -> Color.parseColor("#46D7C4")
+            streak < 1000 -> Color.parseColor("#FF73B9")
+            streak < 2500 -> Color.parseColor("#9ED8FF")
+            streak < 5000 -> Color.parseColor("#D58CFF")
+            else -> Color.WHITE
         }
     }
 
