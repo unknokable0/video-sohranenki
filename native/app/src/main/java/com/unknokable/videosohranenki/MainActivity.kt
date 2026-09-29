@@ -4603,7 +4603,8 @@ class MainActivity : AppCompatActivity() {
                 updateTodayLiveSummary(null, unavailable = true)
                 slot?.takeIf { it.isAttachedToWindow }
                     ?.let { renderT2x2Live(it, null, unavailable = true) }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                if (isTwitchNetworkFailure(e)) markTwitchNetworkFailure()
                 lastT2x2Live = null
                 lastT2x2LiveUnavailable = true
                 lastT2x2LiveCheckedAt = System.currentTimeMillis()
@@ -4927,7 +4928,12 @@ class MainActivity : AppCompatActivity() {
                 val clientId = BuildConfig.TWITCH_CLIENT_ID.trim()
                 val token = settings.twitchAccessToken
 
-                if (!settings.guestMode && clientId.isNotBlank() && !token.isNullOrBlank()) {
+                if (
+                    !settings.guestMode &&
+                    clientId.isNotBlank() &&
+                    !token.isNullOrBlank() &&
+                    canAttemptTwitchNetwork()
+                ) {
                     val result = runCatching {
                         TwitchApi.loadLiveStream(clientId, token, "t2x2")
                     }
@@ -4944,6 +4950,9 @@ class MainActivity : AppCompatActivity() {
                             ?.takeIf { it.isAttachedToWindow }
                             ?.let { renderT2x2Live(it, live) }
                     } else {
+                        result.exceptionOrNull()
+                            ?.takeIf(::isTwitchNetworkFailure)
+                            ?.let { markTwitchNetworkFailure() }
                         lastT2x2Live = null
                         lastT2x2LiveUnavailable = true
                         lastT2x2LiveCheckedAt = System.currentTimeMillis()
@@ -5285,9 +5294,10 @@ class MainActivity : AppCompatActivity() {
                 replaceRoot(playerScreen!!.root)
             } catch (e: Exception) {
                 isPlayerScreen = false
+                if (isTwitchNetworkFailure(e)) markTwitchNetworkFailure()
                 showMessage(
-                    "Не удалось открыть запись Twitch",
-                    e.message ?: "Twitch не отдал видеопоток. Попробуйте ещё раз."
+                    if (isTwitchNetworkFailure(e)) "Нет подключения к Twitch" else "Не удалось открыть запись Twitch",
+                    friendlyTwitchFailure(e)
                 )
             }
         }
@@ -5364,9 +5374,10 @@ class MainActivity : AppCompatActivity() {
                 startTwitchLogin()
             } catch (e: Exception) {
                 isPlayerScreen = false
+                if (isTwitchNetworkFailure(e)) markTwitchNetworkFailure()
                 showMessage(
-                    "Не удалось открыть эфир",
-                    e.message ?: "Twitch не отдал прямой эфир."
+                    if (isTwitchNetworkFailure(e)) "Нет подключения к Twitch" else "Не удалось открыть эфир",
+                    friendlyTwitchFailure(e)
                 )
             }
         }
@@ -5429,9 +5440,10 @@ class MainActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 isPlayerScreen = false
+                if (isTwitchNetworkFailure(e)) markTwitchNetworkFailure()
                 showMessage(
-                    "Не удалось переключить эфир",
-                    e.message ?: "Ошибка Twitch"
+                    if (isTwitchNetworkFailure(e)) "Нет подключения к Twitch" else "Не удалось переключить эфир",
+                    friendlyTwitchFailure(e)
                 )
             }
         }
@@ -6606,7 +6618,7 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setBackgroundColor(bg)
-            val spinner = LoadingWaveView(this@MainActivity, purple)
+            val spinner = buildBrandLoadingMark(52)
             val label = TextView(this@MainActivity).apply {
                 text = "Загружаем аккаунты…"
                 textSize = 14f
@@ -6614,7 +6626,7 @@ class MainActivity : AppCompatActivity() {
                 setTextColor(muted)
                 setPadding(0, dp(14), 0, 0)
             }
-            addView(spinner, LinearLayout.LayoutParams(dp(46), dp(46)))
+            addView(spinner, LinearLayout.LayoutParams(dp(52), dp(52)))
             addView(label)
         }
         replaceRoot(withBottomNav(loadingPage, SohrTab.ACCOUNT))
@@ -6671,7 +6683,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val avatar = ImageView(this).apply {
-            setImageResource(R.drawable.ic_launcher)
+            setImageResource(R.drawable.sohr_brand_logo)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             background = roundedBg(palette.surfaceAlt, 40)
             setPadding(dp(16), dp(16), dp(16), dp(16))
@@ -6755,7 +6767,7 @@ class MainActivity : AppCompatActivity() {
                 transformations(CircleCropTransformation())
             }
         } else {
-            telegramAvatar.load(R.drawable.ic_launcher) {
+            telegramAvatar.load(R.drawable.sohr_brand_logo) {
                 transformations(CircleCropTransformation())
             }
         }
@@ -6903,7 +6915,7 @@ class MainActivity : AppCompatActivity() {
                 transformations(CircleCropTransformation())
             }
         } else {
-            twitchAvatar.load(R.drawable.ic_launcher) {
+            twitchAvatar.load(R.drawable.sohr_brand_logo) {
                 transformations(CircleCropTransformation())
             }
         }
@@ -7591,6 +7603,47 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun buildBrandLoadingMark(sizeDp: Int): View {
+        val frame = FrameLayout(this)
+        val outline = LoadingWaveView(this, purple)
+        frame.addView(
+            outline,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                Gravity.CENTER
+            )
+        )
+
+        val logoSize = (sizeDp * 0.58f).toInt().coerceAtLeast(22)
+        val logo = ImageView(this).apply {
+            setImageResource(R.drawable.sohr_brand_logo)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            alpha = 0.96f
+            background = roundedBg(Color.TRANSPARENT, (logoSize * 0.22f).toInt().coerceAtLeast(8))
+            clipToOutline = true
+            if (settings.animations) {
+                scaleX = 0.92f
+                scaleY = 0.92f
+                animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(SohrMotion.NORMAL)
+                    .setInterpolator(SohrMotion.smooth())
+                    .start()
+            }
+        }
+        frame.addView(
+            logo,
+            FrameLayout.LayoutParams(
+                dp(logoSize),
+                dp(logoSize),
+                Gravity.CENTER
+            )
+        )
+        return frame
+    }
+
     private fun showUpdateProgress(progress: Int) {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -7599,7 +7652,7 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(bg)
         }
 
-        val spinner = LoadingWaveView(this, purple)
+        val spinner = buildBrandLoadingMark(58)
         val title = TextView(this).apply {
             text = "Обновление SOHR"
             textSize = 22f
@@ -7617,7 +7670,7 @@ class MainActivity : AppCompatActivity() {
         }
         updateProgressLabel = label
 
-        box.addView(spinner, LinearLayout.LayoutParams(dp(52), dp(52)))
+        box.addView(spinner, LinearLayout.LayoutParams(dp(58), dp(58)))
         box.addView(title)
         box.addView(label)
         replaceRoot(box)
