@@ -94,6 +94,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var streakTracker: StreakTracker
     private lateinit var updateManager: SohrUpdateManager
     private lateinit var videoCache: SohrVideoCache
+    private lateinit var experienceStore: SohrExperienceStore
+    private lateinit var downloadStore: SohrDownloadStore
+    private var previousVisitAtMs = 0L
     private var telegramReady = false
     private var pendingUpdateApk: File? = null
     private var waitingForInstallPermission = false
@@ -184,8 +187,17 @@ class MainActivity : AppCompatActivity() {
         streakTracker = StreakTracker(this)
         updateManager = SohrUpdateManager(this)
         videoCache = SohrVideoCache(this)
+        experienceStore = SohrExperienceStore(this)
+        downloadStore = SohrDownloadStore(this)
 
         val runtimePrefs = getSharedPreferences("sohr_runtime", MODE_PRIVATE)
+        previousVisitAtMs = if (savedInstanceState == null) {
+            experienceStore.beginVisit().also {
+                runtimePrefs.edit().putLong("session_previous_visit_ms", it).apply()
+            }
+        } else {
+            runtimePrefs.getLong("session_previous_visit_ms", 0L)
+        }
         val previousVersionCode = runtimePrefs.getInt("last_version_code", 0)
         val pendingUpdateVersion = runtimePrefs.getString("pending_update_version_name", null)
         val pendingUpdateNotes = runtimePrefs.getString("pending_update_notes", null).orEmpty()
