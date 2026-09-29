@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.3.1: saved library, richer search, warm-start cache and final brand icon
+# SOHR 6.3.2: stable tabs, downloads, loader cleanup and player polish
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.3.1 version
+      - name: Assign SOHR 6.3.2 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=630001" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.3.1" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=630002" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.3.2" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -277,18 +277,15 @@ jobs:
 
           for required in [
               'section !in 1..3',
-              'listOf("Главная" to 1, "История" to 2, "Сохранено" to 3)',
-              'private fun favoriteIds()',
-              'private fun toggleFavorite(item: VideoItem)',
-              '"Избранное"',
-              '"Смотреть позже"',
-              '"saved" to "Сохранено"',
+              'listOf("Главная" to 1, "Лента" to 2, "Просмотренные" to 3)',
+              '"Здесь позже появятся сообщения из Telegram-каналов."',
+              '"Просмотренные по дням"',
               'val searchableText = buildString',
               'loadVideos(inPlace = true, quiet = true)',
               'withContext(Dispatchers.IO) {\n                    videoCache.load()'
           ]:
               if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.3.1 selected-library/search/cache regression: {required}")
+                  raise SystemExit(f"SOHR 6.3.2 top-tabs/search/cache regression: {required}")
 
           if 'sohr_brand_logo' in loader or 'ImageView' in loader:
               raise SystemExit("SOHR 6.3.1 regression: launcher artwork returned to cloud loading animation")
@@ -327,29 +324,14 @@ jobs:
               if forbidden in experience_store:
                   raise SystemExit(f"SOHR 6.2.6 removed Recap tracking returned: {forbidden}")
 
-          moments_store = Path(
-              "native/app/src/main/java/com/unknokable/videosohranenki/SohrMomentsStore.kt"
-          ).read_text(encoding="utf-8")
-          for required in [
-              "data class SohrMoment",
-              "fun add(",
-              "fun rename(",
-              "fun remove("
+          for removed_path in [
+              "native/app/src/main/java/com/unknokable/videosohranenki/SohrMomentsStore.kt",
+              "native/app/src/main/java/com/unknokable/videosohranenki/SohrRecapStore.kt",
+              "native/app/src/main/res/drawable/ic_setting_moments.xml",
+              "native/app/src/main/res/drawable/ic_setting_recap.xml"
           ]:
-              if required not in moments_store:
-                  raise SystemExit(f"SOHR 6.3.0 Moments store regression: {required}")
-
-          recap_store = Path(
-              "native/app/src/main/java/com/unknokable/videosohranenki/SohrRecapStore.kt"
-          ).read_text(encoding="utf-8")
-          for required in [
-              "data class SohrRecapSnapshot",
-              "fun markSessionStart",
-              "fun addWatchSlice",
-              "fun snapshot"
-          ]:
-              if required not in recap_store:
-                  raise SystemExit(f"SOHR 6.3.0 standalone Recap regression: {required}")
+              if Path(removed_path).exists():
+                  raise SystemExit(f"SOHR 6.3.2 removed feature returned: {removed_path}")
 
           session_adapter = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/PlaybackSessionAdapter.kt"
@@ -430,13 +412,14 @@ jobs:
               if required not in settings_screen:
                   raise SystemExit(f"SOHR 6.2.1 compact preview-setting regression: {required}")
 
+          if 'title = "Моменты"' in settings_screen or 'title = "SOHR Recap"' in settings_screen:
+              raise SystemExit("SOHR 6.3.2 regression: removed Moments/Recap settings returned")
           for required in [
-              'title = "Моменты"',
-              'title = "SOHR Recap"',
-              'title = "Умное скачивание"'
+              'title = "Умное скачивание"',
+              "R.drawable.ic_setting_smart_download"
           ]:
               if required not in settings_screen:
-                  raise SystemExit(f"SOHR 6.3.0 selected-settings regression: {required}")
+                  raise SystemExit(f"SOHR 6.3.2 settings regression: {required}")
 
           preview_pos = settings_screen.find("root.addView(previewModeSelector())")
           autoplay_pos = settings_screen.find('title = "Автовоспроизведение"')
@@ -486,6 +469,17 @@ jobs:
               if required not in sohr_main:
                   raise SystemExit(f"SOHR 6.2.3 search-motion regression: {required}")
 
+          for required in [
+              "val travel = dp(20).toFloat() * direction",
+              "content.alpha = 0f",
+              ".setStartDelay(28L)",
+              "nav.clearAnimation()",
+              "nav.scaleX = 1f",
+              "nav.scaleY = 1f"
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.3.2 smooth-tabs/nav regression: {required}")
+
           manifest = Path("native/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
           styles = Path("native/app/src/main/res/values/styles.xml").read_text(encoding="utf-8")
           gradle_file = Path("native/app/build.gradle.kts").read_text(encoding="utf-8")
@@ -533,20 +527,26 @@ jobs:
               "segmentPath",
               "PathMeasure",
               "basePaint",
-              "glowPaint",
               "segmentPaint",
-              "duration = 1850L",
-              "val segmentLength = length * 0.27f"
+              "LinearInterpolator()",
+              "duration = 1750L",
+              "0.038f * sin",
+              "val segmentLength = length * 0.25f"
           ]:
               if required not in loader:
-                  raise SystemExit(f"SOHR 6.2.7 classic-loader regression: {required}")
-          for forbidden in ["cloudPath", "sCutPath", "PorterDuff.Mode.CLEAR", "LinearGradient("]:
+                  raise SystemExit(f"SOHR 6.3.2 cloud-loader regression: {required}")
+          for forbidden in [
+              "glowPaint",
+              "LinearGradient(",
+              "PorterDuff.Mode.CLEAR",
+              "sohr_brand_logo",
+              "ImageView"
+          ]:
               if forbidden in loader:
-                  raise SystemExit(f"SOHR 6.2.7 wrong-loader regression: {forbidden}")
+                  raise SystemExit(f"SOHR 6.3.2 neon/image loader regression: {forbidden}")
 
           for required in [
               "installSplashScreen()",
-              "buildBrandLoadingMark",
               "friendlyTwitchFailure",
               "isTwitchNetworkFailure",
               "canAttemptTwitchNetwork",
@@ -564,11 +564,11 @@ jobs:
               raise SystemExit("SOHR 6.2.5 loading regression: raster brand artwork returned to loading UI")
           for required in [
               "val loader = LoadingWaveView(this, purple)",
-              "LinearLayout.LayoutParams(dp(64), dp(64))",
-              "setDuration(300L)"
+              "FrameLayout.LayoutParams(dp(76), dp(76), Gravity.CENTER)",
+              ".setDuration(SohrMotion.NORMAL)"
           ]:
               if required not in startup_section:
-                  raise SystemExit(f"SOHR 6.2.7 classic startup-loader regression: {required}")
+                  raise SystemExit(f"SOHR 6.3.2 startup-loader regression: {required}")
           if "ImageView(" in startup_section or "sohr_brand_logo" in startup_section:
               raise SystemExit("SOHR 6.2.7 loading regression: image returned to startup loading")
 
@@ -594,20 +594,24 @@ jobs:
                   raise SystemExit(f"SOHR 6.2 main-experience regression: {required}")
 
           for required in [
-              "showMoments(",
-              "showRecap(",
               "scheduleSmartDownloads(",
               "TRANSPORT_WIFI",
               ".take(2)",
               "PlaybackSessionAdapter",
               "ItemTouchHelper",
-              "saveRecapCard"
+              "downloadTwitchVod("
           ]:
               if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.3.0 selected-features regression: {required}")
-          for forbidden in ["buildRecapTeaser", "showMonthlyRecap", "experienceStore.recap()"]:
+                  raise SystemExit(f"SOHR 6.3.2 selected-features regression: {required}")
+          for forbidden in [
+              "showMoments(",
+              "showRecap(",
+              "saveRecapCard",
+              "momentsStore",
+              "recapStore"
+          ]:
               if forbidden in sohr_main:
-                  raise SystemExit(f"SOHR 6.2.6 regression: monthly Recap code returned: {forbidden}")
+                  raise SystemExit(f"SOHR 6.3.2 removed Moments/Recap regression: {forbidden}")
 
           for required in [
               "mediaSessionBridge",
@@ -617,39 +621,43 @@ jobs:
               if required not in player:
                   raise SystemExit(f"SOHR 6.2 player-experience regression: {required}")
           for required in [
-              "sampleWatchTime",
-              "flushWatchTime",
-              "onWatchSlice",
-              "onSaveMoment",
-              "onOpenMoments",
               "requestFilmstrip",
               "loadPreviewFrame",
-              "previewStripImages"
+              "previewStripImages",
+              '"Скачать"',
+              "R.drawable.ic_action_download"
           ]:
               if required not in player:
-                  raise SystemExit(f"SOHR 6.3.0 player moments/seek/Recap regression: {required}")
+                  raise SystemExit(f"SOHR 6.3.2 player/seek/download regression: {required}")
+          for forbidden in ["onSaveMoment", "onOpenMoments", '"Момент"']:
+              if forbidden in player:
+                  raise SystemExit(f"SOHR 6.3.2 removed Moments player regression: {forbidden}")
 
           for required in [
-              "TdApi.AddFileToDownloads(",
-              "TdApi.GetFile(item.fileId)",
-              "TdApi.RemoveFileFromDownloads(item.fileId, false)",
-              "activeManualDownloads"
+              "server.downloadFully(item)",
+              "activeManualDownloads",
+              "downloadTwitchVod(",
+              "activeTwitchDownloads"
           ]:
               if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.2.6 manual-download regression: {required}")
-          if "TdApi.DownloadFile(item.fileId, 1, 0, 0, true)" in sohr_main:
-              raise SystemExit("SOHR 6.2.6 regression: manual download uses conflicting DownloadFile")
+                  raise SystemExit(f"SOHR 6.3.2 download regression: {required}")
+          for forbidden in [
+              "TdApi.AddFileToDownloads(",
+              "TdApi.RemoveFileFromDownloads(item.fileId, false)"
+          ]:
+              if forbidden in sohr_main:
+                  raise SystemExit(f"SOHR 6.3.2 conflicting manual-download regression: {forbidden}")
 
           time_bar = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/SohrTimeBar.kt"
           ).read_text(encoding="utf-8")
           for required in [
               "val desired = dp(22f).toInt()",
-              "dp(if (scrubbing) 3f else 2f)",
-              "dp(5.5f)"
+              "dp(if (scrubbing) 2.5f else 1.5f)",
+              "dp(4.5f)"
           ]:
               if required not in time_bar:
-                  raise SystemExit(f"SOHR 6.2.6 compact timeline regression: {required}")
+                  raise SystemExit(f"SOHR 6.3.2 slim timeline regression: {required}")
 
           for required in [
               "onFineScrubMode",
@@ -658,11 +666,12 @@ jobs:
               if required not in time_bar:
                   raise SystemExit(f"SOHR 6.3.0 fine-scrub regression: {required}")
           for required in [
-              'background = rounded("#480A0810", 12)',
-              "LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(18))"
+              'background = rounded("#360A0810", 10)',
+              "LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(18))",
+              "topMargin = dp(13)"
           ]:
               if required not in player:
-                  raise SystemExit(f"SOHR 6.2.6 compact player chrome regression: {required}")
+                  raise SystemExit(f"SOHR 6.3.2 compact player chrome regression: {required}")
 
           telegram_stream = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/TelegramStreamServer.kt"
@@ -678,6 +687,18 @@ jobs:
                   raise SystemExit(f"Telegram playback hardening missing: {required}")
           if "DeleteFile(item.fileId)" in telegram_stream:
               raise SystemExit("Telegram playback regression: release deletes reusable video bytes")
+
+          for required in [
+              "TelegramDownloadCoordinator",
+              "ConcurrentHashMap<Int, Mutex>",
+              "suspend fun downloadFully",
+              "withFile(item.fileId)",
+              "withFile(fileId)"
+          ]:
+              if required not in telegram_stream:
+                  raise SystemExit(f"SOHR 6.3.2 coordinated-download regression: {required}")
+          if "CancelDownloadFile(item.fileId" in telegram_stream:
+              raise SystemExit("SOHR 6.3.2 regression: player release cancels manual download")
 
           for required in [
               "playbackRecoveryAttempts",
@@ -769,7 +790,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "Раздел Сохранено с Избранным и Смотреть позже • поиск по названию, caption/описанию, дате и источнику • фильтр Сохранено • мгновенный warm-start главной из videoCache с тихим обновлением • новая синяя ава остаётся launcher-иконкой • старая облачная загрузка без картинки не изменена"
+            "notes": "Главная / Лента / Просмотренные • плавные переходы верхних вкладок без наложения • Моменты и Recap удалены • загрузка возвращена в плеер • Telegram downloadFile конфликт исправлен координатором • Twitch VOD можно скачать • нижняя панель стабилизирована • таймлайн компактнее • облачная загрузка без картинки и неона движется непрерывно • новая синяя ава установлена как launcher icon"
           }
           EOF
           cat update.json
