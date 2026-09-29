@@ -45,11 +45,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.0.10 version
+      - name: Assign SOHR 6.0.11 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=600010" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.0.10" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=600011" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.0.11" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -123,6 +123,27 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import re
+
+          source_root = Path("native/app/src/main")
+          informal = re.compile(
+              r"(?<![А-Яа-яЁёІіЇїЄєҐґ])"
+              r"(ты|тебя|тебе|тобой|твой|твоя|твоё|твое|твои|твоих|твоей|"
+              r"продолжай|нажми|посмотри|выбери|введи|проверь|попробуй|"
+              r"подключи|войди|открой|скачай|добавь|удали|перейди|разреши|"
+              r"подтверди|верни|обнови|обери|перевір)"
+              r"(?![А-Яа-яЁёІіЇїЄєҐґ])",
+              re.IGNORECASE,
+          )
+          for source in source_root.rglob("*"):
+              if source.suffix not in {".kt", ".xml"}:
+                  continue
+              text = source.read_text(encoding="utf-8")
+              for line_no, line in enumerate(text.splitlines(), start=1):
+                  if '"' in line and informal.search(line):
+                      raise SystemExit(
+                          f"Informal user address found: {source}:{line_no}: {line.strip()}"
+                      )
 
           checks = {
               "native/app/src/main/java/com/unknokable/videosohranenki/ThemePalette.kt": [
@@ -219,7 +240,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.0.10 • restored full clean S loader without glow or leading dot • modern tune settings icon • visible quality control • unified compact video controls • cleaner video settings sheet • Twitch player control polish"
+            "notes": "В интерфейсе завершён переход на обращение на «вы» • В статистике убран лишний текст под полосой прогресса • После обновления появилась кнопка «Список» с перечнем изменений • Окно завершения обновления стало аккуратнее и удобнее"
           }
           EOF
           cat update.json
