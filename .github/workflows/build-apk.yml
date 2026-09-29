@@ -162,7 +162,7 @@ jobs:
                   "R.drawable.ic_close", "R.drawable.ic_check", "fun showAppearancePicker"
               ],
               "native/app/src/main/java/com/unknokable/videosohranenki/LoadingWaveView.kt": [
-                  "syncAnimator", "PathMeasure", "outlinePath", "segmentPath", "duration = 1850L"
+                  "syncAnimator", "cloudPath", "sCutPath", "fillPaint", "PorterDuff.Mode.CLEAR", "duration = 1600L"
               ],
               "native/app/src/main/java/com/unknokable/videosohranenki/SohrBottomNavView.kt": [
                   "syncSelected", "private fun requestIndex(target: Int)"
