@@ -9,6 +9,10 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean("autoplay", false)
         set(value) = prefs.edit().putBoolean("autoplay", value).apply()
 
+    var smartDownloads: Boolean
+        get() = prefs.getBoolean("smart_downloads", false)
+        set(value) = prefs.edit().putBoolean("smart_downloads", value).apply()
+
     var previewMode: String
         get() {
             val fallback = if (prefs.getBoolean("previews", true)) "wifi" else "off"
