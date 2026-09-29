@@ -629,6 +629,7 @@ class MainActivity : AppCompatActivity() {
 
                 // Do not block the first usable screen on a fresh network sync.
                 loadVideos(inPlace = true)
+                scheduleFeedAutoRefresh(delayMs = 2_000L, force = false)
             }
             is TdApi.AuthorizationStateLoggingOut -> runOnUiThread { showLoading("Выходим…") }
             is TdApi.AuthorizationStateClosing -> runOnUiThread { showLoading("Закрываем соединение…") }
@@ -3642,7 +3643,10 @@ class MainActivity : AppCompatActivity() {
             if (!forceRefresh && telegramVideos.isNotEmpty()) {
                 currentVideos = telegramVideos
                 showFeed(telegramVideos)
-            } else loadVideos(inPlace = false)
+            } else {
+                loadVideos(inPlace = false)
+            }
+            scheduleFeedAutoRefresh(delayMs = 700L, force = forceRefresh)
         }
     }
 
