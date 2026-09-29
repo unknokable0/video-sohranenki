@@ -52,6 +52,7 @@ android {
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     implementation("androidx.core:core-ktx:1.16.0")
+    implementation("androidx.core:core-splashscreen:1.2.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.2")
     implementation("androidx.recyclerview:recyclerview:1.4.0")
@@ -65,4 +66,26 @@ dependencies {
     implementation("org.nanohttpd:nanohttpd:2.3.1")
     implementation("io.github.tdlib-android:core:0.1.1")
     implementation("io.github.tdlib-android:ktx:0.1.1")
+}
+
+
+val sohrBrandBase64 = layout.projectDirectory.file("src/main/brand/sohr_brand.webp.b64")
+val generatedSohrBrandRes = layout.buildDirectory.dir("generated/sohrBrandRes")
+
+android.sourceSets.getByName("main").res.srcDir(generatedSohrBrandRes)
+
+val prepareSohrBrandAssets = tasks.register("prepareSohrBrandAssets") {
+    inputs.file(sohrBrandBase64)
+    outputs.dir(generatedSohrBrandRes)
+    doLast {
+        val drawableDir = generatedSohrBrandRes.get().dir("drawable-nodpi").asFile
+        drawableDir.mkdirs()
+        val encoded = sohrBrandBase64.asFile.readText().trim()
+        val bytes = java.util.Base64.getDecoder().decode(encoded)
+        drawableDir.resolve("sohr_brand_logo.webp").writeBytes(bytes)
+    }
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(prepareSohrBrandAssets)
 }
