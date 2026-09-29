@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -178,6 +179,7 @@ class SohrBottomNavView(
         if (target !in tabs.indices || target == selectedIndex || requestLocked) return
 
         requestLocked = true
+        performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         animatePress(target)
 
         // The screen is the source of truth. Do not move the selected indicator
