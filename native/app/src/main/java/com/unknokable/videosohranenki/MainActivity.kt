@@ -3129,11 +3129,16 @@ class MainActivity : AppCompatActivity() {
             clipToPadding = false
         }
 
+        val compactCardWidth = (resources.displayMetrics.widthPixels * 0.60f).toInt()
+            .coerceIn(dp(154), dp(205))
+        val compactPreviewHeight = (compactCardWidth * 9f / 16f).toInt()
+        val compactShelfHeight = compactPreviewHeight + dp(50)
+
         section.addView(
             shelf,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(198)
+                compactShelfHeight
             )
         )
         return section
@@ -3206,7 +3211,7 @@ class MainActivity : AppCompatActivity() {
             setState(lastT2x2Live != null, settings.animations)
         }
         val liveText = TextView(this).apply {
-            text = "Антон не в сети"
+            text = "T2x2 • не в сети"
             textSize = 11f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
@@ -3250,10 +3255,10 @@ class MainActivity : AppCompatActivity() {
         val isLive = live != null
         dot?.setState(isLive, settings.animations)
         if (isLive) {
-            label.text = "Антон в сети"
+            label.text = "T2x2 • в сети"
             label.setTextColor(Color.parseColor("#FF4458"))
         } else {
-            label.text = "Антон не в сети"
+            label.text = "T2x2 • не в сети"
             label.setTextColor(muted)
         }
     }
@@ -6254,7 +6259,7 @@ class MainActivity : AppCompatActivity() {
         ).joinToString(" • ")
         "6.1.1" -> listOf(
             "Главная выровнена: адаптивные 16:9 карточки и плавное прилипание карусели.",
-            "Статус Антона перенесён в SOHR Сегодня: серый офлайн и красный пульсирующий онлайн.",
+            "Статус T2x2 находится в SOHR Сегодня: серый офлайн и красный пульсирующий онлайн.",
             "Отдельная карточка T2x2 под SOHR Сегодня удалена.",
             "Жест назад теперь закрывает поиск перед выходом с главной.",
             "Экран видео выровнен по единой сетке и правильному соотношению сторон.",
