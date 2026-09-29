@@ -4843,7 +4843,10 @@ class MainActivity : AppCompatActivity() {
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             val prefs = getSharedPreferences("sohr_runtime", MODE_PRIVATE)
-            if (!prefs.getBoolean("notification_permission_requested", false)) {
+            val alreadyRequested =
+                prefs.getBoolean("notification_permission_requested", false) ||
+                    prefs.getBoolean("t2x2_notification_permission_requested", false)
+            if (!alreadyRequested) {
                 prefs.edit()
                     .putBoolean("notification_permission_requested", true)
                     .apply()
