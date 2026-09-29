@@ -123,7 +123,7 @@ class TwitchLivePreviewView(
         )
 
         loader.alpha = 0.94f
-        addView(loader, LayoutParams(dp(44), dp(44), Gravity.CENTER))
+        addView(loader, LayoutParams(dp(36), dp(36), Gravity.CENTER))
 
         addView(
             buildLiveBadge(),
