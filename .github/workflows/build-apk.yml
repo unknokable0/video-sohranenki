@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.2.1: bottom-nav, Today text, downloads back and preview settings polish
+# SOHR 6.2.2: settings order and responsiveness optimizations
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.2.1 version
+      - name: Assign SOHR 6.2.2 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=620001" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.2.1" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=620002" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.2.2" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -357,6 +357,35 @@ jobs:
               if required not in settings_screen:
                   raise SystemExit(f"SOHR 6.2.1 compact preview-setting regression: {required}")
 
+          preview_pos = settings_screen.find("root.addView(previewModeSelector())")
+          autoplay_pos = settings_screen.find('title = "Автовоспроизведение"')
+          if preview_pos < 0 or autoplay_pos < 0 or preview_pos > autoplay_pos:
+              raise SystemExit("SOHR 6.2.2 settings order regression: preview must be above autoplay")
+
+          for required in ["cachedEntries", "@Volatile private var cachedEntries"]:
+              if required not in download_store:
+                  raise SystemExit(f"SOHR 6.2.2 download cache regression: {required}")
+
+          for required in ["queueCache", "@Volatile private var queueCache"]:
+              if required not in experience_store:
+                  raise SystemExit(f"SOHR 6.2.2 queue cache regression: {required}")
+
+          for required in [
+              "withContext(Dispatchers.IO) { videoCache.load() }",
+              "val cachedById = cachedBeforeRefresh.associateBy",
+              "withContext(Dispatchers.IO) {\n                    videoCache.save(preparedVideos)",
+              "setHasFixedSize(true)",
+              "setItemViewCacheSize(5)"
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.2.2 main-thread/perf regression: {required}")
+
+          for required in ["lastClickAtMs", "SystemClock.elapsedRealtime()", "SohrMotion.FAST"]:
+              if required not in home_cards:
+                  raise SystemExit(f"SOHR 6.2.2 home-card responsiveness regression: {required}")
+          if "holder.itemView.isEnabled = false" in home_cards or "holder.itemView.postDelayed" in home_cards:
+              raise SystemExit("SOHR 6.2.2 recycled-card regression: click path disables/re-enables itemView")
+
           for required in [
               '"С прошлого раза"',
               "showPlaybackQueue",
@@ -470,7 +499,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "Нижняя панель больше не обрезается у самого низа страницы • Текст SOHR Сегодня стал компактнее без лишнего многоточия • В Загрузках добавлена нормальная кнопка Назад • Настройка превью стала компактной строкой с аккуратным окном выбора"
+            "notes": "Превью видео перенесено выше Автовоспроизведения • Очередь и Загрузки кешируются в памяти • Каталог видео читается и сохраняется вне UI-потока • Убрано повторное чтение videoCache при одном refresh • Полки меньше пересоздают карточки • Исправлены временно ненажимаемые recycled-карточки"
           }
           EOF
           cat update.json
