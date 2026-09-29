@@ -7318,12 +7318,8 @@ class MainActivity : AppCompatActivity() {
                     old.translationX = 0f
                     old.translationY = 0f
 
-                    old.animate()
-                        .alpha(0.72f)
-                        .setDuration(SohrMotion.FAST)
-                        .setInterpolator(SohrMotion.smooth())
-                        .start()
-
+                    // Keep the previous section fully stable underneath while
+                    // the new one fades in. This avoids a brightness dip/flicker.
                     content.animate()
                         .alpha(1f)
                         .setDuration(SohrMotion.NORMAL)
@@ -7512,6 +7508,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun fallbackReleaseNotes(version: String): String = when (version) {
+        "6.3.4" -> listOf(
+            "Верхние вкладки «Главная», «Лента» и «Просмотренные» переключаются чистым crossfade без сдвига и дёрганья всего экрана.",
+            "Убран отдельный цветной зазор между шапкой и видео у Telegram- и Twitch-записей.",
+            "Облачная загрузка стала плотнее и заметнее, сохранив старую форму, отсутствие неона и непрерывное движение без остановки.",
+            "Добавлены фоновые уведомления о новых версиях SOHR даже когда приложение закрыто.",
+            "Уведомления о старте трансляции T2x2 теперь также поддерживаются фоновой проверкой и не дублируются на один эфир.",
+            "Тап по уведомлению обновления открывает SOHR и сразу запускает проверку новой версии."
+        ).joinToString(" • ")
         "6.3.3" -> listOf(
             "Новая сине-голубая ава SOHR установлена отдельным launcher-ресурсом.",
             "Умное скачивание получило отдельную иконку облака с автоматизацией, не похожую на обновление.",
