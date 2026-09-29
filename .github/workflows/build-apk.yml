@@ -45,11 +45,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.0.13 version
+      - name: Assign SOHR 6.0.14 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=600013" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.0.13" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=600014" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.0.14" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -222,7 +222,9 @@ jobs:
               "consecutiveOldPages",
               "cachedBeforeRefresh",
               "is TdApi.MessageAnimation",
-              "scheduleFeedAutoRefresh(delayMs = 2_000L, force = false)"
+              "scheduleFeedAutoRefresh(delayMs = 2_000L, force = false)",
+              "loadVideos(inPlace = true, quiet = true)",
+              "private fun loadVideos(inPlace: Boolean = false, quiet: Boolean = false)"
           ]
           for required in telegram_required:
               if required not in telegram_main:
@@ -278,7 +280,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "Telegram-сборники теперь проверяются автоматически каждые 15 секунд • Новое сообщение канала запускает ускоренный refresh • Канал принудительно открывается через TDLib перед чтением истории • История больше не обрывается из-за единичного старого сообщения • Недавний кэш безопасно объединяется с новыми данными • Поддержаны Telegram-видео типа Animation • GitHub-синк больше не публикует пустой каталог"
+            "notes": "Telegram-сборники автоматически обновляются каждые 15 секунд и почти сразу после новых сообщений • Автообновление теперь тихое и не мигает кнопкой «Проверить новые» • Канал принудительно открывается через TDLib • История и кэш объединяются безопасно • Поддержаны дополнительные Telegram-видео • Пустой веб-синк больше не затирает каталог"
           }
           EOF
           cat update.json
