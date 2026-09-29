@@ -3820,14 +3820,18 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
     }
 
-    private fun downloadVideoQuick(item: VideoItem) {
+    private fun downloadVideoQuick(
+        item: VideoItem,
+        autoManaged: Boolean = false,
+        silent: Boolean = false
+    ) {
         if (item.fileId > 0 && !activeManualDownloads.add(item.fileId)) {
-            Toast.makeText(this, "Видео уже загружается", Toast.LENGTH_SHORT).show()
+            if (!silent) Toast.makeText(this, "Видео уже загружается", Toast.LENGTH_SHORT).show()
             return
         }
 
         lifecycleScope.launch {
-            if (item.fileId > 0) {
+            if (item.fileId > 0 && !silent) {
                 Toast.makeText(this@MainActivity, "Загрузка началась", Toast.LENGTH_SHORT).show()
             }
 
@@ -3893,20 +3897,82 @@ class MainActivity : AppCompatActivity() {
 
             result.onSuccess { file ->
                 markDownloaded(item)
-                downloadStore.register(item, file)
-                Toast.makeText(
-                    this@MainActivity,
-                    "Скачано • " + file.name,
-                    Toast.LENGTH_SHORT
-                ).show()
+                downloadStore.register(item, file, autoManaged = autoManaged)
+                if (!silent) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Скачано • " + file.name,
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
             }.onFailure {
-                Toast.makeText(
-                    this@MainActivity,
-                    "Не удалось скачать видео. Проверьте интернет и попробуйте ещё раз.",
-                    Toast.LENGTH_LONG
-                ).show()
+                if (!silent) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Не удалось скачать видео. Проверьте интернет и попробуйте ещё раз.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
             }
         }
+    }
+
+    private fun scheduleSmartDownloads(videos: List<VideoItem>) {
+        smartDownloadJob?.cancel()
+        if (!settings.smartDownloads || !telegramReady || videos.isEmpty()) return
+
+        val connectivity = getSystemService(android.net.ConnectivityManager::class.java)
+        val network = connectivity?.activeNetwork ?: return
+        val caps = connectivity.getNetworkCapabilities(network) ?: return
+        val unmetered =
+            caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+        if (!unmetered) return
+
+        val watched = watchedVideoIds()
+        val candidates = videos
+            .asSequence()
+            .filter { it.source == "telegram" && it.fileId > 0 && it.fileSize > 0L }
+            .filterNot { watched.contains(it.messageId.toString()) }
+            .filter { it.fileSize <= 2L * 1024L * 1024L * 1024L }
+            .sortedWith(compareByDescending<VideoItem> { it.date }.thenByDescending { it.messageId })
+            .take(2)
+            .toList()
+
+        smartDownloadJob = lifecycleScope.launch {
+            val targetIds = candidates.mapTo(hashSetOf()) { it.messageId }
+
+            downloadStore.autoEntries()
+                .filterNot { it.messageId in targetIds }
+                .forEach { old ->
+                    withContext(Dispatchers.IO) {
+                        runCatching { File(old.path).delete() }
+                    }
+                    downloadStore.remove(old.messageId)
+                }
+
+            candidates.forEach { item ->
+                if (!downloadStore.contains(item.messageId)) {
+                    val free = (getExternalFilesDir(Environment.DIRECTORY_MOVIES) ?: filesDir).usableSpace
+                    if (free > item.fileSize + 256L * 1024L * 1024L) {
+                        downloadVideoQuick(item, autoManaged = true, silent = true)
+                        delay(350L)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun openMomentsFromPlayer(messageId: Long) {
+        val outgoing = playerScreen
+        outgoing?.flushPlaybackPosition()
+        playerScreen = null
+        isPlayerScreen = false
+        currentStreamingItem?.let { streamed -> streamServer?.release(streamed) }
+        currentStreamingItem = null
+        outgoing?.destroy()
+        pendingRootSlide = 1
+        showMoments(messageId)
     }
 
     private fun showPlaybackQueue() {
