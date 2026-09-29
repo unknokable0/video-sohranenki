@@ -44,14 +44,16 @@ class HomeVideoShelfAdapter(
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
         val context = parent.context
-        val cardWidth = dp(context, 226)
-        val previewHeight = dp(context, 128)
+        val screenWidth = context.resources.displayMetrics.widthPixels
+        val cardWidth = (screenWidth * 0.60f).toInt()
+            .coerceIn(dp(context, 154), dp(context, 205))
+        val previewHeight = (cardWidth * 9f / 16f).toInt()
 
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
                 setColor(palette.surface)
-                cornerRadius = dp(context, 20).toFloat()
+                cornerRadius = dp(context, 18).toFloat()
                 setStroke(dp(context, 1), palette.stroke)
             }
             clipToOutline = true
@@ -71,8 +73,8 @@ class HomeVideoShelfAdapter(
                     if (palette === AppThemes.Light) Color.parseColor("#ECE4FF") else Color.parseColor("#2E1E4E"),
                     if (palette === AppThemes.Light) Color.parseColor("#F8F5FF") else Color.parseColor("#171120")
                 )
-            ).apply { cornerRadius = dp(context, 16).toFloat() }
-            clipToOutline = true
+            )
+            clipToOutline = false
         }
 
         val thumbnail = ImageView(context).apply {
@@ -86,11 +88,27 @@ class HomeVideoShelfAdapter(
             )
         )
 
+        val blend = View(context).apply {
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(Color.TRANSPARENT, palette.surface)
+            )
+            alpha = 0.92f
+        }
+        preview.addView(
+            blend,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(context, 22),
+                Gravity.BOTTOM
+            )
+        )
+
         val play = ImageView(context).apply {
             setImageResource(R.drawable.ic_play)
             imageTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(context, 12), dp(context, 12), dp(context, 12), dp(context, 12))
+            setPadding(dp(context, 10), dp(context, 10), dp(context, 10), dp(context, 10))
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
                 setColor(Color.parseColor("#9A17131D"))
@@ -98,12 +116,12 @@ class HomeVideoShelfAdapter(
         }
         preview.addView(
             play,
-            FrameLayout.LayoutParams(dp(context, 42), dp(context, 42), Gravity.CENTER)
+            FrameLayout.LayoutParams(dp(context, 36), dp(context, 36), Gravity.CENTER)
         )
 
         val badge = TextView(context).apply {
             text = if (mode == Mode.NEW) "НОВОЕ" else "ПРОДОЛЖИТЬ"
-            textSize = 9.5f
+            textSize = 9.2f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
@@ -117,7 +135,7 @@ class HomeVideoShelfAdapter(
             badge,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                dp(context, 25),
+                dp(context, 23),
                 Gravity.START or Gravity.TOP
             ).apply {
                 leftMargin = dp(context, 7)
@@ -126,7 +144,7 @@ class HomeVideoShelfAdapter(
         )
 
         val duration = TextView(context).apply {
-            textSize = 10.5f
+            textSize = 10f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
             setPadding(dp(context, 6), 0, dp(context, 6), 0)
@@ -139,7 +157,7 @@ class HomeVideoShelfAdapter(
             duration,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                dp(context, 25),
+                dp(context, 23),
                 Gravity.END or Gravity.BOTTOM
             ).apply {
                 rightMargin = dp(context, 7)
@@ -173,21 +191,21 @@ class HomeVideoShelfAdapter(
         )
 
         val title = TextView(context).apply {
-            textSize = 14.5f
+            textSize = 13.5f
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
             includeFontPadding = false
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(palette.text)
-            setPadding(dp(context, 12), dp(context, 10), dp(context, 12), 0)
+            setPadding(dp(context, 10), dp(context, 8), dp(context, 10), 0)
         }
         val meta = TextView(context).apply {
-            textSize = 11f
+            textSize = 10.3f
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
             includeFontPadding = false
             setTextColor(palette.muted)
-            setPadding(dp(context, 12), dp(context, 5), dp(context, 12), dp(context, 10))
+            setPadding(dp(context, 10), dp(context, 3), dp(context, 10), dp(context, 8))
         }
         root.addView(title)
         root.addView(meta)
@@ -269,16 +287,23 @@ class HomeVideoShelfAdapter(
         holder.itemView.animate().cancel()
         if (animationsEnabled && animatedIds.add(item.messageId)) {
             holder.itemView.alpha = 0f
-            holder.itemView.translationX = dp(holder.itemView.context, 7).toFloat()
+            holder.itemView.translationX = dp(holder.itemView.context, 10).toFloat()
+            holder.itemView.scaleX = 0.97f
+            holder.itemView.scaleY = 0.97f
             holder.itemView.animate()
                 .alpha(1f)
                 .translationX(0f)
-                .setDuration(180L)
-                .setStartDelay(position.coerceAtMost(5) * 18L)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(240L)
+                .setStartDelay(position.coerceAtMost(5) * 22L)
+                .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
                 .start()
         } else {
             holder.itemView.alpha = 1f
             holder.itemView.translationX = 0f
+            holder.itemView.scaleX = 1f
+            holder.itemView.scaleY = 1f
         }
 
         holder.itemView.setOnClickListener {
@@ -288,14 +313,15 @@ class HomeVideoShelfAdapter(
             if (animationsEnabled) {
                 holder.itemView.animate().cancel()
                 holder.itemView.animate()
-                    .scaleX(0.985f)
-                    .scaleY(0.985f)
+                    .scaleX(0.965f)
+                    .scaleY(0.965f)
                     .setDuration(70L)
                     .withEndAction {
                         holder.itemView.animate()
                             .scaleX(1f)
                             .scaleY(1f)
-                            .setDuration(100L)
+                            .setDuration(155L)
+                            .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
                             .start()
                         onClick(item, holder.thumbnail)
                     }
