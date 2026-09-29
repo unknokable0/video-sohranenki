@@ -327,6 +327,14 @@ class TwitchPlayerScreen(
             }
         }
 
+        val settingsButton = iconButton(R.drawable.ic_player_settings, Color.parseColor("#66181322"), 40).apply {
+            contentDescription = "Настройки плеера"
+            setOnClickListener {
+                pulse(this)
+                showQualityPicker()
+            }
+        }
+
         fullscreenButton = iconButton(R.drawable.ic_fullscreen, Color.parseColor("#66181322"), 40).apply {
             setOnClickListener {
                 pulse(this)
@@ -340,6 +348,9 @@ class TwitchPlayerScreen(
         times.addView(totalTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)).apply {
             marginStart = dp(8)
         })
+        times.addView(settingsButton, LinearLayout.LayoutParams(dp(38), dp(38)).apply {
+            marginStart = dp(5)
+        })
         times.addView(fullscreenButton, LinearLayout.LayoutParams(dp(38), dp(38)).apply {
             marginStart = dp(5)
         })
@@ -351,7 +362,8 @@ class TwitchPlayerScreen(
             setPadding(0, dp(4), 0, 0)
         }
 
-        val rewind = transportButton("−10").apply {
+        val rewind = iconButton(R.drawable.ic_replay_10, Color.parseColor("#66181322"), 46).apply {
+            contentDescription = "Назад на 10 секунд"
             setOnClickListener {
                 pulse(this)
                 seekBy(-10_000L)
@@ -364,7 +376,8 @@ class TwitchPlayerScreen(
                 else runJs("window.sohr&&window.sohr.pause()")
             }
         }
-        val forward = transportButton("+10").apply {
+        val forward = iconButton(R.drawable.ic_forward_10, Color.parseColor("#66181322"), 46).apply {
+            contentDescription = "Вперёд на 10 секунд"
             setOnClickListener {
                 pulse(this)
                 seekBy(10_000L)
