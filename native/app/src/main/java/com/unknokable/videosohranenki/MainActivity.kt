@@ -104,6 +104,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var videoCache: SohrVideoCache
     private lateinit var experienceStore: SohrExperienceStore
     private lateinit var downloadStore: SohrDownloadStore
+    private lateinit var momentsStore: SohrMomentsStore
+    private lateinit var recapStore: SohrRecapStore
+    private var smartDownloadJob: kotlinx.coroutines.Job? = null
     private var previousVisitAtMs = 0L
     private var telegramReady = false
     private var pendingUpdateApk: File? = null
@@ -233,6 +236,8 @@ class MainActivity : AppCompatActivity() {
         videoCache = SohrVideoCache(this)
         experienceStore = SohrExperienceStore(this)
         downloadStore = SohrDownloadStore(this)
+        momentsStore = SohrMomentsStore(this)
+        recapStore = SohrRecapStore(this)
 
         val runtimePrefs = getSharedPreferences("sohr_runtime", MODE_PRIVATE)
         previousVisitAtMs = if (savedInstanceState == null) {
@@ -2317,6 +2322,7 @@ class MainActivity : AppCompatActivity() {
                 withContext(Dispatchers.Main) {
                     telegramVideos = preparedVideos
                     updateStatsSnapshot(preparedVideos)
+                    scheduleSmartDownloads(preparedVideos)
                     if (settings.videoSource != "telegram") return@withContext
                     val changed = currentVideos.map { it.messageId } != preparedVideos.map { it.messageId }
                     currentVideos = preparedVideos
@@ -4889,6 +4895,11 @@ class MainActivity : AppCompatActivity() {
                     openPlayer(next)
                 },
                 onDownloadRequested = { requested -> downloadVideoQuick(requested) },
+                onSaveMoment = { video, at -> momentsStore.add(video, at) },
+                onOpenMoments = { video -> openMomentsFromPlayer(video.messageId) },
+                onWatchSlice = { watchedMs, sessionMs ->
+                    recapStore.addWatchSlice(item.messageId, watchedMs, sessionMs)
+                },
                 isWatched = isVideoWatched(item.messageId),
                 onWatchedChange = { watched, shouldBeWatched ->
                     if (shouldBeWatched) {
@@ -4924,6 +4935,7 @@ class MainActivity : AppCompatActivity() {
                 onPlaybackStarted = {
                     settings.markPlayed(item.messageId)
                     streakTracker.markWatched()
+                    recapStore.markSessionStart(item.messageId)
                 }
             )
         }.getOrElse { error ->
@@ -5006,6 +5018,11 @@ class MainActivity : AppCompatActivity() {
                     startPositionMs = resumePositionMs,
                     nextItem = nextItem,
                     onPlayNext = { next -> openPlayer(next) },
+                    onSaveMoment = { video, at -> momentsStore.add(video, at) },
+                    onOpenMoments = { video -> openMomentsFromPlayer(video.messageId) },
+                    onWatchSlice = { watchedMs, sessionMs ->
+                        recapStore.addWatchSlice(item.messageId, watchedMs, sessionMs)
+                    },
                     isWatched = isVideoWatched(item.messageId),
                     onWatchedChange = { watched, shouldBeWatched ->
                         if (shouldBeWatched) markVideoWatched(watched.messageId) else unmarkVideoWatched(watched.messageId)
@@ -5013,9 +5030,10 @@ class MainActivity : AppCompatActivity() {
                     onBack = { closeCurrentPlayerScreen() },
                     onFullscreen = { setFullscreen(it) },
                     onPlaybackStarted = {
-                settings.markPlayed(item.messageId)
-                streakTracker.markWatched()
-            }
+                        settings.markPlayed(item.messageId)
+                        streakTracker.markWatched()
+                        recapStore.markSessionStart(item.messageId)
+                    }
                 )
 
                 pendingRootSlide = 1
@@ -5651,6 +5669,11 @@ class MainActivity : AppCompatActivity() {
             },
             onLanguageChanged = {
                 showSettings()
+            },
+            onOpenMoments = { showMoments() },
+            onOpenRecap = { showRecap() },
+            onSmartDownloadsChanged = { enabled ->
+                if (enabled) scheduleSmartDownloads(telegramVideos) else smartDownloadJob?.cancel()
             },
             onCheckUpdates = { checkForUpdates() }
         )
