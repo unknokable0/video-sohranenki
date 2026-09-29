@@ -1085,7 +1085,7 @@ class TwitchLivePlayerScreen(
 
     private fun startChat() {
         if (accessToken.isBlank() || accountLogin.isBlank()) {
-            updateChatStatus("Переподключи Twitch", connected = false)
+            updateChatStatus("Переподключите Twitch", connected = false)
             return
         }
 
