@@ -227,7 +227,7 @@ class PlayerScreen(
         }
         playerCard.addView(
             bufferingLoader,
-            FrameLayout.LayoutParams(dp(40), dp(40), Gravity.CENTER)
+            FrameLayout.LayoutParams(dp(44), dp(44), Gravity.CENTER)
         )
 
         speedBadge = TextView(activity).apply {
