@@ -3367,7 +3367,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showVideoQuickActions(item: VideoItem, sourceView: View) {
-        sourceView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        SohrHaptics.longPress(sourceView)
 
         val dialog = BottomSheetDialog(this)
         val sheet = LinearLayout(this).apply {
@@ -3400,7 +3400,7 @@ class MainActivity : AppCompatActivity() {
                 isClickable = true
                 isFocusable = true
                 setOnClickListener {
-                    performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    SohrHaptics.tap(this)
                     animatePress(this)
                     if (close) dialog.dismiss()
                     block()
@@ -3446,6 +3446,23 @@ class MainActivity : AppCompatActivity() {
             ).show()
         }
 
+        action("Воспроизвести следующим", "Поставить первым в очереди") {
+            experienceStore.addNext(item.messageId)
+            Toast.makeText(this, "Будет следующим", Toast.LENGTH_SHORT).show()
+        }
+
+        action("В конец очереди", "Добавить после уже выбранных видео") {
+            experienceStore.addLast(item.messageId)
+            Toast.makeText(this, "Добавлено в очередь", Toast.LENGTH_SHORT).show()
+        }
+
+        val queueSize = experienceStore.queueIds().size
+        if (queueSize > 0) {
+            action("Очередь • " + queueSize, "Изменить порядок или очистить") {
+                showPlaybackQueue()
+            }
+        }
+
         val watched = isVideoWatched(item.messageId)
         action(
             if (watched) "Отметить непросмотренным" else "Отметить просмотренным"
@@ -3458,6 +3475,12 @@ class MainActivity : AppCompatActivity() {
         if (item.source == "telegram") {
             action("Скачать", "Сохранить копию в папку SOHR приложения") {
                 downloadVideoQuick(item)
+            }
+        }
+
+        if (downloadStore.entries().isNotEmpty()) {
+            action("Загрузки • " + downloadStore.entries().size, "Открыть сохранённые видео") {
+                showDownloadCenter()
             }
         }
 
@@ -3519,6 +3542,7 @@ class MainActivity : AppCompatActivity() {
 
             result.onSuccess { file ->
                 markDownloaded(item)
+                downloadStore.register(item, file)
                 Toast.makeText(
                     this@MainActivity,
                     "Скачано • " + file.name,
@@ -3531,6 +3555,275 @@ class MainActivity : AppCompatActivity() {
                     Toast.LENGTH_LONG
                 ).show()
             }
+        }
+    }
+
+    private fun showPlaybackQueue() {
+        val dialog = BottomSheetDialog(this)
+        val sheet = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(20))
+            background = roundedBg(panel, 26)
+        }
+
+        fun render() {
+            sheet.removeAllViews()
+
+            val ids = experienceStore.queueIds()
+            val byId = currentVideos.associateBy { it.messageId }
+            val items = ids.mapNotNull(byId::get)
+
+            val header = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(8), dp(4), dp(8), dp(10))
+            }
+            header.addView(TextView(this).apply {
+                text = "Очередь"
+                textSize = 19f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(this@MainActivity.text)
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            if (items.isNotEmpty()) {
+                header.addView(TextView(this).apply {
+                    text = "Очистить"
+                    textSize = 12f
+                    gravity = Gravity.CENTER
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(purple)
+                    setPadding(dp(10), dp(7), dp(10), dp(7))
+                    background = roundedBg(palette.accentSoft, 13)
+                    isClickable = true
+                    setOnClickListener {
+                        SohrHaptics.confirm(this)
+                        experienceStore.clearQueue()
+                        render()
+                    }
+                })
+            }
+            sheet.addView(header)
+
+            if (items.isEmpty()) {
+                sheet.addView(TextView(this).apply {
+                    text = "Очередь пока пустая"
+                    textSize = 13f
+                    gravity = Gravity.CENTER
+                    setTextColor(muted)
+                    setPadding(dp(16), dp(24), dp(16), dp(26))
+                })
+                return
+            }
+
+            items.forEachIndexed { index, item ->
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(12), dp(10), dp(8), dp(10))
+                    background = roundedBg(palette.surfaceAlt, 17)
+                }
+
+                row.addView(TextView(this).apply {
+                    text = (index + 1).toString()
+                    textSize = 11f
+                    gravity = Gravity.CENTER
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(purple)
+                    background = roundedBg(palette.accentSoft, 12)
+                }, LinearLayout.LayoutParams(dp(28), dp(28)).apply { marginEnd = dp(10) })
+
+                row.addView(TextView(this).apply {
+                    text = item.title
+                        .replace("\r\n", "\n")
+                        .lineSequence()
+                        .firstOrNull { it.isNotBlank() }
+                        ?.trim()
+                        .orEmpty()
+                        .ifBlank { "Видео" }
+                    textSize = 13f
+                    maxLines = 2
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(this@MainActivity.text)
+                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+                fun smallButton(label: String, block: () -> Unit): TextView =
+                    TextView(this).apply {
+                        text = label
+                        textSize = 14f
+                        gravity = Gravity.CENTER
+                        setTextColor(muted)
+                        background = roundedBg(palette.surface, 13)
+                        isClickable = true
+                        setOnClickListener {
+                            SohrHaptics.select(this)
+                            block()
+                        }
+                    }
+
+                if (index > 0) {
+                    row.addView(smallButton("↑") {
+                        experienceStore.moveInQueue(item.messageId, -1)
+                        render()
+                    }, LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginStart = dp(6) })
+                }
+                if (index < items.lastIndex) {
+                    row.addView(smallButton("↓") {
+                        experienceStore.moveInQueue(item.messageId, 1)
+                        render()
+                    }, LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginStart = dp(5) })
+                }
+                row.addView(smallButton("×") {
+                    experienceStore.removeFromQueue(item.messageId)
+                    render()
+                }, LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginStart = dp(5) })
+
+                row.setOnClickListener {
+                    SohrMotion.press(row, settings.animations)
+                    dialog.dismiss()
+                    experienceStore.removeFromQueue(item.messageId)
+                    openPlayer(item)
+                }
+
+                sheet.addView(row, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(7) })
+            }
+        }
+
+        render()
+        dialog.setContentView(sheet)
+        dialog.setOnShowListener {
+            dialog.findViewById<FrameLayout>(com.google.android.material.R.id.design_bottom_sheet)
+                ?.background = ColorDrawable(Color.TRANSPARENT)
+        }
+        dialog.show()
+    }
+
+    private fun showDownloadCenter() {
+        val entries = downloadStore.entries()
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(20))
+            setBackgroundColor(bg)
+        }
+
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        header.addView(TextView(this).apply {
+            text = "Загрузки"
+            textSize = 25f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        header.addView(TextView(this).apply {
+            text = formatBytes(downloadStore.totalBytes())
+            textSize = 11.5f
+            gravity = Gravity.CENTER
+            setTextColor(purple)
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(dp(10), dp(6), dp(10), dp(6))
+            background = roundedBg(palette.accentSoft, 13)
+        })
+        page.addView(header)
+
+        page.addView(TextView(this).apply {
+            text = if (entries.isEmpty()) "Скачанных видео пока нет" else "Офлайн-копии SOHR"
+            textSize = 12f
+            setTextColor(muted)
+            setPadding(0, dp(4), 0, dp(14))
+        })
+
+        val scroll = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+        }
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        scroll.addView(list)
+
+        if (entries.isEmpty()) {
+            list.addView(TextView(this).apply {
+                text = "Здесь появятся видео, которые вы скачаете из SOHR."
+                textSize = 14f
+                gravity = Gravity.CENTER
+                setTextColor(muted)
+                setPadding(dp(18), dp(34), dp(18), dp(34))
+            })
+        } else {
+            entries.forEach { entry ->
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(13), dp(11), dp(10), dp(11))
+                    background = roundedBg(panel, 18)
+                }
+                row.addView(TextView(this).apply {
+                    text = entry.title
+                        .replace("\r\n", "\n")
+                        .lineSequence()
+                        .firstOrNull { it.isNotBlank() }
+                        ?.trim()
+                        .orEmpty()
+                        .ifBlank { "Видео" }
+                    textSize = 13.5f
+                    maxLines = 2
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(this@MainActivity.text)
+                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                row.addView(TextView(this).apply {
+                    text = formatBytes(entry.sizeBytes)
+                    textSize = 10.5f
+                    setTextColor(muted)
+                    setPadding(dp(8), 0, dp(8), 0)
+                })
+                row.addView(TextView(this).apply {
+                    text = "×"
+                    textSize = 17f
+                    gravity = Gravity.CENTER
+                    setTextColor(muted)
+                    background = roundedBg(palette.surfaceAlt, 14)
+                    isClickable = true
+                    setOnClickListener {
+                        SohrHaptics.confirm(this)
+                        downloadStore.remove(entry.messageId)
+                        showDownloadCenter()
+                    }
+                }, LinearLayout.LayoutParams(dp(36), dp(36)))
+
+                row.setOnClickListener {
+                    val file = File(entry.path)
+                    val item = currentVideos.firstOrNull { it.messageId == entry.messageId }
+                    if (item != null && file.exists()) {
+                        pendingRootSlide = 1
+                        openPlayer(item.copy(localPath = file.absolutePath))
+                    }
+                }
+
+                list.addView(row, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(8) })
+            }
+        }
+
+        page.addView(scroll, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            0,
+            1f
+        ))
+        replaceRoot(withBottomNav(page, SohrTab.VIDEOS))
+    }
+
+    private fun formatBytes(bytes: Long): String {
+        if (bytes <= 0L) return "0 МБ"
+        val mb = bytes / (1024.0 * 1024.0)
+        return if (mb >= 1024.0) {
+            String.format(Locale.US, "%.1f ГБ", mb / 1024.0)
+        } else {
+            String.format(Locale.US, "%.0f МБ", mb)
         }
     }
 
