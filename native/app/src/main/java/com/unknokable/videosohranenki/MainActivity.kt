@@ -2867,6 +2867,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         fun renderSearchResults() {
+            if (!feedSearchOpen) return
             val query = searchInput.text?.toString().orEmpty().trim().lowercase(Locale.getDefault())
             val active = query.isNotBlank() || searchFilter != "all"
             if (!active) {
@@ -2936,8 +2937,23 @@ class MainActivity : AppCompatActivity() {
                 )
             }
 
+            val firstReveal = searchResultsHost.visibility != View.VISIBLE
             contentHost.visibility = View.GONE
             searchResultsHost.visibility = View.VISIBLE
+            if (settings.animations && firstReveal) {
+                searchResultsHost.animate().cancel()
+                searchResultsHost.alpha = 0f
+                searchResultsHost.translationY = dp(7).toFloat()
+                searchResultsHost.animate()
+                    .alpha(1f)
+                    .translationY(0f)
+                    .setDuration(SohrMotion.NORMAL)
+                    .setInterpolator(SohrMotion.smooth())
+                    .start()
+            } else {
+                searchResultsHost.alpha = 1f
+                searchResultsHost.translationY = 0f
+            }
         }
 
         listOf(
@@ -2984,28 +3000,65 @@ class MainActivity : AppCompatActivity() {
             if (!feedSearchOpen && searchPanel.visibility != View.VISIBLE) return false
             unregisterSearchBackInterceptor()
             feedSearchOpen = false
-            searchInput.setText("")
+
+            (searchInput.tag as? Runnable)?.let(searchInput::removeCallbacks)
+            searchInput.tag = null
+            searchInput.clearFocus()
             searchFilter = "all"
             updateChipStates()
+
             searchPanel.animate().cancel()
+            searchResultsHost.animate().cancel()
+            contentHost.animate().cancel()
+
             if (settings.animations && searchPanel.visibility == View.VISIBLE) {
+                contentHost.visibility = View.VISIBLE
+                contentHost.alpha = 0f
+                contentHost.translationY = dp(6).toFloat()
+                contentHost.animate()
+                    .alpha(1f)
+                    .translationY(0f)
+                    .setDuration(SohrMotion.NORMAL)
+                    .setInterpolator(SohrMotion.smooth())
+                    .start()
+
+                if (searchResultsHost.visibility == View.VISIBLE) {
+                    searchResultsHost.animate()
+                        .alpha(0f)
+                        .translationY(dp(5).toFloat())
+                        .setDuration(SohrMotion.FAST)
+                        .setInterpolator(SohrMotion.smooth())
+                        .start()
+                }
+
                 searchPanel.animate()
                     .alpha(0f)
-                    .translationY(-dp(5).toFloat())
-                    .setDuration(145L)
+                    .translationY(-dp(6).toFloat())
+                    .setDuration(SohrMotion.NORMAL)
+                    .setInterpolator(SohrMotion.smooth())
                     .withEndAction {
                         searchPanel.visibility = View.GONE
                         searchPanel.alpha = 1f
                         searchPanel.translationY = 0f
+                        searchResultsHost.visibility = View.GONE
+                        searchResultsHost.alpha = 1f
+                        searchResultsHost.translationY = 0f
+                        searchInput.setText("")
                     }
                     .start()
             } else {
                 searchPanel.visibility = View.GONE
                 searchPanel.alpha = 1f
                 searchPanel.translationY = 0f
+                searchResultsHost.visibility = View.GONE
+                searchResultsHost.alpha = 1f
+                searchResultsHost.translationY = 0f
+                contentHost.visibility = View.VISIBLE
+                contentHost.alpha = 1f
+                contentHost.translationY = 0f
+                searchInput.setText("")
             }
-            searchResultsHost.visibility = View.GONE
-            contentHost.visibility = View.VISIBLE
+
             (getSystemService(INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager)
                 ?.hideSoftInputFromWindow(searchInput.windowToken, 0)
             return true
@@ -3021,13 +3074,31 @@ class MainActivity : AppCompatActivity() {
                 registerSearchBackInterceptor()
                 searchPanel.visibility = View.VISIBLE
                 if (settings.animations) {
+                    searchPanel.animate().cancel()
+                    contentHost.animate().cancel()
                     searchPanel.alpha = 0f
-                    searchPanel.translationY = -dp(6).toFloat()
+                    searchPanel.translationY = -dp(8).toFloat()
+                    searchPanel.scaleX = 0.985f
+                    searchPanel.scaleY = 0.985f
                     searchPanel.animate()
                         .alpha(1f)
                         .translationY(0f)
-                        .setDuration(190L)
-                        .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setDuration(SohrMotion.NORMAL)
+                        .setInterpolator(SohrMotion.smooth())
+                        .start()
+                    contentHost.animate()
+                        .alpha(0.94f)
+                        .scaleX(0.995f)
+                        .scaleY(0.995f)
+                        .setDuration(SohrMotion.FAST)
+                        .setInterpolator(SohrMotion.smooth())
+                        .withEndAction {
+                            contentHost.alpha = 1f
+                            contentHost.scaleX = 1f
+                            contentHost.scaleY = 1f
+                        }
                         .start()
                 } else {
                     searchPanel.alpha = 1f
