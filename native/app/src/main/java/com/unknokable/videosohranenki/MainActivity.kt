@@ -48,6 +48,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import android.webkit.CookieManager
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -5734,6 +5735,31 @@ class MainActivity : AppCompatActivity() {
                 @Suppress("DEPRECATION")
                 override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean =
                     intercept(url)
+
+                override fun onReceivedError(
+                    view: WebView?,
+                    request: WebResourceRequest?,
+                    error: WebResourceError?
+                ) {
+                    super.onReceivedError(view, request, error)
+                    if (request?.isForMainFrame != true) return
+                    markTwitchNetworkFailure()
+                    val html = """
+                        <!doctype html>
+                        <html>
+                        <body style="margin:0;background:#0E0E10;color:#F7F7FA;font-family:sans-serif;
+                                     display:flex;align-items:center;justify-content:center;height:100vh;text-align:center;">
+                          <div style="padding:28px;max-width:360px;">
+                            <div style="font-size:22px;font-weight:700;margin-bottom:10px;">Нет подключения к Twitch</div>
+                            <div style="font-size:14px;line-height:1.45;color:#A7A5B3;">
+                              Проверьте интернет и попробуйте открыть вход ещё раз.
+                            </div>
+                          </div>
+                        </body>
+                        </html>
+                    """.trimIndent()
+                    view?.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+                }
             }
 
             loadUrl(authUri.toString())
