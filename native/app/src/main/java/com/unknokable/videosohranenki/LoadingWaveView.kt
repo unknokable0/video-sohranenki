@@ -7,7 +7,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PathMeasure
 import android.view.View
-import android.view.animation.PathInterpolator
+import android.view.animation.LinearInterpolator
 import kotlin.math.sin
 
 class LoadingWaveView(
@@ -26,12 +26,6 @@ class LoadingWaveView(
         strokeJoin = Paint.Join.ROUND
     }
 
-    private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-        strokeJoin = Paint.Join.ROUND
-    }
-
     private val segmentPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
@@ -39,11 +33,13 @@ class LoadingWaveView(
     }
 
     private val animator = ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = 1850L
+        duration = 1750L
         repeatCount = ValueAnimator.INFINITE
-        interpolator = PathInterpolator(0.22f, 1f, 0.36f, 1f)
+        interpolator = LinearInterpolator()
         addUpdateListener {
-            phase = it.animatedFraction
+            val raw = (it.animatedValue as Float).coerceIn(0f, 1f)
+            // Never stops: it only gently slows down and speeds up along the cloud.
+            phase = (raw + 0.038f * sin(raw * Math.PI.toFloat() * 2f)).coerceIn(0f, 1f)
             invalidate()
         }
     }
@@ -112,22 +108,11 @@ class LoadingWaveView(
         val length = measure.length
         if (width <= 0 || height <= 0 || length <= 0f) return
 
-        val breathe = 1f + sin((phase * Math.PI * 2).toFloat()) * 0.012f
-        val centerX = width / 2f
-        val centerY = height / 2f
-
-        canvas.save()
-        canvas.scale(breathe, breathe, centerX, centerY)
-
-        basePaint.color = withAlpha(color, 52)
-        basePaint.strokeWidth = dp(2.2f)
+        basePaint.color = withAlpha(color, 66)
+        basePaint.strokeWidth = dp(2.0f)
         canvas.drawPath(outlinePath, basePaint)
 
-        glowPaint.color = withAlpha(color, 30)
-        glowPaint.strokeWidth = dp(7.5f)
-        canvas.drawPath(outlinePath, glowPaint)
-
-        val segmentLength = length * 0.27f
+        val segmentLength = length * 0.25f
         val start = phase * length
         val end = start + segmentLength
         segmentPath.reset()
@@ -140,10 +125,8 @@ class LoadingWaveView(
         }
 
         segmentPaint.color = withAlpha(color, 245)
-        segmentPaint.strokeWidth = dp(3.6f)
+        segmentPaint.strokeWidth = dp(3.2f)
         canvas.drawPath(segmentPath, segmentPaint)
-
-        canvas.restore()
     }
 
     override fun onAttachedToWindow() {
