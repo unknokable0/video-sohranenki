@@ -3,15 +3,11 @@ package com.unknokable.videosohranenki
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PathMeasure
-import android.graphics.Shader
 import android.view.View
-import android.view.animation.AccelerateDecelerateInterpolator
-import kotlin.math.sin
+import android.view.animation.LinearInterpolator
 
 class LoadingWaveView(
     context: Context,
@@ -21,33 +17,18 @@ class LoadingWaveView(
     private val basePath = Path()
     private val segmentPath = Path()
     private val measure = PathMeasure()
-    private val headPosition = FloatArray(2)
     private var phase = 0f
 
-    private val basePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
-
-    private val segmentGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-        strokeJoin = Paint.Join.ROUND
-    }
-
-    private val segmentPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-        strokeJoin = Paint.Join.ROUND
-    }
-
-    private val headPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     private val animator = ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = 1650L
+        duration = 1380L
         repeatCount = ValueAnimator.INFINITE
-        interpolator = AccelerateDecelerateInterpolator()
+        interpolator = LinearInterpolator()
         addUpdateListener {
             phase = it.animatedFraction
             invalidate()
@@ -55,30 +36,28 @@ class LoadingWaveView(
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        rebuildPath(w.toFloat(), h.toFloat())
-    }
-
-    private fun rebuildPath(w: Float, h: Float) {
-        val left = w * 0.24f
-        val right = w * 0.76f
-        val top = h * 0.18f
-        val bottom = h * 0.82f
+        val width = w.toFloat()
+        val height = h.toFloat()
+        val left = width * 0.25f
+        val right = width * 0.75f
+        val top = height * 0.19f
+        val bottom = height * 0.81f
 
         basePath.reset()
         basePath.moveTo(right, top)
         basePath.cubicTo(
-            w * 0.49f, h * 0.14f,
-            left, h * 0.25f,
-            left, h * 0.37f
+            width * 0.50f, height * 0.15f,
+            left, height * 0.25f,
+            left, height * 0.37f
         )
         basePath.cubicTo(
-            left, h * 0.49f,
-            right, h * 0.48f,
-            right, h * 0.59f
+            left, height * 0.49f,
+            right, height * 0.48f,
+            right, height * 0.59f
         )
         basePath.cubicTo(
-            right, h * 0.72f,
-            w * 0.56f, h * 0.84f,
+            right, height * 0.72f,
+            width * 0.56f, height * 0.83f,
             left, bottom
         )
 
@@ -91,19 +70,11 @@ class LoadingWaveView(
         val length = measure.length
         if (width <= 0 || height <= 0 || length <= 0f) return
 
-        val breathe = 1f + sin((phase * Math.PI * 2).toFloat()) * 0.010f
-        canvas.save()
-        canvas.scale(breathe, breathe, width / 2f, height / 2f)
-
-        basePaint.shader = null
-        basePaint.color = withAlpha(color, 44)
-        basePaint.strokeWidth = dp(5.0f)
-        canvas.drawPath(basePath, basePaint)
-
+        val segmentLength = length * 0.30f
         val start = phase * length
-        val end = start + length * 0.34f
-        segmentPath.reset()
+        val end = start + segmentLength
 
+        segmentPath.reset()
         if (end <= length) {
             measure.getSegment(start, end, segmentPath, true)
         } else {
@@ -111,35 +82,10 @@ class LoadingWaveView(
             measure.getSegment(0f, end - length, segmentPath, true)
         }
 
-        segmentGlowPaint.shader = null
-        segmentGlowPaint.color = withAlpha(color, 64)
-        segmentGlowPaint.strokeWidth = dp(10.0f)
-        canvas.drawPath(segmentPath, segmentGlowPaint)
-
-        segmentPaint.shader = LinearGradient(
-            0f,
-            0f,
-            width.toFloat(),
-            height.toFloat(),
-            intArrayOf(
-                lighten(color, 0.12f),
-                Color.WHITE,
-                lighten(color, 0.20f)
-            ),
-            floatArrayOf(0f, 0.58f, 1f),
-            Shader.TileMode.CLAMP
-        )
-        segmentPaint.strokeWidth = dp(6.4f)
-        canvas.drawPath(segmentPath, segmentPaint)
-        segmentPaint.shader = null
-
-        val headDistance = end % length
-        if (measure.getPosTan(headDistance, headPosition, null)) {
-            headPaint.color = withAlpha(Color.WHITE, 230)
-            canvas.drawCircle(headPosition[0], headPosition[1], dp(2.2f), headPaint)
-        }
-
-        canvas.restore()
+        paint.color = color
+        paint.alpha = 235
+        paint.strokeWidth = dp(4.4f)
+        canvas.drawPath(segmentPath, paint)
     }
 
     override fun onAttachedToWindow() {
@@ -163,22 +109,6 @@ class LoadingWaveView(
         } else if (animator.isRunning) {
             animator.cancel()
         }
-    }
-
-    private fun withAlpha(value: Int, alpha: Int): Int =
-        (value and 0x00FFFFFF) or (alpha.coerceIn(0, 255) shl 24)
-
-    private fun lighten(value: Int, amount: Float): Int {
-        val t = amount.coerceIn(0f, 1f)
-
-        fun channel(c: Int): Int =
-            (c + (255 - c) * t).toInt().coerceIn(0, 255)
-
-        return Color.rgb(
-            channel(Color.red(value)),
-            channel(Color.green(value)),
-            channel(Color.blue(value))
-        )
     }
 
     private fun dp(value: Float): Float =
