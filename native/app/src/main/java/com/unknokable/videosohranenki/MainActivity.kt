@@ -392,7 +392,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 } else if (telegramReady) {
                     if (loadJob?.isActive != true) {
-                        loadVideos(inPlace = true)
+                        loadVideos(inPlace = true, quiet = true)
                     }
                     while (isActive && loadJob?.isActive == true) {
                         delay(250L)
@@ -628,7 +628,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 // Do not block the first usable screen on a fresh network sync.
-                loadVideos(inPlace = true)
+                loadVideos(inPlace = true, quiet = true)
                 scheduleFeedAutoRefresh(delayMs = 2_000L, force = false)
             }
             is TdApi.AuthorizationStateLoggingOut -> runOnUiThread { showLoading("Выходим…") }
@@ -2099,14 +2099,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadVideos(inPlace: Boolean = false) {
+    private fun loadVideos(inPlace: Boolean = false, quiet: Boolean = false) {
         val visibleTelegram = settings.videoSource == "telegram"
         if (loadJob?.isActive == true) {
-            if (inPlace && visibleTelegram) feedRefreshLabel?.text = "Уже проверяем…"
+            if (inPlace && visibleTelegram && !quiet) feedRefreshLabel?.text = "Уже проверяем…"
             else if (!inPlace) reloadRequested = true
             return
         }
-        if (inPlace && visibleTelegram) setFeedRefreshLoading(true)
+        if (inPlace && visibleTelegram && !quiet) setFeedRefreshLoading(true)
         loadJob = lifecycleScope.launch {
             if (!inPlace && visibleTelegram && !onboardingActive) {
                 withContext(Dispatchers.Main) { showLoading("Собираем записи за неделю…") }
@@ -2184,15 +2184,17 @@ class MainActivity : AppCompatActivity() {
                         return@withContext
                     }
                     if (inPlace && !changed) {
-                        setFeedRefreshLoading(false, "Готово")
-                        feedRefreshButton?.postDelayed({
-                            if (feedRefreshButton?.isEnabled == true) {
-                                setFeedRefreshLoading(false, "Проверить новые")
-                            }
-                        }, 900L)
+                        if (!quiet) {
+                            setFeedRefreshLoading(false, "Готово")
+                            feedRefreshButton?.postDelayed({
+                                if (feedRefreshButton?.isEnabled == true) {
+                                    setFeedRefreshLoading(false, "Проверить новые")
+                                }
+                            }, 900L)
+                        }
                     } else {
                         currentDay = null
-                        feedRefreshCompletedFlash = inPlace
+                        feedRefreshCompletedFlash = inPlace && !quiet
                         if (inPlace) suppressNextRootAnimation = true
                         showFeed(preparedVideos)
                     }
@@ -2201,15 +2203,17 @@ class MainActivity : AppCompatActivity() {
                 withContext(Dispatchers.Main) {
                     if (settings.videoSource != "telegram") return@withContext
                     if (inPlace) {
-                        setFeedRefreshLoading(false, "Ошибка")
-                        Toast.makeText(
-                            this@MainActivity,
-                            e.message ?: "Не удалось проверить новые видео",
-                            Toast.LENGTH_LONG
-                        ).show()
-                        feedRefreshButton?.postDelayed({
-                            setFeedRefreshLoading(false, "Проверить новые")
-                        }, 1400L)
+                        if (!quiet) {
+                            setFeedRefreshLoading(false, "Ошибка")
+                            Toast.makeText(
+                                this@MainActivity,
+                                e.message ?: "Не удалось проверить новые видео",
+                                Toast.LENGTH_LONG
+                            ).show()
+                            feedRefreshButton?.postDelayed({
+                                setFeedRefreshLoading(false, "Проверить новые")
+                            }, 1400L)
+                        }
                     } else {
                         showMessage(
                             "Не удалось загрузить записи",
@@ -5468,6 +5472,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun fallbackReleaseNotes(version: String): String = when (version) {
+        "6.0.14" -> listOf(
+            "Автообновление Telegram теперь работает в фоне без мигания кнопки и лишних уведомлений.",
+            "Новые сборники продолжают появляться автоматически сразу после обнаружения."
+        ).joinToString(" • ")
         "6.0.13" -> listOf(
             "Telegram-сборники теперь автоматически проверяются каждые 15 секунд, пока открыт раздел.",
             "Новые сообщения канала запускают ускоренное обновление почти сразу.",
