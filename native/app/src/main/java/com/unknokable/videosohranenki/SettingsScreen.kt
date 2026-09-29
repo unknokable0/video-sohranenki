@@ -22,8 +22,6 @@ class SettingsScreen(
     private val onBack: (Boolean) -> Unit,
     private val onAppearanceChanged: (Boolean, String, View) -> Unit,
     private val onLanguageChanged: () -> Unit,
-    private val onOpenMoments: () -> Unit,
-    private val onOpenRecap: () -> Unit,
     private val onSmartDownloadsChanged: (Boolean) -> Unit,
     private val onCheckUpdates: () -> Unit
 ) {
@@ -80,23 +78,6 @@ class SettingsScreen(
 
         root.addView(statisticsCard())
 
-        root.addView(actionRow(
-            iconRes = R.drawable.ic_setting_moments,
-            iconColor = "#7EA8FF",
-            title = "Моменты",
-            description = "Сохранённые секунды из видео"
-        ) {
-            onOpenMoments()
-        })
-
-        root.addView(actionRow(
-            iconRes = R.drawable.ic_setting_recap,
-            iconColor = "#A98BFF",
-            title = "SOHR Recap",
-            description = "Просмотры, активность и стрик за месяц"
-        ) {
-            onOpenRecap()
-        })
 
         root.addView(sourceSelector())
 
@@ -106,7 +87,7 @@ class SettingsScreen(
         root.addView(previewModeSelector())
 
         root.addView(settingRow(
-            iconRes = R.drawable.ic_action_download,
+            iconRes = R.drawable.ic_setting_smart_download,
             iconColor = "#67C7FF",
             title = "Умное скачивание",
             description = "2 свежих видео • только Wi‑Fi • старые авто-копии удаляются",
