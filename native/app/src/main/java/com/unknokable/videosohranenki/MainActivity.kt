@@ -468,7 +468,7 @@ class MainActivity : AppCompatActivity() {
 
         center.addView(
             loader,
-            LinearLayout.LayoutParams(dp(52), dp(52)).apply {
+            LinearLayout.LayoutParams(dp(64), dp(64)).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
             }
         )
@@ -4604,7 +4604,7 @@ class MainActivity : AppCompatActivity() {
                 setTextColor(muted)
                 setPadding(0, dp(14), 0, 0)
             }
-            addView(spinner, LinearLayout.LayoutParams(dp(42), dp(42)))
+            addView(spinner, LinearLayout.LayoutParams(dp(46), dp(46)))
             addView(label)
         }
         replaceRoot(withBottomNav(loadingPage, SohrTab.ACCOUNT))
@@ -5490,7 +5490,7 @@ class MainActivity : AppCompatActivity() {
         }
         updateProgressLabel = label
 
-        box.addView(spinner, LinearLayout.LayoutParams(dp(46), dp(46)))
+        box.addView(spinner, LinearLayout.LayoutParams(dp(52), dp(52)))
         box.addView(title)
         box.addView(label)
         replaceRoot(box)
@@ -5540,7 +5540,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, dp(18), 0, 0)
         }
 
-        box.addView(spinner, LinearLayout.LayoutParams(dp(46), dp(46)))
+        box.addView(spinner, LinearLayout.LayoutParams(dp(52), dp(52)))
         box.addView(label, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         replaceRoot(box)
     }
