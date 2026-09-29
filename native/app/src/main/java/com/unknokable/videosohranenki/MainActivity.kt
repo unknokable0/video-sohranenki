@@ -2768,19 +2768,23 @@ class MainActivity : AppCompatActivity() {
 
                 val nav = primaryNav
                 if (nav != null && settings.animations) {
-                    if (scrollY > oldScrollY + dp(2) && scrollY > dp(110)) {
-                        nav.animate().cancel()
-                        nav.animate()
-                            .translationY(dp(50).toFloat())
-                            .alpha(0.80f)
-                            .setDuration(SohrMotion.NORMAL)
-                            .setInterpolator(SohrMotion.smooth())
-                            .start()
-                    } else if (scrollY < oldScrollY - dp(2) || scrollY < dp(70)) {
+                    val atBottom = !scroll.canScrollVertically(1)
+                    val scrollingUp = scrollY < oldScrollY - dp(2)
+                    val nearTop = scrollY < dp(70)
+
+                    if (atBottom || scrollingUp || nearTop) {
                         nav.animate().cancel()
                         nav.animate()
                             .translationY(0f)
                             .alpha(1f)
+                            .setDuration(SohrMotion.NORMAL)
+                            .setInterpolator(SohrMotion.smooth())
+                            .start()
+                    } else if (scrollY > oldScrollY + dp(2) && scrollY > dp(110)) {
+                        nav.animate().cancel()
+                        nav.animate()
+                            .translationY(dp(30).toFloat())
+                            .alpha(0.92f)
                             .setDuration(SohrMotion.NORMAL)
                             .setInterpolator(SohrMotion.smooth())
                             .start()
@@ -3647,8 +3651,8 @@ class MainActivity : AppCompatActivity() {
         })
         val fallbackSummary = when (unwatchedVideos.size) {
             0 -> "Всё просмотрено"
-            1 -> "1 непросмотренное видео"
-            else -> unwatchedVideos.size.toString() + " непросмотренных видео"
+            1 -> "1 новое"
+            else -> unwatchedVideos.size.toString() + " новых"
         } + " • Стрик " + streak
         val summary = TextView(this).apply {
             text = fallbackSummary
@@ -3730,7 +3734,7 @@ class MainActivity : AppCompatActivity() {
                 ?.take(42)
                 .orEmpty()
                 .ifBlank { "T2x2 в эфире" }
-            todaySummaryView?.text = title + " • " + liveElapsedLabel(live?.startedAt)
+            todaySummaryView?.text = "Эфир • " + liveElapsedLabel(live?.startedAt)
         } else {
             label.text = "T2x2 • не в сети"
             label.setTextColor(muted)
@@ -4132,19 +4136,36 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
+        header.addView(ImageButton(this).apply {
+            setImageResource(R.drawable.ic_back)
+            imageTintList = ColorStateList.valueOf(this@MainActivity.text)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(11), dp(11), dp(11), dp(11))
+            background = roundedBg(palette.surfaceAlt, 21)
+            contentDescription = "Назад"
+            setOnClickListener {
+                SohrMotion.press(this, settings.animations)
+                auxiliaryScreen = null
+                pendingRootSlide = -1
+                showSelectedVideoSource()
+            }
+        }, LinearLayout.LayoutParams(dp(42), dp(42)).apply {
+            marginEnd = dp(11)
+        })
         header.addView(TextView(this).apply {
             text = "Загрузки"
-            textSize = 25f
+            textSize = 23f
+            includeFontPadding = false
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(this@MainActivity.text)
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         header.addView(TextView(this).apply {
             text = formatBytes(downloadStore.totalBytes())
-            textSize = 11.5f
+            textSize = 11f
             gravity = Gravity.CENTER
             setTextColor(purple)
             setTypeface(typeface, Typeface.BOLD)
-            setPadding(dp(10), dp(6), dp(10), dp(6))
+            setPadding(dp(9), dp(6), dp(9), dp(6))
             background = roundedBg(palette.accentSoft, 13)
         })
         page.addView(header)
