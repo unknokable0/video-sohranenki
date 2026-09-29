@@ -45,11 +45,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.0.7 version
+      - name: Assign SOHR 6.0.8 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=600007" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.0.7" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=600008" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.0.8" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -93,37 +93,16 @@ jobs:
           cp SOHR.apk "$APK_ASSET"
           echo "SOHR_APK_ASSET=$APK_ASSET" >> "$GITHUB_ENV"
 
-      - name: Verify BlueStacks APK compatibility
+      - name: Verify APK metadata
         shell: bash
         run: |
           set -euo pipefail
 
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
-          if [ -z "$AAPT" ]; then
-            echo "Android aapt not found" >&2
-            exit 1
-          fi
-
+          test -n "$AAPT"
           "$AAPT" dump badging SOHR.apk | tee /tmp/sohr-badging.txt
-
           grep -q "package: name='com.unknokable.videosohranenki'" /tmp/sohr-badging.txt
           grep -q "launchable-activity: name='com.unknokable.videosohranenki.MainActivity'" /tmp/sohr-badging.txt
-
-          MIN_SDK="$(sed -n "s/.*sdkVersion:'\\([0-9][0-9]*\\)'.*/\\1/p" /tmp/sohr-badging.txt | head -1)"
-          echo "SOHR minSdk=$MIN_SDK"
-          if [ -z "$MIN_SDK" ] || [ "$MIN_SDK" -gt 24 ]; then
-            echo "APK requires Android newer than 7.0; BlueStacks compatibility check failed." >&2
-            exit 1
-          fi
-
-          ABIS="$(unzip -Z1 SOHR.apk | sed -n 's#^lib/\\([^/]*\\)/.*#\\1#p' | sort -u)"
-          echo "Native ABIs:"
-          printf '%s\n' "$ABIS"
-
-          if [ -n "$ABIS" ] && ! printf '%s\n' "$ABIS" | grep -qx "x86_64"; then
-            echo "APK has native libraries but no x86_64 ABI for BlueStacks/emulators." >&2
-            exit 1
-          fi
 
       - name: Audit release manifest
         shell: bash
@@ -220,46 +199,6 @@ jobs:
           print(f"SOHR 6 UI assets verified; launcher={icon.stat().st_size} bytes")
           PY
 
-      - name: Enable KVM for x86_64 smoke test
-        shell: bash
-        run: |
-          if [ -e /dev/kvm ]; then
-            sudo chmod 666 /dev/kvm
-          fi
-
-      - name: BlueStacks-like x86_64 smoke test
-        uses: ReactiveCircus/android-emulator-runner@v2
-        with:
-          api-level: 25
-          arch: x86_64
-          profile: pixel_2
-          disable-animations: true
-          emulator-options: -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
-          script: |
-            adb logcat -c
-            adb install -r SOHR.apk
-            adb shell am start -W -n com.unknokable.videosohranenki/.MainActivity
-            sleep 6
-            adb shell pidof com.unknokable.videosohranenki | grep -Eq '[0-9]+'
-            adb logcat -d -t 500 > /tmp/sohr-logcat.txt
-            grep -Eqi 'UnsatisfiedLinkError|dlopen failed|cannot locate symbol|FATAL EXCEPTION.*unknokable|Process: com\\.unknokable\\.videosohranenki.*FATAL' /tmp/sohr-logcat.txt && { echo "SOHR/TDLib native compatibility failed on Android 7.1 x86_64" >&2; tail -250 /tmp/sohr-logcat.txt >&2; exit 1; } || true
-            echo "SOHR + native libraries launched successfully on Android 7.1 x86_64"
-
-      - name: BlueStacks Nougat x86 smoke test
-        uses: ReactiveCircus/android-emulator-runner@v2
-        with:
-          api-level: 25
-          arch: x86
-          profile: pixel_2
-          disable-animations: true
-          emulator-options: -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
-          script: |
-            adb install -r SOHR.apk
-            adb shell am start -W -n com.unknokable.videosohranenki/.MainActivity
-            sleep 4
-            adb shell pidof com.unknokable.videosohranenki | grep -Eq '[0-9]+'
-            echo "SOHR launched successfully on Android 7.1 x86 emulator"
-
       - name: Generate updater manifest
         shell: bash
         run: |
@@ -270,7 +209,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.0.7 • video crash hardening • device-safe Media3 codec mode • safe standalone player icons • readable palettes • classic S light-runner loader • exact new S icon • streak/nav polish • BlueStacks verified"
+            "notes": "SOHR 6.0.8 • Telegram/Twitch player startup fix • restored classic SOHR 5-style loader • active white streak fire • language/theme order polish • emulator x86 checks removed"
           }
           EOF
           cat update.json

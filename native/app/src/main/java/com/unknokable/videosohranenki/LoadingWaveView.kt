@@ -10,9 +10,7 @@ import android.graphics.Path
 import android.graphics.PathMeasure
 import android.graphics.Shader
 import android.view.View
-import android.view.animation.LinearInterpolator
-import kotlin.math.PI
-import kotlin.math.max
+import android.view.animation.AccelerateDecelerateInterpolator
 import kotlin.math.sin
 
 class LoadingWaveView(
@@ -20,39 +18,36 @@ class LoadingWaveView(
     private val color: Int
 ) : View(context) {
 
-    private val sPath = Path()
-    private val movingPath = Path()
+    private val basePath = Path()
+    private val segmentPath = Path()
     private val measure = PathMeasure()
-
-    private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-        strokeJoin = Paint.Join.ROUND
-    }
-    private val railPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-        strokeJoin = Paint.Join.ROUND
-    }
-    private val movingGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-        strokeJoin = Paint.Join.ROUND
-    }
-    private val movingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-        strokeJoin = Paint.Join.ROUND
-    }
-    private val headPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-
-    private val headPos = FloatArray(2)
+    private val headPosition = FloatArray(2)
     private var phase = 0f
 
+    private val basePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
+
+    private val segmentGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
+
+    private val segmentPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
+
+    private val headPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
     private val animator = ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = 1180L
+        duration = 1650L
         repeatCount = ValueAnimator.INFINITE
-        interpolator = LinearInterpolator()
+        interpolator = AccelerateDecelerateInterpolator()
         addUpdateListener {
             phase = it.animatedFraction
             invalidate()
@@ -60,109 +55,91 @@ class LoadingWaveView(
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        val width = w.toFloat()
-        val height = h.toFloat()
+        rebuildPath(w.toFloat(), h.toFloat())
+    }
 
-        sPath.reset()
-        sPath.moveTo(width * 0.79f, height * 0.17f)
-        sPath.cubicTo(
-            width * 0.64f, height * 0.075f,
-            width * 0.30f, height * 0.10f,
-            width * 0.21f, height * 0.29f
+    private fun rebuildPath(w: Float, h: Float) {
+        val left = w * 0.24f
+        val right = w * 0.76f
+        val top = h * 0.18f
+        val bottom = h * 0.82f
+
+        basePath.reset()
+        basePath.moveTo(right, top)
+        basePath.cubicTo(
+            w * 0.49f, h * 0.14f,
+            left, h * 0.25f,
+            left, h * 0.37f
         )
-        sPath.cubicTo(
-            width * 0.12f, height * 0.48f,
-            width * 0.36f, height * 0.52f,
-            width * 0.57f, height * 0.55f
+        basePath.cubicTo(
+            left, h * 0.49f,
+            right, h * 0.48f,
+            right, h * 0.59f
         )
-        sPath.cubicTo(
-            width * 0.78f, height * 0.58f,
-            width * 0.84f, height * 0.69f,
-            width * 0.75f, height * 0.80f
-        )
-        sPath.cubicTo(
-            width * 0.61f, height * 0.96f,
-            width * 0.32f, height * 0.93f,
-            width * 0.18f, height * 0.82f
+        basePath.cubicTo(
+            right, h * 0.72f,
+            w * 0.56f, h * 0.84f,
+            left, bottom
         )
 
-        measure.setPath(sPath, false)
-
-        railPaint.shader = LinearGradient(
-            width * 0.18f,
-            height * 0.10f,
-            width * 0.82f,
-            height * 0.90f,
-            intArrayOf(
-                withAlpha(lighten(color, 0.20f), 165),
-                withAlpha(color, 205),
-                withAlpha(lighten(color, 0.34f), 180)
-            ),
-            floatArrayOf(0f, 0.52f, 1f),
-            Shader.TileMode.CLAMP
-        )
+        measure.setPath(basePath, false)
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
         val length = measure.length
-        if (length <= 0f || width <= 0 || height <= 0) return
+        if (width <= 0 || height <= 0 || length <= 0f) return
 
-        val unit = max(1f, minOf(width, height).toFloat() / 96f)
-        val breathe = ((sin(phase * 2f * PI.toFloat()) + 1f) * 0.5f)
+        val breathe = 1f + sin((phase * Math.PI * 2).toFloat()) * 0.010f
+        canvas.save()
+        canvas.scale(breathe, breathe, width / 2f, height / 2f)
 
-        glowPaint.shader = null
-        glowPaint.color = withAlpha(color, (18 + breathe * 18f).toInt())
-        glowPaint.strokeWidth = 11.5f * unit
-        canvas.drawPath(sPath, glowPaint)
+        basePaint.shader = null
+        basePaint.color = withAlpha(color, 44)
+        basePaint.strokeWidth = dp(5.0f)
+        canvas.drawPath(basePath, basePaint)
 
-        railPaint.strokeWidth = 6.7f * unit
-        canvas.drawPath(sPath, railPaint)
-
-        val segmentLength = length * 0.25f
         val start = phase * length
-        val end = start + segmentLength
+        val end = start + length * 0.34f
+        segmentPath.reset()
 
-        movingPath.reset()
         if (end <= length) {
-            measure.getSegment(start, end, movingPath, true)
+            measure.getSegment(start, end, segmentPath, true)
         } else {
-            measure.getSegment(start, length, movingPath, true)
-            measure.getSegment(0f, end - length, movingPath, true)
+            measure.getSegment(start, length, segmentPath, true)
+            measure.getSegment(0f, end - length, segmentPath, true)
         }
 
-        movingGlowPaint.shader = null
-        movingGlowPaint.color = withAlpha(lighten(color, 0.64f), 88)
-        movingGlowPaint.strokeWidth = 6.8f * unit
-        canvas.drawPath(movingPath, movingGlowPaint)
+        segmentGlowPaint.shader = null
+        segmentGlowPaint.color = withAlpha(color, 64)
+        segmentGlowPaint.strokeWidth = dp(10.0f)
+        canvas.drawPath(segmentPath, segmentGlowPaint)
 
-        movingPaint.shader = LinearGradient(
+        segmentPaint.shader = LinearGradient(
             0f,
             0f,
             width.toFloat(),
             height.toFloat(),
             intArrayOf(
-                withAlpha(lighten(color, 0.18f), 35),
-                lighten(color, 0.62f),
+                lighten(color, 0.12f),
                 Color.WHITE,
-                lighten(color, 0.38f)
+                lighten(color, 0.20f)
             ),
-            floatArrayOf(0f, 0.33f, 0.72f, 1f),
+            floatArrayOf(0f, 0.58f, 1f),
             Shader.TileMode.CLAMP
         )
-        movingPaint.strokeWidth = 3.1f * unit
-        canvas.drawPath(movingPath, movingPaint)
-        movingPaint.shader = null
+        segmentPaint.strokeWidth = dp(6.4f)
+        canvas.drawPath(segmentPath, segmentPaint)
+        segmentPaint.shader = null
 
         val headDistance = end % length
-        if (measure.getPosTan(headDistance, headPos, null)) {
-            headPaint.color = withAlpha(lighten(color, 0.55f), 72)
-            canvas.drawCircle(headPos[0], headPos[1], 4.1f * unit, headPaint)
-
-            headPaint.color = Color.WHITE
-            canvas.drawCircle(headPos[0], headPos[1], 1.75f * unit, headPaint)
+        if (measure.getPosTan(headDistance, headPosition, null)) {
+            headPaint.color = withAlpha(Color.WHITE, 230)
+            canvas.drawCircle(headPosition[0], headPosition[1], dp(2.2f), headPaint)
         }
+
+        canvas.restore()
     }
 
     override fun onAttachedToWindow() {
@@ -203,4 +180,7 @@ class LoadingWaveView(
             channel(Color.blue(value))
         )
     }
+
+    private fun dp(value: Float): Float =
+        value * resources.displayMetrics.density
 }

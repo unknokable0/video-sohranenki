@@ -78,8 +78,8 @@ class SettingsScreen(
         root.addView(statisticsCard())
         root.addView(sourceSelector())
 
-        root.addView(appearanceSelector())
         root.addView(languageSelector())
+        root.addView(appearanceSelector())
 
         root.addView(settingRow(
             iconRes = R.drawable.ic_setting_autoplay,

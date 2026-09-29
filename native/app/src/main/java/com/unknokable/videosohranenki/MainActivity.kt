@@ -4158,7 +4158,7 @@ class MainActivity : AppCompatActivity() {
 
         data class FireLevel(val from: Int, val to: Int?, val range: String, val color: Int, val name: String)
         val levelData = listOf(
-            FireLevel(1, 9, "1–9 дней", Color.parseColor("#E7E7EC"), "Искра"),
+            FireLevel(1, 9, "1–9 дней", Color.WHITE, "Белый огонь"),
             FireLevel(10, 19, "10–19 дней", Color.parseColor("#9A68FF"), "Фиолетовый огонь"),
             FireLevel(20, 49, "20–49 дней", Color.parseColor("#4D98FF"), "Синий огонь"),
             FireLevel(50, 99, "50–99 дней", Color.parseColor("#FF4A5E"), "Жар"),
@@ -4270,7 +4270,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun streakLevelName(streak: Int): String = when {
         streak <= 0 -> "Огонь ещё не зажжён"
-        streak < 10 -> "Искра"
+        streak < 10 -> "Белый огонь"
         streak < 20 -> "Фиолетовый огонь"
         streak < 50 -> "Синий огонь"
         streak < 100 -> "Жар"
@@ -4282,7 +4282,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun streakColorName(streak: Int): String = when {
         streak <= 0 -> "неактивный"
-        streak < 10 -> "серебряный"
+        streak < 10 -> "белый"
         streak < 20 -> "фиолетовый"
         streak < 50 -> "синий"
         streak < 100 -> "красный"

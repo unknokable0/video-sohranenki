@@ -150,6 +150,24 @@ class PlayerScreen(
         root.setBackgroundColor(palette.background)
         root.keepScreenOn = false
 
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                12_000,
+                45_000,
+                500,
+                1_200
+            )
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
+
+        // Create ExoPlayer before building any child UI. Some child views query
+        // playback state while they are being constructed.
+        player = ExoPlayer.Builder(activity)
+            .setLoadControl(loadControl)
+            .setSeekBackIncrementMs(10_000)
+            .setSeekForwardIncrementMs(10_000)
+            .build()
+
         header = buildHeader()
         root.addView(header)
 
@@ -290,24 +308,6 @@ class PlayerScreen(
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         )
-
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                12_000,
-                45_000,
-                500,
-                1_200
-            )
-            .setPrioritizeTimeOverSizeThresholds(true)
-            .build()
-
-        // Let Media3 choose the safest MediaCodec queueing mode for the device.
-        // Forcing async queueing can crash on some vendor codec implementations.
-        player = ExoPlayer.Builder(activity)
-            .setLoadControl(loadControl)
-            .setSeekBackIncrementMs(10_000)
-            .setSeekForwardIncrementMs(10_000)
-            .build()
 
         player.setSeekParameters(SeekParameters.CLOSEST_SYNC)
         playerView.player = player
