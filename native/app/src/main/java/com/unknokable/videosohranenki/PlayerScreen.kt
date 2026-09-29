@@ -69,6 +69,9 @@ class PlayerScreen(
     private val queueItems: List<VideoItem> = emptyList(),
     private val onPlayNext: ((VideoItem) -> Unit)? = null,
     private val onDownloadRequested: ((VideoItem) -> Unit)? = null,
+    private val onSaveMoment: ((VideoItem, Long) -> Unit)? = null,
+    private val onOpenMoments: ((VideoItem) -> Unit)? = null,
+    private val onWatchSlice: ((Long, Long) -> Unit)? = null,
     private val isWatched: Boolean = false,
     private val onWatchedChange: ((VideoItem, Boolean) -> Unit)? = null,
     private val onBack: () -> Unit,
@@ -98,6 +101,8 @@ class PlayerScreen(
     private lateinit var previewBubble: LinearLayout
     private lateinit var previewImage: ImageView
     private lateinit var previewTime: TextView
+    private lateinit var previewStrip: LinearLayout
+    private val previewStripImages = mutableListOf<ImageView>()
     private lateinit var posterImage: ImageView
     private lateinit var endOverlay: LinearLayout
     private lateinit var miniBar: LinearLayout
@@ -110,10 +115,12 @@ class PlayerScreen(
     private var previewRetriever: MediaMetadataRetriever? = null
     private var previewDataSource: MediaDataSource? = null
     private var previewJob: Job? = null
+    private var filmstripJob: Job? = null
     private var previewBitmap: Bitmap? = null
-    private val previewCache = object : LinkedHashMap<Long, Bitmap>(10, 0.75f, true) {
+    private var fineScrubMode = false
+    private val previewCache = object : LinkedHashMap<Long, Bitmap>(30, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, Bitmap>?): Boolean {
-            if (size <= 10) return false
+            if (size <= 30) return false
             eldest?.value?.takeIf { it !== previewBitmap }?.recycle()
             return true
         }
@@ -145,6 +152,9 @@ class PlayerScreen(
     private lateinit var mediaSessionBridge: SohrMediaSessionBridge
     private var destroyed = false
     private var lastProgressPersistAt = 0L
+    private var lastWatchSampleAt = SystemClock.elapsedRealtime()
+    private var pendingWatchMs = 0L
+    private var sessionWatchMs = 0L
     private var speedActionButton: TextView? = null
 
     private data class PlayerActionPill(
@@ -321,7 +331,7 @@ class PlayerScreen(
         previewBubble = buildSeekPreview()
         playerCard.addView(
             previewBubble,
-            FrameLayout.LayoutParams(dp(174), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
                 bottomMargin = dp(58)
             }
         )
@@ -346,6 +356,7 @@ class PlayerScreen(
 
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                lastWatchSampleAt = SystemClock.elapsedRealtime()
                 updatePlayIcon()
                 root.keepScreenOn = isPlaying
                 if (isPlaying && ::endOverlay.isInitialized) endOverlay.visibility = View.GONE
@@ -546,6 +557,18 @@ class PlayerScreen(
                 override fun onScrubMove(positionMs: Long, fraction: Float) {
                     updatePreviewUi(positionMs, fraction)
                     requestPreview(positionMs)
+                    if (fineScrubMode) requestFilmstrip(positionMs)
+                }
+
+                override fun onFineScrubMode(enabled: Boolean, positionMs: Long, fraction: Float) {
+                    fineScrubMode = enabled
+                    if (enabled) {
+                        showFilmstrip()
+                        requestFilmstrip(positionMs)
+                    } else {
+                        hideFilmstrip()
+                    }
+                    updatePreviewUi(positionMs, fraction)
                 }
 
                 override fun onScrubStop(positionMs: Long, canceled: Boolean) {
@@ -557,6 +580,8 @@ class PlayerScreen(
                         currentTime.text = formatMs(positionMs)
                     }
                     dragging = false
+                    fineScrubMode = false
+                    hideFilmstrip()
                     player.setScrubbingModeEnabled(false)
                     handler.postDelayed({ hidePreview() }, 90L)
                 }
@@ -675,7 +700,31 @@ class PlayerScreen(
             setPadding(0, dp(5), 0, 0)
         }
 
-        box.addView(previewImage, LinearLayout.LayoutParams(dp(160), dp(90)))
+        previewStrip = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            visibility = View.GONE
+            setPadding(0, 0, 0, dp(6))
+        }
+        repeat(5) {
+            val image = ImageView(activity).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                setBackgroundColor(Color.BLACK)
+                alpha = if (it == 2) 1f else 0.72f
+            }
+            previewStripImages += image
+            previewStrip.addView(
+                image,
+                LinearLayout.LayoutParams(dp(50), dp(29)).apply {
+                    if (it > 0) marginStart = dp(4)
+                }
+            )
+        }
+
+        box.addView(previewStrip)
+        box.addView(previewImage, LinearLayout.LayoutParams(dp(160), dp(90)).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+        })
         box.addView(previewTime, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
@@ -691,11 +740,110 @@ class PlayerScreen(
     }
 
     private fun requestPreview(positionMs: Long) {
-        if (positionMs < 0) return
+        if (positionMs < 0 || previewDataSourceFactory == null) return
         val bucket = (positionMs / 2_000L) * 2_000L
-        previewCache[bucket]?.takeIf { !it.isRecycled }?.let { cached ->
+        synchronized(previewCache) {
+            previewCache[bucket]?.takeIf { !it.isRecycled }
+        }?.let { cached ->
             previewImage.setImageBitmap(cached)
             previewBitmap = cached
+            return
+        }
+
+        val requestId = ++previewRequestId
+        previewJob?.cancel()
+        previewJob = previewScope.launch {
+            val bitmap = loadPreviewFrame(bucket) ?: return@launch
+            withContext(Dispatchers.Main) {
+                if (destroyed || requestId != previewRequestId) return@withContext
+                previewImage.setImageBitmap(bitmap)
+                previewBitmap = bitmap
+            }
+        }
+    }
+
+    private suspend fun loadPreviewFrame(positionMs: Long): Bitmap? {
+        val bucket = (positionMs / 2_000L) * 2_000L
+        synchronized(previewCache) {
+            previewCache[bucket]?.takeIf { !it.isRecycled }
+        }?.let { return it }
+
+        return previewMutex.withLock {
+            synchronized(previewCache) {
+                previewCache[bucket]?.takeIf { !it.isRecycled }
+            }?.let { return@withLock it }
+
+            runCatching {
+                ensurePreviewRetriever()
+                val source = previewRetriever
+                    ?.getFrameAtTime(
+                        bucket * 1_000L,
+                        MediaMetadataRetriever.OPTION_CLOSEST_SYNC
+                    )
+                    ?: return@runCatching null
+                val scaled = if (source.width > 320 || source.height > 180) {
+                    Bitmap.createScaledBitmap(source, 320, 180, true).also {
+                        if (it !== source && !source.isRecycled) source.recycle()
+                    }
+                } else {
+                    source
+                }
+                synchronized(previewCache) {
+                    previewCache[bucket] = scaled
+                }
+                scaled
+            }.getOrNull()
+        }
+    }
+
+    private fun showFilmstrip() {
+        if (!::previewStrip.isInitialized || previewStrip.visibility == View.VISIBLE) return
+        previewStrip.visibility = View.VISIBLE
+        previewStrip.alpha = 0f
+        previewStrip.translationY = dp(5).toFloat()
+        previewStrip.animate().cancel()
+        previewStrip.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .setDuration(if (settings.animations) 150L else 0L)
+            .setInterpolator(SohrMotion.smooth())
+            .start()
+    }
+
+    private fun hideFilmstrip() {
+        if (!::previewStrip.isInitialized || previewStrip.visibility != View.VISIBLE) return
+        filmstripJob?.cancel()
+        filmstripJob = null
+        previewStrip.animate().cancel()
+        previewStrip.animate()
+            .alpha(0f)
+            .translationY(dp(4).toFloat())
+            .setDuration(if (settings.animations) 100L else 0L)
+            .withEndAction {
+                previewStrip.visibility = View.GONE
+                previewStrip.translationY = 0f
+            }
+            .start()
+    }
+
+    private fun requestFilmstrip(positionMs: Long) {
+        if (!fineScrubMode || previewDataSourceFactory == null || !::previewStrip.isInitialized) return
+        val duration = resolvedDurationMs().coerceAtLeast(1L)
+        val step = (duration / 120L).coerceIn(5_000L, 60_000L)
+        val positions = (-2..2).map { offset ->
+            (positionMs + offset * step).coerceIn(0L, duration)
+        }
+
+        filmstripJob?.cancel()
+        filmstripJob = previewScope.launch {
+            positions.forEachIndexed { index, at ->
+                if (!fineScrubMode || destroyed) return@launch
+                val bitmap = loadPreviewFrame(at) ?: return@forEachIndexed
+                withContext(Dispatchers.Main) {
+                    if (!fineScrubMode || destroyed || index !in previewStripImages.indices) return@withContext
+                    previewStripImages[index].setImageBitmap(bitmap)
+                }
+            }
         }
     }
 
@@ -895,10 +1043,34 @@ class PlayerScreen(
         }
         syncWatchedAction()
 
+        val momentButton = actionPill(
+            "Момент",
+            R.drawable.ic_action_bookmark
+        ) {
+            val at = player.currentPosition.coerceAtLeast(0L)
+            onSaveMoment?.invoke(item, at)
+            Toast.makeText(
+                activity,
+                "Момент сохранён • " + formatMs(at),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+        momentButton.root.setOnLongClickListener {
+            SohrHaptics.longPress(momentButton.root)
+            onOpenMoments?.invoke(item)
+            true
+        }
+
         if (item.source == "twitch") {
             row.addView(
                 watchedButton.root,
-                LinearLayout.LayoutParams(0, dp(42), 1f)
+                LinearLayout.LayoutParams(0, dp(42), 1f).apply {
+                    marginEnd = dp(6)
+                }
+            )
+            row.addView(
+                momentButton.root,
+                LinearLayout.LayoutParams(0, dp(42), 0.88f)
             )
         } else {
             val downloadButton = actionPill(
@@ -914,7 +1086,13 @@ class PlayerScreen(
             )
             row.addView(
                 downloadButton.root,
-                LinearLayout.LayoutParams(0, dp(42), 0.85f)
+                LinearLayout.LayoutParams(0, dp(42), 0.82f).apply {
+                    marginEnd = dp(6)
+                }
+            )
+            row.addView(
+                momentButton.root,
+                LinearLayout.LayoutParams(0, dp(42), 0.82f)
             )
         }
         return row
@@ -2059,11 +2237,13 @@ class PlayerScreen(
         runCatching { if (pipMode || pipHost != null) restoreFromPictureInPicture() }
         runCatching { if (fullscreen || fullscreenHost != null) setFullscreenMode(false) }
         persistPlaybackPosition(force = true)
+        flushWatchTime()
         root.keepScreenOn = false
         sleepRunnable?.let { handler.removeCallbacks(it) }
         handler.removeCallbacks(showBufferingRunnable)
         handler.removeCallbacksAndMessages(null)
         previewJob?.cancel()
+        filmstripJob?.cancel()
         previewScope.cancel()
         previewImage.setImageDrawable(null)
         previewCache.values.toSet().forEach { bitmap -> if (!bitmap.isRecycled) bitmap.recycle() }
@@ -2140,9 +2320,32 @@ class PlayerScreen(
 
     private fun scheduleProgress() {
         handler.postDelayed({
+            sampleWatchTime()
             updateProgress()
             scheduleProgress()
         }, if (player.isPlaying) 250L else 850L)
+    }
+
+    private fun sampleWatchTime() {
+        val now = SystemClock.elapsedRealtime()
+        val delta = (now - lastWatchSampleAt).coerceIn(0L, 2_000L)
+        lastWatchSampleAt = now
+        if (!player.isPlaying || delta <= 0L) return
+
+        pendingWatchMs += delta
+        sessionWatchMs += delta
+        if (pendingWatchMs >= 15_000L) {
+            onWatchSlice?.invoke(pendingWatchMs, sessionWatchMs)
+            pendingWatchMs = 0L
+        }
+    }
+
+    private fun flushWatchTime() {
+        sampleWatchTime()
+        if (pendingWatchMs > 0L) {
+            onWatchSlice?.invoke(pendingWatchMs, sessionWatchMs)
+            pendingWatchMs = 0L
+        }
     }
 
     private fun updateProgress() {
