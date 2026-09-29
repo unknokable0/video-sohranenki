@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.1.4: borderless cards, unclipped text and one-swipe search back
+# SOHR 6.2.0: queue, MediaSession, previews, downloads, Recap and motion
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.1.4 version
+      - name: Assign SOHR 6.2.0 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=610004" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.1.4" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=620000" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.2.0" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -294,6 +294,75 @@ jobs:
           if "requestLocked" in bottom_nav:
               raise SystemExit("Bottom navigation artificial lock regression")
 
+          experience_store = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/SohrExperienceStore.kt"
+          ).read_text(encoding="utf-8")
+          for required in [
+              "fun beginVisit",
+              "fun queueIds",
+              "fun recordWatchTime",
+              "mostActiveDay"
+          ]:
+              if required not in experience_store:
+                  raise SystemExit(f"SOHR 6.2 experience-store regression: {required}")
+
+          download_store = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/SohrDownloadStore.kt"
+          ).read_text(encoding="utf-8")
+          for required in ["SohrDownloadEntry", "fun register", "fun remove", "fun totalBytes"]:
+              if required not in download_store:
+                  raise SystemExit(f"SOHR 6.2 download-center regression: {required}")
+
+          motion = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/SohrMotion.kt"
+          ).read_text(encoding="utf-8")
+          for required in ["const val FAST", "const val NORMAL", "const val HERO", "object SohrHaptics"]:
+              if required not in motion:
+                  raise SystemExit(f"SOHR 6.2 motion regression: {required}")
+
+          media_session = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/SohrMediaSessionBridge.kt"
+          ).read_text(encoding="utf-8")
+          for required in ["MediaSession.Builder", "MediaMetadata.Builder", "T2x2 • SOHR"]:
+              if required not in media_session:
+                  raise SystemExit(f"SOHR 6.2 MediaSession regression: {required}")
+
+          settings_screen = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/SettingsScreen.kt"
+          ).read_text(encoding="utf-8")
+          for required in ["previewModeSelector", '"Wi‑Fi"', '"Всегда"', '"Выкл"']:
+              if required not in settings_screen:
+                  raise SystemExit(f"SOHR 6.2 preview-setting regression: {required}")
+
+          app_settings = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/AppSettings.kt"
+          ).read_text(encoding="utf-8")
+          if "var previewMode: String" not in app_settings:
+              raise SystemExit("SOHR 6.2 preview-mode persistence regression")
+
+          for required in [
+              '"С прошлого раза"',
+              "showPlaybackQueue",
+              "showDownloadCenter",
+              "showMonthlyRecap",
+              "setupInlinePreviewShelf",
+              "liveElapsedLabel",
+              "prefetchNextCandidate",
+              "fraction = 0.15f"
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.2 main-experience regression: {required}")
+
+          for required in [
+              "mediaSessionBridge",
+              "queueItems",
+              "sampleWatchTime",
+              "onDownloadRequested",
+              "onWatchTime"
+          ]:
+              if required not in player:
+                  raise SystemExit(f"SOHR 6.2 player-experience regression: {required}")
+
           telegram_stream = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/TelegramStreamServer.kt"
           ).read_text(encoding="utf-8")
@@ -301,7 +370,8 @@ jobs:
               "startupWindow = 256L * 1024L",
               "backgroundWindow = 4L * 1024L * 1024L",
               "throw IOException",
-              "Telegram range is not ready"
+              "Telegram range is not ready",
+              "fun prefetchFraction"
           ]:
               if required not in telegram_stream:
                   raise SystemExit(f"Telegram playback hardening missing: {required}")
@@ -383,7 +453,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "Убрана окантовка карточек • Исправлено обрезание названия и даты • Текст стал компактнее и ровнее • Один свайп назад закрывает поиск целиком даже при открытой клавиатуре • Сохранены плавные анимации карточек и нижней панели"
+            "notes": "С прошлого раза • MediaSession и системное управление • Улучшенный LIVE T2x2 • Управляемая очередь • Оптимизированная предзагрузка до 15% • Inline-превью Wi‑Fi/Всегда/Выкл • Центр загрузок • Единая motion/haptic система • Адаптивная прокрутка интерфейса • SOHR Recap с реальным временем просмотра"
           }
           EOF
           cat update.json
