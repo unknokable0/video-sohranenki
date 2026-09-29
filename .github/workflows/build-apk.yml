@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.2.2: settings order and responsiveness optimizations
+# SOHR 6.2.3: player layout, search motion and fullscreen polish
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.2.2 version
+      - name: Assign SOHR 6.2.3 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=620002" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.2.2" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=620003" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.2.3" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -387,6 +387,25 @@ jobs:
               raise SystemExit("SOHR 6.2.2 recycled-card regression: click path disables/re-enables itemView")
 
           for required in [
+              '"Запись стрима T2x2"',
+              "hasTelegramPromo",
+              "playerCard.scaleX = 0.94f",
+              "playerCard.scaleX = 1.035f",
+              ".setDuration(SohrMotion.HERO)"
+          ]:
+              if required not in player:
+                  raise SystemExit(f"SOHR 6.2.3 player/fullscreen polish regression: {required}")
+
+          for required in [
+              "if (!feedSearchOpen) return",
+              "(searchInput.tag as? Runnable)?.let(searchInput::removeCallbacks)",
+              "searchPanel.scaleX = 0.985f",
+              "val firstReveal = searchResultsHost.visibility != View.VISIBLE"
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.2.3 search-motion regression: {required}")
+
+          for required in [
               '"С прошлого раза"',
               "showPlaybackQueue",
               "showDownloadCenter",
@@ -499,7 +518,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "Превью видео перенесено выше Автовоспроизведения • Очередь и Загрузки кешируются в памяти • Каталог видео читается и сохраняется вне UI-потока • Убрано повторное чтение videoCache при одном refresh • Полки меньше пересоздают карточки • Исправлены временно ненажимаемые recycled-карточки"
+            "notes": "Очищены кривые Twitch-заголовки и t.me-промо • Экран видео стал компактнее и ровнее • Следующее видео выровнено и анимировано • Поиск плавно открывается/закрывается без delayed redraw race • Fullscreen разворачивается и возвращается с плавной hero-анимацией"
           }
           EOF
           cat update.json
