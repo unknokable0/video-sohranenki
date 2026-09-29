@@ -494,12 +494,8 @@ class PlayerScreen(
             setOnClickListener { showQualityPicker() }
         }
 
-        val settingsButton = TextView(activity).apply {
-            text = "⚙"
-            textSize = 19f
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            background = rounded("#66181322", 20)
+        val settingsButton = iconButton(R.drawable.ic_player_settings, "#66181322", 40).apply {
+            contentDescription = "Настройки плеера"
             setOnClickListener { pulse(this); showSettingsSheet() }
         }
 
