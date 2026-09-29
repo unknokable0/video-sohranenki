@@ -166,6 +166,7 @@ class MainActivity : AppCompatActivity() {
     private var todayLiveDot: LivePulseView? = null
     private var feedSearchOpen = false
     private var closeFeedSearch: (() -> Boolean)? = null
+    private var searchSystemBackCallback: android.window.OnBackInvokedCallback? = null
     private var predictiveBackTarget: View? = null
 
     private val palette get() = settings.palette()
@@ -551,6 +552,30 @@ class MainActivity : AppCompatActivity() {
                 stopService(Intent(this, PlaybackKeepAliveService::class.java))
             }
         }
+    }
+
+    private fun registerSearchBackInterceptor() {
+        if (Build.VERSION.SDK_INT < 33 || searchSystemBackCallback != null) return
+
+        val callback = android.window.OnBackInvokedCallback {
+            if (feedSearchOpen) {
+                closeFeedSearch?.invoke()
+            }
+        }
+        searchSystemBackCallback = callback
+        onBackInvokedDispatcher.registerOnBackInvokedCallback(
+            android.window.OnBackInvokedDispatcher.PRIORITY_OVERLAY,
+            callback
+        )
+    }
+
+    private fun unregisterSearchBackInterceptor() {
+        if (Build.VERSION.SDK_INT < 33) return
+        val callback = searchSystemBackCallback ?: return
+        runCatching {
+            onBackInvokedDispatcher.unregisterOnBackInvokedCallback(callback)
+        }
+        searchSystemBackCallback = null
     }
 
     private fun resetPredictiveBackSurface(animated: Boolean) {
@@ -2480,6 +2505,7 @@ class MainActivity : AppCompatActivity() {
 
         startupPhase = false
         startupStatusView = null
+        unregisterSearchBackInterceptor()
         feedSearchOpen = false
         closeFeedSearch = null
         isPlayerScreen = false
@@ -2893,6 +2919,7 @@ class MainActivity : AppCompatActivity() {
 
         fun closeSearch(): Boolean {
             if (!feedSearchOpen && searchPanel.visibility != View.VISIBLE) return false
+            unregisterSearchBackInterceptor()
             feedSearchOpen = false
             searchInput.setText("")
             searchFilter = "all"
@@ -2928,6 +2955,7 @@ class MainActivity : AppCompatActivity() {
             val opening = !feedSearchOpen
             if (opening) {
                 feedSearchOpen = true
+                registerSearchBackInterceptor()
                 searchPanel.visibility = View.VISIBLE
                 if (settings.animations) {
                     searchPanel.alpha = 0f
@@ -3132,7 +3160,7 @@ class MainActivity : AppCompatActivity() {
         val compactCardWidth = (resources.displayMetrics.widthPixels * 0.60f).toInt()
             .coerceIn(dp(154), dp(205))
         val compactPreviewHeight = (compactCardWidth * 9f / 16f).toInt()
-        val compactShelfHeight = compactPreviewHeight + dp(50)
+        val compactShelfHeight = compactPreviewHeight + dp(68)
 
         section.addView(
             shelf,
@@ -6740,6 +6768,7 @@ class MainActivity : AppCompatActivity() {
         (value * resources.displayMetrics.density).toInt()
 
     override fun onDestroy() {
+        unregisterSearchBackInterceptor()
         playerScreen?.destroy()
         playerScreen = null
         twitchPlayerScreen?.destroy()
