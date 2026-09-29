@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.2.6: reliable downloads, fixed nav, no Recap, compact player
+# SOHR 6.2.7: restore classic cloud loader and align player
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.2.6 version
+      - name: Assign SOHR 6.2.7 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=620006" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.2.6" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=620007" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.2.7" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -162,7 +162,7 @@ jobs:
                   "R.drawable.ic_close", "R.drawable.ic_check", "fun showAppearancePicker"
               ],
               "native/app/src/main/java/com/unknokable/videosohranenki/LoadingWaveView.kt": [
-                  "syncAnimator", "cloudPath", "sCutPath", "fillPaint", "PorterDuff.Mode.CLEAR", "duration = 1600L"
+                  "syncAnimator", "outlinePath", "segmentPath", "PathMeasure", "segmentPaint", "duration = 1850L"
               ],
               "native/app/src/main/java/com/unknokable/videosohranenki/SohrBottomNavView.kt": [
                   "syncSelected", "private fun requestIndex(target: Int)"
@@ -448,18 +448,20 @@ jobs:
               raise SystemExit("SOHR splash dependency missing")
 
           for required in [
-              "cloudPath",
-              "sCutPath",
-              "fillPaint",
-              "cutPaint",
-              "PorterDuff.Mode.CLEAR",
-              "duration = 1600L"
+              "outlinePath",
+              "segmentPath",
+              "PathMeasure",
+              "basePaint",
+              "glowPaint",
+              "segmentPaint",
+              "duration = 1850L",
+              "val segmentLength = length * 0.27f"
           ]:
               if required not in loader:
-                  raise SystemExit(f"SOHR 6.2.5 clean-loader regression: {required}")
-          for forbidden in ["glowPaint", "segmentPaint", "segmentPath", "drawCircle(", "setShadowLayer("]:
+                  raise SystemExit(f"SOHR 6.2.7 classic-loader regression: {required}")
+          for forbidden in ["cloudPath", "sCutPath", "PorterDuff.Mode.CLEAR", "LinearGradient("]:
               if forbidden in loader:
-                  raise SystemExit(f"SOHR 6.2.5 neon/outline loader regression: {forbidden}")
+                  raise SystemExit(f"SOHR 6.2.7 wrong-loader regression: {forbidden}")
 
           for required in [
               "installSplashScreen()",
@@ -479,9 +481,15 @@ jobs:
           brand_loading_section = sohr_main.split("private fun buildBrandLoadingMark", 1)[1].split("\n    private fun ", 1)[0]
           if "sohr_brand_logo" in startup_section or "sohr_brand_logo" in brand_loading_section:
               raise SystemExit("SOHR 6.2.5 loading regression: raster brand artwork returned to loading UI")
-          for required in ["dp(154)", "dp(132)", "LoadingWaveView(this, Color.parseColor(\"#7388FF\"))"]:
+          for required in [
+              "val loader = LoadingWaveView(this, purple)",
+              "LinearLayout.LayoutParams(dp(64), dp(64))",
+              "setDuration(300L)"
+          ]:
               if required not in startup_section:
-                  raise SystemExit(f"SOHR 6.2.5 startup mark sizing/style regression: {required}")
+                  raise SystemExit(f"SOHR 6.2.7 classic startup-loader regression: {required}")
+          if "ImageView(" in startup_section or "sohr_brand_logo" in startup_section:
+              raise SystemExit("SOHR 6.2.7 loading regression: image returned to startup loading")
 
           forbidden_raw_twitch = [
               'Toast.makeText(this@MainActivity, e.message ?: "Ошибка Twitch"',
@@ -644,7 +652,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "Исправлено скачивание Telegram-видео без конфликта DownloadFile • Полностью удалён месячный SOHR Recap • Нижняя панель закреплена и больше не двигается при скролле • Плеер и таймлайн стали компактнее • Установлена новая фирменная ава SOHR напрямую как WebP • Loading остаётся нативным, без bitmap, неона и светящихся обводок • Twitch/search/fullscreen fixes сохранены"
+            "notes": "Возвращена старая облачная loading-анимация из прошлой версии без картинки внутри • Новая ава остаётся только иконкой приложения • Стартовый loader снова использует прежний облачный контур и тайминги • Плеер опущен ниже и выровнен относительно шапки • Фиксы Twitch/download/nav/search/fullscreen из 6.2.6 сохранены"
           }
           EOF
           cat update.json
