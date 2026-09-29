@@ -345,6 +345,184 @@ object ModernDialogs {
         showDialog(context, dialog, box, 0.91f)
     }
 
+    fun showUpdateCompleted(
+        context: Context,
+        palette: ThemePalette,
+        version: String,
+        notes: String
+    ) {
+        val dialog = Dialog(context)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+
+        val box = dialogBox(context, palette)
+        box.addView(header(context, palette, "Обновление завершено", dialog, box))
+        box.addView(
+            messageView(
+                context,
+                palette,
+                "SOHR обновлён до версии $version. Всё готово к работе."
+            )
+        )
+
+        val actions = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+
+        val list = compactButton(
+            context,
+            palette.surfaceAlt,
+            palette.text,
+            "Список"
+        )
+        val done = compactButton(
+            context,
+            palette.accent,
+            Color.WHITE,
+            "Готово"
+        )
+
+        list.setOnClickListener {
+            if (!list.isEnabled) return@setOnClickListener
+            list.isEnabled = false
+            press(list) {
+                close(dialog, box) {
+                    showReleaseNotes(context, palette, version, notes)
+                }
+            }
+        }
+        done.setOnClickListener {
+            if (!done.isEnabled) return@setOnClickListener
+            done.isEnabled = false
+            press(done) { close(dialog, box) {} }
+        }
+
+        actions.addView(
+            list,
+            LinearLayout.LayoutParams(0, dp(context, 48), 1f).apply {
+                marginEnd = dp(context, 8)
+            }
+        )
+        actions.addView(done, LinearLayout.LayoutParams(0, dp(context, 48), 1f))
+        box.addView(actions)
+
+        showDialog(context, dialog, box, 0.88f)
+    }
+
+    private fun showReleaseNotes(
+        context: Context,
+        palette: ThemePalette,
+        version: String,
+        notes: String
+    ) {
+        val dialog = Dialog(context)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+
+        val box = dialogBox(context, palette)
+        box.addView(header(context, palette, "Что нового • $version", dialog, box))
+
+        val list = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        normalizeReleaseNotes(notes).forEachIndexed { index, item ->
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(
+                    dp(context, 10),
+                    dp(context, 9),
+                    dp(context, 12),
+                    dp(context, 9)
+                )
+                background = rounded(palette.surfaceAlt, dp(context, 16).toFloat())
+            }
+
+            row.addView(
+                TextView(context).apply {
+                    text = (index + 1).toString()
+                    gravity = Gravity.CENTER
+                    textSize = 12f
+                    includeFontPadding = false
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(palette.accent)
+                    background = rounded(palette.accentSoft, dp(context, 12).toFloat())
+                },
+                LinearLayout.LayoutParams(dp(context, 30), dp(context, 30)).apply {
+                    marginEnd = dp(context, 10)
+                }
+            )
+
+            row.addView(
+                TextView(context).apply {
+                    text = item
+                    textSize = 13.5f
+                    includeFontPadding = false
+                    setLineSpacing(dp(context, 1).toFloat(), 1.06f)
+                    setTextColor(palette.text)
+                },
+                LinearLayout.LayoutParams(
+                    0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+            )
+
+            list.addView(
+                row,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = dp(context, 6)
+                }
+            )
+        }
+
+        val scroll = ScrollView(context).apply {
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            addView(list)
+        }
+        box.addView(scroll)
+        scroll.limitHeight((context.resources.displayMetrics.heightPixels * 0.44f).toInt())
+
+        val closeButton = compactButton(
+            context,
+            palette.accent,
+            Color.WHITE,
+            "Закрыть"
+        )
+        closeButton.setOnClickListener {
+            if (!closeButton.isEnabled) return@setOnClickListener
+            closeButton.isEnabled = false
+            press(closeButton) { close(dialog, box) {} }
+        }
+        box.addView(
+            closeButton,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(context, 48)
+            ).apply {
+                topMargin = dp(context, 6)
+            }
+        )
+
+        showDialog(context, dialog, box, 0.90f)
+    }
+
+    private fun normalizeReleaseNotes(notes: String): List<String> {
+        val parsed = notes
+            .replace("\r", "\n")
+            .split(Regex("""\s*(?:•|\n)\s*"""))
+            .map { it.trim().trimStart('-', '•').trim() }
+            .filter { it.isNotBlank() }
+
+        return parsed.ifEmpty {
+            listOf("Улучшения интерфейса и исправления стабильности.")
+        }
+    }
+
     fun showNotice(
         context: Context,
         palette: ThemePalette,
