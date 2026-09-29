@@ -46,7 +46,7 @@ class LoadingWaveView(
                 .coerceIn(0f, 0.999999f)
             // Old cloud path/timing stays the same. The segment only slows down
             // and speeds up; derivative remains positive, so it never stops.
-            phase = raw + 0.060f * sin(raw * Math.PI.toFloat() * 2f)
+            phase = raw + 0.038f * sin(raw * Math.PI.toFloat() * 2f)
             invalidate()
         }
     }
