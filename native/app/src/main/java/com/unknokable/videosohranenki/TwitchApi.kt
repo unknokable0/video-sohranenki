@@ -127,7 +127,7 @@ object TwitchApi {
             if (normalized.contains("invalid device") ||
                 normalized.contains("expired") ||
                 normalized.contains("token_expired")) {
-                throw TwitchAuthException("Код входа Twitch истёк. Попробуй ещё раз.")
+                throw TwitchAuthException("Код входа Twitch истёк. Попробуйте ещё раз.")
             }
 
             throw IOException(message.ifBlank { "Twitch token: HTTP $code" })
