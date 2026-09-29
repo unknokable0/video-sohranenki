@@ -189,6 +189,7 @@ class MainActivity : AppCompatActivity() {
     private var predictiveBackTarget: View? = null
     private var twitchNetworkCooldownUntilElapsed = 0L
     private val activeManualDownloads = linkedSetOf<Int>()
+    private val activeTwitchDownloads = linkedSetOf<Long>()
 
     private val palette get() = settings.palette()
     private val bg get() = palette.background
@@ -665,37 +666,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showStartupSplash() {
+        startupStatusView = null
+
         val page = FrameLayout(this).apply {
             setBackgroundColor(bg)
         }
-
-        val center = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-        }
-
         val loader = LoadingWaveView(this, purple).apply {
             alpha = 0f
             scaleX = 0.94f
             scaleY = 0.94f
         }
-
-        startupStatusView = null
-
-        center.addView(
-            loader,
-            LinearLayout.LayoutParams(dp(76), dp(76)).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-            }
-        )
-        )
-
         page.addView(
-            center,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
+            loader,
+            FrameLayout.LayoutParams(dp(76), dp(76), Gravity.CENTER)
         )
 
         root.removeAllViews()
@@ -711,13 +694,8 @@ class MainActivity : AppCompatActivity() {
             .alpha(1f)
             .scaleX(1f)
             .scaleY(1f)
-            .setDuration(300L)
-            .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
-            .start()
-        status.animate()
-            .alpha(1f)
-            .setStartDelay(120L)
-            .setDuration(220L)
+            .setDuration(SohrMotion.NORMAL)
+            .setInterpolator(SohrMotion.smooth())
             .start()
     }
 
@@ -3869,6 +3847,137 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
     }
 
+    private fun downloadTwitchVod(item: VideoItem, hlsUrl: String) {
+        if (!activeTwitchDownloads.add(item.messageId)) {
+            Toast.makeText(this, "Видео уже загружается", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        Toast.makeText(this, "Загрузка началась", Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    fun readText(url: String): String {
+                        val connection = (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
+                            connectTimeout = 12_000
+                            readTimeout = 20_000
+                            instanceFollowRedirects = true
+                            setRequestProperty("User-Agent", "SOHR/" + BuildConfig.VERSION_NAME)
+                            setRequestProperty("Accept", "application/vnd.apple.mpegurl, application/x-mpegURL, */*")
+                        }
+                        return try {
+                            val code = connection.responseCode
+                            check(code in 200..299) { "Twitch вернул HTTP " + code }
+                            connection.inputStream.bufferedReader().use { it.readText() }
+                        } finally {
+                            connection.disconnect()
+                        }
+                    }
+
+                    fun absolute(base: String, child: String): String =
+                        java.net.URI(base).resolve(child.trim()).toString()
+
+                    val master = readText(hlsUrl)
+                    val masterLines = master.lineSequence().map { it.trim() }.filter { it.isNotBlank() }.toList()
+                    var mediaUrl = hlsUrl
+                    var bestBandwidth = -1L
+                    for (index in masterLines.indices) {
+                        val line = masterLines[index]
+                        if (!line.startsWith("#EXT-X-STREAM-INF", true)) continue
+                        val bandwidth = Regex("""BANDWIDTH=(\d+)""", RegexOption.IGNORE_CASE)
+                            .find(line)?.groupValues?.getOrNull(1)?.toLongOrNull() ?: 0L
+                        val child = masterLines.drop(index + 1).firstOrNull { !it.startsWith("#") } ?: continue
+                        if (bandwidth > bestBandwidth) {
+                            bestBandwidth = bandwidth
+                            mediaUrl = absolute(hlsUrl, child)
+                        }
+                    }
+
+                    val playlist = if (mediaUrl == hlsUrl) master else readText(mediaUrl)
+                    if (
+                        playlist.lineSequence().any {
+                            it.startsWith("#EXT-X-KEY", true) && !it.contains("METHOD=NONE", true)
+                        }
+                    ) {
+                        error("Эта запись Twitch защищена и не может быть сохранена напрямую")
+                    }
+
+                    val lines = playlist.lineSequence().map { it.trim() }.filter { it.isNotBlank() }.toList()
+                    val initUri = lines.firstOrNull { it.startsWith("#EXT-X-MAP", true) }
+                        ?.let { Regex("""URI="([^"]+)"""").find(it)?.groupValues?.getOrNull(1) }
+                    val segments = lines.filter { !it.startsWith("#") }
+                    check(segments.isNotEmpty()) { "Twitch не вернул сегменты видео" }
+
+                    val dir = File(
+                        getExternalFilesDir(Environment.DIRECTORY_MOVIES) ?: filesDir,
+                        "SOHR"
+                    ).apply { mkdirs() }
+                    val safeName = item.title
+                        .replace(Regex("""[\/:*?"<>|]"""), "_")
+                        .take(64)
+                        .ifBlank { "twitch_" + item.messageId }
+                    val extension = if (initUri != null) "mp4" else "ts"
+                    val temp = File(dir, "." + safeName + "_" + item.messageId + ".part")
+                    val target = File(dir, safeName + "_" + item.messageId + "." + extension)
+
+                    fun appendUrl(url: String, out: java.io.OutputStream) {
+                        val connection = (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
+                            connectTimeout = 12_000
+                            readTimeout = 30_000
+                            instanceFollowRedirects = true
+                            setRequestProperty("User-Agent", "SOHR/" + BuildConfig.VERSION_NAME)
+                        }
+                        try {
+                            val code = connection.responseCode
+                            check(code in 200..299) { "Не удалось скачать сегмент Twitch • HTTP " + code }
+                            connection.inputStream.use { input -> input.copyTo(out, 128 * 1024) }
+                        } finally {
+                            connection.disconnect()
+                        }
+                    }
+
+                    temp.outputStream().buffered(256 * 1024).use { out ->
+                        initUri?.let { appendUrl(absolute(mediaUrl, it), out) }
+                        segments.forEach { segment ->
+                            if (!kotlinx.coroutines.currentCoroutineContext().isActive) {
+                                error("Загрузка отменена")
+                            }
+                            appendUrl(absolute(mediaUrl, segment), out)
+                        }
+                    }
+                    if (target.exists()) target.delete()
+                    check(temp.renameTo(target)) {
+                        temp.copyTo(target, overwrite = true)
+                        temp.delete()
+                        true
+                    }
+                    target
+                }
+            }
+
+            activeTwitchDownloads.remove(item.messageId)
+            result.onSuccess { file ->
+                markDownloaded(item)
+                downloadStore.register(item, file, autoManaged = false)
+                Toast.makeText(
+                    this@MainActivity,
+                    "Скачано • " + file.name,
+                    Toast.LENGTH_SHORT
+                ).show()
+            }.onFailure { error ->
+                Toast.makeText(
+                    this@MainActivity,
+                    if (isTwitchNetworkFailure(error)) {
+                        "Не удалось скачать Twitch-видео. Проверьте интернет."
+                    } else {
+                        "Не удалось скачать Twitch-видео."
+                    },
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
     private fun downloadVideoQuick(
         item: VideoItem,
         autoManaged: Boolean = false,
@@ -5124,6 +5233,7 @@ class MainActivity : AppCompatActivity() {
                     startPositionMs = resumePositionMs,
                     nextItem = nextItem,
                     onPlayNext = { next -> openPlayer(next) },
+                    onDownloadRequested = { requested -> downloadTwitchVod(requested, hlsUrl) },
                     isWatched = isVideoWatched(item.messageId),
                     onWatchedChange = { watched, shouldBeWatched ->
                         if (shouldBeWatched) markVideoWatched(watched.messageId) else unmarkVideoWatched(watched.messageId)
