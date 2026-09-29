@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.0.0: visual system refresh + verified updater
+# SOHR 6.0.15: fast Telegram playback + verified updater
 # Rebuild marker: test34 runner restart
 on:
   push:
@@ -45,11 +45,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.0.14 version
+      - name: Assign SOHR 6.0.15 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=600014" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.0.14" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=600015" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.0.15" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -213,6 +213,28 @@ jobs:
               if required not in player:
                   raise SystemExit(f"Player hardening missing: {required}")
 
+          telegram_stream = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/TelegramStreamServer.kt"
+          ).read_text(encoding="utf-8")
+          for required in [
+              "startupWindow = 256L * 1024L",
+              "backgroundWindow = 4L * 1024L * 1024L",
+              "throw IOException",
+              "Telegram range is not ready"
+          ]:
+              if required not in telegram_stream:
+                  raise SystemExit(f"Telegram playback hardening missing: {required}")
+          if "DeleteFile(item.fileId)" in telegram_stream:
+              raise SystemExit("Telegram playback regression: release deletes reusable video bytes")
+
+          for required in [
+              "playbackRecoveryAttempts",
+              "recoverFromPlaybackError",
+              "error.errorCode in 2000..3999"
+          ]:
+              if required not in player:
+                  raise SystemExit(f"Player recovery hardening missing: {required}")
+
           telegram_main = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/MainActivity.kt"
           ).read_text(encoding="utf-8")
@@ -280,7 +302,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "Telegram-сборники автоматически обновляются каждые 15 секунд и почти сразу после новых сообщений • Автообновление теперь тихое и не мигает кнопкой «Проверить новые» • Канал принудительно открывается через TDLib • История и кэш объединяются безопасно • Поддержаны дополнительные Telegram-видео • Пустой веб-синк больше не затирает каталог"
+            "notes": "Видео Telegram запускаются быстрее благодаря короткому стартовому диапазону • Исправлено преждевременное завершение локального потока при временной задержке TDLib • Плеер автоматически повторяет запуск после кратких сетевых ошибок • Повторное открытие использует уже загруженные TDLib-данные • Уменьшена задержка до первого кадра"
           }
           EOF
           cat update.json
