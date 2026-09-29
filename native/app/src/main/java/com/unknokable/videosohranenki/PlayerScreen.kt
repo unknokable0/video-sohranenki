@@ -69,7 +69,6 @@ class PlayerScreen(
     private val queueItems: List<VideoItem> = emptyList(),
     private val onPlayNext: ((VideoItem) -> Unit)? = null,
     private val onDownloadRequested: ((VideoItem) -> Unit)? = null,
-    private val onWatchTime: ((Long, Long) -> Unit)? = null,
     private val isWatched: Boolean = false,
     private val onWatchedChange: ((VideoItem, Boolean) -> Unit)? = null,
     private val onBack: () -> Unit,
@@ -144,9 +143,6 @@ class PlayerScreen(
     private var playbackCounted = false
     private var playbackRecoveryAttempts = 0
     private lateinit var mediaSessionBridge: SohrMediaSessionBridge
-    private var lastWatchSampleElapsed = SystemClock.elapsedRealtime()
-    private var pendingWatchMs = 0L
-    private var sessionWatchMs = 0L
     private var destroyed = false
     private var lastProgressPersistAt = 0L
     private var speedActionButton: TextView? = null
@@ -349,7 +345,6 @@ class PlayerScreen(
 
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                lastWatchSampleElapsed = SystemClock.elapsedRealtime()
                 updatePlayIcon()
                 root.keepScreenOn = isPlaying
                 if (isPlaying && ::endOverlay.isInitialized) endOverlay.visibility = View.GONE
@@ -534,8 +529,8 @@ class PlayerScreen(
 
         val bottom = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(8), dp(4), dp(8), dp(5))
-            background = rounded("#660A0810", 14)
+            setPadding(dp(7), dp(2), dp(7), dp(3))
+            background = rounded("#480A0810", 12)
         }
 
         seekBar = SohrTimeBar(activity).apply {
@@ -584,23 +579,23 @@ class PlayerScreen(
 
         qualityButton = TextView(activity).apply {
             text = "Авто"
-            textSize = 10.5f
+            textSize = 10f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
-            minWidth = dp(44)
-            setPadding(dp(7), 0, dp(7), 0)
-            background = rounded("#55221A30", 13)
+            minWidth = dp(40)
+            setPadding(dp(6), 0, dp(6), 0)
+            background = rounded("#42221A30", 12)
             contentDescription = "Качество видео"
             setOnClickListener { pulse(this); showQualityPicker() }
         }
 
-        val settingsButton = iconButton(R.drawable.ic_player_settings, "#55221A30", 34).apply {
+        val settingsButton = iconButton(R.drawable.ic_player_settings, "#42221A30", 32).apply {
             contentDescription = "Настройки плеера"
             setOnClickListener { pulse(this); showSettingsSheet() }
         }
 
-        val fullscreenButton = iconButton(R.drawable.ic_fullscreen, "#55221A30", 34).apply {
+        val fullscreenButton = iconButton(R.drawable.ic_fullscreen, "#42221A30", 32).apply {
             contentDescription = "Полный экран"
             setOnClickListener {
                 onFullscreen(!fullscreen)
@@ -616,28 +611,28 @@ class PlayerScreen(
         }
         actionGroup.addView(
             qualityButton,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(30))
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(28))
         )
         actionGroup.addView(
             settingsButton,
-            LinearLayout.LayoutParams(dp(30), dp(30)).apply { marginStart = dp(2) }
+            LinearLayout.LayoutParams(dp(28), dp(28)).apply { marginStart = dp(2) }
         )
         actionGroup.addView(
             fullscreenButton,
             LinearLayout.LayoutParams(dp(30), dp(30)).apply { marginStart = dp(2) }
         )
 
-        times.addView(currentTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)))
-        times.addView(totalTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)).apply {
+        times.addView(currentTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(28)))
+        times.addView(totalTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(28)).apply {
             marginStart = dp(4)
         })
         times.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
         times.addView(
             actionGroup,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32))
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(28))
         )
 
-        bottom.addView(seekBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(24)))
+        bottom.addView(seekBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(18)))
         bottom.addView(times)
 
         frame.addView(
@@ -647,9 +642,9 @@ class PlayerScreen(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.BOTTOM
             ).apply {
-                leftMargin = dp(6)
-                rightMargin = dp(6)
-                bottomMargin = dp(6)
+                leftMargin = dp(7)
+                rightMargin = dp(7)
+                bottomMargin = dp(5)
             }
         )
         return frame
@@ -2063,7 +2058,6 @@ class PlayerScreen(
         runCatching { if (pipMode || pipHost != null) restoreFromPictureInPicture() }
         runCatching { if (fullscreen || fullscreenHost != null) setFullscreenMode(false) }
         persistPlaybackPosition(force = true)
-        flushWatchTime()
         root.keepScreenOn = false
         sleepRunnable?.let { handler.removeCallbacks(it) }
         handler.removeCallbacks(showBufferingRunnable)
@@ -2145,31 +2139,9 @@ class PlayerScreen(
 
     private fun scheduleProgress() {
         handler.postDelayed({
-            sampleWatchTime()
             updateProgress()
             scheduleProgress()
         }, if (player.isPlaying) 250L else 850L)
-    }
-
-    private fun sampleWatchTime() {
-        val now = SystemClock.elapsedRealtime()
-        val delta = (now - lastWatchSampleElapsed).coerceIn(0L, 2_000L)
-        lastWatchSampleElapsed = now
-        if (!player.isPlaying || delta <= 0L) return
-
-        pendingWatchMs += delta
-        sessionWatchMs += delta
-        if (pendingWatchMs >= 15_000L) {
-            onWatchTime?.invoke(pendingWatchMs, sessionWatchMs)
-            pendingWatchMs = 0L
-        }
-    }
-
-    private fun flushWatchTime() {
-        if (pendingWatchMs > 0L) {
-            onWatchTime?.invoke(pendingWatchMs, sessionWatchMs)
-            pendingWatchMs = 0L
-        }
     }
 
     private fun updateProgress() {
