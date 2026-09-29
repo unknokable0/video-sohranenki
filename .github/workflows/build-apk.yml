@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.2.7: restore classic cloud loader and align player
+# SOHR 6.2.8: remove static system splash mark and keep classic cloud loader
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.2.7 version
+      - name: Assign SOHR 6.2.8 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=620007" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.2.7" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=620008" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.2.8" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -436,11 +436,16 @@ jobs:
           for required in [
               'name="AppTheme.Starting"',
               "windowSplashScreenAnimatedIcon",
-              "@drawable/sohr_splash_mark",
+              "@drawable/splash_empty",
+              "windowSplashScreenAnimationDuration",
               "postSplashScreenTheme"
           ]:
               if required not in styles:
-                  raise SystemExit(f"SOHR 6.2.5 splash theme regression: {required}")
+                  raise SystemExit(f"SOHR 6.2.8 blank system splash regression: {required}")
+          if "@drawable/sohr_splash_mark" in styles:
+              raise SystemExit("SOHR 6.2.8 regression: static launch logo returned to base styles")
+          if "<item name=\"windowSplashScreenAnimationDuration\">0</item>" not in styles:
+              raise SystemExit("SOHR 6.2.8 regression: system splash duration is not zero")
 
           if "prepareSohrBrandAssets" in gradle_file or "sohr_brand.webp.hex" in gradle_file:
               raise SystemExit("SOHR 6.2.6 regression: legacy hex brand generation returned")
@@ -624,16 +629,23 @@ jobs:
                   raise SystemExit(f"Adaptive Twitch player UI missing: {required}")
 
           splash = Path("native/app/src/main/res/values-v31/styles.xml")
-          if not splash.is_file() or "windowSplashScreenAnimatedIcon" not in splash.read_text(encoding="utf-8"):
+          if not splash.is_file():
               raise SystemExit("Android 12 splash override missing")
 
-          clean_splash = Path("native/app/src/main/res/drawable/sohr_splash_mark.xml")
-          if not clean_splash.is_file() or "7388FF" not in clean_splash.read_text(encoding="utf-8"):
-              raise SystemExit("SOHR 6.2.5 clean vector splash mark missing")
+          v31_styles = splash.read_text(encoding="utf-8")
+          for required in [
+              "@drawable/splash_empty",
+              "<item name=\"windowSplashScreenAnimationDuration\">0</item>",
+              "<item name=\"windowSplashScreenBackground\">#08070D</item>"
+          ]:
+              if required not in v31_styles:
+                  raise SystemExit(f"SOHR 6.2.8 Android 12 blank splash regression: {required}")
+          if "@drawable/sohr_splash_mark" in v31_styles:
+              raise SystemExit("SOHR 6.2.8 regression: static Android 12 splash logo returned")
 
-          v31_styles = Path("native/app/src/main/res/values-v31/styles.xml").read_text(encoding="utf-8")
-          if '@drawable/sohr_splash_mark' not in v31_styles:
-              raise SystemExit("SOHR 6.2.5 Android 12 clean splash override missing")
+          obsolete_splash = Path("native/app/src/main/res/drawable/sohr_splash_mark.xml")
+          if obsolete_splash.exists():
+              raise SystemExit("SOHR 6.2.8 regression: obsolete static splash mark file returned")
 
           icon = Path("native/app/src/main/res/drawable-nodpi/sohr_brand_logo.webp")
           if not icon.is_file() or icon.stat().st_size < 10000:
@@ -652,7 +664,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "Возвращена старая облачная loading-анимация из прошлой версии без картинки внутри • Новая ава остаётся только иконкой приложения • Стартовый loader снова использует прежний облачный контур и тайминги • Плеер опущен ниже и выровнен относительно шапки • Фиксы Twitch/download/nav/search/fullscreen из 6.2.6 сохранены"
+            "notes": "Полностью удалён статичный логотип перед запуском • Системный SplashScreen использует прозрачный splash_empty и нулевую длительность • Сразу после системного старта остаётся только старая облачная LoadingWaveView • Сам sohr_splash_mark.xml удалён из проекта"
           }
           EOF
           cat update.json
