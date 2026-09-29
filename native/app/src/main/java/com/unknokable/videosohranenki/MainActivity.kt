@@ -190,6 +190,7 @@ class MainActivity : AppCompatActivity() {
     private var twitchNetworkCooldownUntilElapsed = 0L
     private val activeManualDownloads = linkedSetOf<Int>()
     private val activeTwitchDownloads = linkedSetOf<Long>()
+    private var openUpdateFromNotification = false
 
     private val palette get() = settings.palette()
     private val bg get() = palette.background
@@ -230,6 +231,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         settings = AppSettings(this)
+        openUpdateFromNotification =
+            intent?.getBooleanExtra(SohrBackgroundCheckWorker.EXTRA_OPEN_UPDATE, false) == true
         streakTracker = StreakTracker(this)
         updateManager = SohrUpdateManager(this)
         videoCache = SohrVideoCache(this)
@@ -412,6 +415,13 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (intent.getBooleanExtra(SohrBackgroundCheckWorker.EXTRA_OPEN_UPDATE, false)) {
+            openUpdateFromNotification = true
+            intent.removeExtra(SohrBackgroundCheckWorker.EXTRA_OPEN_UPDATE)
+            if (!startupPhase) {
+                root.post { consumeUpdateNotificationIntent() }
+            }
+        }
         if (!handleTwitchAuthIntent(intent, loadAfter = true)) handleSharedIntent(intent)
     }
 
@@ -3286,6 +3296,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         replaceRoot(withBottomNav(page, SohrTab.VIDEOS))
+        root.postDelayed({ consumeUpdateNotificationIntent() }, 220L)
+    }
+
+    private fun consumeUpdateNotificationIntent() {
+        if (!openUpdateFromNotification) return
+        openUpdateFromNotification = false
+        intent?.removeExtra(SohrBackgroundCheckWorker.EXTRA_OPEN_UPDATE)
+        checkForUpdates(manual = true)
     }
 
     private fun buildHomeVideoShelf(
@@ -4803,19 +4821,31 @@ class MainActivity : AppCompatActivity() {
                     "Эфиры T2x2",
                     NotificationManager.IMPORTANCE_DEFAULT
                 ).apply {
-                    description = "Уведомление, когда T2x2 начинает стрим"
+                    description = "Уведомляет, когда T2x2 начинает трансляцию"
                     enableVibration(true)
                 }
             )
+            manager.createNotificationChannel(
+                NotificationChannel(
+                    UPDATE_NOTIFICATION_CHANNEL,
+                    "Обновления SOHR",
+                    NotificationManager.IMPORTANCE_DEFAULT
+                ).apply {
+                    description = "Уведомляет о новых версиях SOHR"
+                    enableVibration(false)
+                }
+            )
         }
+
+        SohrBackgroundCheckWorker.schedule(this)
 
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             val prefs = getSharedPreferences("sohr_runtime", MODE_PRIVATE)
-            if (!prefs.getBoolean("t2x2_notification_permission_requested", false)) {
+            if (!prefs.getBoolean("notification_permission_requested", false)) {
                 prefs.edit()
-                    .putBoolean("t2x2_notification_permission_requested", true)
+                    .putBoolean("notification_permission_requested", true)
                     .apply()
                 requestPermissions(
                     arrayOf(Manifest.permission.POST_NOTIFICATIONS),
@@ -4857,7 +4887,7 @@ class MainActivity : AppCompatActivity() {
 
         val notification = builder
             .setSmallIcon(R.drawable.ic_notification_live)
-            .setContentTitle("T2x2 начал стрим")
+            .setContentTitle("T2x2 в эфире")
             .setContentText(
                 live.title.ifBlank { "T2x2 сейчас в эфире" }
             )
@@ -7247,7 +7277,6 @@ class MainActivity : AppCompatActivity() {
         suppressNextContentAnimation = false
         val animateContent = settings.animations && !skipContentAnimation && old != null && old !== content
         val sectionCrossfade = pendingVideoSectionCrossfade
-        val sectionDirection = pendingVideoSectionDirection
         pendingVideoSectionCrossfade = false
         pendingVideoSectionDirection = 0
         content.alpha = 1f
@@ -8111,6 +8140,7 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val TWITCH_REDIRECT_URI = "https://unknokable0.github.io/video-sohranenki/twitch-auth/"
         private const val T2X2_NOTIFICATION_CHANNEL = "t2x2_live"
+        private const val UPDATE_NOTIFICATION_CHANNEL = "sohr_updates"
         private const val T2X2_NOTIFICATION_ID = 2202
         private const val T2X2_NOTIFICATION_PERMISSION_REQUEST = 2203
     }
