@@ -140,7 +140,7 @@ jobs:
                   "R.drawable.ic_close", "R.drawable.ic_check", "fun showAppearancePicker"
               ],
               "native/app/src/main/java/com/unknokable/videosohranenki/LoadingWaveView.kt": [
-                  "LinearGradient", "syncAnimator", "PathMeasure", "movingPath"
+                  "LinearGradient", "syncAnimator", "PathMeasure", "segmentPath"
               ],
               "native/app/src/main/java/com/unknokable/videosohranenki/SohrBottomNavView.kt": [
                   "requestLocked", "syncSelected"
