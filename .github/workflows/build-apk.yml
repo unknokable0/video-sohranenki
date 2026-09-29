@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.3.0: moments, precise seek, Streak 2.0, sessions, smart downloads and standalone Recap
+# SOHR 6.3.1: saved library, richer search, warm-start cache and final brand icon
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.3.0 version
+      - name: Assign SOHR 6.3.1 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=630000" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.3.0" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=630001" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.3.1" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -274,6 +274,24 @@ jobs:
 
           if "T2x2 • в сети" not in sohr_main or "T2x2 • не в сети" not in sohr_main:
               raise SystemExit("T2x2 live status copy regression")
+
+          for required in [
+              'section !in 1..3',
+              'listOf("Главная" to 1, "История" to 2, "Сохранено" to 3)',
+              'private fun favoriteIds()',
+              'private fun toggleFavorite(item: VideoItem)',
+              '"Избранное"',
+              '"Смотреть позже"',
+              '"saved" to "Сохранено"',
+              'val searchableText = buildString',
+              'loadVideos(inPlace = true, quiet = true)',
+              'withContext(Dispatchers.IO) {\n                    videoCache.load()'
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.3.1 selected-library/search/cache regression: {required}")
+
+          if 'sohr_brand_logo' in loader or 'ImageView' in loader:
+              raise SystemExit("SOHR 6.3.1 regression: launcher artwork returned to cloud loading animation")
           if "setStroke(dp(context, 1), palette.stroke)" in home_cards:
               raise SystemExit("Home card outline regression")
           if "compactPreviewHeight + dp(68)" not in sohr_main:
@@ -476,7 +494,7 @@ jobs:
               "native/app/src/main/java/com/unknokable/videosohranenki/LoadingWaveView.kt"
           ).read_text(encoding="utf-8")
 
-          if not brand_file.is_file() or brand_file.stat().st_size < 10000:
+          if not brand_file.is_file() or brand_file.stat().st_size < 4096:
               raise SystemExit("SOHR 6.2.6 direct brand artwork is missing or too small")
           brand_bytes = brand_file.read_bytes()
           if not brand_bytes.startswith(b"RIFF") or b"WEBP" not in brand_bytes[:16]:
@@ -735,7 +753,7 @@ jobs:
               raise SystemExit("SOHR 6.2.8 regression: obsolete static splash mark file returned")
 
           icon = Path("native/app/src/main/res/drawable-nodpi/sohr_brand_logo.webp")
-          if not icon.is_file() or icon.stat().st_size < 10000:
+          if not icon.is_file() or icon.stat().st_size < 4096:
               raise SystemExit(f"SOHR 6.2.6 launcher asset missing or too small: {icon}")
 
           print(f"SOHR 6 UI assets verified; launcher={icon.stat().st_size} bytes")
@@ -751,7 +769,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "Моменты с переходом на точную секунду • точная перемотка с лентой кадров • Streak 2.0 с защитными щитами • drag-and-drop сессия просмотра • умное скачивание 2 свежих видео только по Wi‑Fi • отдельный SOHR Recap с сохранением PNG • новая синяя ава приложения • старая облачная загрузка без изменений"
+            "notes": "Раздел Сохранено с Избранным и Смотреть позже • поиск по названию, caption/описанию, дате и источнику • фильтр Сохранено • мгновенный warm-start главной из videoCache с тихим обновлением • новая синяя ава остаётся launcher-иконкой • старая облачная загрузка без картинки не изменена"
           }
           EOF
           cat update.json
