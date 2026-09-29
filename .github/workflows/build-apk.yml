@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.2.3: player layout, search motion and fullscreen polish
+# SOHR 6.2.4: new branding, cloud splash and Twitch network hardening
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.2.3 version
+      - name: Assign SOHR 6.2.4 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=620003" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.2.3" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=620004" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.2.4" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -162,7 +162,7 @@ jobs:
                   "R.drawable.ic_close", "R.drawable.ic_check", "fun showAppearancePicker"
               ],
               "native/app/src/main/java/com/unknokable/videosohranenki/LoadingWaveView.kt": [
-                  "AccelerateDecelerateInterpolator", "syncAnimator", "PathMeasure", "basePath", "segmentPath"
+                  "syncAnimator", "PathMeasure", "outlinePath", "segmentPath", "duration = 1850L"
               ],
               "native/app/src/main/java/com/unknokable/videosohranenki/SohrBottomNavView.kt": [
                   "syncSelected", "private fun requestIndex(target: Int)"
@@ -405,6 +405,76 @@ jobs:
               if required not in sohr_main:
                   raise SystemExit(f"SOHR 6.2.3 search-motion regression: {required}")
 
+          manifest = Path("native/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+          styles = Path("native/app/src/main/res/values/styles.xml").read_text(encoding="utf-8")
+          gradle_file = Path("native/app/build.gradle.kts").read_text(encoding="utf-8")
+          brand_hex = Path("native/app/src/main/brand/sohr_brand.webp.hex").read_text(encoding="utf-8").strip()
+          loader = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/LoadingWaveView.kt"
+          ).read_text(encoding="utf-8")
+
+          if len(brand_hex) < 7000 or not brand_hex.startswith("52494646") or "57454250" not in brand_hex[:32]:
+              raise SystemExit("SOHR 6.2.4 brand artwork bytes are missing or invalid")
+
+          for required in [
+              'android:icon="@drawable/sohr_brand_logo"',
+              'android:roundIcon="@drawable/sohr_brand_logo"',
+              'android:theme="@style/AppTheme.Starting"',
+              "android.permission.ACCESS_NETWORK_STATE"
+          ]:
+              if required not in manifest:
+                  raise SystemExit(f"SOHR 6.2.4 manifest branding/network regression: {required}")
+
+          for required in [
+              'name="AppTheme.Starting"',
+              "windowSplashScreenAnimatedIcon",
+              "@drawable/sohr_brand_logo",
+              "postSplashScreenTheme"
+          ]:
+              if required not in styles:
+                  raise SystemExit(f"SOHR 6.2.4 splash theme regression: {required}")
+
+          for required in [
+              "sohr_brand.webp.hex",
+              "prepareSohrBrandAssets",
+              "sohr_brand_logo.webp",
+              "core-splashscreen:1.2.0"
+          ]:
+              if required not in gradle_file:
+                  raise SystemExit(f"SOHR 6.2.4 brand generation regression: {required}")
+
+          for required in [
+              "outlinePath",
+              "segmentPath",
+              "duration = 1850L",
+              "glowPaint"
+          ]:
+              if required not in loader:
+                  raise SystemExit(f"SOHR 6.2.4 cloud-loader regression: {required}")
+
+          for required in [
+              "installSplashScreen()",
+              "buildBrandLoadingMark",
+              "friendlyTwitchFailure",
+              "isTwitchNetworkFailure",
+              "canAttemptTwitchNetwork",
+              "twitchNetworkCooldownUntilElapsed",
+              "+ 30_000L",
+              "WebResourceError",
+              "onReceivedError"
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.2.4 branding/network regression: {required}")
+
+          forbidden_raw_twitch = [
+              'Toast.makeText(this@MainActivity, e.message ?: "Ошибка Twitch"',
+              '"Unable to resolve host"',
+              '"No address associated with hostname"'
+          ]
+          for forbidden in forbidden_raw_twitch:
+              if forbidden in sohr_main and forbidden.startswith("Toast.makeText"):
+                  raise SystemExit("SOHR 6.2.4 raw Twitch error Toast regression")
+
           for required in [
               '"С прошлого раза"',
               "showPlaybackQueue",
@@ -518,7 +588,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "Очищены кривые Twitch-заголовки и t.me-промо • Экран видео стал компактнее и ровнее • Следующее видео выровнено и анимировано • Поиск плавно открывается/закрывается без delayed redraw race • Fullscreen разворачивается и возвращается с плавной hero-анимацией"
+            "notes": "Новый логотип и иконка SOHR • Фирменный SplashScreen и облачная loading-анимация • Единый бренд на loading-экранах • Twitch DNS/timeout ошибки больше не показываются сырым текстом • Фоновые Twitch-проверки работают тихо с network cooldown • Плеер/следующее видео выровнены • Поиск и fullscreen стали плавнее"
           }
           EOF
           cat update.json
