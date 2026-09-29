@@ -485,7 +485,7 @@ class PlayerScreen(
 
         val title = TextView(activity).apply {
             text = cleanTitle(item.title)
-            textSize = 15f
+            textSize = 13.5f
             setTextColor(palette.text)
             setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
@@ -795,12 +795,12 @@ class PlayerScreen(
     private fun buildDetails(): LinearLayout {
         val box = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(15), dp(16), dp(10))
+            setPadding(dp(16), dp(14), dp(16), dp(9))
         }
 
         val title = TextView(activity).apply {
             text = cleanTitle(item.title)
-            textSize = 19f
+            textSize = 17.5f
             includeFontPadding = false
             maxLines = 2
             ellipsize = android.text.TextUtils.TruncateAt.END
@@ -813,7 +813,7 @@ class PlayerScreen(
         if (descriptionText.isNotBlank()) {
             box.addView(TextView(activity).apply {
                 text = descriptionText
-                textSize = 14.5f
+                textSize = 13.5f
                 setLineSpacing(dp(2).toFloat(), 1f)
                 includeFontPadding = false
                 maxLines = 5
@@ -926,7 +926,7 @@ class PlayerScreen(
     private fun buildNextVideosBlock(): LinearLayout {
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(5), dp(16), dp(20))
+            setPadding(dp(16), dp(7), dp(16), dp(22))
 
             val candidates = (queueItems + listOfNotNull(nextItem))
                 .filterNot { it.messageId == item.messageId }
@@ -935,7 +935,7 @@ class PlayerScreen(
 
             addView(TextView(activity).apply {
                 text = if (queueItems.isNotEmpty()) "Далее • очередь" else "Следующие видео"
-                textSize = 16f
+                textSize = 17f
                 setTypeface(typeface, Typeface.BOLD)
                 setTextColor(palette.text)
                 includeFontPadding = false
@@ -956,8 +956,9 @@ class PlayerScreen(
                     addView(LinearLayout(activity).apply {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = Gravity.CENTER_VERTICAL
-                        setPadding(dp(12), dp(10), dp(12), dp(10))
-                        background = roundedInt(palette.surfaceAlt, 18)
+                        setPadding(dp(13), dp(11), dp(12), dp(11))
+                        minimumHeight = dp(82)
+                        background = roundedInt(palette.surfaceAlt, 19)
                         isClickable = true
                         isFocusable = true
 
@@ -971,12 +972,12 @@ class PlayerScreen(
                                 !next.thumbnailUrl.isNullOrBlank() -> load(next.thumbnailUrl) { crossfade(settings.animations) }
                             }
                         }
-                        addView(thumb, LinearLayout.LayoutParams(dp(96), dp(54)).apply { marginEnd = dp(11) })
+                        addView(thumb, LinearLayout.LayoutParams(dp(108), dp(61)).apply { marginEnd = dp(12) })
 
                         val textBox = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
                         textBox.addView(TextView(activity).apply {
                             text = cleanTitle(next.title)
-                            textSize = 13.5f
+                            textSize = 13f
                             maxLines = 2
                             ellipsize = android.text.TextUtils.TruncateAt.END
                             includeFontPadding = false
@@ -997,11 +998,30 @@ class PlayerScreen(
                             scaleType = ImageView.ScaleType.CENTER_INSIDE
                             setPadding(dp(9), dp(9), dp(9), dp(9))
                             background = roundedInt(palette.accent, 18)
-                        }, LinearLayout.LayoutParams(dp(36), dp(36)).apply { marginStart = dp(9) })
+                        }, LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginStart = dp(10) })
 
                         setOnClickListener {
                             pulse(this)
-                            onPlayNext?.invoke(next)
+                            if (settings.animations) {
+                                animate().cancel()
+                                animate()
+                                    .scaleX(0.985f)
+                                    .scaleY(0.985f)
+                                    .setDuration(SohrMotion.FAST / 2)
+                                    .setInterpolator(SohrMotion.smooth())
+                                    .withEndAction {
+                                        animate()
+                                            .scaleX(1f)
+                                            .scaleY(1f)
+                                            .setDuration(SohrMotion.FAST)
+                                            .setInterpolator(SohrMotion.smooth())
+                                            .start()
+                                        onPlayNext?.invoke(next)
+                                    }
+                                    .start()
+                            } else {
+                                onPlayNext?.invoke(next)
+                            }
                         }
                     }, LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1919,6 +1939,30 @@ class PlayerScreen(
                 playerCard.clipToOutline = false
                 playerCard.background = rounded("#000000", 0)
                 playerCard.requestLayout()
+
+                if (settings.animations) {
+                    host.alpha = 0f
+                    playerCard.alpha = 0.78f
+                    playerCard.scaleX = 0.94f
+                    playerCard.scaleY = 0.94f
+                    host.animate()
+                        .alpha(1f)
+                        .setDuration(SohrMotion.HERO)
+                        .setInterpolator(SohrMotion.smooth())
+                        .start()
+                    playerCard.animate()
+                        .alpha(1f)
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setDuration(SohrMotion.HERO)
+                        .setInterpolator(SohrMotion.smooth())
+                        .start()
+                } else {
+                    host.alpha = 1f
+                    playerCard.alpha = 1f
+                    playerCard.scaleX = 1f
+                    playerCard.scaleY = 1f
+                }
                 showOverlay()
             } else {
                 dismissFullscreenSettings(animated = false)
@@ -1957,6 +2001,24 @@ class PlayerScreen(
                 playerCard.background = rounded("#000000", 18)
                 playerCard.requestLayout()
                 root.requestLayout()
+
+                if (settings.animations) {
+                    playerCard.animate().cancel()
+                    playerCard.alpha = 0.72f
+                    playerCard.scaleX = 1.035f
+                    playerCard.scaleY = 1.035f
+                    playerCard.animate()
+                        .alpha(1f)
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setDuration(SohrMotion.HERO)
+                        .setInterpolator(SohrMotion.smooth())
+                        .start()
+                } else {
+                    playerCard.alpha = 1f
+                    playerCard.scaleX = 1f
+                    playerCard.scaleY = 1f
+                }
                 showOverlay()
             }
         } catch (_: Throwable) {
@@ -2227,6 +2289,29 @@ class PlayerScreen(
             .map { it.trim() }
             .firstOrNull { it.isNotBlank() }
             .orEmpty()
+
+        if (item.source == "twitch") {
+            val lowered = firstLine.lowercase(Locale.getDefault())
+            val hasTelegramPromo =
+                lowered.contains("t.me/t2xtwitch") ||
+                    lowered.contains("tg:") ||
+                    lowered.contains("тг:")
+            val readable = firstLine
+                .substringBefore(" | ")
+                .substringBefore("|")
+                .replace(Regex("""https?://\S+""", RegexOption.IGNORE_CASE), "")
+                .replace(Regex("""t\.me/\S+""", RegexOption.IGNORE_CASE), "")
+                .replace(Regex("""\s{2,}"""), " ")
+                .trim()
+            val basicLetters = readable.count {
+                (it in 'A'..'Z') || (it in 'a'..'z') || (it in 'А'..'я') || it == 'Ё' || it == 'ё' || it.isDigit()
+            }
+            val noisy = readable.length > 0 && basicLetters < (readable.length * 0.42f)
+            if (hasTelegramPromo && (readable.isBlank() || noisy)) return "Запись стрима T2x2"
+            if (readable.isNotBlank() && !noisy) return readable.take(80)
+            return "Запись стрима T2x2"
+        }
+
         val fileName = firstLine.matches(
             Regex(
                 """\d{4}-\d{2}-\d{2}[_-].*\.(mp4|mkv|mov|webm)""",
@@ -2249,6 +2334,11 @@ class PlayerScreen(
         if (firstContent < 0 || firstContent >= lines.lastIndex) return ""
         return lines
             .drop(firstContent + 1)
+            .map { it.trim() }
+            .filterNot {
+                val lower = it.lowercase(Locale.getDefault())
+                lower.contains("t.me/t2xtwitch") || lower.startsWith("tg:") || lower.startsWith("тг:")
+            }
             .joinToString("\n")
             .trim()
             .replace(Regex("\n{3,}"), "\n\n")
