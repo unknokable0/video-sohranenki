@@ -58,7 +58,6 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.widget.NestedScrollView
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.PagerSnapHelper
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.i18n.phonenumbers.PhoneNumberUtil
@@ -3128,18 +3127,13 @@ class MainActivity : AppCompatActivity() {
             itemAnimator = null
             setPadding(dp(10), 0, dp(10), 0)
             clipToPadding = false
-            PagerSnapHelper().attachToRecyclerView(this)
         }
-
-        val cardWidth = (resources.displayMetrics.widthPixels - dp(52))
-            .coerceIn(dp(270), dp(340))
-        val shelfHeight = (cardWidth * 9f / 16f).toInt() + dp(78)
 
         section.addView(
             shelf,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                shelfHeight
+                dp(198)
             )
         )
         return section
