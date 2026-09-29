@@ -157,12 +157,13 @@ class SohrBottomNavView(
     }
 
     private fun requestIndex(target: Int) {
-        if (target !in tabs.indices || target == selectedIndex) return
+        if (target !in tabs.indices) return
 
         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
 
-        // Give immediate visual feedback and navigate in the same frame.
-        // No artificial lock: quick consecutive taps remain responsive.
+        // Always forward the tap. If visual state got ahead of the screen during
+        // a fast transition, tapping the same tab retries navigation instead of
+        // being silently ignored.
         selectedIndex = target
         updateStates(target)
         positionIndicator(animate = true)
@@ -174,14 +175,16 @@ class SohrBottomNavView(
         val target = tabs.indexOf(tab)
         if (target < 0) return
 
-        indicatorAnimator?.cancel()
-        indicator.animate().cancel()
-
         if (target == selectedIndex) {
             updateStates(selectedIndex)
-            positionIndicator(false)
+            // A user tap may already be animating the indicator. Do not cancel
+            // that transition just because the destination screen rendered.
+            if (!animate) positionIndicator(false)
             return
         }
+
+        indicatorAnimator?.cancel()
+        indicator.animate().cancel()
         selectIndex(target, animate, false)
     }
 
@@ -298,16 +301,26 @@ class SohrBottomNavView(
         indicator.layoutParams = params
 
         if (animate) {
-            indicatorAnimator?.cancel()
             indicator.animate().cancel()
+            indicatorAnimator?.cancel()
+            val from = indicator.translationX
+            val to = selectedIndex * slot
+            indicator.scaleY = 0.94f
+            indicatorAnimator = ValueAnimator.ofFloat(from, to).apply {
+                duration = 220L
+                interpolator = smoothInterpolator
+                addUpdateListener { indicator.translationX = it.animatedValue as Float }
+                start()
+            }
             indicator.animate()
-                .translationX(selectedIndex * slot)
-                .setDuration(190L)
+                .scaleY(1f)
+                .setDuration(220L)
                 .setInterpolator(smoothInterpolator)
                 .start()
         } else {
             indicatorAnimator?.cancel()
             indicator.animate().cancel()
+            indicator.scaleY = 1f
             indicator.translationX = selectedIndex * slot
         }
     }
