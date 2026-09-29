@@ -45,11 +45,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.0.2 version
+      - name: Assign SOHR 6.0.3 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=600002" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.0.2" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=600003" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.0.3" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -148,7 +148,8 @@ jobs:
           checks = {
               "native/app/src/main/java/com/unknokable/videosohranenki/ThemePalette.kt": [
                   '"magenta"', '"sunset"', '"ocean"', '"ice"', '"mint"',
-                  '"rose"', '"amber"', '"lime"', '"aqua"', '"indigo"', '"crimson"'
+                  '"rose"', '"amber"', '"lime"', '"aqua"', '"indigo"', '"crimson"',
+                  '"electric"', '"emerald"', '"gold"', '"coral"', '"lavender"', '"ruby"'
               ],
               "native/app/src/main/java/com/unknokable/videosohranenki/SettingsScreen.kt": [
                   "private fun appearanceSelector", "showAppearancePicker", "AppThemes.Presets"
@@ -160,7 +161,13 @@ jobs:
                   "R.drawable.ic_close", "R.drawable.ic_check", "fun showAppearancePicker"
               ],
               "native/app/src/main/java/com/unknokable/videosohranenki/LoadingWaveView.kt": [
-                  "LinearGradient", "syncAnimator", "PathMeasure"
+                  "LinearGradient", "syncAnimator", "PathMeasure", "movingPath"
+              ],
+              "native/app/src/main/java/com/unknokable/videosohranenki/SohrBottomNavView.kt": [
+                  "requestLocked", "syncSelected"
+              ],
+              "native/app/src/main/java/com/unknokable/videosohranenki/HomeVideoShelfAdapter.kt": [
+                  "lastPlayedAtFor", "24L * 60L * 60L * 1000L"
               ],
               "native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt": [
                   "R.drawable.ic_player_settings"
@@ -178,6 +185,10 @@ jobs:
               missing = [needle for needle in needles if needle not in text]
               if missing:
                   raise SystemExit(f"{file_name}: missing {missing}")
+
+          splash = Path("native/app/src/main/res/values-v31/styles.xml")
+          if not splash.is_file() or "windowSplashScreenAnimatedIcon" not in splash.read_text(encoding="utf-8"):
+              raise SystemExit("Android 12 splash override missing")
 
           icon = Path("native/app/src/main/res/drawable-nodpi/ic_launcher.webp")
           if not icon.is_file() or icon.stat().st_size < 4096:
@@ -236,7 +247,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.0.2 • new S identity • redesigned loading • modern dialogs • 6 color palettes • vector navigation icons • performance polish • BlueStacks verified"
+            "notes": "SOHR 6.0.3 • stable bottom navigation • scroll-safe appearance • 18 palettes • unclipped dialogs • smarter NEW badge • refined S loader and player icons • BlueStacks verified"
           }
           EOF
           cat update.json

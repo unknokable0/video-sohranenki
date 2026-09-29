@@ -11,7 +11,9 @@ import android.graphics.PathMeasure
 import android.graphics.Shader
 import android.view.View
 import android.view.animation.LinearInterpolator
+import kotlin.math.PI
 import kotlin.math.max
+import kotlin.math.sin
 
 class LoadingWaveView(
     context: Context,
@@ -19,25 +21,20 @@ class LoadingWaveView(
 ) : View(context) {
 
     private val sPath = Path()
-    private val moving = Path()
+    private val movingPath = Path()
     private val measure = PathMeasure()
 
-    private val outerGlow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
-    private val rail = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val railPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
-    private val innerRail = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-        strokeJoin = Paint.Join.ROUND
-    }
-    private val movingGlow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val movingGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
@@ -53,7 +50,7 @@ class LoadingWaveView(
     private var phase = 0f
 
     private val animator = ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = 1320L
+        duration = 1180L
         repeatCount = ValueAnimator.INFINITE
         interpolator = LinearInterpolator()
         addUpdateListener {
@@ -67,36 +64,41 @@ class LoadingWaveView(
         val height = h.toFloat()
 
         sPath.reset()
-        sPath.moveTo(width * 0.78f, height * 0.16f)
+        sPath.moveTo(width * 0.79f, height * 0.17f)
         sPath.cubicTo(
-            width * 0.60f, height * 0.075f,
-            width * 0.24f, height * 0.13f,
-            width * 0.23f, height * 0.34f
+            width * 0.64f, height * 0.075f,
+            width * 0.30f, height * 0.10f,
+            width * 0.21f, height * 0.29f
         )
         sPath.cubicTo(
-            width * 0.22f, height * 0.50f,
-            width * 0.77f, height * 0.47f,
-            width * 0.77f, height * 0.64f
+            width * 0.12f, height * 0.48f,
+            width * 0.36f, height * 0.52f,
+            width * 0.57f, height * 0.55f
         )
         sPath.cubicTo(
-            width * 0.77f, height * 0.84f,
-            width * 0.43f, height * 0.93f,
-            width * 0.21f, height * 0.82f
+            width * 0.78f, height * 0.58f,
+            width * 0.84f, height * 0.69f,
+            width * 0.75f, height * 0.80f
+        )
+        sPath.cubicTo(
+            width * 0.61f, height * 0.96f,
+            width * 0.32f, height * 0.93f,
+            width * 0.18f, height * 0.82f
         )
 
         measure.setPath(sPath, false)
 
-        rail.shader = LinearGradient(
-            0f,
+        railPaint.shader = LinearGradient(
+            width * 0.18f,
             height * 0.10f,
-            width,
+            width * 0.82f,
             height * 0.90f,
             intArrayOf(
-                lighten(color, 0.34f),
-                color,
-                lighten(color, 0.16f)
+                withAlpha(lighten(color, 0.20f), 165),
+                withAlpha(color, 205),
+                withAlpha(lighten(color, 0.34f), 180)
             ),
-            floatArrayOf(0f, 0.53f, 1f),
+            floatArrayOf(0f, 0.52f, 1f),
             Shader.TileMode.CLAMP
         )
     }
@@ -108,37 +110,32 @@ class LoadingWaveView(
         if (length <= 0f || width <= 0 || height <= 0) return
 
         val unit = max(1f, minOf(width, height).toFloat() / 96f)
+        val breathe = ((sin(phase * 2f * PI.toFloat()) + 1f) * 0.5f)
 
-        outerGlow.shader = null
-        outerGlow.color = withAlpha(color, 30)
-        outerGlow.strokeWidth = 13f * unit
-        canvas.drawPath(sPath, outerGlow)
+        glowPaint.shader = null
+        glowPaint.color = withAlpha(color, (18 + breathe * 18f).toInt())
+        glowPaint.strokeWidth = 11.5f * unit
+        canvas.drawPath(sPath, glowPaint)
 
-        rail.alpha = 225
-        rail.strokeWidth = 8.2f * unit
-        canvas.drawPath(sPath, rail)
+        railPaint.strokeWidth = 6.7f * unit
+        canvas.drawPath(sPath, railPaint)
 
-        innerRail.shader = null
-        innerRail.color = withAlpha(Color.BLACK, 118)
-        innerRail.strokeWidth = 3.5f * unit
-        canvas.drawPath(sPath, innerRail)
-
-        val segmentLength = length * 0.21f
+        val segmentLength = length * 0.25f
         val start = phase * length
         val end = start + segmentLength
 
-        moving.reset()
+        movingPath.reset()
         if (end <= length) {
-            measure.getSegment(start, end, moving, true)
+            measure.getSegment(start, end, movingPath, true)
         } else {
-            measure.getSegment(start, length, moving, true)
-            measure.getSegment(0f, end - length, moving, true)
+            measure.getSegment(start, length, movingPath, true)
+            measure.getSegment(0f, end - length, movingPath, true)
         }
 
-        movingGlow.shader = null
-        movingGlow.color = withAlpha(lighten(color, 0.50f), 100)
-        movingGlow.strokeWidth = 7f * unit
-        canvas.drawPath(moving, movingGlow)
+        movingGlowPaint.shader = null
+        movingGlowPaint.color = withAlpha(lighten(color, 0.64f), 88)
+        movingGlowPaint.strokeWidth = 6.8f * unit
+        canvas.drawPath(movingPath, movingGlowPaint)
 
         movingPaint.shader = LinearGradient(
             0f,
@@ -146,27 +143,25 @@ class LoadingWaveView(
             width.toFloat(),
             height.toFloat(),
             intArrayOf(
-                withAlpha(color, 22),
-                lighten(color, 0.72f),
+                withAlpha(lighten(color, 0.18f), 35),
+                lighten(color, 0.62f),
                 Color.WHITE,
-                lighten(color, 0.44f)
+                lighten(color, 0.38f)
             ),
-            floatArrayOf(0f, 0.34f, 0.72f, 1f),
+            floatArrayOf(0f, 0.33f, 0.72f, 1f),
             Shader.TileMode.CLAMP
         )
-        movingPaint.strokeWidth = 3f * unit
-        canvas.drawPath(moving, movingPaint)
+        movingPaint.strokeWidth = 3.1f * unit
+        canvas.drawPath(movingPath, movingPaint)
         movingPaint.shader = null
 
         val headDistance = end % length
         if (measure.getPosTan(headDistance, headPos, null)) {
-            headPaint.color = lighten(color, 0.58f)
-            headPaint.alpha = 72
-            canvas.drawCircle(headPos[0], headPos[1], 4.6f * unit, headPaint)
+            headPaint.color = withAlpha(lighten(color, 0.55f), 72)
+            canvas.drawCircle(headPos[0], headPos[1], 4.1f * unit, headPaint)
 
             headPaint.color = Color.WHITE
-            headPaint.alpha = 238
-            canvas.drawCircle(headPos[0], headPos[1], 2.05f * unit, headPaint)
+            canvas.drawCircle(headPos[0], headPos[1], 1.75f * unit, headPaint)
         }
     }
 
@@ -198,6 +193,7 @@ class LoadingWaveView(
 
     private fun lighten(value: Int, amount: Float): Int {
         val t = amount.coerceIn(0f, 1f)
+
         fun channel(c: Int): Int =
             (c + (255 - c) * t).toInt().coerceIn(0, 255)
 

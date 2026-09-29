@@ -208,7 +208,7 @@ class PlayerScreen(
         )
 
         speedBadge = TextView(activity).apply {
-            text = "2x  ▶▶"
+            text = "2×"
             textSize = 13f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
@@ -800,13 +800,16 @@ class PlayerScreen(
                         setPadding(0, dp(4), 0, 0)
                     })
                     addView(textBox, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                    addView(TextView(activity).apply {
-                        text = "▶"
-                        textSize = 17f
-                        gravity = Gravity.CENTER
-                        setTextColor(Color.WHITE)
-                        background = rounded("#8B5CF6", 20)
-                    }, LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginStart = dp(10) })
+                    addView(ImageView(activity).apply {
+                        setImageResource(R.drawable.ic_play)
+                        imageTintList =
+                            android.content.res.ColorStateList.valueOf(Color.WHITE)
+                        scaleType = ImageView.ScaleType.CENTER_INSIDE
+                        setPadding(dp(10), dp(10), dp(10), dp(10))
+                        background = roundedInt(palette.accent, 20)
+                    }, LinearLayout.LayoutParams(dp(40), dp(40)).apply {
+                        marginStart = dp(10)
+                    })
                     setOnClickListener {
                         pulse(this)
                         onPlayNext?.invoke(next)
@@ -1196,12 +1199,54 @@ class PlayerScreen(
         }
     }
 
-    private fun sheetRow(title:String,value:String,click:()->Unit): View = LinearLayout(activity).apply {
-        orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(dp(14),0,dp(12),0); background=roundedInt(palette.surfaceAlt,16)
-        addView(TextView(activity).apply { text=title; textSize=14f; setTypeface(typeface,Typeface.BOLD); setTextColor(palette.text) },LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
-        addView(TextView(activity).apply { text="$value   ›"; textSize=13f; setTextColor(palette.muted) })
-        setOnClickListener { pulse(this); click() }
-    }
+    private fun sheetRow(title: String, value: String, click: () -> Unit): View =
+        LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), 0, dp(10), 0)
+            background = roundedInt(palette.surfaceAlt, 16)
+            isClickable = true
+            isFocusable = true
+
+            addView(
+                TextView(activity).apply {
+                    text = title
+                    textSize = 14f
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(palette.text)
+                },
+                LinearLayout.LayoutParams(
+                    0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+            )
+
+            addView(TextView(activity).apply {
+                text = value
+                textSize = 13f
+                setTextColor(palette.muted)
+                gravity = Gravity.CENTER_VERTICAL
+            })
+
+            addView(
+                ImageView(activity).apply {
+                    setImageResource(R.drawable.ic_chevron_right)
+                    imageTintList =
+                        android.content.res.ColorStateList.valueOf(palette.muted)
+                    scaleType = ImageView.ScaleType.CENTER_INSIDE
+                    setPadding(dp(7), dp(7), dp(7), dp(7))
+                },
+                LinearLayout.LayoutParams(dp(30), dp(30)).apply {
+                    marginStart = dp(4)
+                }
+            )
+
+            setOnClickListener {
+                pulse(this)
+                click()
+            }
+        }
 
     private fun toggleSubtitles() {
         val params=player.trackSelectionParameters
@@ -1269,13 +1314,99 @@ class PlayerScreen(
     }
 
     private fun buildMiniPlayer(): LinearLayout = LinearLayout(activity).apply {
-        orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(dp(8),dp(4),dp(8),dp(4)); background=roundedInt(palette.surface,18); visibility=View.GONE; elevation=dp(12).toFloat()
-        miniVideoHost=FrameLayout(activity).apply { setBackgroundColor(Color.BLACK) }; addView(miniVideoHost,LinearLayout.LayoutParams(dp(112),dp(63)))
-        addView(TextView(activity).apply { text=cleanTitle(item.title); textSize=13f; maxLines=2; setTypeface(typeface,Typeface.BOLD); setTextColor(palette.text); setPadding(dp(10),0,dp(8),0); setOnClickListener { exitMiniPlayer() } },LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
-        addView(TextView(activity).apply { text="Ⅱ"; textSize=18f; gravity=Gravity.CENTER; setTextColor(palette.text); setOnClickListener { if(player.isPlaying) player.pause() else player.play(); text=if(player.isPlaying) "Ⅱ" else "▶" } },LinearLayout.LayoutParams(dp(42),dp(56)))
-        addView(TextView(activity).apply { text="×"; textSize=24f; gravity=Gravity.CENTER; setTextColor(palette.muted); setOnClickListener { player.pause(); onBack() } },LinearLayout.LayoutParams(dp(42),dp(56)))
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(8), dp(4), dp(8), dp(4))
+        background = roundedInt(palette.surface, 18)
+        visibility = View.GONE
+        elevation = dp(12).toFloat()
+
+        miniVideoHost = FrameLayout(activity).apply {
+            setBackgroundColor(Color.BLACK)
+        }
+        addView(miniVideoHost, LinearLayout.LayoutParams(dp(112), dp(63)))
+
+        addView(
+            TextView(activity).apply {
+                text = cleanTitle(item.title)
+                textSize = 13f
+                maxLines = 2
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(palette.text)
+                setPadding(dp(10), 0, dp(8), 0)
+                setOnClickListener { exitMiniPlayer() }
+            },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        )
+
+        val miniPlayPause = ImageButton(activity).apply {
+            setImageResource(if (player.isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
+            imageTintList =
+                android.content.res.ColorStateList.valueOf(palette.text)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(11), dp(11), dp(11), dp(11))
+            background = roundedInt(palette.surfaceAlt, 18)
+            contentDescription = "Пауза или воспроизведение"
+            setOnClickListener {
+                if (player.isPlaying) player.pause() else player.play()
+                setImageResource(if (player.isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
+                pulse(this)
+            }
+        }
+        addView(miniPlayPause, LinearLayout.LayoutParams(dp(42), dp(42)).apply {
+            marginEnd = dp(6)
+        })
+
+        val close = ImageButton(activity).apply {
+            setImageResource(R.drawable.ic_close)
+            imageTintList =
+                android.content.res.ColorStateList.valueOf(palette.muted)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(11), dp(11), dp(11), dp(11))
+            background = roundedInt(palette.surfaceAlt, 18)
+            contentDescription = "Закрыть мини-плеер"
+            setOnClickListener {
+                pulse(this)
+                player.pause()
+                onBack()
+            }
+        }
+        addView(close, LinearLayout.LayoutParams(dp(42), dp(42)))
+
         setOnClickListener { exitMiniPlayer() }
-        setOnTouchListener(object:View.OnTouchListener { var x=0f; override fun onTouch(v:View,e:MotionEvent):Boolean { when(e.actionMasked){ MotionEvent.ACTION_DOWN->{x=e.x;return true}; MotionEvent.ACTION_MOVE->{v.translationX=e.x-x;v.alpha=(1f-kotlin.math.abs(v.translationX)/v.width).coerceIn(.25f,1f);return true}; MotionEvent.ACTION_UP->{if(kotlin.math.abs(v.translationX)>v.width*.35f){player.pause();onBack()}else v.animate().translationX(0f).alpha(1f).setDuration(220L).start();return true} };return false } })
+        setOnTouchListener(object : View.OnTouchListener {
+            var x = 0f
+
+            override fun onTouch(v: View, e: MotionEvent): Boolean {
+                when (e.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        x = e.x
+                        return true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        v.translationX = e.x - x
+                        v.alpha =
+                            (1f - kotlin.math.abs(v.translationX) / v.width)
+                                .coerceIn(.25f, 1f)
+                        return true
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        if (kotlin.math.abs(v.translationX) > v.width * .35f) {
+                            player.pause()
+                            onBack()
+                        } else {
+                            v.animate()
+                                .translationX(0f)
+                                .alpha(1f)
+                                .setDuration(220L)
+                                .start()
+                        }
+                        return true
+                    }
+                }
+                return false
+            }
+        })
     }
 
     private fun enterMiniPlayer() {

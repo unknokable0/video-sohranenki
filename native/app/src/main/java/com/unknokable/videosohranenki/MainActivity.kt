@@ -2687,7 +2687,8 @@ class MainActivity : AppCompatActivity() {
                 palette = palette,
                 animationsEnabled = settings.animations,
                 mode = mode,
-                progressFor = { playbackProgress(it) }
+                progressFor = { playbackProgress(it) },
+                lastPlayedAtFor = { settings.lastPlayedAt(it.messageId) }
             ) { item ->
                 openPlayer(item)
             }
@@ -4152,6 +4153,19 @@ class MainActivity : AppCompatActivity() {
         animateSettingsPaletteReveal(settings.lightTheme, AppThemes.preset(accent).key, source)
     }
 
+    private fun restoreSettingsScrollPosition(scroll: ScrollView?, scrollY: Int) {
+        val target = scrollY.coerceAtLeast(0)
+        if (scroll == null) return
+
+        scroll.scrollTo(0, target)
+        scroll.postOnAnimation {
+            if (scroll.isAttachedToWindow) scroll.scrollTo(0, target)
+        }
+        scroll.postDelayed({
+            if (scroll.isAttachedToWindow) scroll.scrollTo(0, target)
+        }, 64L)
+    }
+
     private fun animateSettingsPaletteReveal(
         light: Boolean,
         accent: String,
@@ -4159,6 +4173,11 @@ class MainActivity : AppCompatActivity() {
     ) {
         val normalizedAccent = AppThemes.preset(accent).key
         if (settings.lightTheme == light && settings.themeAccent == normalizedAccent) return
+
+        val oldSettingsScrollY =
+            root.findViewWithTag<ScrollView>("sohr_settings_scroll")?.scrollY
+                ?: primaryShell?.findViewWithTag<ScrollView>("sohr_settings_scroll")?.scrollY
+                ?: 0
 
         if (!settings.animations || root.width <= 0 || root.height <= 0) {
             settings.lightTheme = light
@@ -4170,14 +4189,16 @@ class MainActivity : AppCompatActivity() {
             primaryShellAccent = null
             applySystemTheme()
             showSettings()
+            root.post {
+                restoreSettingsScrollPosition(
+                    root.findViewWithTag("sohr_settings_scroll"),
+                    oldSettingsScrollY
+                )
+            }
             return
         }
 
         val oldShell = primaryShell
-        val oldSettingsScrollY =
-            root.findViewWithTag<ScrollView>("sohr_settings_scroll")?.scrollY
-                ?: oldShell?.findViewWithTag<ScrollView>("sohr_settings_scroll")?.scrollY
-                ?: 0
         val oldSystemColor = bg
 
         settings.lightTheme = light
@@ -4273,58 +4294,66 @@ class MainActivity : AppCompatActivity() {
         nextShell.post {
             val nextSettingsScroll =
                 nextContent.findViewWithTag<ScrollView>("sohr_settings_scroll")
-            nextSettingsScroll?.scrollTo(0, oldSettingsScrollY)
-            nextSettingsScroll?.post {
-                nextSettingsScroll.scrollTo(0, oldSettingsScrollY)
-                nextSettingsScroll.postOnAnimation {
-                    nextSettingsScroll.scrollTo(0, oldSettingsScrollY)
-                }
-            }
-            nextShell.visibility = View.VISIBLE
-            nextShell.animate()
-                .alpha(1f)
-                .scaleX(1f)
-                .scaleY(1f)
-                .setDuration(280L)
-                .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
-                .start()
 
-            oldShell?.animate()
-                ?.alpha(0.82f)
-                ?.setDuration(220L)
-                ?.start()
+            restoreSettingsScrollPosition(nextSettingsScroll, oldSettingsScrollY)
 
-            val maxX = maxOf(cx, nextShell.width - cx).toDouble()
-            val maxY = maxOf(cy, nextShell.height - cy).toDouble()
-            val finalRadius = kotlin.math.hypot(maxX, maxY).toFloat()
+            nextShell.postOnAnimation {
+                restoreSettingsScrollPosition(nextSettingsScroll, oldSettingsScrollY)
+                nextShell.visibility = View.VISIBLE
 
-            ViewAnimationUtils.createCircularReveal(
-                nextShell,
-                cx.coerceIn(0, nextShell.width),
-                cy.coerceIn(0, nextShell.height),
-                0f,
-                finalRadius
-            ).apply {
-                duration = 340L
-                interpolator = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
-                addListener(object : android.animation.AnimatorListenerAdapter() {
-                    override fun onAnimationEnd(animation: android.animation.Animator) {
-                        if (oldShell != null && oldShell.parent === root) {
-                            root.removeView(oldShell)
+                nextShell.animate()
+                    .alpha(1f)
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(280L)
+                    .setInterpolator(
+                        android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
+                    )
+                    .start()
+
+                oldShell?.animate()
+                    ?.alpha(0.82f)
+                    ?.setDuration(220L)
+                    ?.start()
+
+                val maxX = maxOf(cx, nextShell.width - cx).toDouble()
+                val maxY = maxOf(cy, nextShell.height - cy).toDouble()
+                val finalRadius = kotlin.math.hypot(maxX, maxY).toFloat()
+
+                ViewAnimationUtils.createCircularReveal(
+                    nextShell,
+                    cx.coerceIn(0, nextShell.width),
+                    cy.coerceIn(0, nextShell.height),
+                    0f,
+                    finalRadius
+                ).apply {
+                    duration = 340L
+                    interpolator =
+                        android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
+                    addListener(object : android.animation.AnimatorListenerAdapter() {
+                        override fun onAnimationEnd(animation: android.animation.Animator) {
+                            restoreSettingsScrollPosition(
+                                nextSettingsScroll,
+                                oldSettingsScrollY
+                            )
+
+                            if (oldShell != null && oldShell.parent === root) {
+                                root.removeView(oldShell)
+                            }
+
+                            primaryShell = nextShell
+                            primaryContentHost = nextHost
+                            primaryNav = nextNav
+                            primaryShellLightTheme = light
+                            primaryShellAccent = normalizedAccent
+                            currentPrimaryTab = SohrTab.SETTINGS
+
+                            root.setBackgroundColor(bg)
+                            applySystemTheme()
                         }
-
-                        primaryShell = nextShell
-                        primaryContentHost = nextHost
-                        primaryNav = nextNav
-                        primaryShellLightTheme = light
-                        primaryShellAccent = normalizedAccent
-                        currentPrimaryTab = SohrTab.SETTINGS
-
-                        root.setBackgroundColor(bg)
-                        applySystemTheme()
-                    }
-                })
-                start()
+                    })
+                    start()
+                }
             }
         }
     }

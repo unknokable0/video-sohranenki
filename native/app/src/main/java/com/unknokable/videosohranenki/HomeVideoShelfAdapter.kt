@@ -24,6 +24,7 @@ class HomeVideoShelfAdapter(
     private val animationsEnabled: Boolean,
     private val mode: Mode,
     private val progressFor: (VideoItem) -> Float,
+    private val lastPlayedAtFor: (VideoItem) -> Long,
     private val onClick: (VideoItem) -> Unit
 ) : RecyclerView.Adapter<HomeVideoShelfAdapter.Holder>() {
 
@@ -190,7 +191,8 @@ class HomeVideoShelfAdapter(
         val ageMs = (System.currentTimeMillis() - item.date.toLong() * 1000L).coerceAtLeast(0L)
         val trulyNew = mode == Mode.NEW &&
             progress <= 0.005f &&
-            ageMs <= 48L * 60L * 60L * 1000L
+            lastPlayedAtFor(item) <= 0L &&
+            ageMs <= 24L * 60L * 60L * 1000L
 
         holder.badge.visibility =
             if (mode == Mode.CONTINUE || trulyNew) View.VISIBLE else View.GONE

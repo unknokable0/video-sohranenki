@@ -168,14 +168,26 @@ class SohrBottomNavView(
         return slot
     }
 
+    private var requestLocked = false
+
     private fun requestIndex(target: Int) {
-        if (target !in tabs.indices || target == selectedIndex) return
-        selectIndex(target, animate = true, notify = true)
+        if (target !in tabs.indices || target == selectedIndex || requestLocked) return
+
+        requestLocked = true
+        animatePress(target)
+        onSelect(tabs[target])
+
+        postDelayed({
+            requestLocked = false
+        }, 320L)
     }
 
     fun syncSelected(tab: SohrTab, animate: Boolean = false) {
         val target = tabs.indexOf(tab)
         if (target < 0) return
+
+        requestLocked = false
+
         if (target == selectedIndex) {
             updateStates(selectedIndex)
             positionIndicator(false)
