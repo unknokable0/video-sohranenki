@@ -142,12 +142,39 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -q '"magenta"' native/app/src/main/java/com/unknokable/videosohranenki/ThemePalette.kt
-          grep -q '"sunset"' native/app/src/main/java/com/unknokable/videosohranenki/ThemePalette.kt
-          grep -q 'private fun accentSelector' native/app/src/main/java/com/unknokable/videosohranenki/SettingsScreen.kt
-          grep -q 'R.drawable.ic_chevron_right' native/app/src/main/java/com/unknokable/videosohranenki/DayCollectionAdapter.kt
-          grep -q 'R.drawable.ic_close' native/app/src/main/java/com/unknokable/videosohranenki/ModernDialogs.kt
-          test -s native/app/src/main/res/drawable-nodpi/ic_launcher.webp
+          python3 - <<'PY'
+          from pathlib import Path
+
+          checks = {
+              "native/app/src/main/java/com/unknokable/videosohranenki/ThemePalette.kt": [
+                  '"magenta"', '"sunset"', '"ocean"', '"ice"', '"mint"'
+              ],
+              "native/app/src/main/java/com/unknokable/videosohranenki/SettingsScreen.kt": [
+                  "private fun accentSelector", "AppThemes.Presets"
+              ],
+              "native/app/src/main/java/com/unknokable/videosohranenki/DayCollectionAdapter.kt": [
+                  "R.drawable.ic_chevron_right"
+              ],
+              "native/app/src/main/java/com/unknokable/videosohranenki/ModernDialogs.kt": [
+                  "R.drawable.ic_close", "R.drawable.ic_check"
+              ],
+              "native/app/src/main/java/com/unknokable/videosohranenki/LoadingWaveView.kt": [
+                  "LinearGradient", "syncAnimator"
+              ],
+          }
+
+          for file_name, needles in checks.items():
+              text = Path(file_name).read_text(encoding="utf-8")
+              missing = [needle for needle in needles if needle not in text]
+              if missing:
+                  raise SystemExit(f"{file_name}: missing {missing}")
+
+          icon = Path("native/app/src/main/res/drawable-nodpi/ic_launcher.webp")
+          if not icon.is_file() or icon.stat().st_size < 4096:
+              raise SystemExit(f"SOHR launcher asset missing or too small: {icon}")
+
+          print(f"SOHR 6 UI assets verified; launcher={icon.stat().st_size} bytes")
+          PY
 
       - name: Enable KVM for x86_64 smoke test
         shell: bash
