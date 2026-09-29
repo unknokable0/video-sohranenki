@@ -3816,11 +3816,8 @@ class MainActivity : AppCompatActivity() {
                 isSettingsScreen = false
                 showSelectedVideoSource(forceRefresh = needsReload)
             },
-            onThemeChanged = { light, source ->
-                animateThemeReveal(light, source)
-            },
-            onAccentChanged = { accent, source ->
-                animateAccentReveal(accent, source)
+            onAppearanceChanged = { light, accent, source ->
+                animateSettingsPaletteReveal(light, accent, source)
             },
             onLanguageChanged = {
                 showSettings()
@@ -4178,11 +4175,8 @@ class MainActivity : AppCompatActivity() {
                 isSettingsScreen = false
                 showSelectedVideoSource(forceRefresh = needsReload)
             },
-            onThemeChanged = { nextLight, nextSource ->
-                animateThemeReveal(nextLight, nextSource)
-            },
-            onAccentChanged = { nextAccent, nextSource ->
-                animateAccentReveal(nextAccent, nextSource)
+            onAppearanceChanged = { nextLight, nextAccent, nextSource ->
+                animateSettingsPaletteReveal(nextLight, nextAccent, nextSource)
             },
             onLanguageChanged = { showSettings() },
             onCheckUpdates = { checkForUpdates() }
@@ -4204,7 +4198,6 @@ class MainActivity : AppCompatActivity() {
         nextNav = SohrBottomNavView(this, palette, SohrTab.SETTINGS) { tab ->
             if (tab != currentPrimaryTab) {
                 pendingRootSlide = if (tab.ordinal > currentPrimaryTab.ordinal) 1 else -1
-                currentPrimaryTab = tab
                 when (tab) {
                     SohrTab.VIDEOS -> showSelectedVideoSource()
                     SohrTab.SETTINGS -> showSettings()
@@ -4260,8 +4253,12 @@ class MainActivity : AppCompatActivity() {
         val cy = sourceLocation[1] - rootLocation[1] + source.height / 2
 
         nextShell.post {
-            nextContent.findViewWithTag<ScrollView>("sohr_settings_scroll")
-                ?.scrollTo(0, oldSettingsScrollY)
+            val nextSettingsScroll =
+                nextContent.findViewWithTag<ScrollView>("sohr_settings_scroll")
+            nextSettingsScroll?.scrollTo(0, oldSettingsScrollY)
+            nextSettingsScroll?.post {
+                nextSettingsScroll.scrollTo(0, oldSettingsScrollY)
+            }
             nextShell.visibility = View.VISIBLE
             nextShell.animate()
                 .alpha(1f)
@@ -4781,7 +4778,6 @@ class MainActivity : AppCompatActivity() {
             val nav = SohrBottomNavView(this, palette, selected) { tab ->
                 if (tab != currentPrimaryTab) {
                     pendingRootSlide = if (tab.ordinal > currentPrimaryTab.ordinal) 1 else -1
-                    currentPrimaryTab = tab
                     when (tab) {
                         SohrTab.VIDEOS -> showSelectedVideoSource()
                         SohrTab.SETTINGS -> showSettings()
@@ -4839,7 +4835,7 @@ class MainActivity : AppCompatActivity() {
         val slide = pendingRootSlide
         pendingRootSlide = 0
         currentPrimaryTab = selected
-        nav.syncSelected(selected, animate = false)
+        nav.syncSelected(selected, animate = settings.animations && slide != 0)
 
         while (host.childCount > 1) {
             val stale = host.getChildAt(0)
