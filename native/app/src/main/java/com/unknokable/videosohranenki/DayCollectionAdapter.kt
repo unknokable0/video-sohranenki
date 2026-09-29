@@ -126,11 +126,15 @@ class DayCollectionAdapter(
             maxLines = 2
         }
 
-        val arrow = TextView(context).apply {
-            text = "›"
-            textSize = 24f
-            gravity = Gravity.CENTER
-            setTextColor(palette.accent)
+        val arrow = ImageView(context).apply {
+            setImageResource(R.drawable.ic_chevron_right)
+            imageTintList = android.content.res.ColorStateList.valueOf(palette.accent)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(context, 7), dp(context, 7), dp(context, 7), dp(context, 7))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(palette.accentSoft)
+            }
         }
 
         info.addView(title)
@@ -138,7 +142,7 @@ class DayCollectionAdapter(
 
         root.addView(preview)
         root.addView(info, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        root.addView(arrow, LinearLayout.LayoutParams(dp(context, 28), dp(context, 44)))
+        root.addView(arrow, LinearLayout.LayoutParams(dp(context, 34), dp(context, 34)))
 
         return Holder(root, image, date, badge, title, meta)
     }

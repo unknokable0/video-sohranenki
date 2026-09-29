@@ -135,6 +135,7 @@ class MainActivity : AppCompatActivity() {
     private var primaryContentHost: FrameLayout? = null
     private var primaryNav: SohrBottomNavView? = null
     private var primaryShellLightTheme: Boolean? = null
+    private var primaryShellAccent: String? = null
     private var startupPhase = true
     private var startupStatusView: TextView? = null
     private var completedUpdateNotice: String? = null
@@ -448,15 +449,14 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
         }
 
-        val logo = TextView(this).apply {
-            text = "SOHR"
-            textSize = 34f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(this@MainActivity.text)
+        val logo = ImageView(this).apply {
+            setImageResource(R.drawable.ic_launcher)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            background = roundedBg(palette.surfaceAlt, 28)
+            clipToOutline = true
             alpha = 0f
-            scaleX = 0.92f
-            scaleY = 0.92f
+            scaleX = 0.88f
+            scaleY = 0.88f
         }
 
         val loader = LoadingWaveView(this, purple).apply {
@@ -475,10 +475,7 @@ class MainActivity : AppCompatActivity() {
 
         center.addView(
             logo,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
+            LinearLayout.LayoutParams(dp(104), dp(104))
         )
         center.addView(
             loader,
@@ -1018,13 +1015,36 @@ class MainActivity : AppCompatActivity() {
             background = roundedBg(panel, 24)
         }
 
-        val title = TextView(this).apply {
-            text = t("choose_country_title")
-            textSize = 20f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(this@MainActivity.text)
-            setPadding(dp(2), 0, dp(2), dp(10))
+        val header = FrameLayout(this).apply {
+            setPadding(0, 0, 0, dp(12))
         }
+        header.addView(
+            TextView(this).apply {
+                text = t("choose_country_title")
+                textSize = 20f
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(this@MainActivity.text)
+                setPadding(dp(48), 0, dp(48), 0)
+            },
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(44),
+                Gravity.CENTER
+            )
+        )
+        header.addView(
+            ImageButton(this).apply {
+                setImageResource(R.drawable.ic_close)
+                imageTintList = ColorStateList.valueOf(muted)
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+                setPadding(dp(11), dp(11), dp(11), dp(11))
+                background = roundedBg(palette.surfaceAlt, 18)
+                setOnClickListener { dialog.dismiss() }
+            },
+            FrameLayout.LayoutParams(dp(40), dp(40), Gravity.END or Gravity.CENTER_VERTICAL)
+        )
 
         val search = EditText(this).apply {
             hint = t("country_search")
@@ -1123,7 +1143,7 @@ class MainActivity : AppCompatActivity() {
             override fun afterTextChanged(s: Editable?) = Unit
         })
 
-        wrapper.addView(title)
+        wrapper.addView(header)
         wrapper.addView(
             search,
             LinearLayout.LayoutParams(
@@ -1141,12 +1161,30 @@ class MainActivity : AppCompatActivity() {
 
         dialog.setContentView(wrapper)
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.setCanceledOnTouchOutside(false)
         render("")
         dialog.show()
-        dialog.window?.setLayout(
-            (resources.displayMetrics.widthPixels * 0.92f).toInt(),
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        )
+        dialog.window?.apply {
+            decorView.setPadding(0, 0, 0, 0)
+            setDimAmount(0.64f)
+            addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            setLayout(
+                (resources.displayMetrics.widthPixels * 0.90f).toInt(),
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+        wrapper.alpha = 0f
+        wrapper.scaleX = 0.96f
+        wrapper.scaleY = 0.96f
+        wrapper.translationY = dp(16).toFloat()
+        wrapper.animate()
+            .alpha(1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .translationY(0f)
+            .setDuration(240L)
+            .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+            .start()
         search.requestFocus()
     }
 
@@ -1718,23 +1756,44 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (showBack) {
-            val back = TextView(this).apply {
-                text = "‹  Назад"
-                textSize = 14f
+            val back = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(this@MainActivity.text)
-                setPadding(dp(12), dp(10), dp(12), dp(10))
+                setPadding(dp(10), 0, dp(12), 0)
                 background = roundedBg(palette.surfaceAlt, 14)
-                setOnClickListener {
-                    animatePress(this)
-                    onBack?.invoke()
-                }
+                isClickable = true
+                isFocusable = true
             }
-            card.addView(back, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                dp(42)
-            ).apply { bottomMargin = dp(4) })
+            back.addView(
+                ImageView(this).apply {
+                    setImageResource(R.drawable.ic_back)
+                    imageTintList = ColorStateList.valueOf(this@MainActivity.text)
+                    scaleType = ImageView.ScaleType.CENTER_INSIDE
+                    setPadding(dp(7), dp(7), dp(7), dp(7))
+                },
+                LinearLayout.LayoutParams(dp(30), dp(30))
+            )
+            back.addView(
+                TextView(this).apply {
+                    text = "Назад"
+                    textSize = 14f
+                    gravity = Gravity.CENTER
+                    includeFontPadding = false
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(this@MainActivity.text)
+                }
+            )
+            back.setOnClickListener {
+                animatePress(back)
+                onBack?.invoke()
+            }
+            card.addView(
+                back,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    dp(42)
+                ).apply { bottomMargin = dp(4) }
+            )
         }
 
         val titleView = TextView(this).apply {
@@ -3578,12 +3637,12 @@ class MainActivity : AppCompatActivity() {
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         )
 
-        val close = TextView(this).apply {
-            text = "×"
-            textSize = 26f
-            gravity = Gravity.CENTER
-            setTextColor(muted)
-            background = roundedBg(panel, 18)
+        val close = ImageButton(this).apply {
+            setImageResource(R.drawable.ic_close)
+            imageTintList = ColorStateList.valueOf(muted)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(11), dp(11), dp(11), dp(11))
+            background = roundedBg(palette.surfaceAlt, 18)
             setOnClickListener {
                 settings.twitchOauthState = null
                 dialog.dismiss()
@@ -3778,6 +3837,9 @@ class MainActivity : AppCompatActivity() {
             },
             onThemeChanged = { light, source ->
                 animateThemeReveal(light, source)
+            },
+            onAccentChanged = { accent, source ->
+                animateAccentReveal(accent, source)
             },
             onLanguageChanged = {
                 showSettings()
@@ -4089,14 +4151,29 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun animateThemeReveal(light: Boolean, source: View) {
-        if (settings.lightTheme == light) return
+        animateSettingsPaletteReveal(light, settings.themeAccent, source)
+    }
+
+    private fun animateAccentReveal(accent: String, source: View) {
+        animateSettingsPaletteReveal(settings.lightTheme, AppThemes.preset(accent).key, source)
+    }
+
+    private fun animateSettingsPaletteReveal(
+        light: Boolean,
+        accent: String,
+        source: View
+    ) {
+        val normalizedAccent = AppThemes.preset(accent).key
+        if (settings.lightTheme == light && settings.themeAccent == normalizedAccent) return
 
         if (!settings.animations || root.width <= 0 || root.height <= 0) {
             settings.lightTheme = light
+            settings.themeAccent = normalizedAccent
             primaryShell = null
             primaryContentHost = null
             primaryNav = null
             primaryShellLightTheme = null
+            primaryShellAccent = null
             applySystemTheme()
             showSettings()
             return
@@ -4106,8 +4183,10 @@ class MainActivity : AppCompatActivity() {
         val oldSystemColor = bg
 
         settings.lightTheme = light
+        settings.themeAccent = normalizedAccent
+
         val newSystemColor = bg
-        animateSystemChrome(oldSystemColor, newSystemColor, light, 300L)
+        animateSystemChrome(oldSystemColor, newSystemColor, light, 320L)
 
         val nextContent = SettingsScreen(
             this,
@@ -4118,6 +4197,9 @@ class MainActivity : AppCompatActivity() {
             },
             onThemeChanged = { nextLight, nextSource ->
                 animateThemeReveal(nextLight, nextSource)
+            },
+            onAccentChanged = { nextAccent, nextSource ->
+                animateAccentReveal(nextAccent, nextSource)
             },
             onLanguageChanged = { showSettings() },
             onCheckUpdates = { checkForUpdates() }
@@ -4175,9 +4257,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         nextShell.visibility = View.INVISIBLE
-        nextShell.alpha = 0.94f
-        nextShell.scaleX = 0.995f
-        nextShell.scaleY = 0.995f
+        nextShell.alpha = 0.92f
+        nextShell.scaleX = 0.992f
+        nextShell.scaleY = 0.992f
         root.addView(
             nextShell,
             FrameLayout.LayoutParams(
@@ -4200,11 +4282,12 @@ class MainActivity : AppCompatActivity() {
                 .alpha(1f)
                 .scaleX(1f)
                 .scaleY(1f)
-                .setDuration(260L)
+                .setDuration(280L)
                 .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
                 .start()
+
             oldShell?.animate()
-                ?.alpha(0.88f)
+                ?.alpha(0.82f)
                 ?.setDuration(220L)
                 ?.start()
 
@@ -4219,7 +4302,7 @@ class MainActivity : AppCompatActivity() {
                 0f,
                 finalRadius
             ).apply {
-                duration = 320L
+                duration = 340L
                 interpolator = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
                 addListener(object : android.animation.AnimatorListenerAdapter() {
                     override fun onAnimationEnd(animation: android.animation.Animator) {
@@ -4231,6 +4314,7 @@ class MainActivity : AppCompatActivity() {
                         primaryContentHost = nextHost
                         primaryNav = nextNav
                         primaryShellLightTheme = light
+                        primaryShellAccent = normalizedAccent
                         currentPrimaryTab = SohrTab.SETTINGS
 
                         root.setBackgroundColor(bg)
@@ -4695,7 +4779,8 @@ class MainActivity : AppCompatActivity() {
         val rebuild = primaryShell == null ||
             primaryContentHost == null ||
             primaryNav == null ||
-            primaryShellLightTheme != settings.lightTheme
+            primaryShellLightTheme != settings.lightTheme ||
+            primaryShellAccent != settings.themeAccent
 
         if (rebuild) {
             val shell = LinearLayout(this).apply {
@@ -4756,6 +4841,7 @@ class MainActivity : AppCompatActivity() {
             primaryContentHost = host
             primaryNav = nav
             primaryShellLightTheme = settings.lightTheme
+            primaryShellAccent = settings.themeAccent
             currentPrimaryTab = selected
             pendingRootSlide = 0
             return shell

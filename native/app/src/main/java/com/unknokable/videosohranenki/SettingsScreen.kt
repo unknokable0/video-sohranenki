@@ -9,6 +9,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -20,6 +21,7 @@ class SettingsScreen(
     private val settings: AppSettings,
     private val onBack: (Boolean) -> Unit,
     private val onThemeChanged: (Boolean, View) -> Unit,
+    private val onAccentChanged: (String, View) -> Unit,
     private val onLanguageChanged: () -> Unit,
     private val onCheckUpdates: () -> Unit
 ) {
@@ -78,6 +80,7 @@ class SettingsScreen(
         root.addView(sourceSelector())
 
         root.addView(themeSelector())
+        root.addView(accentSelector())
         root.addView(languageSelector())
 
         root.addView(settingRow(
@@ -549,6 +552,129 @@ class SettingsScreen(
         }
     }
 
+    private fun accentSelector(): View {
+        val box = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            background = rounded(palette.surface, 18)
+        }
+
+        box.addView(TextView(activity).apply {
+            text = "Цвет SOHR"
+            textSize = 15f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(palette.text)
+        })
+        box.addView(TextView(activity).apply {
+            text = "Акцент меняет кнопки, индикаторы и выделения"
+            textSize = 12f
+            setTextColor(palette.muted)
+            setPadding(0, dp(3), 0, dp(12))
+        })
+
+        val row = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        AppThemes.Presets.forEach { preset ->
+            val selected = preset.key == settings.themeAccent
+            val item = LinearLayout(activity).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setPadding(dp(5), dp(5), dp(5), dp(5))
+                isClickable = true
+                isFocusable = true
+            }
+
+            val swatchFrame = FrameLayout(activity).apply {
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(palette.surfaceAlt)
+                    setStroke(
+                        dp(if (selected) 2 else 1),
+                        if (selected) preset.previewColor else palette.stroke
+                    )
+                }
+            }
+
+            swatchFrame.addView(
+                View(activity).apply {
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(preset.previewColor)
+                    }
+                },
+                FrameLayout.LayoutParams(dp(34), dp(34), Gravity.CENTER)
+            )
+
+            if (selected) {
+                swatchFrame.addView(
+                    ImageView(activity).apply {
+                        setImageResource(R.drawable.ic_check)
+                        imageTintList = ColorStateList.valueOf(Color.WHITE)
+                        setPadding(dp(13), dp(13), dp(13), dp(13))
+                    },
+                    FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                )
+            }
+
+            val label = TextView(activity).apply {
+                text = preset.label
+                textSize = 10.5f
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                maxLines = 1
+                setTextColor(if (selected) palette.text else palette.muted)
+                setTypeface(typeface, if (selected) Typeface.BOLD else Typeface.NORMAL)
+                setPadding(0, dp(6), 0, 0)
+            }
+
+            item.addView(swatchFrame, LinearLayout.LayoutParams(dp(52), dp(52)))
+            item.addView(label, LinearLayout.LayoutParams(dp(72), dp(24)))
+
+            item.setOnClickListener {
+                if (preset.key == settings.themeAccent) return@setOnClickListener
+                animateTap(item)
+                onAccentChanged(preset.key, item)
+            }
+
+            row.addView(
+                item,
+                LinearLayout.LayoutParams(dp(82), dp(88)).apply {
+                    marginEnd = dp(5)
+                }
+            )
+        }
+
+        val scroll = HorizontalScrollView(activity).apply {
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            clipToPadding = false
+            addView(row)
+        }
+
+        box.addView(
+            scroll,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(92)
+            )
+        )
+
+        return LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(box)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(10) }
+        }
+    }
+
     private fun themeOption(
         iconRes: Int,
         selected: Boolean,
@@ -656,11 +782,11 @@ class SettingsScreen(
             setPadding(0, dp(3), 0, 0)
         }
 
-        val arrow = TextView(activity).apply {
-            text = "›"
-            textSize = 27f
-            gravity = Gravity.CENTER
-            setTextColor(palette.muted)
+        val arrow = ImageView(activity).apply {
+            setImageResource(R.drawable.ic_chevron_right)
+            imageTintList = ColorStateList.valueOf(palette.muted)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(8), dp(8), dp(8), dp(8))
         }
 
         labels.addView(titleView)

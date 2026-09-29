@@ -39,6 +39,10 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean("light_theme", false)
         set(value) = prefs.edit().putBoolean("light_theme", value).apply()
 
+    var themeAccent: String
+        get() = AppThemes.preset(prefs.getString("theme_accent", "violet") ?: "violet").key
+        set(value) = prefs.edit().putString("theme_accent", AppThemes.preset(value).key).apply()
+
     var postLoginTourSeen: Boolean
         get() = prefs.getBoolean("post_login_tour_seen", false)
         set(value) = prefs.edit().putBoolean("post_login_tour_seen", value).apply()
@@ -110,5 +114,5 @@ class AppSettings(context: Context) {
     fun lastPlayedAt(messageId: Long): Long =
         prefs.getLong("last_played_" + messageId, 0L)
 
-    fun palette(): ThemePalette = if (lightTheme) AppThemes.Light else AppThemes.Dark
+    fun palette(): ThemePalette = AppThemes.palette(lightTheme, themeAccent)
 }

@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 5.3 test channel: in-app Twitch OAuth + verified updater
+# SOHR 6.0.0: visual system refresh + verified updater
 # Rebuild marker: test34 runner restart
 on:
   push:
@@ -45,11 +45,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 5.3.0-test43 version
+      - name: Assign SOHR 6.0.0 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=503043" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=5.3.0-test43" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=600000" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.0.0" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -138,6 +138,17 @@ jobs:
             exit 1
           fi
 
+      - name: Verify SOHR 6.0 UI assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'key = "magenta"' native/app/src/main/java/com/unknokable/videosohranenki/ThemePalette.kt
+          grep -q 'key = "sunset"' native/app/src/main/java/com/unknokable/videosohranenki/ThemePalette.kt
+          grep -q 'private fun accentSelector' native/app/src/main/java/com/unknokable/videosohranenki/SettingsScreen.kt
+          grep -q 'R.drawable.ic_chevron_right' native/app/src/main/java/com/unknokable/videosohranenki/DayCollectionAdapter.kt
+          grep -q 'R.drawable.ic_close' native/app/src/main/java/com/unknokable/videosohranenki/ModernDialogs.kt
+          test -s native/app/src/main/res/drawable-nodpi/ic_launcher.webp
+
       - name: Enable KVM for x86_64 smoke test
         shell: bash
         run: |
@@ -188,7 +199,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 5.3.0-test43 • fixed tab text/z-order • real smooth Home-Watched slide • guarded double taps • strict release signing • BlueStacks verified"
+            "notes": "SOHR 6.0.0 • new S identity • redesigned loading • modern dialogs • 6 color palettes • vector navigation icons • performance polish • BlueStacks verified"
           }
           EOF
           cat update.json
