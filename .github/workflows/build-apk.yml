@@ -45,11 +45,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.0.1 version
+      - name: Assign SOHR 6.0.2 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=600001" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.0.1" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=600002" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.0.2" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -226,7 +226,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.0.1 • new S identity • redesigned loading • modern dialogs • 6 color palettes • vector navigation icons • performance polish • BlueStacks verified"
+            "notes": "SOHR 6.0.2 • new S identity • redesigned loading • modern dialogs • 6 color palettes • vector navigation icons • performance polish • BlueStacks verified"
           }
           EOF
           cat update.json
