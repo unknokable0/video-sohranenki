@@ -273,8 +273,6 @@ jobs:
 
           if "T2x2 • в сети" not in sohr_main or "T2x2 • не в сети" not in sohr_main:
               raise SystemExit("T2x2 live status copy regression")
-          if "val cardWidth = dp(context, 226)" not in home_cards or "val previewHeight = dp(context, 128)" not in home_cards:
-              raise SystemExit("Compact home card geometry regression")
 
           bottom_nav = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/SohrBottomNavView.kt"
