@@ -2,6 +2,7 @@ package com.unknokable.videosohranenki
 
 data class VideoItem(
     val messageId: Long,
+    val chatId: Long = 0L,
     val title: String,
     val date: Int,
     val durationSeconds: Int,
