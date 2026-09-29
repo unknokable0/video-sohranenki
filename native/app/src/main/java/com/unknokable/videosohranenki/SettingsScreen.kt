@@ -362,7 +362,7 @@ class SettingsScreen(
                     sourceHint.animate()
                         .alpha(1f)
                         .translationY(0f)
-                        .setDuration(150L)
+                        .setDuration(SohrMotion.FAST)
                         .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
                         .start()
                 }
@@ -741,34 +741,18 @@ class SettingsScreen(
 
 
     private fun animateTap(view: View) {
-        if (!settings.animations) return
-        val ease = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
-        view.animate().cancel()
-        view.animate()
-            .scaleX(0.96f)
-            .scaleY(0.96f)
-            .setDuration(60L)
-            .setInterpolator(ease)
-            .withEndAction {
-                view.animate()
-                    .scaleX(1f)
-                    .scaleY(1f)
-                    .setDuration(130L)
-                    .setInterpolator(ease)
-                    .start()
-            }
-            .start()
+        SohrMotion.press(view, settings.animations)
     }
 
     private fun animateIconPulse(icon: View) {
         if (!settings.animations) return
-        val ease = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
+        val ease = SohrMotion.smooth()
         icon.animate().cancel()
         icon.animate()
             .scaleX(0.88f)
             .scaleY(0.88f)
             .rotation(-4f)
-            .setDuration(70L)
+            .setDuration(SohrMotion.FAST / 2)
             .setInterpolator(ease)
             .withEndAction {
                 icon.animate()
