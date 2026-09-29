@@ -3268,7 +3268,7 @@ class MainActivity : AppCompatActivity() {
         items: List<VideoItem>,
         mode: HomeVideoShelfAdapter.Mode
     ) {
-        if (!settings.previews || mode != HomeVideoShelfAdapter.Mode.NEW || items.isEmpty()) return
+        if (settings.previewMode == "off" || mode != HomeVideoShelfAdapter.Mode.NEW || items.isEmpty()) return
 
         var pending: Runnable? = null
         fun cancelPending() {
@@ -3324,7 +3324,7 @@ class MainActivity : AppCompatActivity() {
         stopInlinePreview()
 
         val local = item.localPath?.let(::File)?.takeIf { it.exists() }
-        if (local == null) {
+        if (local == null && settings.previewMode == "wifi") {
             val connectivity = getSystemService(android.net.ConnectivityManager::class.java)
             if (connectivity?.isActiveNetworkMetered == true) return
         }
