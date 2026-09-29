@@ -58,7 +58,7 @@ class SohrTimeBar(context: Context) : View(context) {
         super.onDraw(canvas)
         if (width <= 0) return
         val centerY = height / 2f
-        val trackH = dp(if (scrubbing) 3f else 2f)
+        val trackH = dp(if (scrubbing) 2.5f else 1.5f)
         val radius = trackH / 2f
         val played = if (scrubbing) scrubPositionMs else positionMs
         val playedX = width * fractionFor(played)
@@ -75,7 +75,7 @@ class SohrTimeBar(context: Context) : View(context) {
             canvas.drawRoundRect(rect, radius, radius, playedPaint)
         }
         if (scrubbing) {
-            canvas.drawCircle(playedX.coerceIn(dp(5.5f), width - dp(5.5f)), centerY, dp(5.5f), thumbPaint)
+            canvas.drawCircle(playedX.coerceIn(dp(4.5f), width - dp(4.5f)), centerY, dp(4.5f), thumbPaint)
         }
     }
 
