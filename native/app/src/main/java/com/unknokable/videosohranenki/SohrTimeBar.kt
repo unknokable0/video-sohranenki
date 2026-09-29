@@ -14,6 +14,7 @@ class SohrTimeBar(context: Context) : View(context) {
     interface Listener {
         fun onScrubStart(positionMs: Long)
         fun onScrubMove(positionMs: Long, fraction: Float)
+        fun onFineScrubMode(enabled: Boolean, positionMs: Long, fraction: Float) {}
         fun onScrubStop(positionMs: Long, canceled: Boolean)
     }
 
@@ -23,6 +24,8 @@ class SohrTimeBar(context: Context) : View(context) {
     private var bufferedMs = 0L
     private var scrubbing = false
     private var scrubPositionMs = 0L
+    private var touchStartY = 0f
+    private var fineScrub = false
 
     private val density = resources.displayMetrics.density
     private val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(105, 255, 255, 255) }
@@ -82,6 +85,8 @@ class SohrTimeBar(context: Context) : View(context) {
             MotionEvent.ACTION_DOWN -> {
                 parent?.requestDisallowInterceptTouchEvent(true)
                 scrubbing = true
+                touchStartY = event.y
+                fineScrub = false
                 scrubPositionMs = positionFor(event.x)
                 listener?.onScrubStart(scrubPositionMs)
                 listener?.onScrubMove(scrubPositionMs, fractionFor(scrubPositionMs))
@@ -90,6 +95,21 @@ class SohrTimeBar(context: Context) : View(context) {
             }
             MotionEvent.ACTION_MOVE -> {
                 scrubPositionMs = positionFor(event.x)
+                val nextFine = touchStartY - event.y > dp(28f)
+                if (nextFine != fineScrub) {
+                    fineScrub = nextFine
+                    listener?.onFineScrubMode(
+                        fineScrub,
+                        scrubPositionMs,
+                        fractionFor(scrubPositionMs)
+                    )
+                } else if (fineScrub) {
+                    listener?.onFineScrubMode(
+                        true,
+                        scrubPositionMs,
+                        fractionFor(scrubPositionMs)
+                    )
+                }
                 listener?.onScrubMove(scrubPositionMs, fractionFor(scrubPositionMs))
                 invalidate()
                 return true
@@ -98,6 +118,14 @@ class SohrTimeBar(context: Context) : View(context) {
                 val canceled = event.actionMasked == MotionEvent.ACTION_CANCEL
                 if (!canceled) scrubPositionMs = positionFor(event.x)
                 positionMs = if (canceled) positionMs else scrubPositionMs
+                if (fineScrub) {
+                    listener?.onFineScrubMode(
+                        false,
+                        positionMs,
+                        fractionFor(positionMs)
+                    )
+                }
+                fineScrub = false
                 scrubbing = false
                 parent?.requestDisallowInterceptTouchEvent(false)
                 listener?.onScrubStop(positionMs, canceled)
