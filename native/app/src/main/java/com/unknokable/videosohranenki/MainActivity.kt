@@ -167,6 +167,13 @@ class MainActivity : AppCompatActivity() {
     private var settingsScrollY = 0
     private var todayLiveStatusView: TextView? = null
     private var todayLiveDot: LivePulseView? = null
+    private var todaySummaryView: TextView? = null
+    private var auxiliaryScreen: String? = null
+    private val inlinePreviewHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var inlinePreviewPlayer: androidx.media3.exoplayer.ExoPlayer? = null
+    private var inlinePreviewView: androidx.media3.ui.PlayerView? = null
+    private var inlinePreviewHost: FrameLayout? = null
+    private var inlinePreviewStop: Runnable? = null
     private var feedSearchOpen = false
     private var closeFeedSearch: (() -> Boolean)? = null
     private var searchSystemBackCallback: android.window.OnBackInvokedCallback? = null
@@ -279,6 +286,13 @@ class MainActivity : AppCompatActivity() {
                     return
                 }
                 if (closeCurrentPlayerScreen()) return
+
+                if (auxiliaryScreen != null) {
+                    auxiliaryScreen = null
+                    pendingRootSlide = -1
+                    showSelectedVideoSource()
+                    return
+                }
 
                 if (isSettingsScreen) {
                     isSettingsScreen = false
@@ -2517,6 +2531,11 @@ class MainActivity : AppCompatActivity() {
 
         startupPhase = false
         startupStatusView = null
+        auxiliaryScreen = null
+        stopInlinePreview()
+        primaryNav?.animate()?.cancel()
+        primaryNav?.translationY = 0f
+        primaryNav?.alpha = 1f
         unregisterSearchBackInterceptor()
         feedSearchOpen = false
         closeFeedSearch = null
@@ -2613,6 +2632,22 @@ class MainActivity : AppCompatActivity() {
         feedRefreshLoader = syncLoader
         titleRow.addView(syncLoader, LinearLayout.LayoutParams(dp(34), dp(34)).apply {
             marginEnd = dp(4)
+        })
+
+        val downloadsButton = ImageButton(this).apply {
+            setImageResource(R.drawable.ic_action_download)
+            imageTintList = ColorStateList.valueOf(muted)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+            background = roundedBg(palette.surfaceAlt, 18)
+            contentDescription = "Загрузки"
+            setOnClickListener {
+                SohrMotion.press(this, settings.animations)
+                showDownloadCenter()
+            }
+        }
+        titleRow.addView(downloadsButton, LinearLayout.LayoutParams(dp(40), dp(40)).apply {
+            marginEnd = dp(6)
         })
 
         val searchButton = ImageButton(this).apply {
@@ -2743,6 +2778,38 @@ class MainActivity : AppCompatActivity() {
         header.addView(
             tabs,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46))
+        )
+
+        scroll.setOnScrollChangeListener(
+            NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
+                val shrink = (scrollY.toFloat() / dp(90).coerceAtLeast(1)).coerceIn(0f, 1f)
+                titleRow.pivotX = 0f
+                titleRow.pivotY = 0f
+                titleRow.scaleX = 1f - 0.045f * shrink
+                titleRow.scaleY = 1f - 0.045f * shrink
+                titleRow.alpha = 1f - 0.10f * shrink
+
+                val nav = primaryNav
+                if (nav != null && settings.animations) {
+                    if (scrollY > oldScrollY + dp(2) && scrollY > dp(110)) {
+                        nav.animate().cancel()
+                        nav.animate()
+                            .translationY(dp(50).toFloat())
+                            .alpha(0.80f)
+                            .setDuration(SohrMotion.NORMAL)
+                            .setInterpolator(SohrMotion.smooth())
+                            .start()
+                    } else if (scrollY < oldScrollY - dp(2) || scrollY < dp(70)) {
+                        nav.animate().cancel()
+                        nav.animate()
+                            .translationY(0f)
+                            .alpha(1f)
+                            .setDuration(SohrMotion.NORMAL)
+                            .setInterpolator(SohrMotion.smooth())
+                            .start()
+                    }
+                }
+            }
         )
 
         val searchPanel = LinearLayout(this).apply {
@@ -3253,18 +3320,23 @@ class MainActivity : AppCompatActivity() {
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(this@MainActivity.text)
         })
-        copy.addView(TextView(this).apply {
-            val newText = when (unwatchedVideos.size) {
-                0 -> "Всё просмотрено"
-                1 -> "1 непросмотренное видео"
-                else -> unwatchedVideos.size.toString() + " непросмотренных видео"
-            }
-            text = newText + " • Стрик " + streak
+        val fallbackSummary = when (unwatchedVideos.size) {
+            0 -> "Всё просмотрено"
+            1 -> "1 непросмотренное видео"
+            else -> unwatchedVideos.size.toString() + " непросмотренных видео"
+        } + " • Стрик " + streak
+        val summary = TextView(this).apply {
+            text = fallbackSummary
+            tag = fallbackSummary
             textSize = 11.8f
             includeFontPadding = false
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
             setTextColor(muted)
             setPadding(0, dp(6), 0, 0)
-        })
+        }
+        copy.addView(summary)
+        todaySummaryView = summary
         card.addView(
             copy,
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
@@ -3326,10 +3398,29 @@ class MainActivity : AppCompatActivity() {
         if (isLive) {
             label.text = "T2x2 • в сети"
             label.setTextColor(Color.parseColor("#FF4458"))
+            val title = live?.title
+                ?.replace("\r\n", " ")
+                ?.replace("\n", " ")
+                ?.trim()
+                ?.take(42)
+                .orEmpty()
+                .ifBlank { "T2x2 в эфире" }
+            todaySummaryView?.text = title + " • " + liveElapsedLabel(live?.startedAt)
         } else {
             label.text = "T2x2 • не в сети"
             label.setTextColor(muted)
+            todaySummaryView?.text = todaySummaryView?.tag as? String ?: "SOHR"
         }
+    }
+
+    private fun liveElapsedLabel(startedAt: String?): String {
+        val minutes = runCatching {
+            val start = java.time.Instant.parse(startedAt)
+            java.time.Duration.between(start, java.time.Instant.now()).toMinutes().coerceAtLeast(0L)
+        }.getOrDefault(0L)
+        val hours = minutes / 60L
+        val rest = minutes % 60L
+        return if (hours > 0L) hours.toString() + " ч " + rest + " мин" else rest.toString() + " мин"
     }
 
     private fun watchLaterIds(): Set<String> =
