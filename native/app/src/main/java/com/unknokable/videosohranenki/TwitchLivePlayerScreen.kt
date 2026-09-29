@@ -314,11 +314,11 @@ class TwitchLivePlayerScreen(
         val row = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setPadding(dp(10), dp(8), dp(10), dp(8))
             setBackgroundColor(palette.background)
         }
 
-        val back = iconButton(R.drawable.ic_back, Color.parseColor("#181322"), 42).apply {
+        val back = iconButton(R.drawable.ic_back, Color.parseColor("#181322"), 38).apply {
             setOnClickListener {
                 pulse(this)
                 onBack()
@@ -327,7 +327,7 @@ class TwitchLivePlayerScreen(
 
         val title = TextView(activity).apply {
             text = live.displayName.ifBlank { live.login }
-            textSize = 15f
+            textSize = 14.5f
             setTextColor(palette.text)
             setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
@@ -335,9 +335,9 @@ class TwitchLivePlayerScreen(
             setPadding(dp(9), 0, dp(9), 0)
         }
 
-        row.addView(back, LinearLayout.LayoutParams(dp(42), dp(42)))
+        row.addView(back, LinearLayout.LayoutParams(dp(38), dp(38)))
         row.addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row.addView(View(activity), LinearLayout.LayoutParams(dp(42), dp(42)))
+        row.addView(View(activity), LinearLayout.LayoutParams(dp(38), dp(38)))
         return row
     }
 
@@ -349,8 +349,8 @@ class TwitchLivePlayerScreen(
         playPause.apply {
             setImageResource(R.drawable.ic_pause)
             setBackgroundColor(Color.TRANSPARENT)
-            background = rounded(Color.parseColor("#C9181620"), 28)
-            setPadding(dp(15), dp(15), dp(15), dp(15))
+            background = rounded(Color.parseColor("#B9181620"), 24)
+            setPadding(dp(12), dp(12), dp(12), dp(12))
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setOnClickListener {
                 val p = player
@@ -364,17 +364,17 @@ class TwitchLivePlayerScreen(
         }
         controlsOverlay.addView(
             playPause,
-            FrameLayout.LayoutParams(dp(56), dp(56), Gravity.CENTER)
+            FrameLayout.LayoutParams(dp(50), dp(50), Gravity.CENTER)
         )
 
         qualityButton = TextView(activity).apply {
             text = "Авто"
-            textSize = 10.5f
+            textSize = 10f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
-            setPadding(dp(10), 0, dp(10), 0)
-            background = rounded(Color.parseColor("#7A241B34"), 15)
+            setPadding(dp(7), 0, dp(7), 0)
+            background = rounded(Color.parseColor("#55221A30"), 13)
             setOnClickListener {
                 pulse(this)
                 showQualityPicker()
@@ -385,8 +385,8 @@ class TwitchLivePlayerScreen(
             setImageResource(R.drawable.ic_player_settings)
             imageTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(9), dp(9), dp(9), dp(9))
-            background = rounded(Color.parseColor("#7A241B34"), 19)
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            background = rounded(Color.parseColor("#55221A30"), 17)
             contentDescription = "Настройки плеера"
             setOnClickListener {
                 pulse(this)
@@ -397,8 +397,8 @@ class TwitchLivePlayerScreen(
         fullscreenButton.apply {
             setImageResource(R.drawable.ic_fullscreen)
             setBackgroundColor(Color.TRANSPARENT)
-            background = rounded(Color.parseColor("#7A241B34"), 19)
-            setPadding(dp(9), dp(9), dp(9), dp(9))
+            background = rounded(Color.parseColor("#55221A30"), 17)
+            setPadding(dp(8), dp(8), dp(8), dp(8))
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setOnClickListener {
                 setFullscreenMode(!fullscreen)
@@ -420,31 +420,31 @@ class TwitchLivePlayerScreen(
         val secondary = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(3), dp(3), dp(3), dp(3))
-            background = rounded(Color.parseColor("#8F100E17"), 20)
+            setPadding(0, 0, 0, 0)
+            background = Color.TRANSPARENT
         }
         secondary.addView(
             qualityButton,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(34))
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(30))
         )
         secondary.addView(
             settingsButton,
-            LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginStart = dp(3) }
+            LinearLayout.LayoutParams(dp(30), dp(30)).apply { marginStart = dp(2) }
         )
         secondary.addView(
             fullscreenButton,
-            LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginStart = dp(3) }
+            LinearLayout.LayoutParams(dp(30), dp(30)).apply { marginStart = dp(2) }
         )
 
         controlsOverlay.addView(
             secondary,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                dp(40),
+                dp(32),
                 Gravity.BOTTOM or Gravity.END
             ).apply {
-                rightMargin = dp(58)
-                bottomMargin = dp(10)
+                rightMargin = dp(52)
+                bottomMargin = dp(8)
             }
         )
     }
