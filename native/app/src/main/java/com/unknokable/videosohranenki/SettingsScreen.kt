@@ -81,6 +81,8 @@ class SettingsScreen(
         root.addView(languageSelector())
         root.addView(appearanceSelector())
 
+        root.addView(previewModeSelector())
+
         root.addView(settingRow(
             iconRes = R.drawable.ic_setting_autoplay,
             iconColor = "#B89AFF",
@@ -88,8 +90,6 @@ class SettingsScreen(
             description = t("autoplay_desc"),
             checked = settings.autoplay
         ) { settings.autoplay = it })
-
-        root.addView(previewModeSelector())
 
         root.addView(settingRow(
             iconRes = R.drawable.ic_setting_animations,
