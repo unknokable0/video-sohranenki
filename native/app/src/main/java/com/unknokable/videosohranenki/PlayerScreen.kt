@@ -309,7 +309,7 @@ class PlayerScreen(
             ).apply {
                 marginStart = playerMargin
                 marginEnd = playerMargin
-                topMargin = dp(13)
+                topMargin = 0
             }
         )
 
