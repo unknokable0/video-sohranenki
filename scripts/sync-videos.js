@@ -103,6 +103,11 @@ function stableVideos(value) {
   },null,2));
   console.log(`Catalog updated: ${previous.count || 0} -> ${videos.length} videos`);
 })().catch(error => {
+  const message = String(error?.message || error || '');
+  if (message.includes('Keeping the previous catalog')) {
+    console.warn(message);
+    return;
+  }
   console.error(error?.stack || error);
   process.exitCode = 1;
 });
