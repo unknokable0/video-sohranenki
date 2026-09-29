@@ -8,7 +8,6 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.PathInterpolator
@@ -16,7 +15,6 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import kotlin.math.abs
 
 enum class SohrTab {
     VIDEOS,
@@ -46,7 +44,6 @@ class SohrBottomNavView(
     private val labelViews = mutableListOf<TextView>()
 
     private var selectedIndex = tabs.indexOf(selected).coerceAtLeast(0)
-    private var downX = 0f
     private var indicatorAnimator: ValueAnimator? = null
 
     private val smoothInterpolator = PathInterpolator(0.22f, 1f, 0.36f, 1f)
@@ -92,24 +89,10 @@ class SohrBottomNavView(
             LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(56), Gravity.CENTER)
         )
 
-        setOnTouchListener { _, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    downX = event.x
-                    true
-                }
-                MotionEvent.ACTION_UP -> {
-                    val dx = event.x - downX
-                    if (abs(dx) > dp(44)) {
-                        val target = if (dx < 0) selectedIndex + 1 else selectedIndex - 1
-                        requestIndex(target.coerceIn(0, tabs.lastIndex))
-                    }
-                    performClick()
-                    true
-                }
-                else -> true
-            }
-        }
+        // Do not consume touches on the whole navigation container.
+        // Each tab owns its full slot, so taps cannot be swallowed by a parent gesture listener.
+        isClickable = false
+        isFocusable = false
 
         post {
             positionIndicator(false)
@@ -173,33 +156,24 @@ class SohrBottomNavView(
         return slot
     }
 
-    private var requestLocked = false
-
     private fun requestIndex(target: Int) {
-        if (target !in tabs.indices || target == selectedIndex || requestLocked) return
+        if (target !in tabs.indices || target == selectedIndex) return
 
-        requestLocked = true
         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+
+        // Give immediate visual feedback and navigate in the same frame.
+        // No artificial lock: quick consecutive taps remain responsive.
+        selectedIndex = target
+        updateStates(target)
+        positionIndicator(animate = true)
         animatePress(target)
-
-        // The screen is the source of truth. Do not move the selected indicator
-        // until MainActivity actually accepts the navigation and calls syncSelected().
         onSelect(tabs[target])
-
-        postDelayed({
-            if (requestLocked) {
-                updateStates(selectedIndex)
-                positionIndicator(false)
-                requestLocked = false
-            }
-        }, 360L)
     }
 
     fun syncSelected(tab: SohrTab, animate: Boolean = false) {
         val target = tabs.indexOf(tab)
         if (target < 0) return
 
-        requestLocked = false
         indicatorAnimator?.cancel()
         indicator.animate().cancel()
 
