@@ -1,3 +1,5 @@
+import java.util.Base64
+
 // Build marker: SOHR fullscreen + seek + cache fix
 plugins {
     id("com.android.application")
@@ -81,7 +83,7 @@ val prepareSohrBrandAssets = tasks.register("prepareSohrBrandAssets") {
         val drawableDir = generatedSohrBrandRes.get().dir("drawable-nodpi").asFile
         drawableDir.mkdirs()
         val encoded = sohrBrandBase64.asFile.readText().trim()
-        val bytes = java.util.Base64.getDecoder().decode(encoded)
+        val bytes = Base64.getDecoder().decode(encoded)
         drawableDir.resolve("sohr_brand_logo.webp").writeBytes(bytes)
     }
 }
