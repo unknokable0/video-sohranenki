@@ -381,12 +381,13 @@ class TwitchLivePlayerScreen(
             }
         }
 
-        val settingsButton = TextView(activity).apply {
-            text = "⚙"
-            textSize = 18f
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
+        val settingsButton = ImageButton(activity).apply {
+            setImageResource(R.drawable.ic_player_settings)
+            imageTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(10), dp(10), dp(10), dp(10))
             background = rounded(Color.parseColor("#B5181620"), 19)
+            contentDescription = "Настройки плеера"
             setOnClickListener {
                 pulse(this)
                 showLiveSettings()
