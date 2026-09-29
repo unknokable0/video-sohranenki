@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.1.0: home, PiP and interaction refresh
+# SOHR 6.1.1: feed alignment, Anton live status and player polish
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.1.0 version
+      - name: Assign SOHR 6.1.1 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=610000" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.1.0" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=610001" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.1.1" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -342,7 +342,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "Исправлен PiP: в системном окне показывается только видео • Новая карточка SOHR Сегодня • Поиск с фильтрами по медиатеке • Shared transition карточки в плеер • Predictive Back • Ambient-фон плеера • Long-press быстрые действия • Skeleton-загрузка • Улучшенные микроанимации и haptic"
+            "notes": "Выровнены карточки главной и карусель • Статус Антона теперь внутри SOHR Сегодня: серый офлайн и красный пульсирующий онлайн • Удалён дублирующий T2x2-блок • Back закрывает поиск • Экран видео выровнен • Telegram-caption разделяется на заголовок и описание"
           }
           EOF
           cat update.json
