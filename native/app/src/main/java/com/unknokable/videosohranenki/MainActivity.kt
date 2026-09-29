@@ -171,7 +171,7 @@ class MainActivity : AppCompatActivity() {
     private var updateAutoCheckJob: kotlinx.coroutines.Job? = null
     private val automaticUpdateCheckIntervalMs = 6L * 60L * 60L * 1000L
     private var onboardingActive = false
-    private var videoSection = 1 // 1 collections, 2 watched
+    private var videoSection = 1 // 1 home, 2 history, 3 saved
     private var pendingVideoSectionCrossfade = false
     private var pendingVideoSectionDirection = 0
     private var videoSectionSwitchLocked = false
@@ -2522,7 +2522,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun switchVideoSection(section: Int) {
-        if (section !in 1..2 || videoSection == section || videoSectionSwitchLocked) return
+        if (section !in 1..3 || videoSection == section || videoSectionSwitchLocked) return
 
         videoSectionSwitchLocked = true
         pendingVideoSectionCrossfade = true
@@ -2577,8 +2577,14 @@ class MainActivity : AppCompatActivity() {
 
         val zone = ZoneId.systemDefault()
         val watched = watchedVideoIds()
+        val watchLater = watchLaterIds()
+        val favorites = favoriteIds()
+        val savedIds = watchLater + favorites
         val watchedVideos = videos.filter { watched.contains(it.messageId.toString()) }
         val regularVideos = videos.filterNot { watched.contains(it.messageId.toString()) }
+        val watchLaterVideos = videos.filter { watchLater.contains(it.messageId.toString()) }
+        val favoriteVideos = videos.filter { favorites.contains(it.messageId.toString()) }
+        val savedVideos = videos.filter { savedIds.contains(it.messageId.toString()) }
 
         fun groups(source: List<VideoItem>) =
             source.groupBy {
@@ -2592,7 +2598,12 @@ class MainActivity : AppCompatActivity() {
 
         val regularGroups = groups(regularVideos)
         val watchedGroups = groups(watchedVideos)
-        val visibleGroups = if (videoSection == 2) watchedGroups else regularGroups
+        val savedGroups = groups(savedVideos)
+        val visibleGroups = when (videoSection) {
+            2 -> watchedGroups
+            3 -> savedGroups
+            else -> regularGroups
+        }
         val sectionTransitionDirection = pendingVideoSectionDirection
 
         val page = LinearLayout(this).apply {
@@ -2696,10 +2707,10 @@ class MainActivity : AppCompatActivity() {
         }
         header.addView(
             TextView(this).apply {
-                text = if (videoSection == 2) {
-                    sourceName + " • " + watchedVideos.size + " просмотрено"
-                } else {
-                    sourceName + " • " + regularVideos.size + " не просмотрено"
+                text = when (videoSection) {
+                    2 -> sourceName + " • " + watchedVideos.size + " в истории"
+                    3 -> sourceName + " • " + savedVideos.size + " сохранено"
+                    else -> sourceName + " • " + regularVideos.size + " не просмотрено"
                 }
                 textSize = 11.8f
                 gravity = Gravity.CENTER_VERTICAL
@@ -2726,7 +2737,7 @@ class MainActivity : AppCompatActivity() {
             elevation = dp(2).toFloat()
         }
 
-        listOf("Главная" to 1, "Просмотренное" to 2).forEach { (label, section) ->
+        listOf("Главная" to 1, "История" to 2, "Сохранено" to 3).forEach { (label, section) ->
             val selected = videoSection == section
             val tab = TextView(this).apply {
                 text = label
@@ -2754,7 +2765,12 @@ class MainActivity : AppCompatActivity() {
                                 kotlin.math.abs(dx) >= dp(46) &&
                                 kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.25f
                             ) {
-                                switchVideoSection(if (dx < 0f) 2 else 1)
+                                val target = if (dx < 0f) {
+                                    (videoSection + 1).coerceAtMost(3)
+                                } else {
+                                    (videoSection - 1).coerceAtLeast(1)
+                                }
+                                if (target != videoSection) switchVideoSection(target)
                                 true
                             } else false
                         }
@@ -2784,14 +2800,15 @@ class MainActivity : AppCompatActivity() {
         )
         tabs.post {
             val usable = tabs.width - tabs.paddingLeft - tabs.paddingRight
-            val slot = (usable / 2f).coerceAtLeast(0f)
+            val slot = (usable / 3f).coerceAtLeast(0f)
             val params = tabIndicator.layoutParams as FrameLayout.LayoutParams
             params.width = slot.toInt()
             params.height = dp(40)
             tabIndicator.layoutParams = params
-            val target = if (videoSection == 2) slot else 0f
+            val target = slot * (videoSection - 1)
             if (sectionTransitionDirection != 0 && settings.animations) {
-                tabIndicator.translationX = if (videoSection == 2) 0f else slot
+                val previousSection = (videoSection - sectionTransitionDirection).coerceIn(1, 3)
+                tabIndicator.translationX = slot * (previousSection - 1)
                 tabIndicator.animate().cancel()
                 tabIndicator.animate()
                     .translationX(target)
@@ -3224,6 +3241,34 @@ class MainActivity : AppCompatActivity() {
             todayLiveDot = null
         }
 
+        if (videoSection == 3) {
+            if (favoriteVideos.isNotEmpty()) {
+                contentHost.addView(
+                    buildHomeVideoShelf(
+                        title = "Избранное",
+                        subtitle = favoriteVideos.size.toString() + " сохранено",
+                        items = favoriteVideos
+                            .sortedWith(compareByDescending<VideoItem> { it.date }.thenByDescending { it.messageId })
+                            .take(10),
+                        mode = HomeVideoShelfAdapter.Mode.NEW
+                    )
+                )
+            }
+            if (watchLaterVideos.isNotEmpty()) {
+                contentHost.addView(
+                    buildHomeVideoShelf(
+                        title = "Смотреть позже",
+                        subtitle = watchLaterVideos.size.toString() + " видео на потом",
+                        items = watchLaterVideos
+                            .sortedWith(compareByDescending<VideoItem> { settings.lastPlayedAt(it.messageId) }
+                                .thenByDescending { it.date })
+                            .take(10),
+                        mode = HomeVideoShelfAdapter.Mode.NEW
+                    )
+                )
+            }
+        }
+
         val collectionHeader = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -3231,7 +3276,11 @@ class MainActivity : AppCompatActivity() {
         }
         collectionHeader.addView(
             TextView(this).apply {
-                text = if (videoSection == 2) "Просмотренное по дням" else "Сборники по дням"
+                text = when (videoSection) {
+                    2 -> "История по дням"
+                    3 -> "Все сохранённые"
+                    else -> "Сборники по дням"
+                }
                 textSize = 18f
                 setTypeface(typeface, Typeface.BOLD)
                 setTextColor(this@MainActivity.text)
@@ -3255,10 +3304,10 @@ class MainActivity : AppCompatActivity() {
         if (visibleGroups.isEmpty()) {
             contentHost.addView(
                 TextView(this).apply {
-                    text = if (videoSection == 2) {
-                        "Здесь появятся просмотренные видео."
-                    } else {
-                        "Новых непросмотренных видео пока нет."
+                    text = when (videoSection) {
+                        2 -> "Здесь появится история просмотров."
+                        3 -> "Сохранённых видео пока нет."
+                        else -> "Новых непросмотренных видео пока нет."
                     }
                     textSize = 14.5f
                     gravity = Gravity.CENTER
