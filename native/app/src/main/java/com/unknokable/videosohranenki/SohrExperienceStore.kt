@@ -18,6 +18,7 @@ data class SohrMonthlyRecap(
 
 class SohrExperienceStore(context: Context) {
     private val prefs = context.getSharedPreferences("sohr_experience", Context.MODE_PRIVATE)
+    @Volatile private var queueCache: List<Long>? = null
 
     fun beginVisit(nowMs: Long = System.currentTimeMillis()): Long {
         val previous = prefs.getLong(KEY_LAST_VISIT, 0L)
@@ -28,8 +29,9 @@ class SohrExperienceStore(context: Context) {
     fun lastVisitMs(): Long = prefs.getLong(KEY_LAST_VISIT, 0L)
 
     fun queueIds(): List<Long> {
+        queueCache?.let { return it }
         val raw = prefs.getString(KEY_QUEUE, "[]").orEmpty()
-        return runCatching {
+        val parsed = runCatching {
             val array = JSONArray(raw)
             buildList {
                 for (i in 0 until array.length()) {
@@ -38,6 +40,8 @@ class SohrExperienceStore(context: Context) {
                 }
             }
         }.getOrDefault(emptyList())
+        queueCache = parsed
+        return parsed
     }
 
     fun addNext(messageId: Long) {
@@ -68,12 +72,15 @@ class SohrExperienceStore(context: Context) {
     }
 
     fun clearQueue() {
+        queueCache = emptyList()
         prefs.edit().putString(KEY_QUEUE, "[]").apply()
     }
 
     private fun saveQueue(ids: List<Long>) {
+        val normalized = ids.distinct().take(40)
+        queueCache = normalized
         val array = JSONArray()
-        ids.distinct().take(40).forEach(array::put)
+        normalized.forEach(array::put)
         prefs.edit().putString(KEY_QUEUE, array.toString()).apply()
     }
 
