@@ -3353,11 +3353,13 @@ class MainActivity : AppCompatActivity() {
         return added
     }
 
-    private fun downloadedVideoIds(): Set<String> =
-        getSharedPreferences("sohr_downloaded", MODE_PRIVATE)
+    private fun downloadedVideoIds(): Set<String> {
+        val legacy = getSharedPreferences("sohr_downloaded", MODE_PRIVATE)
             .getStringSet("ids", emptySet())
             ?.toSet()
             ?: emptySet()
+        return legacy + downloadStore.entries().map { it.messageId.toString() }
+    }
 
     private fun markDownloaded(item: VideoItem) {
         val prefs = getSharedPreferences("sohr_downloaded", MODE_PRIVATE)
@@ -4428,6 +4430,24 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun prefetchNextCandidate(
+        server: TelegramStreamServer?,
+        item: VideoItem
+    ) {
+        if (server == null || item.fileId <= 0 || item.fileSize <= 0L) return
+        val connectivity = getSystemService(android.net.ConnectivityManager::class.java)
+        val maxBytes = if (connectivity?.isActiveNetworkMetered == true) {
+            6L * 1024L * 1024L
+        } else {
+            24L * 1024L * 1024L
+        }
+        server.prefetchFraction(
+            item = item,
+            fraction = 0.15f,
+            maxBytes = maxBytes
+        )
+    }
+
     private fun openPlayer(
         item: VideoItem,
         startSeconds: Int = 0,
@@ -4455,9 +4475,16 @@ class MainActivity : AppCompatActivity() {
         if (localFile == null) server?.prefetch(item)
         val orderedForPlayback = (currentDay?.videos ?: currentVideos)
             .sortedWith(compareBy<VideoItem> { it.date }.thenBy { it.messageId })
+        val byId = orderedForPlayback.associateBy { it.messageId }
+        val queueItems = experienceStore.queueIds()
+            .mapNotNull(byId::get)
+            .filterNot { it.messageId == item.messageId }
         val currentIndex = orderedForPlayback.indexOfFirst { it.messageId == item.messageId }
-        val nextItem = if (currentIndex >= 0) orderedForPlayback.getOrNull(currentIndex + 1) else null
-        nextItem?.takeIf { it.localPath == null }?.let { server?.prefetch(it) }
+        val naturalNext = if (currentIndex >= 0) orderedForPlayback.getOrNull(currentIndex + 1) else null
+        val nextItem = queueItems.firstOrNull() ?: naturalNext
+        nextItem?.takeIf { it.localPath == null }?.let { candidate ->
+            prefetchNextCandidate(server, candidate)
+        }
         playerScreen?.destroy()
         currentStreamingItem?.let { previous -> streamServer?.release(previous) }
         currentStreamingItem = if (localFile == null) item else null
@@ -4482,7 +4509,21 @@ class MainActivity : AppCompatActivity() {
                 settings = settings,
                 startPositionMs = resumePositionMs,
                 nextItem = nextItem,
-                onPlayNext = { next -> openPlayer(next) },
+                queueItems = queueItems,
+                onPlayNext = { next ->
+                    if (experienceStore.queueIds().contains(next.messageId)) {
+                        experienceStore.removeFromQueue(next.messageId)
+                    }
+                    openPlayer(next)
+                },
+                onDownloadRequested = { requested -> downloadVideoQuick(requested) },
+                onWatchTime = { watchedMs, sessionMs ->
+                    experienceStore.recordWatchTime(
+                        messageId = item.messageId,
+                        watchedMs = watchedMs,
+                        sessionMs = sessionMs
+                    )
+                },
                 isWatched = isVideoWatched(item.messageId),
                 onWatchedChange = { watched, shouldBeWatched ->
                     if (shouldBeWatched) {
@@ -4517,6 +4558,7 @@ class MainActivity : AppCompatActivity() {
                 onFullscreen = { setFullscreen(it) },
                 onPlaybackStarted = {
                     settings.markPlayed(item.messageId)
+                    experienceStore.recordPlayStart(item.messageId)
                     streakTracker.markWatched()
                 }
             )
