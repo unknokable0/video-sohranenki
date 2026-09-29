@@ -147,19 +147,29 @@ jobs:
 
           checks = {
               "native/app/src/main/java/com/unknokable/videosohranenki/ThemePalette.kt": [
-                  '"magenta"', '"sunset"', '"ocean"', '"ice"', '"mint"'
+                  '"magenta"', '"sunset"', '"ocean"', '"ice"', '"mint"',
+                  '"rose"', '"amber"', '"lime"', '"aqua"', '"indigo"', '"crimson"'
               ],
               "native/app/src/main/java/com/unknokable/videosohranenki/SettingsScreen.kt": [
-                  "private fun accentSelector", "AppThemes.Presets"
+                  "private fun appearanceSelector", "showAppearancePicker", "AppThemes.Presets"
               ],
               "native/app/src/main/java/com/unknokable/videosohranenki/DayCollectionAdapter.kt": [
                   "R.drawable.ic_chevron_right"
               ],
               "native/app/src/main/java/com/unknokable/videosohranenki/ModernDialogs.kt": [
-                  "R.drawable.ic_close", "R.drawable.ic_check"
+                  "R.drawable.ic_close", "R.drawable.ic_check", "fun showAppearancePicker"
               ],
               "native/app/src/main/java/com/unknokable/videosohranenki/LoadingWaveView.kt": [
-                  "LinearGradient", "syncAnimator"
+                  "LinearGradient", "syncAnimator", "PathMeasure"
+              ],
+              "native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt": [
+                  "R.drawable.ic_player_settings"
+              ],
+              "native/app/src/main/java/com/unknokable/videosohranenki/TwitchPlayerScreen.kt": [
+                  "R.drawable.ic_replay_10", "R.drawable.ic_forward_10", "R.drawable.ic_player_settings"
+              ],
+              "native/app/src/main/java/com/unknokable/videosohranenki/TwitchLivePlayerScreen.kt": [
+                  "R.drawable.ic_player_settings"
               ],
           }
 
