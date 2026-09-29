@@ -7,6 +7,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PathMeasure
 import android.view.View
+import android.os.SystemClock
 import android.view.animation.LinearInterpolator
 import kotlin.math.sin
 
@@ -32,14 +33,20 @@ class LoadingWaveView(
         strokeJoin = Paint.Join.ROUND
     }
 
+    private val cycleMs = 1750L
+
     private val animator = ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = 1750L
+        // The animator is only a frame ticker. Position comes from uptime, so the
+        // moving segment never pauses on animator repeat boundaries.
+        duration = 60_000L
         repeatCount = ValueAnimator.INFINITE
         interpolator = LinearInterpolator()
         addUpdateListener {
-            val raw = (it.animatedValue as Float).coerceIn(0f, 1f)
-            // Never stops: it only gently slows down and speeds up along the cloud.
-            phase = (raw + 0.038f * sin(raw * Math.PI.toFloat() * 2f)).coerceIn(0f, 1f)
+            val raw = ((SystemClock.uptimeMillis() % cycleMs).toFloat() / cycleMs.toFloat())
+                .coerceIn(0f, 0.999999f)
+            // Old cloud path/timing stays the same. The segment only slows down
+            // and speeds up; derivative remains positive, so it never stops.
+            phase = raw + 0.060f * sin(raw * Math.PI.toFloat() * 2f)
             invalidate()
         }
     }
