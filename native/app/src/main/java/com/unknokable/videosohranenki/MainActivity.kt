@@ -7275,24 +7275,25 @@ class MainActivity : AppCompatActivity() {
 
                 val telegramInterpolator = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
                 if (sectionCrossfade) {
-                    val direction = if (sectionDirection == 0) 1 else sectionDirection
-                    val travel = dp(20).toFloat() * direction
+                    // Top sections should feel like one stable screen. Crossfade only:
+                    // no horizontal travel, so the whole page never visually "jumps".
                     content.alpha = 0f
-                    content.translationX = travel
+                    content.translationX = 0f
+                    content.translationY = 0f
                     content.scaleX = 1f
                     content.scaleY = 1f
                     old.alpha = 1f
                     old.translationX = 0f
+                    old.translationY = 0f
+
                     old.animate()
-                        .alpha(0f)
-                        .translationX(-travel * 0.45f)
+                        .alpha(0.72f)
                         .setDuration(SohrMotion.FAST)
-                        .setInterpolator(telegramInterpolator)
+                        .setInterpolator(SohrMotion.smooth())
                         .start()
+
                     content.animate()
                         .alpha(1f)
-                        .translationX(0f)
-                        .setStartDelay(28L)
                         .setDuration(SohrMotion.NORMAL)
                         .setInterpolator(SohrMotion.smooth())
                         .withEndAction {
