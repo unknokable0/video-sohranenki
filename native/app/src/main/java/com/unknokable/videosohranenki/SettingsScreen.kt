@@ -150,15 +150,10 @@ class SettingsScreen(
         val hours = seconds / 3600L
         val minutes = (seconds % 3600L) / 60L
         val tracker = StreakTracker(activity)
-        val streak = tracker.currentStreak()
         val bestStreak = tracker.longestStreak()
-        val activeDays = tracker.totalWatchedDays()
         val completion = if (videos > 0) {
             ((watched.toFloat() / videos.toFloat()) * 100f).toInt().coerceIn(0, 100)
         } else 0
-        val averageMinutes = if (activeDays > 0) {
-            (seconds / 60L / activeDays.toLong()).coerceAtLeast(0L)
-        } else 0L
 
         val card = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
@@ -286,15 +281,6 @@ class SettingsScreen(
             progressFill.layoutParams = params
         }
 
-        card.addView(TextView(activity).apply {
-            text = "Активных дней: " + activeDays +
-                "  •  текущий стрик: " + streak +
-                "  •  в среднем " + averageMinutes + "м/день"
-            textSize = 11f
-            gravity = Gravity.CENTER
-            setTextColor(palette.muted)
-            setPadding(dp(4), dp(9), dp(4), 0)
-        })
 
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
