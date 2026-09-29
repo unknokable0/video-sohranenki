@@ -63,6 +63,10 @@ class SohrExperienceStore(context: Context) {
         prefs.edit().putString(KEY_QUEUE, "[]").apply()
     }
 
+    fun replaceQueue(ids: List<Long>) {
+        saveQueue(ids)
+    }
+
     private fun saveQueue(ids: List<Long>) {
         val normalized = ids.distinct().take(40)
         queueCache = normalized
