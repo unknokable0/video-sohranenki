@@ -104,8 +104,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var videoCache: SohrVideoCache
     private lateinit var experienceStore: SohrExperienceStore
     private lateinit var downloadStore: SohrDownloadStore
-    private lateinit var momentsStore: SohrMomentsStore
-    private lateinit var recapStore: SohrRecapStore
     private var smartDownloadJob: kotlinx.coroutines.Job? = null
     private var previousVisitAtMs = 0L
     private var telegramReady = false
@@ -171,7 +169,7 @@ class MainActivity : AppCompatActivity() {
     private var updateAutoCheckJob: kotlinx.coroutines.Job? = null
     private val automaticUpdateCheckIntervalMs = 6L * 60L * 60L * 1000L
     private var onboardingActive = false
-    private var videoSection = 1 // 1 home, 2 history, 3 saved
+    private var videoSection = 1 // 1 home, 2 feed, 3 watched
     private var pendingVideoSectionCrossfade = false
     private var pendingVideoSectionDirection = 0
     private var videoSectionSwitchLocked = false
@@ -236,8 +234,6 @@ class MainActivity : AppCompatActivity() {
         videoCache = SohrVideoCache(this)
         experienceStore = SohrExperienceStore(this)
         downloadStore = SohrDownloadStore(this)
-        momentsStore = SohrMomentsStore(this)
-        recapStore = SohrRecapStore(this)
 
         val runtimePrefs = getSharedPreferences("sohr_runtime", MODE_PRIVATE)
         previousVisitAtMs = if (savedInstanceState == null) {
@@ -330,14 +326,9 @@ class MainActivity : AppCompatActivity() {
                 if (closeCurrentPlayerScreen()) return
 
                 if (auxiliaryScreen != null) {
-                    val previousAux = auxiliaryScreen
                     auxiliaryScreen = null
                     pendingRootSlide = -1
-                    if (previousAux == "moments" || previousAux == "recap") {
-                        showSettings()
-                    } else {
-                        showSelectedVideoSource()
-                    }
+                    showSelectedVideoSource()
                     return
                 }
 
@@ -689,28 +680,14 @@ class MainActivity : AppCompatActivity() {
             scaleY = 0.94f
         }
 
-        val status = TextView(this).apply {
-            text = "Запускаем SOHR…"
-            textSize = 13f
-            gravity = Gravity.CENTER
-            setTextColor(muted)
-            setPadding(0, dp(12), 0, 0)
-            alpha = 0f
-        }
-        startupStatusView = status
+        startupStatusView = null
 
         center.addView(
             loader,
-            LinearLayout.LayoutParams(dp(64), dp(64)).apply {
+            LinearLayout.LayoutParams(dp(76), dp(76)).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
             }
         )
-        center.addView(
-            status,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
         )
 
         page.addView(
@@ -2564,6 +2541,8 @@ class MainActivity : AppCompatActivity() {
         primaryNav?.animate()?.cancel()
         primaryNav?.translationY = 0f
         primaryNav?.alpha = 1f
+        primaryNav?.scaleX = 1f
+        primaryNav?.scaleY = 1f
         unregisterSearchBackInterceptor()
         feedSearchOpen = false
         closeFeedSearch = null
@@ -2577,14 +2556,8 @@ class MainActivity : AppCompatActivity() {
 
         val zone = ZoneId.systemDefault()
         val watched = watchedVideoIds()
-        val watchLater = watchLaterIds()
-        val favorites = favoriteIds()
-        val savedIds = watchLater + favorites
         val watchedVideos = videos.filter { watched.contains(it.messageId.toString()) }
         val regularVideos = videos.filterNot { watched.contains(it.messageId.toString()) }
-        val watchLaterVideos = videos.filter { watchLater.contains(it.messageId.toString()) }
-        val favoriteVideos = videos.filter { favorites.contains(it.messageId.toString()) }
-        val savedVideos = videos.filter { savedIds.contains(it.messageId.toString()) }
 
         fun groups(source: List<VideoItem>) =
             source.groupBy {
@@ -2598,10 +2571,9 @@ class MainActivity : AppCompatActivity() {
 
         val regularGroups = groups(regularVideos)
         val watchedGroups = groups(watchedVideos)
-        val savedGroups = groups(savedVideos)
         val visibleGroups = when (videoSection) {
-            2 -> watchedGroups
-            3 -> savedGroups
+            2 -> emptyList()
+            3 -> watchedGroups
             else -> regularGroups
         }
         val sectionTransitionDirection = pendingVideoSectionDirection
@@ -2708,8 +2680,8 @@ class MainActivity : AppCompatActivity() {
         header.addView(
             TextView(this).apply {
                 text = when (videoSection) {
-                    2 -> sourceName + " • " + watchedVideos.size + " в истории"
-                    3 -> sourceName + " • " + savedVideos.size + " сохранено"
+                    2 -> sourceName + " • Лента"
+                    3 -> sourceName + " • " + watchedVideos.size + " просмотрено"
                     else -> sourceName + " • " + regularVideos.size + " не просмотрено"
                 }
                 textSize = 11.8f
@@ -2737,7 +2709,7 @@ class MainActivity : AppCompatActivity() {
             elevation = dp(2).toFloat()
         }
 
-        listOf("Главная" to 1, "История" to 2, "Сохранено" to 3).forEach { (label, section) ->
+        listOf("Главная" to 1, "Лента" to 2, "Просмотренные" to 3).forEach { (label, section) ->
             val selected = videoSection == section
             val tab = TextView(this).apply {
                 text = label
@@ -2836,8 +2808,11 @@ class MainActivity : AppCompatActivity() {
 
                 primaryNav?.let { nav ->
                     nav.animate().cancel()
+                    nav.clearAnimation()
                     nav.translationY = 0f
                     nav.alpha = 1f
+                    nav.scaleX = 1f
+                    nav.scaleY = 1f
                 }
             }
         )
@@ -3255,34 +3230,6 @@ class MainActivity : AppCompatActivity() {
             todayLiveDot = null
         }
 
-        if (videoSection == 3) {
-            if (favoriteVideos.isNotEmpty()) {
-                contentHost.addView(
-                    buildHomeVideoShelf(
-                        title = "Избранное",
-                        subtitle = favoriteVideos.size.toString() + " сохранено",
-                        items = favoriteVideos
-                            .sortedWith(compareByDescending<VideoItem> { it.date }.thenByDescending { it.messageId })
-                            .take(10),
-                        mode = HomeVideoShelfAdapter.Mode.NEW
-                    )
-                )
-            }
-            if (watchLaterVideos.isNotEmpty()) {
-                contentHost.addView(
-                    buildHomeVideoShelf(
-                        title = "Смотреть позже",
-                        subtitle = watchLaterVideos.size.toString() + " видео на потом",
-                        items = watchLaterVideos
-                            .sortedWith(compareByDescending<VideoItem> { settings.lastPlayedAt(it.messageId) }
-                                .thenByDescending { it.date })
-                            .take(10),
-                        mode = HomeVideoShelfAdapter.Mode.NEW
-                    )
-                )
-            }
-        }
-
         val collectionHeader = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -3291,8 +3238,8 @@ class MainActivity : AppCompatActivity() {
         collectionHeader.addView(
             TextView(this).apply {
                 text = when (videoSection) {
-                    2 -> "История по дням"
-                    3 -> "Все сохранённые"
+                    2 -> "Лента"
+                    3 -> "Просмотренные по дням"
                     else -> "Сборники по дням"
                 }
                 textSize = 18f
@@ -3319,8 +3266,8 @@ class MainActivity : AppCompatActivity() {
             contentHost.addView(
                 TextView(this).apply {
                     text = when (videoSection) {
-                        2 -> "Здесь появится история просмотров."
-                        3 -> "Сохранённых видео пока нет."
+                        2 -> "Здесь позже появятся сообщения из Telegram-каналов."
+                        3 -> "Просмотренных видео пока нет."
                         else -> "Новых непросмотренных видео пока нет."
                     }
                     textSize = 14.5f
@@ -3943,33 +3890,12 @@ class MainActivity : AppCompatActivity() {
                         ?.let(::File)
                         ?.takeIf { it.exists() }
                         ?: run {
-                            check(telegramReady && item.fileId > 0 && channelChatId != 0L) {
+                            check(telegramReady && item.fileId > 0) {
                                 "Видео пока недоступно для скачивания"
                             }
-
-                            var file = client.send(
-                                TdApi.AddFileToDownloads(
-                                    item.fileId,
-                                    channelChatId,
-                                    item.messageId,
-                                    32
-                                )
-                            )
-
-                            var checks = 0
-                            while (!file.local.isDownloadingCompleted) {
-                                if (!isActive) error("Загрузка отменена")
-                                if (!file.local.isDownloadingActive && !file.local.canBeDownloaded) {
-                                    error("Telegram не смог загрузить файл")
-                                }
-                                delay(250L)
-                                file = client.send(TdApi.GetFile(item.fileId))
-                                checks++
-                                if (checks > 14_400) error("Загрузка заняла слишком много времени")
-                            }
-
-                            File(file.local.path).takeIf { it.exists() }
-                                ?: error("Загруженный файл не найден")
+                            val server = streamServer
+                                ?: error("Загрузка Telegram пока недоступна")
+                            server.downloadFully(item)
                         }
 
                     val ext = when {
@@ -3988,9 +3914,6 @@ class MainActivity : AppCompatActivity() {
                     val target = File(dir, safeName + "_" + item.messageId + "." + ext)
                     source.copyTo(target, overwrite = true)
 
-                    if (item.fileId > 0) {
-                        runCatching { client.send(TdApi.RemoveFileFromDownloads(item.fileId, false)) }
-                    }
                     target
                 }
             }
@@ -4064,18 +3987,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-    }
-
-    private fun openMomentsFromPlayer(messageId: Long) {
-        val outgoing = playerScreen
-        outgoing?.flushPlaybackPosition()
-        playerScreen = null
-        isPlayerScreen = false
-        currentStreamingItem?.let { streamed -> streamServer?.release(streamed) }
-        currentStreamingItem = null
-        outgoing?.destroy()
-        pendingRootSlide = 1
-        showMoments(messageId)
     }
 
     private fun showPlaybackQueue() {
@@ -4250,510 +4161,6 @@ class MainActivity : AppCompatActivity() {
                 ?.background = ColorDrawable(Color.TRANSPARENT)
         }
         dialog.show()
-    }
-
-    private fun showMoments(filterMessageId: Long? = null) {
-        auxiliaryScreen = "moments"
-        stopInlinePreview()
-        setFullscreen(false)
-
-        val allItems = (currentVideos + telegramVideos + twitchVideos)
-            .distinctBy { it.messageId }
-            .associateBy { it.messageId }
-        val moments = if (filterMessageId == null) {
-            momentsStore.all()
-        } else {
-            momentsStore.forVideo(filterMessageId)
-        }
-
-        val page = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(14), dp(16), dp(20))
-            setBackgroundColor(bg)
-        }
-
-        val header = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        header.addView(ImageButton(this).apply {
-            setImageResource(R.drawable.ic_back)
-            imageTintList = ColorStateList.valueOf(this@MainActivity.text)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(11), dp(11), dp(11), dp(11))
-            background = roundedBg(palette.surfaceAlt, 21)
-            contentDescription = "Назад"
-            setOnClickListener {
-                SohrMotion.press(this, settings.animations)
-                auxiliaryScreen = null
-                pendingRootSlide = -1
-                showSelectedVideoSource()
-            }
-        }, LinearLayout.LayoutParams(dp(42), dp(42)).apply { marginEnd = dp(11) })
-
-        val heading = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        heading.addView(TextView(this@MainActivity).apply {
-            text = if (filterMessageId == null) "Моменты" else "Моменты видео"
-            textSize = 23f
-            includeFontPadding = false
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(this@MainActivity.text)
-        })
-        heading.addView(TextView(this@MainActivity).apply {
-            text = when {
-                moments.isEmpty() -> "Пока ничего не сохранено"
-                moments.size == 1 -> "1 сохранённый момент"
-                else -> moments.size.toString() + " сохранённых моментов"
-            }
-            textSize = 11.5f
-            includeFontPadding = false
-            setTextColor(muted)
-            setPadding(0, dp(3), 0, 0)
-        })
-        header.addView(heading, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        page.addView(header)
-
-        val scroll = ScrollView(this).apply {
-            isVerticalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_NEVER
-        }
-        val list = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(0, dp(16), 0, dp(8))
-        }
-        scroll.addView(list)
-
-        if (moments.isEmpty()) {
-            list.addView(TextView(this).apply {
-                text = "Во время просмотра нажмите «Момент» — SOHR запомнит точную секунду."
-                textSize = 13.5f
-                gravity = Gravity.CENTER
-                setTextColor(muted)
-                setPadding(dp(24), dp(42), dp(24), dp(42))
-                background = roundedBg(panel, 20)
-            })
-        } else {
-            moments.forEach { moment ->
-                val row = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(dp(13), dp(11), dp(9), dp(11))
-                    background = roundedBg(panel, 18)
-                    isClickable = true
-                    isFocusable = true
-                }
-
-                row.addView(TextView(this).apply {
-                    text = formatRecapTime(moment.positionMs)
-                    textSize = 12f
-                    gravity = Gravity.CENTER
-                    setTypeface(typeface, Typeface.BOLD)
-                    setTextColor(purple)
-                    background = roundedBg(palette.accentSoft, 13)
-                }, LinearLayout.LayoutParams(dp(70), dp(38)).apply { marginEnd = dp(11) })
-
-                val copy = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-                copy.addView(TextView(this).apply {
-                    text = moment.label.ifBlank { moment.videoTitle }
-                    textSize = 13.5f
-                    maxLines = 2
-                    ellipsize = android.text.TextUtils.TruncateAt.END
-                    includeFontPadding = false
-                    setTypeface(typeface, Typeface.BOLD)
-                    setTextColor(this@MainActivity.text)
-                })
-                copy.addView(TextView(this).apply {
-                    text = if (moment.label.isBlank()) "Нажмите, чтобы продолжить отсюда" else moment.videoTitle
-                    textSize = 10.8f
-                    maxLines = 1
-                    ellipsize = android.text.TextUtils.TruncateAt.END
-                    includeFontPadding = false
-                    setTextColor(muted)
-                    setPadding(0, dp(3), 0, 0)
-                })
-                row.addView(copy, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-
-                row.addView(TextView(this).apply {
-                    text = "×"
-                    textSize = 18f
-                    gravity = Gravity.CENTER
-                    setTextColor(muted)
-                    background = roundedBg(palette.surfaceAlt, 14)
-                    isClickable = true
-                    setOnClickListener {
-                        SohrHaptics.confirm(this)
-                        momentsStore.remove(moment.id)
-                        suppressNextRootAnimation = true
-                        showMoments(filterMessageId)
-                    }
-                }, LinearLayout.LayoutParams(dp(36), dp(36)).apply { marginStart = dp(7) })
-
-                row.setOnLongClickListener {
-                    SohrHaptics.longPress(row)
-                    val renameDialog = BottomSheetDialog(this@MainActivity)
-                    val sheet = LinearLayout(this@MainActivity).apply {
-                        orientation = LinearLayout.VERTICAL
-                        setPadding(dp(16), dp(14), dp(16), dp(18))
-                        background = roundedBg(panel, 24)
-                    }
-                    sheet.addView(TextView(this@MainActivity).apply {
-                        text = "Название момента"
-                        textSize = 17f
-                        includeFontPadding = false
-                        setTypeface(typeface, Typeface.BOLD)
-                        setTextColor(this@MainActivity.text)
-                    })
-                    val input = EditText(this@MainActivity).apply {
-                        hint = "Например: лучший момент"
-                        setText(moment.label)
-                        setTextColor(this@MainActivity.text)
-                        setHintTextColor(muted)
-                        textSize = 14f
-                        setSingleLine(true)
-                        setPadding(dp(12), dp(10), dp(12), dp(10))
-                        background = roundedBg(palette.surfaceAlt, 15)
-                    }
-                    sheet.addView(input, LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        dp(48)
-                    ).apply {
-                        topMargin = dp(12)
-                        bottomMargin = dp(10)
-                    })
-                    sheet.addView(TextView(this@MainActivity).apply {
-                        text = "Сохранить"
-                        textSize = 13f
-                        gravity = Gravity.CENTER
-                        setTypeface(typeface, Typeface.BOLD)
-                        setTextColor(Color.WHITE)
-                        background = roundedBg(purple, 16)
-                        isClickable = true
-                        setOnClickListener {
-                            momentsStore.rename(moment.id, input.text?.toString().orEmpty())
-                            renameDialog.dismiss()
-                            suppressNextRootAnimation = true
-                            showMoments(filterMessageId)
-                        }
-                    }, LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        dp(46)
-                    ))
-                    renameDialog.setContentView(sheet)
-                    renameDialog.setOnShowListener {
-                        renameDialog.findViewById<FrameLayout>(
-                            com.google.android.material.R.id.design_bottom_sheet
-                        )?.background = ColorDrawable(Color.TRANSPARENT)
-                    }
-                    renameDialog.show()
-                    true
-                }
-
-                row.setOnClickListener {
-                    val item = allItems[moment.messageId]
-                    if (item != null) {
-                        SohrMotion.press(row, settings.animations)
-                        auxiliaryScreen = null
-                        openPlayer(item, (moment.positionMs / 1000L).toInt())
-                    } else {
-                        Toast.makeText(
-                            this@MainActivity,
-                            "Видео сейчас недоступно в медиатеке",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
-
-                list.addView(row, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = dp(8) })
-            }
-        }
-
-        page.addView(scroll, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            0,
-            1f
-        ))
-        replaceRoot(withBottomNav(page, SohrTab.SETTINGS))
-    }
-
-    private fun showRecap() {
-        auxiliaryScreen = "recap"
-        stopInlinePreview()
-        setFullscreen(false)
-
-        val recap = recapStore.snapshot()
-        val monthLabel = recap.month.atDay(1)
-            .format(DateTimeFormatter.ofPattern("LLLL yyyy", Locale("ru")))
-            .replaceFirstChar { it.titlecase(Locale("ru")) }
-
-        val scroll = ScrollView(this).apply {
-            isVerticalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_NEVER
-            setBackgroundColor(bg)
-        }
-        val page = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(14), dp(16), dp(24))
-            setBackgroundColor(bg)
-        }
-
-        val header = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        header.addView(ImageButton(this).apply {
-            setImageResource(R.drawable.ic_back)
-            imageTintList = ColorStateList.valueOf(this@MainActivity.text)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(11), dp(11), dp(11), dp(11))
-            background = roundedBg(palette.surfaceAlt, 21)
-            contentDescription = "Назад"
-            setOnClickListener {
-                SohrMotion.press(this, settings.animations)
-                auxiliaryScreen = null
-                pendingRootSlide = -1
-                showSettings()
-            }
-        }, LinearLayout.LayoutParams(dp(42), dp(42)).apply { marginEnd = dp(11) })
-        header.addView(TextView(this).apply {
-            text = "SOHR Recap"
-            textSize = 23f
-            includeFontPadding = false
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(this@MainActivity.text)
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        page.addView(header)
-
-        page.addView(TextView(this).apply {
-            text = monthLabel
-            textSize = 12.5f
-            setTextColor(muted)
-            setPadding(dp(54), dp(2), 0, dp(16))
-        })
-
-        val hero = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(dp(18), dp(24), dp(18), dp(24))
-            background = android.graphics.drawable.GradientDrawable(
-                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                intArrayOf(palette.accentSoft, panel)
-            ).apply { cornerRadius = dp(26).toFloat() }
-        }
-        hero.addView(TextView(this).apply {
-            text = formatRecapTime(recap.watchedMs)
-            textSize = 36f
-            includeFontPadding = false
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(purple)
-        })
-        hero.addView(TextView(this).apply {
-            text = "реального просмотра"
-            textSize = 12.5f
-            gravity = Gravity.CENTER
-            setTextColor(this@MainActivity.text)
-            setPadding(0, dp(5), 0, 0)
-        })
-        page.addView(hero)
-
-        fun statCard(value: String, label: String): View =
-            LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(14), dp(13), dp(14), dp(13))
-                background = roundedBg(panel, 18)
-                addView(TextView(this@MainActivity).apply {
-                    text = value
-                    textSize = 18f
-                    includeFontPadding = false
-                    setTypeface(typeface, Typeface.BOLD)
-                    setTextColor(this@MainActivity.text)
-                })
-                addView(TextView(this@MainActivity).apply {
-                    text = label
-                    textSize = 10.8f
-                    includeFontPadding = false
-                    setTextColor(muted)
-                    setPadding(0, dp(4), 0, 0)
-                })
-            }
-
-        val activeDay = recap.activeDay?.let { raw ->
-            runCatching {
-                LocalDate.parse(raw)
-                    .format(DateTimeFormatter.ofPattern("d MMMM", Locale("ru")))
-            }.getOrNull()
-        } ?: "—"
-
-        val rows = listOf(
-            listOf(
-                recap.uniqueVideos.toString() to "Уникальных видео",
-                recap.starts.toString() to "Запусков"
-            ),
-            listOf(
-                formatRecapTime(recap.longestSessionMs) to "Длинная сессия",
-                activeDay to "Активный день"
-            ),
-            listOf(
-                streakTracker.currentStreak().toString() + " дн." to "Текущий стрик",
-                streakTracker.longestStreak().toString() + " дн." to "Лучший стрик"
-            )
-        )
-
-        rows.forEach { pair ->
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                setPadding(0, dp(12), 0, 0)
-            }
-            pair.forEachIndexed { index, value ->
-                row.addView(
-                    statCard(value.first, value.second),
-                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                        if (index == 0) marginEnd = dp(6) else marginStart = dp(6)
-                    }
-                )
-            }
-            page.addView(row)
-        }
-
-        val save = TextView(this).apply {
-            text = "Сохранить Recap картинкой"
-            textSize = 13f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            setPadding(dp(14), dp(13), dp(14), dp(13))
-            background = roundedBg(purple, 18)
-            isClickable = true
-            setOnClickListener {
-                SohrMotion.press(this, settings.animations)
-                saveRecapCard(recap, monthLabel)
-            }
-        }
-        page.addView(save, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = dp(16) })
-
-        page.addView(TextView(this).apply {
-            text = "Recap считает только время, когда видео действительно воспроизводилось."
-            textSize = 10.8f
-            gravity = Gravity.CENTER
-            setTextColor(muted)
-            setPadding(dp(12), dp(13), dp(12), 0)
-        })
-
-        scroll.addView(page)
-        replaceRoot(withBottomNav(scroll, SohrTab.SETTINGS))
-    }
-
-    private fun formatRecapTime(ms: Long): String {
-        val totalSeconds = (ms.coerceAtLeast(0L) / 1000L)
-        val hours = totalSeconds / 3600L
-        val minutes = (totalSeconds % 3600L) / 60L
-        val seconds = totalSeconds % 60L
-        return when {
-            hours > 0L -> hours.toString() + " ч " + minutes + " мин"
-            minutes > 0L -> minutes.toString() + " мин " + seconds + " сек"
-            else -> seconds.toString() + " сек"
-        }
-    }
-
-    private fun saveRecapCard(recap: SohrRecapSnapshot, monthLabel: String) {
-        lifecycleScope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    val width = 1080
-                    val height = 1350
-                    val bitmap = android.graphics.Bitmap.createBitmap(
-                        width,
-                        height,
-                        android.graphics.Bitmap.Config.ARGB_8888
-                    )
-                    val canvas = android.graphics.Canvas(bitmap)
-                    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
-
-                    canvas.drawColor(Color.rgb(8, 9, 20))
-                    paint.textAlign = android.graphics.Paint.Align.LEFT
-                    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-
-                    paint.color = Color.rgb(118, 126, 255)
-                    paint.textSize = 76f
-                    canvas.drawText("SOHR", 86f, 138f, paint)
-
-                    paint.color = Color.WHITE
-                    paint.textSize = 58f
-                    canvas.drawText("Recap", 86f, 218f, paint)
-
-                    paint.color = Color.rgb(170, 172, 194)
-                    paint.textSize = 34f
-                    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-                    canvas.drawText(monthLabel, 86f, 276f, paint)
-
-                    paint.color = Color.rgb(118, 126, 255)
-                    paint.textSize = 102f
-                    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                    canvas.drawText(formatRecapTime(recap.watchedMs), 86f, 470f, paint)
-
-                    paint.color = Color.WHITE
-                    paint.textSize = 40f
-                    canvas.drawText(recap.uniqueVideos.toString() + " видео", 86f, 600f, paint)
-                    canvas.drawText(recap.starts.toString() + " запусков", 86f, 675f, paint)
-                    canvas.drawText("Стрик " + streakTracker.currentStreak() + " дней", 86f, 750f, paint)
-
-                    paint.color = Color.rgb(170, 172, 194)
-                    paint.textSize = 30f
-                    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-                    canvas.drawText("Сохранено из SOHR", 86f, 1230f, paint)
-
-                    val name = "SOHR_Recap_" + recap.month.toString() + ".png"
-                    if (android.os.Build.VERSION.SDK_INT >= 29) {
-                        val values = android.content.ContentValues().apply {
-                            put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, name)
-                            put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
-                            put(
-                                android.provider.MediaStore.Images.Media.RELATIVE_PATH,
-                                Environment.DIRECTORY_PICTURES + "/SOHR"
-                            )
-                            put(android.provider.MediaStore.Images.Media.IS_PENDING, 1)
-                        }
-                        val uri = contentResolver.insert(
-                            android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                            values
-                        ) ?: error("Не удалось создать файл")
-                        contentResolver.openOutputStream(uri)?.use { out ->
-                            check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out))
-                        } ?: error("Не удалось открыть файл")
-                        values.clear()
-                        values.put(android.provider.MediaStore.Images.Media.IS_PENDING, 0)
-                        contentResolver.update(uri, values, null, null)
-                    } else {
-                        val dir = File(
-                            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
-                            "SOHR"
-                        ).apply { mkdirs() }
-                        val file = File(dir, name)
-                        file.outputStream().use { out ->
-                            check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out))
-                        }
-                        android.media.MediaScannerConnection.scanFile(
-                            this@MainActivity,
-                            arrayOf(file.absolutePath),
-                            arrayOf("image/png"),
-                            null
-                        )
-                    }
-                    bitmap.recycle()
-                }
-            }
-            Toast.makeText(
-                this@MainActivity,
-                if (result.isSuccess) "Recap сохранён в Галерею" else "Не удалось сохранить Recap",
-                Toast.LENGTH_SHORT
-            ).show()
-        }
     }
 
     private fun showDownloadCenter() {
@@ -5600,11 +5007,6 @@ class MainActivity : AppCompatActivity() {
                     openPlayer(next)
                 },
                 onDownloadRequested = { requested -> downloadVideoQuick(requested) },
-                onSaveMoment = { video, at -> momentsStore.add(video, at) },
-                onOpenMoments = { video -> openMomentsFromPlayer(video.messageId) },
-                onWatchSlice = { watchedMs, sessionMs ->
-                    recapStore.addWatchSlice(item.messageId, watchedMs, sessionMs)
-                },
                 isWatched = isVideoWatched(item.messageId),
                 onWatchedChange = { watched, shouldBeWatched ->
                     if (shouldBeWatched) {
@@ -5640,7 +5042,6 @@ class MainActivity : AppCompatActivity() {
                 onPlaybackStarted = {
                     settings.markPlayed(item.messageId)
                     streakTracker.markWatched()
-                    recapStore.markSessionStart(item.messageId)
                 }
             )
         }.getOrElse { error ->
@@ -5723,11 +5124,6 @@ class MainActivity : AppCompatActivity() {
                     startPositionMs = resumePositionMs,
                     nextItem = nextItem,
                     onPlayNext = { next -> openPlayer(next) },
-                    onSaveMoment = { video, at -> momentsStore.add(video, at) },
-                    onOpenMoments = { video -> openMomentsFromPlayer(video.messageId) },
-                    onWatchSlice = { watchedMs, sessionMs ->
-                        recapStore.addWatchSlice(item.messageId, watchedMs, sessionMs)
-                    },
                     isWatched = isVideoWatched(item.messageId),
                     onWatchedChange = { watched, shouldBeWatched ->
                         if (shouldBeWatched) markVideoWatched(watched.messageId) else unmarkVideoWatched(watched.messageId)
@@ -5737,7 +5133,6 @@ class MainActivity : AppCompatActivity() {
                     onPlaybackStarted = {
                         settings.markPlayed(item.messageId)
                         streakTracker.markWatched()
-                        recapStore.markSessionStart(item.messageId)
                     }
                 )
 
@@ -6415,8 +5810,6 @@ class MainActivity : AppCompatActivity() {
             onLanguageChanged = {
                 showSettings()
             },
-            onOpenMoments = { showMoments() },
-            onOpenRecap = { showRecap() },
             onSmartDownloadsChanged = { enabled ->
                 if (enabled) scheduleSmartDownloads(telegramVideos) else smartDownloadJob?.cancel()
             },
@@ -7041,8 +6434,6 @@ class MainActivity : AppCompatActivity() {
                 animateSettingsPaletteReveal(nextLight, nextAccent, nextSource)
             },
             onLanguageChanged = { showSettings() },
-            onOpenMoments = { showMoments() },
-            onOpenRecap = { showRecap() },
             onSmartDownloadsChanged = { enabled ->
                 if (enabled) scheduleSmartDownloads(telegramVideos) else smartDownloadJob?.cancel()
             },
@@ -7712,8 +7103,11 @@ class MainActivity : AppCompatActivity() {
         val host = primaryContentHost!!
         val nav = primaryNav!!
         nav.animate().cancel()
+        nav.clearAnimation()
         nav.translationY = 0f
         nav.alpha = 1f
+        nav.scaleX = 1f
+        nav.scaleY = 1f
 
         val slide = pendingRootSlide
         pendingRootSlide = 0
@@ -7770,26 +7164,25 @@ class MainActivity : AppCompatActivity() {
                 val telegramInterpolator = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
                 if (sectionCrossfade) {
                     val direction = if (sectionDirection == 0) 1 else sectionDirection
-                    val travel = dp(46).toFloat() * direction
-                    content.alpha = 0.58f
+                    val travel = dp(20).toFloat() * direction
+                    content.alpha = 0f
                     content.translationX = travel
-                    content.scaleX = 0.992f
-                    content.scaleY = 0.992f
+                    content.scaleX = 1f
+                    content.scaleY = 1f
                     old.alpha = 1f
                     old.translationX = 0f
                     old.animate()
-                        .alpha(0.42f)
-                        .translationX(-travel * 0.38f)
-                        .setDuration(235L)
+                        .alpha(0f)
+                        .translationX(-travel * 0.45f)
+                        .setDuration(SohrMotion.FAST)
                         .setInterpolator(telegramInterpolator)
                         .start()
                     content.animate()
                         .alpha(1f)
                         .translationX(0f)
-                        .scaleX(1f)
-                        .scaleY(1f)
-                        .setDuration(295L)
-                        .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                        .setStartDelay(28L)
+                        .setDuration(SohrMotion.NORMAL)
+                        .setInterpolator(SohrMotion.smooth())
                         .withEndAction {
                             old.animate().cancel()
                             old.alpha = 1f
