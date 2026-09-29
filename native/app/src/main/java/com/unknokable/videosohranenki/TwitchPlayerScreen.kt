@@ -346,7 +346,7 @@ class TwitchPlayerScreen(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, 0, 0, 0)
-            background = Color.TRANSPARENT
+            setBackgroundColor(Color.TRANSPARENT)
         }
         actionGroup.addView(
             qualityButton,
