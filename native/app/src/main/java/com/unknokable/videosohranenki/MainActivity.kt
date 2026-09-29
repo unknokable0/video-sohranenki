@@ -3567,12 +3567,14 @@ class MainActivity : AppCompatActivity() {
         replaceRoot(withBottomNav(page, SohrTab.VIDEOS))
     }
 
-    private fun refreshT2x2Live(slot: FrameLayout) {
+    private fun refreshT2x2Live(slot: FrameLayout? = null) {
         twitchLiveJob?.cancel()
 
         val now = System.currentTimeMillis()
         if (lastT2x2LiveCheckedAt > 0L && now - lastT2x2LiveCheckedAt < t2x2LiveCacheMs) {
-            renderT2x2Live(slot, lastT2x2Live, lastT2x2LiveUnavailable)
+            updateTodayLiveSummary(lastT2x2Live, lastT2x2LiveUnavailable)
+            slot?.takeIf { it.isAttachedToWindow }
+                ?.let { renderT2x2Live(it, lastT2x2Live, lastT2x2LiveUnavailable) }
             return
         }
 
@@ -3582,7 +3584,9 @@ class MainActivity : AppCompatActivity() {
             lastT2x2Live = null
             lastT2x2LiveUnavailable = true
             lastT2x2LiveCheckedAt = now
-            renderT2x2Live(slot, null, unavailable = true)
+            updateTodayLiveSummary(null, unavailable = true)
+            slot?.takeIf { it.isAttachedToWindow }
+                ?.let { renderT2x2Live(it, null, unavailable = true) }
             return
         }
 
@@ -3593,27 +3597,24 @@ class MainActivity : AppCompatActivity() {
                 lastT2x2LiveUnavailable = false
                 lastT2x2LiveCheckedAt = System.currentTimeMillis()
 
-                if (live != null) {
-                    maybeNotifyT2x2Live(live)
-                }
-
-                if (slot.isAttachedToWindow) {
-                    renderT2x2Live(slot, live)
-                }
+                if (live != null) maybeNotifyT2x2Live(live)
+                updateTodayLiveSummary(live)
+                slot?.takeIf { it.isAttachedToWindow }
+                    ?.let { renderT2x2Live(it, live) }
             } catch (_: TwitchAuthException) {
                 lastT2x2Live = null
                 lastT2x2LiveUnavailable = true
                 lastT2x2LiveCheckedAt = System.currentTimeMillis()
-                if (slot.isAttachedToWindow) {
-                    renderT2x2Live(slot, null, unavailable = true)
-                }
+                updateTodayLiveSummary(null, unavailable = true)
+                slot?.takeIf { it.isAttachedToWindow }
+                    ?.let { renderT2x2Live(it, null, unavailable = true) }
             } catch (_: Exception) {
                 lastT2x2Live = null
                 lastT2x2LiveUnavailable = true
                 lastT2x2LiveCheckedAt = System.currentTimeMillis()
-                if (slot.isAttachedToWindow) {
-                    renderT2x2Live(slot, null, unavailable = true)
-                }
+                updateTodayLiveSummary(null, unavailable = true)
+                slot?.takeIf { it.isAttachedToWindow }
+                    ?.let { renderT2x2Live(it, null, unavailable = true) }
             }
         }
     }
@@ -3932,17 +3933,26 @@ class MainActivity : AppCompatActivity() {
                 val token = settings.twitchAccessToken
 
                 if (!settings.guestMode && clientId.isNotBlank() && !token.isNullOrBlank()) {
-                    runCatching {
+                    val result = runCatching {
                         TwitchApi.loadLiveStream(clientId, token, "t2x2")
-                    }.getOrNull()?.let { live ->
+                    }
+
+                    if (result.isSuccess) {
+                        val live = result.getOrNull()
                         lastT2x2Live = live
                         lastT2x2LiveUnavailable = false
                         lastT2x2LiveCheckedAt = System.currentTimeMillis()
-                        maybeNotifyT2x2Live(live)
+                        if (live != null) maybeNotifyT2x2Live(live)
+                        updateTodayLiveSummary(live)
 
                         t2x2LiveSlot
                             ?.takeIf { it.isAttachedToWindow }
                             ?.let { renderT2x2Live(it, live) }
+                    } else {
+                        lastT2x2Live = null
+                        lastT2x2LiveUnavailable = true
+                        lastT2x2LiveCheckedAt = System.currentTimeMillis()
+                        updateTodayLiveSummary(null, unavailable = true)
                     }
                 }
 
