@@ -69,27 +69,4 @@ dependencies {
 }
 
 
-val sohrBrandHex = layout.projectDirectory.file("src/main/brand/sohr_brand.webp.hex")
-val generatedSohrBrandRes = layout.buildDirectory.dir("generated/sohrBrandRes")
 
-android.sourceSets.getByName("main").res.srcDir(generatedSohrBrandRes)
-
-val prepareSohrBrandAssets = tasks.register("prepareSohrBrandAssets") {
-    inputs.file(sohrBrandHex)
-    outputs.dir(generatedSohrBrandRes)
-    doLast {
-        val drawableDir = generatedSohrBrandRes.get().dir("drawable-nodpi").asFile
-        drawableDir.mkdirs()
-        val encoded = sohrBrandHex.asFile.readText()
-            .filterNot(Char::isWhitespace)
-        require(encoded.length % 2 == 0) { "SOHR brand hex is invalid" }
-        val bytes = ByteArray(encoded.length / 2) { index ->
-            encoded.substring(index * 2, index * 2 + 2).toInt(16).toByte()
-        }
-        drawableDir.resolve("sohr_brand_logo.webp").writeBytes(bytes)
-    }
-}
-
-tasks.named("preBuild").configure {
-    dependsOn(prepareSohrBrandAssets)
-}
