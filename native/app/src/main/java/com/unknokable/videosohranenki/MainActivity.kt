@@ -6407,6 +6407,60 @@ class MainActivity : AppCompatActivity() {
             )
         )
 
+        val protectionTokens = streakTracker.protectionTokens()
+        val protectedDay = streakTracker.lastProtectedDay()
+        val protectionCard = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = roundedBg(panel, 19)
+        }
+
+        protectionCard.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_streak_shield)
+            imageTintList = ColorStateList.valueOf(
+                if (protectionTokens > 0) purple else muted
+            )
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(9), dp(9), dp(9), dp(9))
+            background = roundedBg(
+                if (protectionTokens > 0) palette.accentSoft else palette.surfaceAlt,
+                14
+            )
+        }, LinearLayout.LayoutParams(dp(44), dp(44)).apply {
+            marginEnd = dp(11)
+        })
+
+        val protectionCopy = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        protectionCopy.addView(TextView(this).apply {
+            text = "Защита серии • " + protectionTokens + "/2"
+            textSize = 14f
+            includeFontPadding = false
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+        })
+        protectionCopy.addView(TextView(this).apply {
+            text = when {
+                protectedDay != null ->
+                    "Щит сохранил серию " +
+                        protectedDay.format(DateTimeFormatter.ofPattern("d MMMM", Locale("ru")))
+                protectionTokens > 0 ->
+                    "Один пропущенный день закроется автоматически"
+                else ->
+                    "Новый щит за каждые 7 дней просмотра"
+            }
+            textSize = 11.2f
+            includeFontPadding = false
+            setTextColor(muted)
+            setPadding(0, dp(3), 0, 0)
+        })
+        protectionCard.addView(
+            protectionCopy,
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        )
+
         val weekTitle = TextView(this).apply {
             text = "Последние 7 дней"
             textSize = 15f
@@ -6524,6 +6578,13 @@ class MainActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(12) }
+        )
+        page.addView(
+            protectionCard,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(10) }
         )
         page.addView(weekTitle)
         page.addView(weekCard)
