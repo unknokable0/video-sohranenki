@@ -503,9 +503,9 @@ jobs:
           ]:
               if required not in sohr_main:
                   raise SystemExit(f"SOHR 6.2 main-experience regression: {required}")
-          for forbidden in ["buildRecapTeaser", "showMonthlyRecap", "SOHR Recap", "Сентябрь в SOHR"]:
+          for forbidden in ["buildRecapTeaser", "showMonthlyRecap", "experienceStore.recap()"]:
               if forbidden in sohr_main:
-                  raise SystemExit(f"SOHR 6.2.6 regression: monthly Recap returned: {forbidden}")
+                  raise SystemExit(f"SOHR 6.2.6 regression: monthly Recap code returned: {forbidden}")
 
           for required in [
               "mediaSessionBridge",
