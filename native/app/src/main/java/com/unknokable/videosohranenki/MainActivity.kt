@@ -3264,6 +3264,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(10), 0, dp(10), 0)
             clipToPadding = false
         }
+        setupInlinePreviewShelf(shelf, items, mode)
 
         val compactCardWidth = (resources.displayMetrics.widthPixels * 0.60f).toInt()
             .coerceIn(dp(154), dp(205))
@@ -3278,6 +3279,143 @@ class MainActivity : AppCompatActivity() {
             )
         )
         return section
+    }
+
+    private fun setupInlinePreviewShelf(
+        shelf: RecyclerView,
+        items: List<VideoItem>,
+        mode: HomeVideoShelfAdapter.Mode
+    ) {
+        if (!settings.previews || mode != HomeVideoShelfAdapter.Mode.NEW || items.isEmpty()) return
+
+        var pending: Runnable? = null
+        fun cancelPending() {
+            pending?.let(inlinePreviewHandler::removeCallbacks)
+            pending = null
+        }
+
+        fun schedule() {
+            cancelPending()
+            val run = Runnable {
+                if (!shelf.isAttachedToWindow || shelf.scrollState != RecyclerView.SCROLL_STATE_IDLE) return@Runnable
+                val manager = shelf.layoutManager as? LinearLayoutManager ?: return@Runnable
+                val first = manager.findFirstVisibleItemPosition()
+                val last = manager.findLastVisibleItemPosition()
+                if (first < 0 || last < first) return@Runnable
+
+                val shelfCenter = shelf.width / 2f
+                var bestPos = first
+                var bestDistance = Float.MAX_VALUE
+                for (position in first..last) {
+                    val child = manager.findViewByPosition(position) ?: continue
+                    val childCenter = (child.left + child.right) / 2f
+                    val distance = kotlin.math.abs(childCenter - shelfCenter)
+                    if (distance < bestDistance) {
+                        bestDistance = distance
+                        bestPos = position
+                    }
+                }
+
+                val item = items.getOrNull(bestPos) ?: return@Runnable
+                val card = manager.findViewByPosition(bestPos) as? ViewGroup ?: return@Runnable
+                val previewHost = card.getChildAt(0) as? FrameLayout ?: return@Runnable
+                startInlinePreview(item, previewHost)
+            }
+            pending = run
+            inlinePreviewHandler.postDelayed(run, 1_100L)
+        }
+
+        shelf.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                    schedule()
+                } else {
+                    cancelPending()
+                    stopInlinePreview()
+                }
+            }
+        })
+        shelf.post { schedule() }
+    }
+
+    private fun startInlinePreview(item: VideoItem, host: FrameLayout) {
+        stopInlinePreview()
+
+        val local = item.localPath?.let(::File)?.takeIf { it.exists() }
+        if (local == null) {
+            val connectivity = getSystemService(android.net.ConnectivityManager::class.java)
+            if (connectivity?.isActiveNetworkMetered == true) return
+        }
+
+        val uri = when {
+            local != null -> Uri.fromFile(local).toString()
+            item.source == "telegram" && streamServer != null && item.fileId > 0 -> {
+                streamServer?.prefetch(item)
+                streamServer!!.url(item)
+            }
+            else -> return
+        }
+
+        val player = inlinePreviewPlayer ?: androidx.media3.exoplayer.ExoPlayer.Builder(this)
+            .build()
+            .also { inlinePreviewPlayer = it }
+        val view = inlinePreviewView ?: androidx.media3.ui.PlayerView(this).apply {
+            useController = false
+            resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            setBackgroundColor(Color.BLACK)
+            isClickable = false
+            isFocusable = false
+        }.also { inlinePreviewView = it }
+
+        (view.parent as? ViewGroup)?.removeView(view)
+        inlinePreviewHost = host
+        view.alpha = 0f
+        host.addView(
+            view,
+            minOf(1, host.childCount),
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        player.volume = 0f
+        player.repeatMode = androidx.media3.common.Player.REPEAT_MODE_OFF
+        player.setMediaItem(androidx.media3.common.MediaItem.fromUri(uri))
+        player.playWhenReady = true
+        view.player = player
+        player.prepare()
+
+        if (settings.animations) {
+            view.animate().cancel()
+            view.animate()
+                .alpha(1f)
+                .setDuration(SohrMotion.NORMAL)
+                .setInterpolator(SohrMotion.smooth())
+                .start()
+        } else {
+            view.alpha = 1f
+        }
+
+        val stop = Runnable { stopInlinePreview() }
+        inlinePreviewStop = stop
+        inlinePreviewHandler.postDelayed(stop, 6_200L)
+    }
+
+    private fun stopInlinePreview() {
+        inlinePreviewStop?.let(inlinePreviewHandler::removeCallbacks)
+        inlinePreviewStop = null
+
+        inlinePreviewView?.let { view ->
+            view.animate().cancel()
+            (view.parent as? ViewGroup)?.removeView(view)
+            view.player = null
+        }
+        inlinePreviewHost = null
+        inlinePreviewPlayer?.runCatching {
+            pause()
+            clearMediaItems()
+        }
     }
 
     private fun buildTodayCard(unwatchedVideos: List<VideoItem>): View {
@@ -4544,6 +4682,7 @@ class MainActivity : AppCompatActivity() {
         startSeconds: Int = 0,
         sourceView: View? = null
     ) {
+        stopInlinePreview()
         val sourceBounds = sourceView?.let { source ->
             Rect().takeIf { rect -> source.getGlobalVisibleRect(rect) && !rect.isEmpty }
         }
@@ -7243,6 +7382,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         unregisterSearchBackInterceptor()
+        stopInlinePreview()
+        inlinePreviewPlayer?.release()
+        inlinePreviewPlayer = null
+        inlinePreviewView = null
         playerScreen?.destroy()
         playerScreen = null
         twitchPlayerScreen?.destroy()
