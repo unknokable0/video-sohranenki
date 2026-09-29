@@ -215,7 +215,7 @@ object ModernDialogs {
 
         fun rebuildGrid() {
             grid.removeAllViews()
-            presets.chunked(3).forEach { chunk ->
+            presets.chunked(4).forEach { chunk ->
                 val row = LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER
@@ -248,7 +248,7 @@ object ModernDialogs {
                                 setColor(preset.previewColor)
                             }
                         },
-                        FrameLayout.LayoutParams(dp(context, 36), dp(context, 36), Gravity.CENTER)
+                        FrameLayout.LayoutParams(dp(context, 34), dp(context, 34), Gravity.CENTER)
                     )
 
                     if (selected) {
@@ -265,7 +265,7 @@ object ModernDialogs {
                         )
                     }
 
-                    tile.addView(swatch, LinearLayout.LayoutParams(dp(context, 48), dp(context, 48)))
+                    tile.addView(swatch, LinearLayout.LayoutParams(dp(context, 44), dp(context, 44)))
                     tile.addView(TextView(context).apply {
                         text = preset.label
                         textSize = 10.5f
@@ -280,11 +280,11 @@ object ModernDialogs {
                         selectedAccent = preset.key
                         rebuildGrid()
                     }
-                    row.addView(tile, LinearLayout.LayoutParams(0, dp(context, 78), 1f))
+                    row.addView(tile, LinearLayout.LayoutParams(0, dp(context, 70), 1f))
                 }
 
-                repeat(3 - chunk.size) {
-                    row.addView(View(context), LinearLayout.LayoutParams(0, dp(context, 78), 1f))
+                repeat(4 - chunk.size) {
+                    row.addView(View(context), LinearLayout.LayoutParams(0, dp(context, 70), 1f))
                 }
                 grid.addView(row)
             }
@@ -297,7 +297,7 @@ object ModernDialogs {
             addView(grid)
         }
         box.addView(scroll)
-        scroll.limitHeight((context.resources.displayMetrics.heightPixels * 0.44f).toInt())
+        scroll.limitHeight((context.resources.displayMetrics.heightPixels * 0.40f).toInt())
 
         val apply = compactButton(context, palette.accent, Color.WHITE, "Применить")
         apply.setOnClickListener {
@@ -438,19 +438,22 @@ object ModernDialogs {
         box: View
     ): View {
         val frame = FrameLayout(context).apply {
-            setPadding(dp(context, 2), 0, 0, dp(context, 12))
+            minimumHeight = dp(context, 62)
+            setPadding(dp(context, 2), 0, 0, dp(context, 14))
+            clipChildren = false
+            clipToPadding = false
         }
 
         val titleView = TextView(context).apply {
             text = title
-            textSize = 19f
+            textSize = 18.5f
             gravity = Gravity.START or Gravity.CENTER_VERTICAL
-            includeFontPadding = false
-            maxLines = 3
-            setLineSpacing(dp(context, 1).toFloat(), 1.04f)
+            includeFontPadding = true
+            maxLines = 4
+            setLineSpacing(0f, 1.06f)
             setTextColor(palette.text)
             setTypeface(typeface, Typeface.BOLD)
-            setPadding(dp(context, 2), dp(context, 7), dp(context, 8), dp(context, 7))
+            setPadding(dp(context, 2), dp(context, 6), dp(context, 8), dp(context, 10))
         }
 
         val closeButton = ImageButton(context).apply {
@@ -511,7 +514,7 @@ object ModernDialogs {
 
         dialog.window?.apply {
             decorView.setPadding(0, 0, 0, 0)
-            setDimAmount(0.64f)
+            setDimAmount(0.52f)
             addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
             val requestedWidth =
                 (context.resources.displayMetrics.widthPixels * widthRatio).toInt()

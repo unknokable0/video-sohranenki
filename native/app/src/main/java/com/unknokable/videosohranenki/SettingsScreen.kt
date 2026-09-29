@@ -149,45 +149,114 @@ class SettingsScreen(
         val seconds = prefs.getLong("watched_seconds", 0L)
         val hours = seconds / 3600L
         val minutes = (seconds % 3600L) / 60L
-        val streak = StreakTracker(activity).currentStreak()
+        val tracker = StreakTracker(activity)
+        val streak = tracker.currentStreak()
+        val bestStreak = tracker.longestStreak()
+        val activeDays = tracker.totalWatchedDays()
 
         val card = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(14), dp(14), dp(14), dp(14))
             background = rounded(palette.surface, 18)
         }
+
         card.addView(TextView(activity).apply {
-            text = "Статистика"; textSize = 15f
-            setTypeface(typeface, Typeface.BOLD); setTextColor(palette.text)
+            text = "Статистика"
+            textSize = 16f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(palette.text)
         })
         card.addView(TextView(activity).apply {
-            text = "Твоя активность в SOHR"; textSize = 12f; setTextColor(palette.muted)
+            text = "Коротко о твоём просмотре в SOHR"
+            textSize = 12f
+            setTextColor(palette.muted)
             setPadding(0, dp(3), 0, dp(12))
         })
-        val row = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
-        fun cell(value: String, label: String): View = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
-            setPadding(dp(4), dp(9), dp(4), dp(9)); background = rounded(palette.surfaceAlt, 14)
-            addView(TextView(activity).apply {
-                text = value; textSize = 17f; gravity = Gravity.CENTER
-                setTypeface(typeface, Typeface.BOLD); setTextColor(palette.accent)
-            })
-            addView(TextView(activity).apply {
-                text = label; textSize = 10f; gravity = Gravity.CENTER; setTextColor(palette.muted)
-                setPadding(0, dp(3), 0, 0)
-            })
+
+        fun statCell(iconRes: Int, value: String, label: String): View =
+            LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(10), dp(10), dp(10), dp(10))
+                background = rounded(palette.surfaceAlt, 15)
+
+                addView(ImageView(activity).apply {
+                    setImageResource(iconRes)
+                    imageTintList = ColorStateList.valueOf(palette.accent)
+                    scaleType = ImageView.ScaleType.CENTER_INSIDE
+                    setPadding(dp(8), dp(8), dp(8), dp(8))
+                    background = rounded(palette.accentSoft, 12)
+                }, LinearLayout.LayoutParams(dp(38), dp(38)).apply {
+                    marginEnd = dp(9)
+                })
+
+                addView(LinearLayout(activity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    addView(TextView(activity).apply {
+                        text = value
+                        textSize = 16f
+                        setTypeface(typeface, Typeface.BOLD)
+                        setTextColor(palette.text)
+                        includeFontPadding = false
+                    })
+                    addView(TextView(activity).apply {
+                        text = label
+                        textSize = 10.5f
+                        setTextColor(palette.muted)
+                        includeFontPadding = false
+                        setPadding(0, dp(3), 0, 0)
+                    })
+                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            }
+
+        fun addRow(left: View, right: View) {
+            card.addView(
+                LinearLayout(activity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    addView(left, LinearLayout.LayoutParams(0, dp(62), 1f).apply {
+                        marginEnd = dp(4)
+                    })
+                    addView(right, LinearLayout.LayoutParams(0, dp(62), 1f).apply {
+                        marginStart = dp(4)
+                    })
+                },
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dp(62)
+                ).apply { bottomMargin = dp(8) }
+            )
         }
-        row.addView(cell(videos.toString(), "Видео"), LinearLayout.LayoutParams(0, dp(74), 1f).apply { marginEnd = dp(4) })
-        row.addView(cell(watched.toString(), "Просмотрено"), LinearLayout.LayoutParams(0, dp(74), 1f).apply { marginStart = dp(4); marginEnd = dp(4) })
-        row.addView(cell(if (hours > 0) "${hours}ч ${minutes}м" else "${minutes}м", "Просмотр"), LinearLayout.LayoutParams(0, dp(74), 1f).apply { marginStart = dp(4); marginEnd = dp(4) })
-        row.addView(cell(streak.toString(), "Стрик"), LinearLayout.LayoutParams(0, dp(74), 1f).apply { marginStart = dp(4) })
-        card.addView(row)
+
+        addRow(
+            statCell(R.drawable.ic_nav_video, videos.toString(), "Всего видео"),
+            statCell(R.drawable.ic_check, watched.toString(), "Просмотрено")
+        )
+        addRow(
+            statCell(
+                R.drawable.ic_stat_clock,
+                if (hours > 0) "${hours}ч ${minutes}м" else "${minutes}м",
+                "В просмотренном"
+            ),
+            statCell(R.drawable.ic_stat_trophy, bestStreak.toString(), "Лучший стрик")
+        )
+
+        card.addView(TextView(activity).apply {
+            text = "Активных дней: $activeDays  •  текущий стрик: $streak"
+            textSize = 11.5f
+            gravity = Gravity.CENTER
+            setTextColor(palette.muted)
+            setPadding(dp(4), dp(2), dp(4), 0)
+        })
+
         return LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL; addView(card)
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }
+            orientation = LinearLayout.VERTICAL
+            addView(card)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(10) }
         }
     }
-
 
     private fun sourceSelector(): View {
         val box = LinearLayout(activity).apply {
