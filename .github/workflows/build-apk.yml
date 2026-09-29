@@ -165,7 +165,7 @@ jobs:
                   "AccelerateDecelerateInterpolator", "syncAnimator", "PathMeasure", "basePath", "segmentPath"
               ],
               "native/app/src/main/java/com/unknokable/videosohranenki/SohrBottomNavView.kt": [
-                  "requestLocked", "syncSelected"
+                  "syncSelected", "private fun requestIndex(target: Int)"
               ],
               "native/app/src/main/java/com/unknokable/videosohranenki/HomeVideoShelfAdapter.kt": [
                   "lastPlayedAtFor", "24L * 60L * 60L * 1000L"
