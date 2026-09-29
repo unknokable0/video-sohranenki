@@ -8,4 +8,12 @@
         <item name="colorPrimary">#8B5CF6</item>
         <item name="colorSecondary">#A78BFA</item>
     </style>
+
+    <style name="AppTheme.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#07143A</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/sohr_brand_logo</item>
+        <item name="windowSplashScreenAnimationDuration">650</item>
+        <item name="windowSplashScreenIconBackgroundColor">#07143A</item>
+        <item name="postSplashScreenTheme">@style/AppTheme</item>
+    </style>
 </resources>
