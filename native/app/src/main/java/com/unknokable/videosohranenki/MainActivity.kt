@@ -20,6 +20,8 @@ import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.telephony.TelephonyManager
 import android.util.Rational
@@ -52,6 +54,7 @@ import android.webkit.WebViewClient
 import androidx.activity.BackEventCompat
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -75,6 +78,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.drinkless.tdlib.TdApi
 import java.io.File
+import java.net.ConnectException
+import java.net.SocketException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -178,6 +185,7 @@ class MainActivity : AppCompatActivity() {
     private var closeFeedSearch: (() -> Boolean)? = null
     private var searchSystemBackCallback: android.window.OnBackInvokedCallback? = null
     private var predictiveBackTarget: View? = null
+    private var twitchNetworkCooldownUntilElapsed = 0L
 
     private val palette get() = settings.palette()
     private val bg get() = palette.background
@@ -188,7 +196,34 @@ class MainActivity : AppCompatActivity() {
     private fun t(key: String): String = AppLanguages.t(settings.languageCode, key)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val systemSplash = installSplashScreen()
         super.onCreate(savedInstanceState)
+
+        systemSplash.setOnExitAnimationListener { provider ->
+            val splashView = provider.view
+            val iconView = provider.iconView
+            splashView.animate().cancel()
+            iconView.animate().cancel()
+            if (savedInstanceState == null) {
+                iconView.scaleX = 0.94f
+                iconView.scaleY = 0.94f
+                iconView.animate()
+                    .scaleX(1.07f)
+                    .scaleY(1.07f)
+                    .alpha(0f)
+                    .setDuration(SohrMotion.HERO)
+                    .setInterpolator(SohrMotion.smooth())
+                    .start()
+                splashView.animate()
+                    .alpha(0f)
+                    .setDuration(SohrMotion.HERO)
+                    .setInterpolator(SohrMotion.smooth())
+                    .withEndAction { provider.remove() }
+                    .start()
+            } else {
+                provider.remove()
+            }
+        }
 
         settings = AppSettings(this)
         streakTracker = StreakTracker(this)
@@ -628,7 +663,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun showStartupSplash() {
         val page = FrameLayout(this).apply {
-            setBackgroundColor(bg)
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.parseColor("#07143A"), Color.parseColor("#090B1A"))
+            )
         }
 
         val center = LinearLayout(this).apply {
@@ -636,27 +674,68 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
         }
 
-        val loader = LoadingWaveView(this, purple).apply {
+        val mark = FrameLayout(this).apply {
             alpha = 0f
-            scaleX = 0.94f
-            scaleY = 0.94f
+            scaleX = 0.90f
+            scaleY = 0.90f
+        }
+
+        val outline = LoadingWaveView(this, Color.parseColor("#667CFF")).apply {
+            alpha = 0.92f
+        }
+        mark.addView(
+            outline,
+            FrameLayout.LayoutParams(dp(190), dp(160), Gravity.CENTER)
+        )
+
+        val logo = ImageView(this).apply {
+            setImageResource(R.drawable.sohr_brand_logo)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            alpha = 0f
+            scaleX = 0.84f
+            scaleY = 0.84f
+            rotation = -2.5f
+            background = roundedBg(Color.TRANSPARENT, 28)
+            clipToOutline = true
+        }
+        mark.addView(
+            logo,
+            FrameLayout.LayoutParams(dp(116), dp(116), Gravity.CENTER)
+        )
+
+        val brand = TextView(this).apply {
+            text = "SOHR"
+            textSize = 18f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            alpha = 0f
+            letterSpacing = 0.10f
+            setPadding(0, dp(10), 0, 0)
         }
 
         val status = TextView(this).apply {
             text = "Запускаем SOHR…"
-            textSize = 13f
+            textSize = 12.5f
             gravity = Gravity.CENTER
-            setTextColor(muted)
-            setPadding(0, dp(12), 0, 0)
+            setTextColor(Color.parseColor("#AEB7D7"))
+            setPadding(0, dp(7), 0, 0)
             alpha = 0f
         }
         startupStatusView = status
 
         center.addView(
-            loader,
-            LinearLayout.LayoutParams(dp(64), dp(64)).apply {
+            mark,
+            LinearLayout.LayoutParams(dp(220), dp(180)).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
             }
+        )
+        center.addView(
+            brand,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
         )
         center.addView(
             status,
@@ -683,18 +762,49 @@ class MainActivity : AppCompatActivity() {
             )
         )
 
-        loader.animate()
-            .alpha(1f)
-            .scaleX(1f)
-            .scaleY(1f)
-            .setDuration(300L)
-            .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
-            .start()
-        status.animate()
-            .alpha(1f)
-            .setStartDelay(120L)
-            .setDuration(220L)
-            .start()
+        if (settings.animations) {
+            mark.animate()
+                .alpha(1f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(SohrMotion.HERO)
+                .setInterpolator(SohrMotion.smooth())
+                .start()
+
+            logo.animate()
+                .alpha(1f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .rotation(0f)
+                .setStartDelay(90L)
+                .setDuration(460L)
+                .setInterpolator(SohrMotion.smooth())
+                .start()
+
+            brand.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setStartDelay(170L)
+                .setDuration(SohrMotion.NORMAL)
+                .setInterpolator(SohrMotion.smooth())
+                .start()
+
+            status.animate()
+                .alpha(1f)
+                .setStartDelay(260L)
+                .setDuration(SohrMotion.NORMAL)
+                .start()
+        } else {
+            mark.alpha = 1f
+            mark.scaleX = 1f
+            mark.scaleY = 1f
+            logo.alpha = 1f
+            logo.scaleX = 1f
+            logo.scaleY = 1f
+            logo.rotation = 0f
+            brand.alpha = 1f
+            status.alpha = 1f
+        }
     }
 
     private fun handleAuthState(state: TdApi.AuthorizationState) {
@@ -5353,6 +5463,67 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun hasValidatedInternet(): Boolean {
+        return runCatching {
+            val manager = getSystemService(ConnectivityManager::class.java) ?: return@runCatching true
+            val network = manager.activeNetwork ?: return@runCatching false
+            val capabilities = manager.getNetworkCapabilities(network) ?: return@runCatching false
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        }.getOrDefault(true)
+    }
+
+    private fun isTwitchNetworkFailure(error: Throwable): Boolean {
+        var current: Throwable? = error
+        repeat(8) {
+            val value = current ?: return@repeat
+            if (
+                value is UnknownHostException ||
+                value is SocketTimeoutException ||
+                value is ConnectException ||
+                value is SocketException
+            ) return true
+
+            val message = value.message.orEmpty().lowercase(Locale.getDefault())
+            if (
+                "unable to resolve host" in message ||
+                "no address associated with hostname" in message ||
+                "failed to connect" in message ||
+                "timeout" in message ||
+                "timed out" in message
+            ) return true
+            current = value.cause
+        }
+        return false
+    }
+
+    private fun markTwitchNetworkFailure() {
+        twitchNetworkCooldownUntilElapsed =
+            android.os.SystemClock.elapsedRealtime() + 30_000L
+    }
+
+    private fun canAttemptTwitchNetwork(): Boolean {
+        if (android.os.SystemClock.elapsedRealtime() < twitchNetworkCooldownUntilElapsed) return false
+        return hasValidatedInternet()
+    }
+
+    private fun friendlyTwitchFailure(error: Throwable?): String {
+        if (error != null && isTwitchNetworkFailure(error)) {
+            return "Нет подключения к Twitch. Проверьте интернет и попробуйте ещё раз."
+        }
+        val raw = error?.message.orEmpty().trim()
+        val lower = raw.lowercase(Locale.getDefault())
+        if (
+            raw.isBlank() ||
+            "unable to resolve host" in lower ||
+            "no address associated with hostname" in lower ||
+            "java.net." in lower
+        ) {
+            return "Twitch временно недоступен. Попробуйте ещё раз позже."
+        }
+        return raw.take(140)
+    }
+
     private fun loadTwitchVideos(inPlace: Boolean = false) {
         val clientId = BuildConfig.TWITCH_CLIENT_ID.trim()
         if (clientId.isBlank()) {
@@ -5367,6 +5538,20 @@ class MainActivity : AppCompatActivity() {
         }
         if (twitchLoadJob?.isActive == true) {
             if (inPlace) feedRefreshLabel?.text = "Уже проверяем…"
+            return
+        }
+        if (!canAttemptTwitchNetwork()) {
+            if (inPlace) {
+                setFeedRefreshLoading(false, "Нет сети")
+                feedRefreshButton?.postDelayed({
+                    setFeedRefreshLoading(false, "Проверить новые")
+                }, 1_500L)
+            } else {
+                showMessage(
+                    "Нет подключения к Twitch",
+                    "Проверьте интернет и попробуйте ещё раз."
+                )
+            }
             return
         }
         if (inPlace) setFeedRefreshLoading(true) else showFeedSkeleton("Загружаем Twitch…")
@@ -5415,11 +5600,19 @@ class MainActivity : AppCompatActivity() {
                 settings.twitchLogin = null
                 startTwitchLogin()
             } catch (e: Exception) {
+                val networkFailure = isTwitchNetworkFailure(e)
+                if (networkFailure) markTwitchNetworkFailure()
                 if (inPlace) {
-                    setFeedRefreshLoading(false, "Ошибка")
-                    Toast.makeText(this@MainActivity, e.message ?: "Ошибка Twitch", Toast.LENGTH_LONG).show()
-                    feedRefreshButton?.postDelayed({ setFeedRefreshLoading(false, "Проверить новые") }, 1400L)
-                } else showMessage("Не удалось загрузить Twitch", e.message ?: "Ошибка сети Twitch")
+                    setFeedRefreshLoading(false, if (networkFailure) "Нет сети" else "Ошибка")
+                    feedRefreshButton?.postDelayed({
+                        setFeedRefreshLoading(false, "Проверить новые")
+                    }, 1_500L)
+                } else {
+                    showMessage(
+                        if (networkFailure) "Нет подключения к Twitch" else "Не удалось загрузить Twitch",
+                        friendlyTwitchFailure(e)
+                    )
+                }
             }
         }
     }
@@ -5428,6 +5621,13 @@ class MainActivity : AppCompatActivity() {
         val clientId = BuildConfig.TWITCH_CLIENT_ID.trim()
         if (clientId.isBlank()) {
             showMessage("Twitch ещё не подключён", "В сборке отсутствует Twitch Client ID.")
+            return
+        }
+        if (!canAttemptTwitchNetwork()) {
+            showMessage(
+                "Нет подключения к Twitch",
+                "Проверьте интернет и попробуйте ещё раз."
+            )
             return
         }
 
@@ -5642,9 +5842,10 @@ class MainActivity : AppCompatActivity() {
                 settings.twitchOauthState = null
                 settings.twitchLogin = null
                 pendingTwitchLiveAfterAuth = null
+                if (isTwitchNetworkFailure(e)) markTwitchNetworkFailure()
                 showMessage(
-                    "Не удалось подключить Twitch",
-                    e.message ?: "Twitch не подтвердил токен."
+                    if (isTwitchNetworkFailure(e)) "Нет подключения к Twitch" else "Не удалось подключить Twitch",
+                    friendlyTwitchFailure(e)
                 )
             }
         }
