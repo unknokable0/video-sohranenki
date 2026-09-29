@@ -139,6 +139,7 @@ class MainActivity : AppCompatActivity() {
     private var startupPhase = true
     private var startupStatusView: TextView? = null
     private var completedUpdateNotice: String? = null
+    private var completedUpdateNotes: String? = null
     private var feedRefreshButton: LinearLayout? = null
     private var feedRefreshLabel: TextView? = null
     private var feedRefreshLoader: LoadingWaveView? = null
@@ -175,12 +176,31 @@ class MainActivity : AppCompatActivity() {
 
         val runtimePrefs = getSharedPreferences("sohr_runtime", MODE_PRIVATE)
         val previousVersionCode = runtimePrefs.getInt("last_version_code", 0)
+        val pendingUpdateVersion = runtimePrefs.getString("pending_update_version_name", null)
+        val pendingUpdateNotes = runtimePrefs.getString("pending_update_notes", null).orEmpty()
+
         if (previousVersionCode > 0 && previousVersionCode < BuildConfig.VERSION_CODE) {
             completedUpdateNotice = BuildConfig.VERSION_NAME
+            completedUpdateNotes =
+                pendingUpdateNotes
+                    .takeIf { pendingUpdateVersion == BuildConfig.VERSION_NAME && it.isNotBlank() }
+                    ?: fallbackReleaseNotes(BuildConfig.VERSION_NAME)
         }
+
         runtimePrefs.edit()
             .putInt("last_version_code", BuildConfig.VERSION_CODE)
             .apply()
+
+        if (
+            previousVersionCode > 0 &&
+            previousVersionCode < BuildConfig.VERSION_CODE &&
+            pendingUpdateVersion == BuildConfig.VERSION_NAME
+        ) {
+            runtimePrefs.edit()
+                .remove("pending_update_version_name")
+                .remove("pending_update_notes")
+                .apply()
+        }
         WindowCompat.setDecorFitsSystemWindows(window, false)
         root = FrameLayout(this).apply { setBackgroundColor(bg) }
         setContentView(root)
@@ -2293,8 +2313,17 @@ class MainActivity : AppCompatActivity() {
             scheduleAutomaticUpdateCheck(delayMs = 900L, force = true)
         }
         completedUpdateNotice?.let { version ->
+            val notes = completedUpdateNotes ?: fallbackReleaseNotes(version)
             completedUpdateNotice = null
-            root.postDelayed({ ModernDialogs.showNotice(this, palette, "Обновление завершено", "SOHR обновлён до версии $version. Всё готово к работе.", "Готово") }, 420L)
+            completedUpdateNotes = null
+            root.postDelayed({
+                ModernDialogs.showUpdateCompleted(
+                    context = this,
+                    palette = palette,
+                    version = version,
+                    notes = notes
+                )
+            }, 420L)
         }
         startupPhase=false; startupStatusView=null; isPlayerScreen=false; isSettingsScreen=false; isAccountScreen=false; isStreakScreen=false
         currentDay=null; setFullscreen(false); applySystemTheme()
@@ -2547,7 +2576,7 @@ class MainActivity : AppCompatActivity() {
                 body.addView(
                     buildHomeVideoShelf(
                         title = "Продолжить просмотр",
-                        subtitle = "Продолжай с того места, где остановился",
+                        subtitle = "Продолжайте с того места, где остановились",
                         items = continueVideos,
                         mode = HomeVideoShelfAdapter.Mode.CONTINUE
                     )
@@ -5361,6 +5390,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun fallbackReleaseNotes(version: String): String = when (version) {
+        "6.0.11" -> listOf(
+            "В интерфейсе завершён переход на обращение на «вы».",
+            "В статистике убран лишний дублирующий текст под полосой прогресса.",
+            "После обновления можно открыть аккуратный список изменений.",
+            "Окно завершения обновления стало понятнее и удобнее."
+        ).joinToString(" • ")
+        else -> "Улучшения интерфейса • Исправления стабильности"
+    }
+
     private fun checkForUpdates(manual: Boolean = true) {
         lifecycleScope.launch {
             if (manual) showLoading("Проверяем обновления…")
@@ -5440,6 +5479,15 @@ class MainActivity : AppCompatActivity() {
                     }
                     return@launch
                 }
+
+                getSharedPreferences("sohr_runtime", MODE_PRIVATE)
+                    .edit()
+                    .putString("pending_update_version_name", info.versionName)
+                    .putString(
+                        "pending_update_notes",
+                        info.notes.ifBlank { fallbackReleaseNotes(info.versionName) }
+                    )
+                    .apply()
 
                 if (updateManager.canRequestInstall()) {
                     root.postDelayed({ launchUpdateInstaller(apk) }, 260L)
