@@ -45,11 +45,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.0.8 version
+      - name: Assign SOHR 6.0.9 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=600008" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.0.8" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=600009" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.0.9" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -140,7 +140,7 @@ jobs:
                   "R.drawable.ic_close", "R.drawable.ic_check", "fun showAppearancePicker"
               ],
               "native/app/src/main/java/com/unknokable/videosohranenki/LoadingWaveView.kt": [
-                  "LinearGradient", "syncAnimator", "PathMeasure", "segmentPath"
+                  "LinearInterpolator", "syncAnimator", "PathMeasure", "segmentPath"
               ],
               "native/app/src/main/java/com/unknokable/videosohranenki/SohrBottomNavView.kt": [
                   "requestLocked", "syncSelected"
@@ -209,7 +209,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.0.8 • Telegram/Twitch player startup fix • restored classic SOHR 5-style loader • active white streak fire • language/theme order polish • emulator x86 checks removed"
+            "notes": "SOHR 6.0.9 • formal Вы-address across UI • clean player settings sliders icon • smaller minimal S loader without glow/outline • yellow first streak fire • expanded streak levels through 5000+ • lighter streak copy"
           }
           EOF
           cat update.json
