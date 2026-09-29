@@ -44,6 +44,10 @@ class HomeVideoShelfAdapter(
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
         val context = parent.context
+        val screenWidth = context.resources.displayMetrics.widthPixels
+        val cardWidth = (screenWidth - dp(context, 52))
+            .coerceIn(dp(context, 270), dp(context, 340))
+        val previewHeight = (cardWidth * 9f / 16f).toInt()
 
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -55,7 +59,7 @@ class HomeVideoShelfAdapter(
             clipToOutline = true
             elevation = dp(context, 1).toFloat()
             layoutParams = RecyclerView.LayoutParams(
-                dp(context, 226),
+                cardWidth,
                 ViewGroup.LayoutParams.MATCH_PARENT
             ).apply {
                 setMargins(dp(context, 6), dp(context, 2), dp(context, 6), dp(context, 6))
@@ -167,21 +171,25 @@ class HomeVideoShelfAdapter(
 
         root.addView(
             preview,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(context, 128))
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, previewHeight)
         )
 
         val title = TextView(context).apply {
             textSize = 14.5f
             maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            includeFontPadding = false
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(palette.text)
-            setPadding(dp(context, 11), dp(context, 8), dp(context, 11), 0)
+            setPadding(dp(context, 12), dp(context, 10), dp(context, 12), 0)
         }
         val meta = TextView(context).apply {
-            textSize = 10.8f
+            textSize = 11f
             maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            includeFontPadding = false
             setTextColor(palette.muted)
-            setPadding(dp(context, 11), dp(context, 4), dp(context, 11), dp(context, 8))
+            setPadding(dp(context, 12), dp(context, 5), dp(context, 12), dp(context, 10))
         }
         root.addView(title)
         root.addView(meta)
