@@ -47,7 +47,7 @@ class SohrTimeBar(context: Context) : View(context) {
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val desired = dp(30f).toInt()
+        val desired = dp(22f).toInt()
         setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), resolveSize(desired, heightMeasureSpec))
     }
 
@@ -55,7 +55,7 @@ class SohrTimeBar(context: Context) : View(context) {
         super.onDraw(canvas)
         if (width <= 0) return
         val centerY = height / 2f
-        val trackH = dp(if (scrubbing) 4f else 3f)
+        val trackH = dp(if (scrubbing) 3f else 2f)
         val radius = trackH / 2f
         val played = if (scrubbing) scrubPositionMs else positionMs
         val playedX = width * fractionFor(played)
@@ -72,7 +72,7 @@ class SohrTimeBar(context: Context) : View(context) {
             canvas.drawRoundRect(rect, radius, radius, playedPaint)
         }
         if (scrubbing) {
-            canvas.drawCircle(playedX.coerceIn(dp(7f), width - dp(7f)), centerY, dp(7f), thumbPaint)
+            canvas.drawCircle(playedX.coerceIn(dp(5.5f), width - dp(5.5f)), centerY, dp(5.5f), thumbPaint)
         }
     }
 
