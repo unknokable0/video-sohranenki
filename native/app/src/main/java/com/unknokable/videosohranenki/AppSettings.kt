@@ -9,9 +9,30 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean("autoplay", false)
         set(value) = prefs.edit().putBoolean("autoplay", value).apply()
 
+    var previewMode: String
+        get() {
+            val fallback = if (prefs.getBoolean("previews", true)) "wifi" else "off"
+            return when (val value = prefs.getString("preview_mode", fallback) ?: fallback) {
+                "always", "off" -> value
+                else -> "wifi"
+            }
+        }
+        set(value) {
+            val normalized = when (value) {
+                "always", "off" -> value
+                else -> "wifi"
+            }
+            prefs.edit()
+                .putString("preview_mode", normalized)
+                .putBoolean("previews", normalized != "off")
+                .apply()
+        }
+
     var previews: Boolean
-        get() = prefs.getBoolean("previews", true)
-        set(value) = prefs.edit().putBoolean("previews", value).apply()
+        get() = previewMode != "off"
+        set(value) {
+            previewMode = if (value) "wifi" else "off"
+        }
 
     var animations: Boolean
         get() = prefs.getBoolean("animations", true)
