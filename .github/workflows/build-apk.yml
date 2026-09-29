@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.1.1: feed alignment, Anton live status and player polish
+# SOHR 6.1.2: compact cards and reliable bottom navigation
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.1.1 version
+      - name: Assign SOHR 6.1.2 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=610001" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.1.1" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=610002" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.1.2" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -252,6 +252,16 @@ jobs:
           ).read_text(encoding="utf-8")
           if "setOnLongClickListener" not in home_cards or "setOnLongClickListener" not in video_cards:
               raise SystemExit("Video long-press actions regression")
+          if "val cardWidth = dp(context, 226)" not in home_cards or "val previewHeight = dp(context, 128)" not in home_cards:
+              raise SystemExit("Compact home card geometry regression")
+
+          bottom_nav = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/SohrBottomNavView.kt"
+          ).read_text(encoding="utf-8")
+          if "setOnTouchListener" in bottom_nav:
+              raise SystemExit("Bottom navigation touch interception regression")
+          if "requestLocked" in bottom_nav:
+              raise SystemExit("Bottom navigation artificial lock regression")
 
           telegram_stream = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/TelegramStreamServer.kt"
@@ -342,7 +352,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "Выровнены карточки главной и карусель • Статус Антона теперь внутри SOHR Сегодня: серый офлайн и красный пульсирующий онлайн • Удалён дублирующий T2x2-блок • Back закрывает поиск • Экран видео выровнен • Telegram-caption разделяется на заголовок и описание"
+            "notes": "Карточки «Продолжить» и «Новое» снова компактные и ровные • Исправлено растягивание превью и заголовков • Telegram-caption на главной больше не раздувает карточки • Нижняя панель больше не перехватывает касания • Убрана задержка-блокировка быстрых переключений вкладок"
           }
           EOF
           cat update.json
