@@ -14,10 +14,12 @@ import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.net.Uri
 import android.telephony.TelephonyManager
 import android.util.Rational
@@ -27,6 +29,7 @@ import android.text.TextWatcher
 import android.text.method.HideReturnsTransformationMethod
 import android.text.method.PasswordTransformationMethod
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -46,6 +49,7 @@ import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.BackEventCompat
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -55,6 +59,7 @@ import androidx.core.widget.NestedScrollView
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.i18n.phonenumbers.PhoneNumberUtil
 import coil.load
 import coil.transform.CircleCropTransformation
@@ -157,6 +162,9 @@ class MainActivity : AppCompatActivity() {
     private var pendingVideoSectionDirection = 0
     private var videoSectionSwitchLocked = false
     private var settingsScrollY = 0
+    private var todayLiveStatusView: TextView? = null
+    private var todayLiveDot: View? = null
+    private var predictiveBackTarget: View? = null
 
     private val palette get() = settings.palette()
     private val bg get() = palette.background
@@ -220,7 +228,30 @@ class MainActivity : AppCompatActivity() {
         showStartupSplash()
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackStarted(backEvent: BackEventCompat) {
+                predictiveBackTarget = root.getChildAt(root.childCount - 1)
+                predictiveBackTarget?.animate()?.cancel()
+            }
+
+            override fun handleOnBackProgressed(backEvent: BackEventCompat) {
+                val target = predictiveBackTarget ?: return
+                val progress = backEvent.progress.coerceIn(0f, 1f)
+                target.pivotX = if (backEvent.swipeEdge == BackEventCompat.EDGE_LEFT) 0f else target.width.toFloat()
+                target.pivotY = target.height / 2f
+                target.scaleX = 1f - 0.028f * progress
+                target.scaleY = 1f - 0.028f * progress
+                target.translationX =
+                    (if (backEvent.swipeEdge == BackEventCompat.EDGE_LEFT) 1f else -1f) *
+                        dp(18) * progress
+                target.alpha = 1f - 0.08f * progress
+            }
+
+            override fun handleOnBackCancelled() {
+                resetPredictiveBackSurface(animated = true)
+            }
+
             override fun handleOnBackPressed() {
+                resetPredictiveBackSurface(animated = false)
                 if (closeCurrentPlayerScreen()) return
 
                 if (isSettingsScreen) {
@@ -479,28 +510,55 @@ class MainActivity : AppCompatActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        val activePlayer = playerScreen?.player
-        if (!isPlayerScreen || activePlayer?.isPlaying != true) return
+        val screen = playerScreen ?: return
+        val activePlayer = screen.player
+        if (!isPlayerScreen || activePlayer.isPlaying != true) return
+        if (!screen.prepareForPictureInPicture()) return
+
         val serviceIntent = Intent(this, PlaybackKeepAliveService::class.java)
         if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(serviceIntent) else startService(serviceIntent)
+
         if (android.os.Build.VERSION.SDK_INT >= 26 && !isInPictureInPictureMode) {
-            runCatching {
+            val entered = runCatching {
                 enterPictureInPictureMode(
                     PictureInPictureParams.Builder()
                         .setAspectRatio(Rational(16, 9))
                         .build()
                 )
-            }
+            }.getOrDefault(false)
+            if (!entered) screen.restoreFromPictureInPicture()
         }
     }
 
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
-        if (isPlayerScreen) {
-            playerScreen?.setFullscreenMode(isInPictureInPictureMode)
+        if (!isInPictureInPictureMode) {
+            playerScreen?.restoreFromPictureInPicture()
+            if (playerScreen?.player?.isPlaying != true) {
+                stopService(Intent(this, PlaybackKeepAliveService::class.java))
+            }
         }
-        if (!isInPictureInPictureMode && playerScreen?.player?.isPlaying != true) {
-            stopService(Intent(this, PlaybackKeepAliveService::class.java))
+    }
+
+    private fun resetPredictiveBackSurface(animated: Boolean) {
+        val target = predictiveBackTarget
+        predictiveBackTarget = null
+        if (target == null) return
+        target.animate().cancel()
+        if (animated && settings.animations) {
+            target.animate()
+                .scaleX(1f)
+                .scaleY(1f)
+                .translationX(0f)
+                .alpha(1f)
+                .setDuration(170L)
+                .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                .start()
+        } else {
+            target.scaleX = 1f
+            target.scaleY = 1f
+            target.translationX = 0f
+            target.alpha = 1f
         }
     }
 
@@ -1998,6 +2056,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun animatePress(view: View) {
+        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         if (!settings.animations) return
 
         view.animate().cancel()
