@@ -185,7 +185,7 @@ class PlayerScreen(
 
         playerCard = FrameLayout(activity).apply {
             setBackgroundColor(Color.BLACK)
-            background = rounded("#000000", 18)
+            background = rounded("#000000", 16)
             clipToOutline = true
         }
 
@@ -290,14 +290,16 @@ class PlayerScreen(
         )
 
         val width = activity.resources.displayMetrics.widthPixels
+        val playerMargin = dp(16)
+        val playerWidth = (width - playerMargin * 2).coerceAtLeast(dp(240))
         root.addView(
             playerCard,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                (width * 9f / 16f).toInt()
+                (playerWidth * 9f / 16f).toInt()
             ).apply {
-                marginStart = dp(12)
-                marginEnd = dp(12)
+                marginStart = playerMargin
+                marginEnd = playerMargin
             }
         )
 
@@ -464,7 +466,7 @@ class PlayerScreen(
         val row = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(10), dp(8), dp(10), dp(8))
+            setPadding(dp(16), dp(8), dp(16), dp(8))
             setBackgroundColor(palette.background)
         }
 
@@ -474,12 +476,14 @@ class PlayerScreen(
 
         val title = TextView(activity).apply {
             text = cleanTitle(item.title)
-            textSize = 14.5f
+            textSize = 15f
             setTextColor(palette.text)
             setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
             maxLines = 1
-            setPadding(dp(9), 0, dp(9), 0)
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            includeFontPadding = false
+            setPadding(dp(10), 0, dp(10), 0)
         }
 
         val spacer = View(activity)
@@ -782,24 +786,43 @@ class PlayerScreen(
     private fun buildDetails(): LinearLayout {
         val box = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(14), dp(14), dp(10))
+            setPadding(dp(16), dp(15), dp(16), dp(10))
         }
 
         val title = TextView(activity).apply {
             text = cleanTitle(item.title)
-            textSize = 20f
+            textSize = 19f
+            includeFontPadding = false
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
             setTextColor(palette.text)
             setTypeface(typeface, Typeface.BOLD)
+        }
+        box.addView(title)
+
+        val descriptionText = cleanDescription(item.title)
+        if (descriptionText.isNotBlank()) {
+            box.addView(TextView(activity).apply {
+                text = descriptionText
+                textSize = 14.5f
+                lineSpacing = dp(2).toFloat()
+                includeFontPadding = false
+                maxLines = 5
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setTextColor(palette.text)
+                alpha = 0.88f
+                setPadding(0, dp(11), 0, 0)
+            })
         }
 
         val meta = TextView(activity).apply {
             text = buildMeta()
             textSize = 12.5f
+            includeFontPadding = false
             setTextColor(palette.muted)
-            setPadding(0, dp(7), 0, 0)
+            setPadding(0, dp(if (descriptionText.isBlank()) 7 else 11), 0, 0)
         }
 
-        box.addView(title)
         box.addView(meta)
         return box
     }
@@ -808,7 +831,7 @@ class PlayerScreen(
         val row = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(2), dp(12), dp(10))
+            setPadding(dp(16), dp(3), dp(16), dp(11))
         }
 
         var watched = isWatched
@@ -894,14 +917,15 @@ class PlayerScreen(
     private fun buildNextVideosBlock(): LinearLayout {
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(4), dp(12), dp(18))
+            setPadding(dp(16), dp(5), dp(16), dp(20))
 
             addView(TextView(activity).apply {
                 text = "Следующие видео"
                 textSize = 16f
                 setTypeface(typeface, Typeface.BOLD)
                 setTextColor(palette.text)
-                setPadding(dp(4), dp(4), dp(4), dp(10))
+                includeFontPadding = false
+                setPadding(0, dp(5), 0, dp(11))
             })
 
             val next = nextItem
@@ -917,8 +941,8 @@ class PlayerScreen(
                 addView(LinearLayout(activity).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
-                    setPadding(dp(14), dp(12), dp(14), dp(12))
-                    background = roundedInt(palette.surfaceAlt, 16)
+                    setPadding(dp(12), dp(11), dp(12), dp(11))
+                    background = roundedInt(palette.surfaceAlt, 18)
                     isClickable = true
                     isFocusable = true
 
@@ -932,13 +956,15 @@ class PlayerScreen(
                         !next.thumbnailUrl.isNullOrBlank() -> load(next.thumbnailUrl) { crossfade(settings.animations) }
                     }
                 }
-                addView(thumb,LinearLayout.LayoutParams(dp(96),dp(58)).apply{marginEnd=dp(12)})
+                addView(thumb,LinearLayout.LayoutParams(dp(104),dp(59)).apply{marginEnd=dp(12)})
 
                     val textBox = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
                     textBox.addView(TextView(activity).apply {
                         text = cleanTitle(next.title)
                         textSize = 14f
                         maxLines = 2
+                        ellipsize = android.text.TextUtils.TruncateAt.END
+                        includeFontPadding = false
                         setTypeface(typeface, Typeface.BOLD)
                         setTextColor(palette.text)
                     })
@@ -2149,8 +2175,37 @@ class PlayerScreen(
         }
 
     private fun cleanTitle(raw: String): String {
-        val fileName = raw.matches(Regex("""\d{4}-\d{2}-\d{2}[_-].*\.(mp4|mkv|mov|webm)""", RegexOption.IGNORE_CASE))
-        return if (fileName) "Запись стрима" else raw
+        val normalized = raw.replace("\r\n", "\n").replace('\r', '\n').trim()
+        val firstLine = normalized
+            .lineSequence()
+            .map { it.trim() }
+            .firstOrNull { it.isNotBlank() }
+            .orEmpty()
+        val fileName = firstLine.matches(
+            Regex(
+                """\d{4}-\d{2}-\d{2}[_-].*\.(mp4|mkv|mov|webm)""",
+                RegexOption.IGNORE_CASE
+            )
+        )
+        return when {
+            fileName -> "Запись стрима"
+            firstLine.isNotBlank() -> firstLine
+            else -> "Видео"
+        }
+    }
+
+    private fun cleanDescription(raw: String): String {
+        val lines = raw
+            .replace("\r\n", "\n")
+            .replace('\r', '\n')
+            .split('\n')
+        val firstContent = lines.indexOfFirst { it.isNotBlank() }
+        if (firstContent < 0 || firstContent >= lines.lastIndex) return ""
+        return lines
+            .drop(firstContent + 1)
+            .joinToString("\n")
+            .trim()
+            .replace(Regex("\n{3,}"), "\n\n")
     }
 
     private fun buildMeta(): String =
