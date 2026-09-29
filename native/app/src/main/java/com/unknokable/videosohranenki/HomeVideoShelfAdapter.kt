@@ -79,11 +79,11 @@ class HomeVideoShelfAdapter(
             )
         )
 
-        val play = TextView(context).apply {
-            text = "▶"
-            textSize = 18f
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
+        val play = ImageView(context).apply {
+            setImageResource(R.drawable.ic_play)
+            imageTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(context, 12), dp(context, 12), dp(context, 12), dp(context, 12))
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
                 setColor(Color.parseColor("#9A17131D"))
@@ -181,12 +181,20 @@ class HomeVideoShelfAdapter(
         root.addView(title)
         root.addView(meta)
 
-        return Holder(root, thumbnail, duration, progressTrack, progressFill, title, meta)
+        return Holder(root, thumbnail, badge, duration, progressTrack, progressFill, title, meta)
     }
 
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val item = items[position]
         val progress = progressFor(item).coerceIn(0f, 1f)
+        val ageMs = (System.currentTimeMillis() - item.date.toLong() * 1000L).coerceAtLeast(0L)
+        val trulyNew = mode == Mode.NEW &&
+            progress <= 0.005f &&
+            ageMs <= 48L * 60L * 60L * 1000L
+
+        holder.badge.visibility =
+            if (mode == Mode.CONTINUE || trulyNew) View.VISIBLE else View.GONE
+        holder.badge.text = if (mode == Mode.CONTINUE) "ПРОДОЛЖИТЬ" else "НОВОЕ"
 
         holder.title.text = cleanTitle(item.title, position)
         holder.duration.text = formatDuration(item.durationSeconds)
@@ -318,6 +326,7 @@ class HomeVideoShelfAdapter(
     class Holder(
         view: View,
         val thumbnail: ImageView,
+        val badge: TextView,
         val duration: TextView,
         val progressTrack: FrameLayout,
         val progressFill: View,
