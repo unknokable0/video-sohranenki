@@ -453,7 +453,7 @@ jobs:
           ]:
               if required not in loader:
                   raise SystemExit(f"SOHR 6.2.5 clean-loader regression: {required}")
-          for forbidden in ["glowPaint", "segmentPaint", "segmentPath", "Paint.Style.STROKE\n        strokeCap"]:
+          for forbidden in ["glowPaint", "segmentPaint", "segmentPath", "drawCircle(", "setShadowLayer("]:
               if forbidden in loader:
                   raise SystemExit(f"SOHR 6.2.5 neon/outline loader regression: {forbidden}")
 
