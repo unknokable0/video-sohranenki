@@ -429,23 +429,24 @@ object ModernDialogs {
         dialog: Dialog,
         box: View
     ): View {
-        val frame = FrameLayout(context).apply {
-            minimumHeight = dp(context, 54)
-            setPadding(0, 0, 0, dp(context, 12))
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(context, 52)
+            setPadding(dp(context, 2), 0, 0, dp(context, 12))
         }
-
         val titleView = TextView(context).apply {
             text = title
-            textSize = 19f
-            gravity = Gravity.CENTER
+            textSize = 18f
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
             includeFontPadding = false
             maxLines = 2
-            setLineSpacing(dp(context, 1).toFloat(), 1.02f)
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            setLineSpacing(dp(context, 1).toFloat(), 1.03f)
             setTextColor(palette.text)
             setTypeface(typeface, Typeface.BOLD)
-            setPadding(dp(context, 48), 0, dp(context, 48), 0)
+            setPadding(dp(context, 2), dp(context, 3), dp(context, 10), dp(context, 3))
         }
-
         val closeButton = ImageButton(context).apply {
             setImageResource(R.drawable.ic_close)
             imageTintList = ColorStateList.valueOf(palette.muted)
@@ -457,24 +458,9 @@ object ModernDialogs {
             contentDescription = "Закрыть"
             setOnClickListener { close(dialog, box) {} }
         }
-
-        frame.addView(
-            titleView,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.CENTER
-            )
-        )
-        frame.addView(
-            closeButton,
-            FrameLayout.LayoutParams(
-                dp(context, 40),
-                dp(context, 40),
-                Gravity.END or Gravity.CENTER_VERTICAL
-            )
-        )
-        return frame
+        row.addView(titleView,LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
+        row.addView(closeButton,LinearLayout.LayoutParams(dp(context,40),dp(context,40)))
+        return row
     }
 
     private fun messageView(context: Context, palette: ThemePalette, message: String) =

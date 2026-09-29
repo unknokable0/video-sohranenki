@@ -3804,6 +3804,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showSettings() {
+        val wasSettingsVisible = isSettingsScreen
+        val restoreScrollY =
+            if (wasSettingsVisible) {
+                root.findViewWithTag<ScrollView>("sohr_settings_scroll")?.scrollY ?: 0
+            } else 0
+
         isSettingsScreen = true
         isAccountScreen = false
         isStreakScreen = false
@@ -3824,7 +3830,17 @@ class MainActivity : AppCompatActivity() {
             },
             onCheckUpdates = { checkForUpdates() }
         )
-        replaceRoot(withBottomNav(screen.build(), SohrTab.SETTINGS))
+        val content = screen.build()
+        replaceRoot(withBottomNav(content, SohrTab.SETTINGS))
+
+        if (wasSettingsVisible && restoreScrollY > 0) {
+            content.findViewWithTag<ScrollView>("sohr_settings_scroll")?.let { scroll ->
+                scroll.post {
+                    scroll.scrollTo(0, restoreScrollY)
+                    scroll.postOnAnimation { scroll.scrollTo(0, restoreScrollY) }
+                }
+            }
+        }
     }
 
     private fun showStreak() {
@@ -4159,7 +4175,9 @@ class MainActivity : AppCompatActivity() {
 
         val oldShell = primaryShell
         val oldSettingsScrollY =
-            oldShell?.findViewWithTag<ScrollView>("sohr_settings_scroll")?.scrollY ?: 0
+            root.findViewWithTag<ScrollView>("sohr_settings_scroll")?.scrollY
+                ?: oldShell?.findViewWithTag<ScrollView>("sohr_settings_scroll")?.scrollY
+                ?: 0
         val oldSystemColor = bg
 
         settings.lightTheme = light
@@ -4258,6 +4276,9 @@ class MainActivity : AppCompatActivity() {
             nextSettingsScroll?.scrollTo(0, oldSettingsScrollY)
             nextSettingsScroll?.post {
                 nextSettingsScroll.scrollTo(0, oldSettingsScrollY)
+                nextSettingsScroll.postOnAnimation {
+                    nextSettingsScroll.scrollTo(0, oldSettingsScrollY)
+                }
             }
             nextShell.visibility = View.VISIBLE
             nextShell.animate()

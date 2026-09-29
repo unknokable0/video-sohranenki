@@ -170,8 +170,7 @@ class SohrBottomNavView(
 
     private fun requestIndex(target: Int) {
         if (target !in tabs.indices || target == selectedIndex) return
-        animatePress(target)
-        onSelect(tabs[target])
+        selectIndex(target, animate = true, notify = true)
     }
 
     fun syncSelected(tab: SohrTab, animate: Boolean = false) {
