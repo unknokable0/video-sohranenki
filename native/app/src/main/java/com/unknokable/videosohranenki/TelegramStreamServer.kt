@@ -47,6 +47,23 @@ class TelegramStreamServer(
         }
     }
 
+    fun prefetchFraction(
+        item: VideoItem,
+        fraction: Float = 0.15f,
+        maxBytes: Long = 24L * 1024L * 1024L
+    ) {
+        if (item.fileId <= 0 || item.fileSize <= 0L) return
+        scope.launch {
+            runCatching {
+                val target = (item.fileSize * fraction.coerceIn(0.01f, 0.25f))
+                    .toLong()
+                    .coerceAtLeast(768L * 1024L)
+                val limit = minOf(item.fileSize, target, maxBytes.coerceAtLeast(768L * 1024L))
+                client.send(TdApi.DownloadFile(item.fileId, 20, 0, limit, false))
+            }
+        }
+    }
+
     override fun stop() { scope.cancel(); super.stop() }
 
     override fun serve(session: IHTTPSession): Response {
