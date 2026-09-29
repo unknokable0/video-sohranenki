@@ -3338,7 +3338,7 @@ class MainActivity : AppCompatActivity() {
                 false
             )
             adapter = HomeVideoShelfAdapter(
-                source = items,
+                items = items,
                 palette = palette,
                 animationsEnabled = settings.animations,
                 mode = mode,
@@ -4058,7 +4058,7 @@ class MainActivity : AppCompatActivity() {
             lateinit var adapter: PlaybackSessionAdapter
             adapter = PlaybackSessionAdapter(
                 palette = palette,
-                items = items,
+                source = items,
                 onPlay = { item ->
                     dialog.dismiss()
                     experienceStore.removeFromQueue(item.messageId)
