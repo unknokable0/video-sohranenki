@@ -3232,6 +3232,8 @@ class MainActivity : AppCompatActivity() {
 
         val shelf = RecyclerView(this).apply {
             overScrollMode = View.OVER_SCROLL_NEVER
+            setHasFixedSize(true)
+            setItemViewCacheSize(5)
             isVerticalScrollBarEnabled = false
             isHorizontalScrollBarEnabled = false
             layoutManager = LinearLayoutManager(
