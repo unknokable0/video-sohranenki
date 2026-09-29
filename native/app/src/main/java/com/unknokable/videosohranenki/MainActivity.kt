@@ -3979,136 +3979,168 @@ class MainActivity : AppCompatActivity() {
         val dialog = BottomSheetDialog(this)
         val sheet = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(12), dp(14), dp(20))
+            setPadding(dp(14), dp(12), dp(14), dp(18))
             background = roundedBg(panel, 26)
         }
 
-        fun render() {
-            sheet.removeAllViews()
+        val ids = experienceStore.queueIds()
+        val byId = currentVideos.associateBy { it.messageId }
+        val items = ids.mapNotNull(byId::get)
 
-            val ids = experienceStore.queueIds()
-            val byId = currentVideos.associateBy { it.messageId }
-            val items = ids.mapNotNull(byId::get)
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(8), dp(4), dp(8), dp(3))
+        }
+        val labels = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        labels.addView(TextView(this).apply {
+            text = "Сессия просмотра"
+            textSize = 19f
+            includeFontPadding = false
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+        })
+        labels.addView(TextView(this).apply {
+            text = if (items.isEmpty()) "Очередь пока пустая" else "Зажмите карточку и перетащите"
+            textSize = 11.5f
+            includeFontPadding = false
+            setTextColor(muted)
+            setPadding(0, dp(3), 0, 0)
+        })
+        header.addView(labels, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
-            val header = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(8), dp(4), dp(8), dp(10))
-            }
+        if (items.isNotEmpty()) {
             header.addView(TextView(this).apply {
-                text = "Очередь"
-                textSize = 19f
+                text = "Очистить"
+                textSize = 11.5f
+                gravity = Gravity.CENTER
                 setTypeface(typeface, Typeface.BOLD)
-                setTextColor(this@MainActivity.text)
-            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            if (items.isNotEmpty()) {
-                header.addView(TextView(this).apply {
-                    text = "Очистить"
-                    textSize = 12f
-                    gravity = Gravity.CENTER
-                    setTypeface(typeface, Typeface.BOLD)
-                    setTextColor(purple)
-                    setPadding(dp(10), dp(7), dp(10), dp(7))
-                    background = roundedBg(palette.accentSoft, 13)
-                    isClickable = true
-                    setOnClickListener {
-                        SohrHaptics.confirm(this)
-                        experienceStore.clearQueue()
-                        render()
-                    }
-                })
+                setTextColor(purple)
+                setPadding(dp(10), dp(7), dp(10), dp(7))
+                background = roundedBg(palette.accentSoft, 13)
+                isClickable = true
+                setOnClickListener {
+                    SohrHaptics.confirm(this)
+                    experienceStore.clearQueue()
+                    dialog.dismiss()
+                }
+            })
+        }
+        sheet.addView(header, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(10) })
+
+        if (items.isEmpty()) {
+            sheet.addView(TextView(this).apply {
+                text = "Добавьте видео через долгое нажатие → «Воспроизвести следующим» или «В конец очереди»."
+                textSize = 13f
+                gravity = Gravity.CENTER
+                setTextColor(muted)
+                setPadding(dp(18), dp(26), dp(18), dp(28))
+            })
+        } else {
+            val recycler = androidx.recyclerview.widget.RecyclerView(this).apply {
+                layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this@MainActivity)
+                overScrollMode = View.OVER_SCROLL_NEVER
+                itemAnimator = null
+                setHasFixedSize(false)
             }
-            sheet.addView(header)
 
-            if (items.isEmpty()) {
-                sheet.addView(TextView(this).apply {
-                    text = "Очередь пока пустая"
-                    textSize = 13f
-                    gravity = Gravity.CENTER
-                    setTextColor(muted)
-                    setPadding(dp(16), dp(24), dp(16), dp(26))
-                })
-                return
-            }
-
-            items.forEachIndexed { index, item ->
-                val row = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(dp(12), dp(10), dp(8), dp(10))
-                    background = roundedBg(palette.surfaceAlt, 17)
-                }
-
-                row.addView(TextView(this).apply {
-                    text = (index + 1).toString()
-                    textSize = 11f
-                    gravity = Gravity.CENTER
-                    setTypeface(typeface, Typeface.BOLD)
-                    setTextColor(purple)
-                    background = roundedBg(palette.accentSoft, 12)
-                }, LinearLayout.LayoutParams(dp(28), dp(28)).apply { marginEnd = dp(10) })
-
-                row.addView(TextView(this).apply {
-                    text = item.title
-                        .replace("\r\n", "\n")
-                        .lineSequence()
-                        .firstOrNull { it.isNotBlank() }
-                        ?.trim()
-                        .orEmpty()
-                        .ifBlank { "Видео" }
-                    textSize = 13f
-                    maxLines = 2
-                    ellipsize = android.text.TextUtils.TruncateAt.END
-                    setTypeface(typeface, Typeface.BOLD)
-                    setTextColor(this@MainActivity.text)
-                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-
-                fun smallButton(label: String, block: () -> Unit): TextView =
-                    TextView(this).apply {
-                        text = label
-                        textSize = 14f
-                        gravity = Gravity.CENTER
-                        setTextColor(muted)
-                        background = roundedBg(palette.surface, 13)
-                        isClickable = true
-                        setOnClickListener {
-                            SohrHaptics.select(this)
-                            block()
-                        }
-                    }
-
-                if (index > 0) {
-                    row.addView(smallButton("↑") {
-                        experienceStore.moveInQueue(item.messageId, -1)
-                        render()
-                    }, LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginStart = dp(6) })
-                }
-                if (index < items.lastIndex) {
-                    row.addView(smallButton("↓") {
-                        experienceStore.moveInQueue(item.messageId, 1)
-                        render()
-                    }, LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginStart = dp(5) })
-                }
-                row.addView(smallButton("×") {
-                    experienceStore.removeFromQueue(item.messageId)
-                    render()
-                }, LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginStart = dp(5) })
-
-                row.setOnClickListener {
-                    SohrMotion.press(row, settings.animations)
+            lateinit var adapter: PlaybackSessionAdapter
+            adapter = PlaybackSessionAdapter(
+                palette = palette,
+                items = items,
+                onPlay = { item ->
                     dialog.dismiss()
                     experienceStore.removeFromQueue(item.messageId)
                     openPlayer(item)
+                },
+                onRemove = { item ->
+                    SohrHaptics.select(recycler)
+                    experienceStore.removeFromQueue(item.messageId)
+                    adapter.remove(item.messageId)
                 }
+            )
+            recycler.adapter = adapter
 
-                sheet.addView(row, LinearLayout.LayoutParams(
+            val touchHelper = androidx.recyclerview.widget.ItemTouchHelper(
+                object : androidx.recyclerview.widget.ItemTouchHelper.SimpleCallback(
+                    androidx.recyclerview.widget.ItemTouchHelper.UP or
+                        androidx.recyclerview.widget.ItemTouchHelper.DOWN,
+                    0
+                ) {
+                    override fun onMove(
+                        recyclerView: androidx.recyclerview.widget.RecyclerView,
+                        viewHolder: androidx.recyclerview.widget.RecyclerView.ViewHolder,
+                        target: androidx.recyclerview.widget.RecyclerView.ViewHolder
+                    ): Boolean {
+                        val moved = adapter.move(
+                            viewHolder.bindingAdapterPosition,
+                            target.bindingAdapterPosition
+                        )
+                        if (moved) {
+                            experienceStore.replaceQueue(adapter.ids())
+                            SohrHaptics.select(recyclerView)
+                        }
+                        return moved
+                    }
+
+                    override fun onSwiped(
+                        viewHolder: androidx.recyclerview.widget.RecyclerView.ViewHolder,
+                        direction: Int
+                    ) = Unit
+
+                    override fun isLongPressDragEnabled(): Boolean = true
+
+                    override fun onSelectedChanged(
+                        viewHolder: androidx.recyclerview.widget.RecyclerView.ViewHolder?,
+                        actionState: Int
+                    ) {
+                        super.onSelectedChanged(viewHolder, actionState)
+                        viewHolder?.itemView?.let { view ->
+                            if (actionState == androidx.recyclerview.widget.ItemTouchHelper.ACTION_STATE_DRAG) {
+                                view.animate().cancel()
+                                view.animate()
+                                    .scaleX(1.025f)
+                                    .scaleY(1.025f)
+                                    .alpha(0.96f)
+                                    .setDuration(SohrMotion.FAST)
+                                    .start()
+                            }
+                        }
+                    }
+
+                    override fun clearView(
+                        recyclerView: androidx.recyclerview.widget.RecyclerView,
+                        viewHolder: androidx.recyclerview.widget.RecyclerView.ViewHolder
+                    ) {
+                        super.clearView(recyclerView, viewHolder)
+                        viewHolder.itemView.animate().cancel()
+                        viewHolder.itemView.animate()
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .alpha(1f)
+                            .setDuration(SohrMotion.FAST)
+                            .setInterpolator(SohrMotion.smooth())
+                            .start()
+                        experienceStore.replaceQueue(adapter.ids())
+                    }
+                }
+            )
+            touchHelper.attachToRecyclerView(recycler)
+
+            sheet.addView(
+                recycler,
+                LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = dp(7) })
-            }
+                    minOf(dp(390), items.size * dp(78) + dp(8))
+                )
+            )
         }
 
-        render()
         dialog.setContentView(sheet)
         dialog.setOnShowListener {
             dialog.findViewById<FrameLayout>(com.google.android.material.R.id.design_bottom_sheet)
