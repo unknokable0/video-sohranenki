@@ -4149,6 +4149,450 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
     }
 
+    private fun showMoments(filterMessageId: Long? = null) {
+        auxiliaryScreen = "moments"
+        stopInlinePreview()
+        setFullscreen(false)
+
+        val allItems = (currentVideos + telegramVideos + twitchVideos)
+            .distinctBy { it.messageId }
+            .associateBy { it.messageId }
+        val moments = if (filterMessageId == null) {
+            momentsStore.all()
+        } else {
+            momentsStore.forVideo(filterMessageId)
+        }
+
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(20))
+            setBackgroundColor(bg)
+        }
+
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        header.addView(ImageButton(this).apply {
+            setImageResource(R.drawable.ic_back)
+            imageTintList = ColorStateList.valueOf(this@MainActivity.text)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(11), dp(11), dp(11), dp(11))
+            background = roundedBg(palette.surfaceAlt, 21)
+            contentDescription = "Назад"
+            setOnClickListener {
+                SohrMotion.press(this, settings.animations)
+                auxiliaryScreen = null
+                pendingRootSlide = -1
+                showSelectedVideoSource()
+            }
+        }, LinearLayout.LayoutParams(dp(42), dp(42)).apply { marginEnd = dp(11) })
+
+        val heading = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        heading.addView(TextView(this@MainActivity).apply {
+            text = if (filterMessageId == null) "Моменты" else "Моменты видео"
+            textSize = 23f
+            includeFontPadding = false
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+        })
+        heading.addView(TextView(this@MainActivity).apply {
+            text = when {
+                moments.isEmpty() -> "Пока ничего не сохранено"
+                moments.size == 1 -> "1 сохранённый момент"
+                else -> moments.size.toString() + " сохранённых моментов"
+            }
+            textSize = 11.5f
+            includeFontPadding = false
+            setTextColor(muted)
+            setPadding(0, dp(3), 0, 0)
+        })
+        header.addView(heading, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        page.addView(header)
+
+        val scroll = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+        }
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(16), 0, dp(8))
+        }
+        scroll.addView(list)
+
+        if (moments.isEmpty()) {
+            list.addView(TextView(this).apply {
+                text = "Во время просмотра нажмите «Момент» — SOHR запомнит точную секунду."
+                textSize = 13.5f
+                gravity = Gravity.CENTER
+                setTextColor(muted)
+                setPadding(dp(24), dp(42), dp(24), dp(42))
+                background = roundedBg(panel, 20)
+            })
+        } else {
+            moments.forEach { moment ->
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(13), dp(11), dp(9), dp(11))
+                    background = roundedBg(panel, 18)
+                    isClickable = true
+                    isFocusable = true
+                }
+
+                row.addView(TextView(this).apply {
+                    text = formatRecapTime(moment.positionMs)
+                    textSize = 12f
+                    gravity = Gravity.CENTER
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(purple)
+                    background = roundedBg(palette.accentSoft, 13)
+                }, LinearLayout.LayoutParams(dp(70), dp(38)).apply { marginEnd = dp(11) })
+
+                val copy = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+                copy.addView(TextView(this).apply {
+                    text = moment.label.ifBlank { moment.videoTitle }
+                    textSize = 13.5f
+                    maxLines = 2
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    includeFontPadding = false
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(this@MainActivity.text)
+                })
+                copy.addView(TextView(this).apply {
+                    text = if (moment.label.isBlank()) "Нажмите, чтобы продолжить отсюда" else moment.videoTitle
+                    textSize = 10.8f
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    includeFontPadding = false
+                    setTextColor(muted)
+                    setPadding(0, dp(3), 0, 0)
+                })
+                row.addView(copy, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+                row.addView(TextView(this).apply {
+                    text = "×"
+                    textSize = 18f
+                    gravity = Gravity.CENTER
+                    setTextColor(muted)
+                    background = roundedBg(palette.surfaceAlt, 14)
+                    isClickable = true
+                    setOnClickListener {
+                        SohrHaptics.confirm(this)
+                        momentsStore.remove(moment.id)
+                        suppressNextRootAnimation = true
+                        showMoments(filterMessageId)
+                    }
+                }, LinearLayout.LayoutParams(dp(36), dp(36)).apply { marginStart = dp(7) })
+
+                row.setOnClickListener {
+                    val item = allItems[moment.messageId]
+                    if (item != null) {
+                        SohrMotion.press(row, settings.animations)
+                        auxiliaryScreen = null
+                        openPlayer(item, (moment.positionMs / 1000L).toInt())
+                    } else {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Видео сейчас недоступно в медиатеке",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+
+                list.addView(row, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(8) })
+            }
+        }
+
+        page.addView(scroll, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            0,
+            1f
+        ))
+        replaceRoot(withBottomNav(page, SohrTab.SETTINGS))
+    }
+
+    private fun showRecap() {
+        auxiliaryScreen = "recap"
+        stopInlinePreview()
+        setFullscreen(false)
+
+        val recap = recapStore.snapshot()
+        val monthLabel = recap.month.atDay(1)
+            .format(DateTimeFormatter.ofPattern("LLLL yyyy", Locale("ru")))
+            .replaceFirstChar { it.titlecase(Locale("ru")) }
+
+        val scroll = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            setBackgroundColor(bg)
+        }
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(24))
+            setBackgroundColor(bg)
+        }
+
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        header.addView(ImageButton(this).apply {
+            setImageResource(R.drawable.ic_back)
+            imageTintList = ColorStateList.valueOf(this@MainActivity.text)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(11), dp(11), dp(11), dp(11))
+            background = roundedBg(palette.surfaceAlt, 21)
+            contentDescription = "Назад"
+            setOnClickListener {
+                SohrMotion.press(this, settings.animations)
+                auxiliaryScreen = null
+                pendingRootSlide = -1
+                showSettings()
+            }
+        }, LinearLayout.LayoutParams(dp(42), dp(42)).apply { marginEnd = dp(11) })
+        header.addView(TextView(this).apply {
+            text = "SOHR Recap"
+            textSize = 23f
+            includeFontPadding = false
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        page.addView(header)
+
+        page.addView(TextView(this).apply {
+            text = monthLabel
+            textSize = 12.5f
+            setTextColor(muted)
+            setPadding(dp(54), dp(2), 0, dp(16))
+        })
+
+        val hero = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(18), dp(24), dp(18), dp(24))
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                intArrayOf(palette.accentSoft, panel)
+            ).apply { cornerRadius = dp(26).toFloat() }
+        }
+        hero.addView(TextView(this).apply {
+            text = formatRecapTime(recap.watchedMs)
+            textSize = 36f
+            includeFontPadding = false
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(purple)
+        })
+        hero.addView(TextView(this).apply {
+            text = "реального просмотра"
+            textSize = 12.5f
+            gravity = Gravity.CENTER
+            setTextColor(this@MainActivity.text)
+            setPadding(0, dp(5), 0, 0)
+        })
+        page.addView(hero)
+
+        fun statCard(value: String, label: String): View =
+            LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(14), dp(13), dp(14), dp(13))
+                background = roundedBg(panel, 18)
+                addView(TextView(this@MainActivity).apply {
+                    text = value
+                    textSize = 18f
+                    includeFontPadding = false
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(this@MainActivity.text)
+                })
+                addView(TextView(this@MainActivity).apply {
+                    text = label
+                    textSize = 10.8f
+                    includeFontPadding = false
+                    setTextColor(muted)
+                    setPadding(0, dp(4), 0, 0)
+                })
+            }
+
+        val activeDay = recap.activeDay?.let { raw ->
+            runCatching {
+                LocalDate.parse(raw)
+                    .format(DateTimeFormatter.ofPattern("d MMMM", Locale("ru")))
+            }.getOrNull()
+        } ?: "—"
+
+        val rows = listOf(
+            listOf(
+                recap.uniqueVideos.toString() to "Уникальных видео",
+                recap.starts.toString() to "Запусков"
+            ),
+            listOf(
+                formatRecapTime(recap.longestSessionMs) to "Длинная сессия",
+                activeDay to "Активный день"
+            ),
+            listOf(
+                streakTracker.currentStreak().toString() + " дн." to "Текущий стрик",
+                streakTracker.longestStreak().toString() + " дн." to "Лучший стрик"
+            )
+        )
+
+        rows.forEach { pair ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, dp(12), 0, 0)
+            }
+            pair.forEachIndexed { index, value ->
+                row.addView(
+                    statCard(value.first, value.second),
+                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                        if (index == 0) marginEnd = dp(6) else marginStart = dp(6)
+                    }
+                )
+            }
+            page.addView(row)
+        }
+
+        val save = TextView(this).apply {
+            text = "Сохранить Recap картинкой"
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            setPadding(dp(14), dp(13), dp(14), dp(13))
+            background = roundedBg(purple, 18)
+            isClickable = true
+            setOnClickListener {
+                SohrMotion.press(this, settings.animations)
+                saveRecapCard(recap, monthLabel)
+            }
+        }
+        page.addView(save, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(16) })
+
+        page.addView(TextView(this).apply {
+            text = "Recap считает только время, когда видео действительно воспроизводилось."
+            textSize = 10.8f
+            gravity = Gravity.CENTER
+            setTextColor(muted)
+            setPadding(dp(12), dp(13), dp(12), 0)
+        })
+
+        scroll.addView(page)
+        replaceRoot(withBottomNav(scroll, SohrTab.SETTINGS))
+    }
+
+    private fun formatRecapTime(ms: Long): String {
+        val totalSeconds = (ms.coerceAtLeast(0L) / 1000L)
+        val hours = totalSeconds / 3600L
+        val minutes = (totalSeconds % 3600L) / 60L
+        val seconds = totalSeconds % 60L
+        return when {
+            hours > 0L -> hours.toString() + " ч " + minutes + " мин"
+            minutes > 0L -> minutes.toString() + " мин " + seconds + " сек"
+            else -> seconds.toString() + " сек"
+        }
+    }
+
+    private fun saveRecapCard(recap: SohrRecapSnapshot, monthLabel: String) {
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val width = 1080
+                    val height = 1350
+                    val bitmap = android.graphics.Bitmap.createBitmap(
+                        width,
+                        height,
+                        android.graphics.Bitmap.Config.ARGB_8888
+                    )
+                    val canvas = android.graphics.Canvas(bitmap)
+                    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+
+                    canvas.drawColor(Color.rgb(8, 9, 20))
+                    paint.textAlign = android.graphics.Paint.Align.LEFT
+                    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+
+                    paint.color = Color.rgb(118, 126, 255)
+                    paint.textSize = 76f
+                    canvas.drawText("SOHR", 86f, 138f, paint)
+
+                    paint.color = Color.WHITE
+                    paint.textSize = 58f
+                    canvas.drawText("Recap", 86f, 218f, paint)
+
+                    paint.color = Color.rgb(170, 172, 194)
+                    paint.textSize = 34f
+                    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+                    canvas.drawText(monthLabel, 86f, 276f, paint)
+
+                    paint.color = Color.rgb(118, 126, 255)
+                    paint.textSize = 102f
+                    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                    canvas.drawText(formatRecapTime(recap.watchedMs), 86f, 470f, paint)
+
+                    paint.color = Color.WHITE
+                    paint.textSize = 40f
+                    canvas.drawText(recap.uniqueVideos.toString() + " видео", 86f, 600f, paint)
+                    canvas.drawText(recap.starts.toString() + " запусков", 86f, 675f, paint)
+                    canvas.drawText("Стрик " + streakTracker.currentStreak() + " дней", 86f, 750f, paint)
+
+                    paint.color = Color.rgb(170, 172, 194)
+                    paint.textSize = 30f
+                    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+                    canvas.drawText("Сохранено из SOHR", 86f, 1230f, paint)
+
+                    val name = "SOHR_Recap_" + recap.month.toString() + ".png"
+                    if (android.os.Build.VERSION.SDK_INT >= 29) {
+                        val values = android.content.ContentValues().apply {
+                            put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, name)
+                            put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
+                            put(
+                                android.provider.MediaStore.Images.Media.RELATIVE_PATH,
+                                Environment.DIRECTORY_PICTURES + "/SOHR"
+                            )
+                            put(android.provider.MediaStore.Images.Media.IS_PENDING, 1)
+                        }
+                        val uri = contentResolver.insert(
+                            android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                            values
+                        ) ?: error("Не удалось создать файл")
+                        contentResolver.openOutputStream(uri)?.use { out ->
+                            check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out))
+                        } ?: error("Не удалось открыть файл")
+                        values.clear()
+                        values.put(android.provider.MediaStore.Images.Media.IS_PENDING, 0)
+                        contentResolver.update(uri, values, null, null)
+                    } else {
+                        val dir = File(
+                            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+                            "SOHR"
+                        ).apply { mkdirs() }
+                        val file = File(dir, name)
+                        file.outputStream().use { out ->
+                            check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out))
+                        }
+                        android.media.MediaScannerConnection.scanFile(
+                            this@MainActivity,
+                            arrayOf(file.absolutePath),
+                            arrayOf("image/png"),
+                            null
+                        )
+                    }
+                    bitmap.recycle()
+                }
+            }
+            Toast.makeText(
+                this@MainActivity,
+                if (result.isSuccess) "Recap сохранён в Галерею" else "Не удалось сохранить Recap",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
     private fun showDownloadCenter() {
         auxiliaryScreen = "downloads"
         stopInlinePreview()
