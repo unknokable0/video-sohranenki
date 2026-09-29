@@ -135,7 +135,7 @@ object ModernDialogs {
         val box = dialogBox(context, palette)
         box.addView(header(context, palette, "Оформление", dialog, box))
         box.addView(TextView(context).apply {
-            text = "Выбери режим и цвет SOHR"
+            text = "Выберите режим и цвет SOHR"
             textSize = 13f
             gravity = Gravity.CENTER
             setTextColor(palette.muted)
