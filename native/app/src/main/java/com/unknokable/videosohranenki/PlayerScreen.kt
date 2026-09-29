@@ -127,6 +127,8 @@ class PlayerScreen(
     private var sleepSelection = 0
     private var qualitySelection = 0
     private var playbackCounted = false
+    private var playbackRecoveryAttempts = 0
+    private var destroyed = false
     private var lastProgressPersistAt = 0L
     private var speedActionButton: TextView? = null
 
@@ -151,10 +153,10 @@ class PlayerScreen(
 
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                12_000,
-                45_000,
-                500,
-                1_200
+                8_000,
+                35_000,
+                300,
+                900
             )
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
@@ -322,7 +324,13 @@ class PlayerScreen(
                 updatePlayIcon()
                 root.keepScreenOn = isPlaying
                 if (isPlaying && ::endOverlay.isInitialized) endOverlay.visibility = View.GONE
-                if (isPlaying) { handler.removeCallbacks(autoHideControls); handler.postDelayed(autoHideControls, 3_000L) } else handler.removeCallbacks(autoHideControls)
+                if (isPlaying) {
+                    playbackRecoveryAttempts = 0
+                    handler.removeCallbacks(autoHideControls)
+                    handler.postDelayed(autoHideControls, 3_000L)
+                } else {
+                    handler.removeCallbacks(autoHideControls)
+                }
                 if (isPlaying && !playbackCounted) {
                     playbackCounted = true
                     onPlaybackStarted()
@@ -339,15 +347,7 @@ class PlayerScreen(
             }
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                handler.removeCallbacks(showBufferingRunnable)
-                bufferingLoader.animate().cancel()
-                bufferingLoader.visibility = View.GONE
-                root.keepScreenOn = false
-                Toast.makeText(
-                    activity,
-                    "Не удалось воспроизвести видео",
-                    Toast.LENGTH_SHORT
-                ).show()
+                recoverFromPlaybackError(error)
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -389,6 +389,58 @@ class PlayerScreen(
 
         installGestures()
         scheduleProgress()
+    }
+
+    private fun recoverFromPlaybackError(error: androidx.media3.common.PlaybackException) {
+        handler.removeCallbacks(showBufferingRunnable)
+        if (destroyed) return
+
+        val canRetry =
+            playbackRecoveryAttempts < 2 &&
+                error.errorCode in 2000..3999
+
+        if (!canRetry) {
+            showPlaybackFailure()
+            return
+        }
+
+        playbackRecoveryAttempts++
+        val resumeAt = player.currentPosition
+            .coerceAtLeast(startPositionMs)
+            .coerceAtLeast(0L)
+        val delayMs = if (playbackRecoveryAttempts == 1) 180L else 550L
+
+        bufferingLoader.animate().cancel()
+        bufferingLoader.alpha = 0.92f
+        bufferingLoader.visibility = View.VISIBLE
+
+        handler.postDelayed({
+            if (destroyed) return@postDelayed
+            runCatching {
+                player.stop()
+                player.clearMediaItems()
+                player.setMediaItem(MediaItem.fromUri(mediaUrl))
+                if (resumeAt > 0L) player.seekTo(resumeAt)
+                player.playbackParameters = PlaybackParameters(speed)
+                player.playWhenReady = true
+                player.prepare()
+            }.onFailure {
+                showPlaybackFailure()
+            }
+        }, delayMs)
+    }
+
+    private fun showPlaybackFailure() {
+        if (destroyed) return
+        handler.removeCallbacks(showBufferingRunnable)
+        bufferingLoader.animate().cancel()
+        bufferingLoader.visibility = View.GONE
+        root.keepScreenOn = false
+        Toast.makeText(
+            activity,
+            "Не удалось воспроизвести видео",
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     private fun buildHeader(): LinearLayout {
@@ -1705,6 +1757,7 @@ class PlayerScreen(
     }
 
     fun destroy() {
+        destroyed = true
         dismissFullscreenSettings(animated = false)
         runCatching { if (fullscreen || fullscreenHost != null) setFullscreenMode(false) }
         persistPlaybackPosition(force = true)
