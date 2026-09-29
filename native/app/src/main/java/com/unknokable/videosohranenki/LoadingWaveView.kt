@@ -3,12 +3,9 @@ package com.unknokable.videosohranenki
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.PorterDuff
-import android.graphics.PorterDuffXfermode
-import android.graphics.Shader
+import android.graphics.PathMeasure
 import android.view.View
 import android.view.animation.PathInterpolator
 import kotlin.math.sin
@@ -18,25 +15,33 @@ class LoadingWaveView(
     private val color: Int
 ) : View(context) {
 
-    private val cloudPath = Path()
-    private val sCutPath = Path()
+    private val outlinePath = Path()
+    private val segmentPath = Path()
+    private val measure = PathMeasure()
     private var phase = 0f
 
-    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
-    }
-
-    private val cutPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val basePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
-        xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+    }
+
+    private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
+
+    private val segmentPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
     }
 
     private val animator = ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = 1600L
+        duration = 1850L
         repeatCount = ValueAnimator.INFINITE
-        interpolator = PathInterpolator(0.42f, 0f, 0.58f, 1f)
+        interpolator = PathInterpolator(0.22f, 1f, 0.36f, 1f)
         addUpdateListener {
             phase = it.animatedFraction
             invalidate()
@@ -46,105 +51,99 @@ class LoadingWaveView(
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         val width = w.toFloat()
         val height = h.toFloat()
+
         val cx = width * 0.50f
-        val top = height * 0.17f
+        val top = height * 0.18f
         val shoulderY = height * 0.40f
         val sideY = height * 0.56f
         val bottom = height * 0.82f
 
-        cloudPath.reset()
-        cloudPath.moveTo(cx, top)
-        cloudPath.cubicTo(
-            width * 0.36f, height * 0.16f,
-            width * 0.32f, height * 0.29f,
+        outlinePath.reset()
+        outlinePath.moveTo(cx, top)
+
+        outlinePath.cubicTo(
+            width * 0.36f, height * 0.17f,
+            width * 0.32f, height * 0.30f,
             width * 0.31f, shoulderY
         )
-        cloudPath.cubicTo(
+        outlinePath.cubicTo(
             width * 0.19f, height * 0.42f,
             width * 0.13f, height * 0.49f,
             width * 0.13f, sideY
         )
-        cloudPath.cubicTo(
+        outlinePath.cubicTo(
             width * 0.13f, height * 0.68f,
             width * 0.24f, height * 0.73f,
             width * 0.33f, height * 0.74f
         )
-        cloudPath.cubicTo(
+        outlinePath.cubicTo(
             width * 0.39f, height * 0.75f,
             width * 0.42f, bottom,
             cx, bottom
         )
-        cloudPath.cubicTo(
+        outlinePath.cubicTo(
             width * 0.58f, bottom,
             width * 0.61f, height * 0.75f,
             width * 0.67f, height * 0.74f
         )
-        cloudPath.cubicTo(
+        outlinePath.cubicTo(
             width * 0.76f, height * 0.73f,
             width * 0.87f, height * 0.68f,
             width * 0.87f, sideY
         )
-        cloudPath.cubicTo(
+        outlinePath.cubicTo(
             width * 0.87f, height * 0.49f,
             width * 0.81f, height * 0.42f,
             width * 0.69f, shoulderY
         )
-        cloudPath.cubicTo(
-            width * 0.68f, height * 0.29f,
-            width * 0.64f, height * 0.16f,
+        outlinePath.cubicTo(
+            width * 0.68f, height * 0.30f,
+            width * 0.64f, height * 0.17f,
             cx, top
         )
-        cloudPath.close()
+        outlinePath.close()
 
-        sCutPath.reset()
-        sCutPath.moveTo(width * 0.65f, height * 0.34f)
-        sCutPath.cubicTo(
-            width * 0.57f, height * 0.25f,
-            width * 0.38f, height * 0.27f,
-            width * 0.36f, height * 0.39f
-        )
-        sCutPath.cubicTo(
-            width * 0.34f, height * 0.49f,
-            width * 0.64f, height * 0.49f,
-            width * 0.65f, height * 0.61f
-        )
-        sCutPath.cubicTo(
-            width * 0.66f, height * 0.73f,
-            width * 0.44f, height * 0.76f,
-            width * 0.35f, height * 0.67f
-        )
-
-        cutPaint.strokeWidth = minOf(width, height) * 0.105f
-        fillPaint.shader = LinearGradient(
-            width * 0.18f,
-            height * 0.18f,
-            width * 0.82f,
-            height * 0.82f,
-            intArrayOf(lighten(color, 0.26f), color, darken(color, 0.18f)),
-            floatArrayOf(0f, 0.52f, 1f),
-            Shader.TileMode.CLAMP
-        )
+        measure.setPath(outlinePath, true)
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        if (width <= 0 || height <= 0) return
 
-        val wave = sin((phase * Math.PI * 2).toFloat())
-        val scale = 0.985f + 0.015f * ((wave + 1f) * 0.5f)
-        val shiftY = dp(1.2f) * wave
-        val cx = width / 2f
-        val cy = height / 2f
+        val length = measure.length
+        if (width <= 0 || height <= 0 || length <= 0f) return
 
-        val layer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
+        val breathe = 1f + sin((phase * Math.PI * 2).toFloat()) * 0.012f
+        val centerX = width / 2f
+        val centerY = height / 2f
+
         canvas.save()
-        canvas.translate(0f, shiftY)
-        canvas.scale(scale, scale, cx, cy)
-        fillPaint.alpha = 245
-        canvas.drawPath(cloudPath, fillPaint)
-        canvas.drawPath(sCutPath, cutPaint)
+        canvas.scale(breathe, breathe, centerX, centerY)
+
+        basePaint.color = withAlpha(color, 52)
+        basePaint.strokeWidth = dp(2.2f)
+        canvas.drawPath(outlinePath, basePaint)
+
+        glowPaint.color = withAlpha(color, 30)
+        glowPaint.strokeWidth = dp(7.5f)
+        canvas.drawPath(outlinePath, glowPaint)
+
+        val segmentLength = length * 0.27f
+        val start = phase * length
+        val end = start + segmentLength
+        segmentPath.reset()
+
+        if (end <= length) {
+            measure.getSegment(start, end, segmentPath, true)
+        } else {
+            measure.getSegment(start, length, segmentPath, true)
+            measure.getSegment(0f, end - length, segmentPath, true)
+        }
+
+        segmentPaint.color = withAlpha(color, 245)
+        segmentPaint.strokeWidth = dp(3.6f)
+        canvas.drawPath(segmentPath, segmentPaint)
+
         canvas.restore()
-        canvas.restoreToCount(layer)
     }
 
     override fun onAttachedToWindow() {
@@ -170,24 +169,8 @@ class LoadingWaveView(
         }
     }
 
-    private fun lighten(value: Int, amount: Float): Int =
-        blend(value, 0xFFFFFFFF.toInt(), amount)
-
-    private fun darken(value: Int, amount: Float): Int =
-        blend(value, 0xFF17112B.toInt(), amount)
-
-    private fun blend(from: Int, to: Int, amount: Float): Int {
-        val t = amount.coerceIn(0f, 1f)
-        fun channel(shift: Int): Int {
-            val a = (from shr shift) and 0xFF
-            val b = (to shr shift) and 0xFF
-            return (a + (b - a) * t).toInt().coerceIn(0, 255)
-        }
-        return (0xFF shl 24) or
-            (channel(16) shl 16) or
-            (channel(8) shl 8) or
-            channel(0)
-    }
+    private fun withAlpha(value: Int, alpha: Int): Int =
+        (value and 0x00FFFFFF) or (alpha.coerceIn(0, 255) shl 24)
 
     private fun dp(value: Float): Float =
         value * resources.displayMetrics.density
