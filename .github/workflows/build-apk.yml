@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.3.2: stable tabs, downloads, loader cleanup and player polish
+# SOHR 6.3.3: refreshed launcher, stable downloads and continuous cloud loader
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.3.2 version
+      - name: Assign SOHR 6.3.3 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=630002" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.3.2" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=630003" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.3.3" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -162,7 +162,7 @@ jobs:
                   "R.drawable.ic_close", "R.drawable.ic_check", "fun showAppearancePicker"
               ],
               "native/app/src/main/java/com/unknokable/videosohranenki/LoadingWaveView.kt": [
-                  "syncAnimator", "outlinePath", "segmentPath", "PathMeasure", "segmentPaint", "duration = 1750L"
+                  "syncAnimator", "outlinePath", "segmentPath", "PathMeasure", "segmentPaint", "cycleMs = 1750L", "SystemClock.uptimeMillis()"
               ],
               "native/app/src/main/java/com/unknokable/videosohranenki/SohrBottomNavView.kt": [
                   "syncSelected", "private fun requestIndex(target: Int)"
@@ -483,20 +483,20 @@ jobs:
           manifest = Path("native/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
           styles = Path("native/app/src/main/res/values/styles.xml").read_text(encoding="utf-8")
           gradle_file = Path("native/app/build.gradle.kts").read_text(encoding="utf-8")
-          brand_file = Path("native/app/src/main/res/drawable-nodpi/sohr_brand_logo.webp")
+          brand_file = Path("native/app/src/main/res/drawable-nodpi/sohr_brand_logo_v2.webp")
           loader = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/LoadingWaveView.kt"
           ).read_text(encoding="utf-8")
 
           if not brand_file.is_file() or brand_file.stat().st_size < 4096:
-              raise SystemExit("SOHR 6.2.6 direct brand artwork is missing or too small")
+              raise SystemExit("SOHR 6.3.3 refreshed brand artwork is missing or too small")
           brand_bytes = brand_file.read_bytes()
           if not brand_bytes.startswith(b"RIFF") or b"WEBP" not in brand_bytes[:16]:
               raise SystemExit("SOHR 6.2.6 brand artwork is not a valid WebP")
 
           for required in [
-              'android:icon="@drawable/sohr_brand_logo"',
-              'android:roundIcon="@drawable/sohr_brand_logo"',
+              'android:icon="@drawable/sohr_brand_logo_v2"',
+              'android:roundIcon="@drawable/sohr_brand_logo_v2"',
               'android:theme="@style/AppTheme.Starting"',
               "android.permission.ACCESS_NETWORK_STATE"
           ]:
@@ -529,7 +529,9 @@ jobs:
               "basePaint",
               "segmentPaint",
               "LinearInterpolator()",
-              "duration = 1750L",
+              "cycleMs = 1750L",
+              "duration = 60_000L",
+              "SystemClock.uptimeMillis()",
               "0.038f * sin",
               "val segmentLength = length * 0.25f"
           ]:
@@ -701,6 +703,39 @@ jobs:
               raise SystemExit("SOHR 6.3.2 regression: player release cancels manual download")
 
           for required in [
+              "TdApi.AddFileToDownloads(",
+              "TdApi.RemoveFileFromDownloads(item.fileId, false)",
+              "delay(250L)",
+              "item.chatId != 0L",
+              "TdApi.DownloadFile(item.fileId, 32, 0, 0, true)"
+          ]:
+              if required not in telegram_stream:
+                  raise SystemExit(f"SOHR 6.3.3 independent-download regression: {required}")
+
+          video_item = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/VideoItem.kt"
+          ).read_text(encoding="utf-8")
+          video_cache = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/SohrVideoCache.kt"
+          ).read_text(encoding="utf-8")
+          if "val chatId: Long = 0L" not in video_item:
+              raise SystemExit("SOHR 6.3.3 VideoItem chatId regression")
+          for required in ['chatId = o.optLong("chatId", 0L)', 'put("chatId", item.chatId)']:
+              if required not in video_cache:
+                  raise SystemExit(f"SOHR 6.3.3 cached chatId regression: {required}")
+
+          smart_download_icon = Path(
+              "native/app/src/main/res/drawable/ic_setting_smart_download.xml"
+          ).read_text(encoding="utf-8")
+          update_icon = Path(
+              "native/app/src/main/res/drawable/ic_setting_update.xml"
+          ).read_text(encoding="utf-8")
+          if smart_download_icon == update_icon:
+              raise SystemExit("SOHR 6.3.3 smart-download icon duplicates update icon")
+          if "M12.8,8.9L10.7,12.7" not in smart_download_icon:
+              raise SystemExit("SOHR 6.3.3 smart-download automation glyph missing")
+
+          for required in [
               "playbackRecoveryAttempts",
               "recoverFromPlaybackError",
               "error.errorCode in 2000..3999"
@@ -773,9 +808,9 @@ jobs:
           if obsolete_splash.exists():
               raise SystemExit("SOHR 6.2.8 regression: obsolete static splash mark file returned")
 
-          icon = Path("native/app/src/main/res/drawable-nodpi/sohr_brand_logo.webp")
+          icon = Path("native/app/src/main/res/drawable-nodpi/sohr_brand_logo_v2.webp")
           if not icon.is_file() or icon.stat().st_size < 4096:
-              raise SystemExit(f"SOHR 6.2.6 launcher asset missing or too small: {icon}")
+              raise SystemExit(f"SOHR 6.3.3 launcher asset missing or too small: {icon}")
 
           print(f"SOHR 6 UI assets verified; launcher={icon.stat().st_size} bytes")
           PY
@@ -790,7 +825,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "Главная / Лента / Просмотренные • плавные переходы верхних вкладок без наложения • Моменты и Recap удалены • загрузка возвращена в плеер • Telegram downloadFile конфликт исправлен координатором • Twitch VOD можно скачать • нижняя панель стабилизирована • таймлайн компактнее • облачная загрузка без картинки и неона движется непрерывно • новая синяя ава установлена как launcher icon"
+            "notes": "Новая сине-голубая ава SOHR подключена отдельным launcher-ресурсом • Моменты полностью удалены, в плеере обычная кнопка Скачать • Telegram ручные и умные загрузки отделены от streaming range-запросов • старая облачная загрузка без картинки и неона сохранена, сегмент больше не замирает на цикле • умное скачивание получило отдельную иконку облака с автоматизацией"
           }
           EOF
           cat update.json
