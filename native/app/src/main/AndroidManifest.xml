@@ -17,8 +17,8 @@
         android:usesCleartextTraffic="true"
         android:enableOnBackInvokedCallback="true"
         android:label="SOHR"
-        android:icon="@drawable/sohr_brand_logo"
-        android:roundIcon="@drawable/sohr_brand_logo"
+        android:icon="@drawable/sohr_brand_logo_v2"
+        android:roundIcon="@drawable/sohr_brand_logo_v2"
         android:theme="@style/AppTheme">
         <provider
             android:name="androidx.core.content.FileProvider"
