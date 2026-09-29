@@ -3946,10 +3946,9 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                     if (target.exists()) target.delete()
-                    check(temp.renameTo(target)) {
+                    if (!temp.renameTo(target)) {
                         temp.copyTo(target, overwrite = true)
                         temp.delete()
-                        true
                     }
                     target
                 }
