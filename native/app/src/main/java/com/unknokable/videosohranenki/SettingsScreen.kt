@@ -440,111 +440,97 @@ class SettingsScreen(
     }
 
     private fun previewModeSelector(): View {
-        val box = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(14), dp(14), dp(14))
-            background = rounded(palette.surface, 18)
+        fun modeLabel(mode: String): String = when (mode) {
+            "always" -> "Всегда"
+            "off" -> "Выкл"
+            else -> "Wi‑Fi"
         }
 
-        val titleRow = LinearLayout(activity).apply {
+        val row = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(13), dp(12), dp(13))
+            background = rounded(palette.surface, 18)
+            isClickable = true
+            isFocusable = true
         }
-        titleRow.addView(ImageView(activity).apply {
+
+        val icon = ImageView(activity).apply {
             setImageResource(R.drawable.ic_setting_previews)
             imageTintList = ColorStateList.valueOf(Color.parseColor("#58DFA0"))
             scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(10), dp(10), dp(10), dp(10))
-            background = rounded(palette.surfaceAlt, 13)
-        }, LinearLayout.LayoutParams(dp(42), dp(42)).apply { marginEnd = dp(10) })
-        titleRow.addView(LinearLayout(activity).apply {
+            setPadding(dp(11), dp(11), dp(11), dp(11))
+            background = rounded(palette.surfaceAlt, 14)
+        }
+
+        val labels = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            addView(TextView(activity).apply {
-                text = t("previews")
-                textSize = 15f
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(palette.text)
-            })
-            addView(TextView(activity).apply {
-                text = "Тихое превью после короткой паузы на карточке"
-                textSize = 11.5f
-                setTextColor(palette.muted)
-                setPadding(0, dp(3), 0, 0)
-            })
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        box.addView(titleRow)
+            setPadding(dp(12), 0, dp(8), 0)
+        }
 
-        val selector = FrameLayout(activity).apply {
-            setPadding(dp(4), dp(4), dp(4), dp(4))
-            background = rounded(palette.surfaceAlt, 16)
-            clipChildren = true
-            clipToPadding = true
+        val title = TextView(activity).apply {
+            text = t("previews")
+            textSize = 15f
+            includeFontPadding = false
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(palette.text)
         }
-        val indicator = View(activity).apply {
-            background = rounded(palette.accent, 13)
+
+        val subtitle = TextView(activity).apply {
+            text = "Тихое превью • " + modeLabel(settings.previewMode)
+            textSize = 12f
+            includeFontPadding = false
+            setTextColor(palette.muted)
+            setPadding(0, dp(3), 0, 0)
         }
-        val buttons = LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
+
+        val current = TextView(activity).apply {
+            text = modeLabel(settings.previewMode)
+            textSize = 11.5f
             gravity = Gravity.CENTER
-        }
-        val modes = listOf("wifi" to "Wi‑Fi", "always" to "Всегда", "off" to "Выкл")
-        val views = mutableListOf<TextView>()
-
-        fun update(selected: String, animate: Boolean) {
-            val slot = ((selector.width - selector.paddingLeft - selector.paddingRight) / 3f).coerceAtLeast(0f)
-            if (slot <= 0f) return
-            val index = modes.indexOfFirst { it.first == selected }.coerceAtLeast(0)
-            val params = indicator.layoutParams as FrameLayout.LayoutParams
-            params.width = slot.toInt()
-            params.height = dp(42)
-            indicator.layoutParams = params
-            val target = slot * index
-            indicator.animate().cancel()
-            if (animate && settings.animations) {
-                indicator.animate()
-                    .translationX(target)
-                    .setDuration(SohrMotion.NORMAL)
-                    .setInterpolator(SohrMotion.smooth())
-                    .start()
-            } else {
-                indicator.translationX = target
-            }
-            views.forEachIndexed { i, view ->
-                view.setTextColor(if (i == index) Color.WHITE else palette.muted)
-            }
+            includeFontPadding = false
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(palette.accent)
+            setPadding(dp(10), 0, dp(10), 0)
+            background = rounded(palette.accentSoft, 13)
         }
 
-        modes.forEach { (key, label) ->
-            val view = TextView(activity).apply {
-                text = label
-                textSize = 12f
-                gravity = Gravity.CENTER
-                setTypeface(typeface, Typeface.BOLD)
-                isClickable = true
-                isFocusable = true
-                setOnClickListener {
-                    if (settings.previewMode == key) return@setOnClickListener
-                    SohrHaptics.select(this)
-                    settings.previewMode = key
-                    needsReload = true
-                    update(key, true)
-                }
+        fun openPicker() {
+            animateTap(row)
+            val options = listOf("Wi‑Fi", "Всегда", "Выкл")
+            val keys = listOf("wifi", "always", "off")
+            val selected = keys.indexOf(settings.previewMode).coerceAtLeast(0)
+            ModernDialogs.showChoices(
+                context = activity,
+                palette = palette,
+                title = "Превью видео",
+                options = options,
+                selected = selected
+            ) { which ->
+                val next = keys.getOrNull(which) ?: return@showChoices
+                if (settings.previewMode == next) return@showChoices
+                settings.previewMode = next
+                needsReload = true
+                SohrHaptics.select(row)
+                val label = modeLabel(next)
+                current.text = label
+                subtitle.text = "Тихое превью • " + label
             }
-            views += view
-            buttons.addView(view, LinearLayout.LayoutParams(0, dp(42), 1f))
         }
 
-        selector.addView(indicator, FrameLayout.LayoutParams(0, dp(42), Gravity.START or Gravity.CENTER_VERTICAL))
-        selector.addView(buttons, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42), Gravity.CENTER))
-        selector.post { update(settings.previewMode, false) }
+        labels.addView(title)
+        labels.addView(subtitle)
 
-        box.addView(selector, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)).apply {
-            topMargin = dp(12)
-        })
+        row.addView(icon, LinearLayout.LayoutParams(dp(46), dp(46)))
+        row.addView(labels, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        row.addView(current, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)))
+
+        row.setOnClickListener { openPicker() }
+        current.setOnClickListener { openPicker() }
 
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            addView(box)
+            addView(row)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
