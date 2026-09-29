@@ -33,7 +33,7 @@ class LoadingWaveView(
         strokeJoin = Paint.Join.ROUND
     }
 
-    private val cycleMs = 1750L
+    private val cycleMs = 1850L
 
     private val animator = ValueAnimator.ofFloat(0f, 1f).apply {
         // The animator is only a frame ticker. Position comes from uptime, so the
@@ -46,7 +46,7 @@ class LoadingWaveView(
                 .coerceIn(0f, 0.999999f)
             // Old cloud path/timing stays the same. The segment only slows down
             // and speeds up; derivative remains positive, so it never stops.
-            phase = raw + 0.038f * sin(raw * Math.PI.toFloat() * 2f)
+            phase = raw + 0.052f * sin(raw * Math.PI.toFloat() * 2f)
             invalidate()
         }
     }
@@ -115,11 +115,15 @@ class LoadingWaveView(
         val length = measure.length
         if (width <= 0 || height <= 0 || length <= 0f) return
 
-        basePaint.color = withAlpha(color, 66)
-        basePaint.strokeWidth = dp(2.0f)
+        val minDp = minOf(width, height) / resources.displayMetrics.density
+        val baseStroke = (minDp * 0.055f).coerceIn(2.8f, 4.5f)
+        val activeStroke = (minDp * 0.076f).coerceIn(4.0f, 6.2f)
+
+        basePaint.color = withAlpha(color, 92)
+        basePaint.strokeWidth = dp(baseStroke)
         canvas.drawPath(outlinePath, basePaint)
 
-        val segmentLength = length * 0.25f
+        val segmentLength = length * 0.235f
         val start = phase * length
         val end = start + segmentLength
         segmentPath.reset()
@@ -131,8 +135,8 @@ class LoadingWaveView(
             measure.getSegment(0f, end - length, segmentPath, true)
         }
 
-        segmentPaint.color = withAlpha(color, 245)
-        segmentPaint.strokeWidth = dp(3.2f)
+        segmentPaint.color = withAlpha(color, 238)
+        segmentPaint.strokeWidth = dp(activeStroke)
         canvas.drawPath(segmentPath, segmentPaint)
     }
 
