@@ -2165,10 +2165,10 @@ class MainActivity : AppCompatActivity() {
             else if (!inPlace) reloadRequested = true
             return
         }
-        if (inPlace && visibleTelegram && !quiet) setFeedRefreshLoading(true)
+        if (inPlace && visibleTelegram) setFeedRefreshLoading(true)
         loadJob = lifecycleScope.launch {
             if (!inPlace && visibleTelegram && !onboardingActive) {
-                withContext(Dispatchers.Main) { showLoading("Собираем записи за неделю…") }
+                withContext(Dispatchers.Main) { showFeedSkeleton("Обновляем медиатеку…") }
             }
             try {
                 val chat = client.send(TdApi.SearchPublicChat("t2x2_video"))
@@ -2243,14 +2243,7 @@ class MainActivity : AppCompatActivity() {
                         return@withContext
                     }
                     if (inPlace && !changed) {
-                        if (!quiet) {
-                            setFeedRefreshLoading(false, "Готово")
-                            feedRefreshButton?.postDelayed({
-                                if (feedRefreshButton?.isEnabled == true) {
-                                    setFeedRefreshLoading(false, "Проверить новые")
-                                }
-                            }, 900L)
-                        }
+                        setFeedRefreshLoading(false)
                     } else {
                         currentDay = null
                         feedRefreshCompletedFlash = inPlace && !quiet
@@ -2262,16 +2255,13 @@ class MainActivity : AppCompatActivity() {
                 withContext(Dispatchers.Main) {
                     if (settings.videoSource != "telegram") return@withContext
                     if (inPlace) {
+                        setFeedRefreshLoading(false)
                         if (!quiet) {
-                            setFeedRefreshLoading(false, "Ошибка")
                             Toast.makeText(
                                 this@MainActivity,
                                 e.message ?: "Не удалось проверить новые видео",
                                 Toast.LENGTH_LONG
                             ).show()
-                            feedRefreshButton?.postDelayed({
-                                setFeedRefreshLoading(false, "Проверить новые")
-                            }, 1400L)
                         }
                     } else {
                         showMessage(
@@ -2286,9 +2276,21 @@ class MainActivity : AppCompatActivity() {
 
     private fun setFeedRefreshLoading(loading: Boolean, label: String? = null) {
         feedRefreshButton?.isEnabled = !loading
-        feedRefreshButton?.alpha = if (loading) 0.92f else 1f
-        feedRefreshLoader?.visibility = if (loading) View.VISIBLE else View.GONE
-        feedRefreshLabel?.text = label ?: if (loading) "Работаем…" else "Проверить новые"
+        feedRefreshLabel?.text = label
+        feedRefreshLoader?.let { loader ->
+            loader.animate().cancel()
+            if (loading) {
+                loader.visibility = View.VISIBLE
+                loader.alpha = 0f
+                loader.animate().alpha(0.86f).setDuration(120L).start()
+            } else {
+                loader.animate()
+                    .alpha(0f)
+                    .setDuration(140L)
+                    .withEndAction { loader.visibility = View.GONE }
+                    .start()
+            }
+        }
     }
 
     private fun messageToVideo(message: TdApi.Message): VideoItem? {
@@ -3327,6 +3329,7 @@ class MainActivity : AppCompatActivity() {
         live: TwitchLiveStream?,
         unavailable: Boolean = false
     ) {
+        updateTodayLiveSummary(live, unavailable)
         val animateIn = slot.childCount == 0
         slot.removeAllViews()
         slot.visibility = View.VISIBLE
@@ -3701,11 +3704,13 @@ class MainActivity : AppCompatActivity() {
             overScrollMode = View.OVER_SCROLL_NEVER
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = VideoAdapter(
-                sortedVideos,
-                palette,
-                settings.animations,
-                progressFor = { playbackProgress(it) }
-            ) { openPlayer(it) }
+                items = sortedVideos,
+                palette = palette,
+                animationsEnabled = settings.animations,
+                progressFor = { playbackProgress(it) },
+                onClick = { item, source -> openPlayer(item, sourceView = source) },
+                onLongClick = { item, source -> showVideoQuickActions(item, source) }
+            )
             setBackgroundColor(bg)
             setHasFixedSize(true)
             itemAnimator = if (settings.animations) itemAnimator else null
@@ -3733,7 +3738,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun openPlayer(item: VideoItem, startSeconds: Int = 0) {
+    private fun openPlayer(
+        item: VideoItem,
+        startSeconds: Int = 0,
+        sourceView: View? = null
+    ) {
+        val sourceBounds = sourceView?.let { source ->
+            Rect().takeIf { rect -> source.getGlobalVisibleRect(rect) && !rect.isEmpty }
+        }
         fullScreen = false
         if (item.source == "twitch") {
             openTwitchPlayer(item, startSeconds)
@@ -3833,6 +3845,7 @@ class MainActivity : AppCompatActivity() {
         pendingRootSlide = 1
         runCatching {
             replaceRoot(createdPlayer.root)
+            createdPlayer.animateEntranceFrom(sourceBounds)
         }.onFailure { error ->
             createdPlayer.destroy()
             playerScreen = null
@@ -4107,7 +4120,7 @@ class MainActivity : AppCompatActivity() {
             if (inPlace) feedRefreshLabel?.text = "Уже проверяем…"
             return
         }
-        if (inPlace) setFeedRefreshLoading(true) else showLoading("Загружаем стримы Twitch…")
+        if (inPlace) setFeedRefreshLoading(true) else showFeedSkeleton("Загружаем Twitch…")
         twitchLoadJob = lifecycleScope.launch {
             try {
                 val twitchLogin = TwitchApi.validateToken(clientId, token)
