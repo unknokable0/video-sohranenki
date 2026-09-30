@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.6.5: animated expandable T2x2 live card
+# SOHR 6.6.6: refined expandable T2x2 timeline and CTA
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.6.5 version
+      - name: Assign SOHR 6.6.6 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=660005" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.6.5" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=660006" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.6.6" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -645,7 +645,7 @@ jobs:
                   raise SystemExit(f"SOHR 6.6.0 action icon missing: {icon_name}")
 
           for required in [
-              '"6.6.5" -> listOf(',
+              '"6.6.6" -> listOf(',
               't2x2LiveAccent = Color.parseColor("#E5484D")',
               "TwitchCategoryTracker",
               "formatCategoryDuration",
@@ -658,11 +658,14 @@ jobs:
               "oldPost.text != newPost.text",
               "private fun setTodayLiveExpanded(",
               "private fun renderTodayLiveExpandedPanel(",
-              'text = if (live != null) "Перейти на эфир" else "Открыть T2x2 на Twitch"',
+              "private fun animateTodayLiveExpandedChildren(",
+              '"ИСТОРИЯ ЭФИРА"',
+              'R.drawable.ic_action_open',
+              'tag = "t2x2_timeline_row"',
               "todayLiveExpandAnimator"
           ]:
               if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.6.5 live/card polish regression: {required}")
+                  raise SystemExit(f"SOHR 6.6.6 live/card polish regression: {required}")
 
           live_pulse = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/LivePulseView.kt"
@@ -693,7 +696,7 @@ jobs:
               "recent = segments.takeLast(5).asReversed()"
           ]:
               if required not in category_tracker:
-                  raise SystemExit(f"SOHR 6.6.5 category history regression: {required}")
+                  raise SystemExit(f"SOHR 6.6.6 category history regression: {required}")
 
           for required in [
               "TwitchCategorySegment",
@@ -1251,7 +1254,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.6.5 • карточка T2x2 на главной плавно раскрывается прямо на месте • в раскрытом виде показываются название эфира, длительность, зрители, время начала и последние категории с временем • стрелка плавно поворачивается, детали появляются через fade/slide, а высота карточки анимируется единым SOHR motion • повторный тап сворачивает карточку • отдельная кнопка Перейти на эфир открывает Twitch • история хранит до пяти последних категорий"
+            "notes": "SOHR 6.6.6 • раскрытая карточка T2x2 стала ровнее и чище • история эфира теперь оформлена как timeline: время слева, непрерывная линия с точками, игра и компактная длительность • текущая категория выделяется мягко • убрана лишняя подсказка про повторное касание • кнопка Twitch получила отдельную CTA с иконкой • строки timeline появляются лёгким каскадом, а раскрытие стало плавнее"
           }
           EOF
           cat update.json
