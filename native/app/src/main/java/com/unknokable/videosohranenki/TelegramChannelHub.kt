@@ -94,6 +94,16 @@ class TelegramChannelHub(
         runCatching { resolveChannel(username) }.getOrNull()
     }
 
+    suspend fun warmRecentPosts(limit: Int = 18) = withContext(Dispatchers.IO) {
+        val safeLimit = limit.coerceIn(6, 30)
+        val chatIds = summaries.keys.toList()
+        for (chatId in chatIds) {
+            if (postsByChatId[chatId].isNullOrEmpty()) {
+                runCatching { loadPosts(chatId, limit = safeLimit) }
+            }
+        }
+    }
+
     private suspend fun resolveChannel(username: String): TelegramChannelSummary {
         val chat = client.send(TdApi.SearchPublicChat(username))
         usernameByChatId[chat.id] = username
