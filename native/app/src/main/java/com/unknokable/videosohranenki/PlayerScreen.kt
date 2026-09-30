@@ -130,6 +130,7 @@ class PlayerScreen(
     private var fullscreen = false
     private var fullscreenTransition = false
     private var fullscreenHost: FrameLayout? = null
+    private var settingsDialog: BottomSheetDialog? = null
     private var settingsOverlay: FrameLayout? = null
     private var settingsPanel: View? = null
     private var fullscreenOriginalIndex = -1
@@ -1462,11 +1463,19 @@ class PlayerScreen(
 
     private fun showSettingsSheet() {
         if (fullscreen && fullscreenHost != null) {
+            settingsDialog?.dismiss()
+            settingsDialog = null
             showFullscreenSettingsPanel()
             return
         }
 
+        // A quick double tap on settings used to stack multiple bottom sheets.
+        // Keep exactly one player settings surface alive at a time.
+        settingsDialog?.dismiss()
+
         val dialog = BottomSheetDialog(activity)
+        settingsDialog = dialog
+
         val scroll = ScrollView(activity).apply {
             isFillViewport = true
             clipToPadding = false
@@ -1485,6 +1494,9 @@ class PlayerScreen(
         )
 
         dialog.setContentView(scroll)
+        dialog.setOnDismissListener {
+            if (settingsDialog === dialog) settingsDialog = null
+        }
         dialog.show()
 
         val maxHeight = (activity.resources.displayMetrics.heightPixels * 0.72f).toInt()
@@ -1559,7 +1571,11 @@ class PlayerScreen(
 
     private fun showFullscreenSettingsPanel() {
         val host = fullscreenHost ?: return
+        settingsDialog?.dismiss()
+        settingsDialog = null
         dismissFullscreenSettings(animated = false)
+        handler.removeCallbacks(autoHideControls)
+        showOverlay()
 
         val scrim = FrameLayout(activity).apply {
             setBackgroundColor(Color.parseColor("#99000000"))
@@ -2274,6 +2290,8 @@ class PlayerScreen(
     fun destroy() {
         destroyed = true
         ambientAnimator?.cancel()
+        settingsDialog?.dismiss()
+        settingsDialog = null
         dismissFullscreenSettings(animated = false)
         runCatching { if (pipMode || pipHost != null) restoreFromPictureInPicture() }
         runCatching { if (fullscreen || fullscreenHost != null) setFullscreenMode(false) }
