@@ -335,7 +335,7 @@ class PlayerScreen(
         playerCard.addView(
             previewBubble,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
-                bottomMargin = dp(44)
+                bottomMargin = dp(36)
             }
         )
 
@@ -524,7 +524,7 @@ class PlayerScreen(
             gravity = Gravity.CENTER
         }
 
-        playPause = iconButton(R.drawable.ic_play, "#A30B0A0F", 48).apply {
+        playPause = iconButton(R.drawable.ic_play, "#96100E16", 44).apply {
             elevation = dp(2).toFloat()
             setOnClickListener {
                 if (player.isPlaying) player.pause() else player.play()
@@ -532,7 +532,7 @@ class PlayerScreen(
             }
         }
 
-        center.addView(playPause, LinearLayout.LayoutParams(dp(52), dp(52)))
+        center.addView(playPause, LinearLayout.LayoutParams(dp(48), dp(48)))
 
         frame.addView(
             center,
@@ -545,8 +545,8 @@ class PlayerScreen(
 
         val bottom = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(5), 0, dp(5), dp(1))
-            background = rounded("#300A0810", 9)
+            setPadding(dp(4), 0, dp(4), 0)
+            background = rounded("#260A0810", 8)
         }
 
         seekBar = SohrTimeBar(activity, palette.accent).apply {
@@ -613,24 +613,24 @@ class PlayerScreen(
 
         qualityButton = TextView(activity).apply {
             text = "Авто"
-            textSize = 10.5f
+            textSize = 10f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
-            minWidth = dp(42)
-            minHeight = dp(36)
-            setPadding(dp(6), 0, dp(6), 0)
-            background = rounded("#42221A30", 12)
+            minWidth = dp(38)
+            minHeight = dp(30)
+            setPadding(dp(5), 0, dp(5), 0)
+            background = rounded("#38221A30", 10)
             contentDescription = "Качество видео"
             setOnClickListener { pulse(this); showQualityPicker() }
         }
 
-        val settingsButton = iconButton(R.drawable.ic_player_settings, "#52221A30", 30).apply {
+        val settingsButton = iconButton(R.drawable.ic_player_settings, "#44221A30", 28).apply {
             contentDescription = "Настройки плеера"
             setOnClickListener { pulse(this); showSettingsSheet() }
         }
 
-        val fullscreenButton = iconButton(R.drawable.ic_fullscreen, "#52221A30", 30).apply {
+        val fullscreenButton = iconButton(R.drawable.ic_fullscreen, "#44221A30", 28).apply {
             contentDescription = "Полный экран"
             setOnClickListener {
                 onFullscreen(!fullscreen)
@@ -646,28 +646,28 @@ class PlayerScreen(
         }
         actionGroup.addView(
             qualityButton,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38))
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32))
         )
         actionGroup.addView(
             settingsButton,
-            LinearLayout.LayoutParams(dp(40), dp(38)).apply { marginStart = dp(2) }
+            LinearLayout.LayoutParams(dp(34), dp(32)).apply { marginStart = dp(2) }
         )
         actionGroup.addView(
             fullscreenButton,
-            LinearLayout.LayoutParams(dp(40), dp(38)).apply { marginStart = dp(2) }
+            LinearLayout.LayoutParams(dp(34), dp(32)).apply { marginStart = dp(2) }
         )
 
-        times.addView(currentTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)))
-        times.addView(totalTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)).apply {
+        times.addView(currentTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)))
+        times.addView(totalTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)).apply {
             marginStart = dp(4)
         })
         times.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
         times.addView(
             actionGroup,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38))
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32))
         )
 
-        bottom.addView(seekBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(30)))
+        bottom.addView(seekBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(20)))
         bottom.addView(times)
 
         frame.addView(
@@ -677,9 +677,9 @@ class PlayerScreen(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.BOTTOM
             ).apply {
-                leftMargin = dp(8)
-                rightMargin = dp(8)
-                bottomMargin = dp(5)
+                leftMargin = dp(7)
+                rightMargin = dp(7)
+                bottomMargin = dp(4)
             }
         )
         return frame
@@ -2476,7 +2476,8 @@ class PlayerScreen(
     private fun timeLabel(value: String): TextView =
         TextView(activity).apply {
             text = value
-            textSize = 12f
+            textSize = 11f
+            includeFontPadding = false
             setTextColor(Color.WHITE)
             setTypeface(typeface, Typeface.BOLD)
         }
