@@ -48,6 +48,7 @@ data class TwitchTokenInfo(
 data class TwitchLiveStream(
     val login: String,
     val displayName: String,
+    val gameId: String,
     val gameName: String,
     val title: String,
     val viewerCount: Int,
@@ -337,6 +338,7 @@ object TwitchApi {
         return TwitchLiveStream(
             login = login,
             displayName = displayName,
+            gameId = stream.optString("game_id"),
             gameName = stream.optString("game_name"),
             title = stream.optString("title").ifBlank { "$displayName в эфире" },
             viewerCount = stream.optInt("viewer_count", 0),
