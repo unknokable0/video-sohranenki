@@ -194,6 +194,16 @@ class MainActivity : AppCompatActivity() {
     private val activeTwitchDownloads = linkedSetOf<Long>()
     private var openUpdateFromNotification = false
 
+    private var telegramChannelHub: TelegramChannelHub? = null
+    private var telegramChannels: List<TelegramChannelSummary> = emptyList()
+    private var telegramChannelsLoading = false
+    private var telegramChannelRefreshJob: kotlinx.coroutines.Job? = null
+    private var openTelegramChannelSummary: TelegramChannelSummary? = null
+    private var openTelegramPosts: List<TelegramChannelPost> = emptyList()
+    private var telegramChannelRender: TelegramChannelRender? = null
+    private var telegramAudioPlayer: androidx.media3.exoplayer.ExoPlayer? = null
+    private var telegramAudioMessageId: Long = 0L
+
     private val palette get() = settings.palette()
     private val bg get() = palette.background
     private val panel get() = palette.surface
@@ -331,6 +341,19 @@ class MainActivity : AppCompatActivity() {
                 }
                 if (closeCurrentPlayerScreen()) return
 
+                if (auxiliaryScreen == "telegram_channel") {
+                    stopTelegramChannelAudio()
+                    auxiliaryScreen = null
+                    openTelegramChannelSummary = null
+                    openTelegramPosts = emptyList()
+                    telegramChannelRender = null
+                    videoSection = 2
+                    pendingRootSlide = -1
+                    suppressNextRootAnimation = true
+                    showFeed(currentVideos)
+                    return
+                }
+
                 if (auxiliaryScreen != null) {
                     auxiliaryScreen = null
                     pendingRootSlide = -1
@@ -401,7 +424,15 @@ class MainActivity : AppCompatActivity() {
                     is TdApi.UpdateAuthorizationState -> handleAuthState(update.authorizationState)
                     is TdApi.UpdateNewMessage -> {
                         if (channelChatId != 0L && update.message.chatId == channelChatId) {
-                            scheduleFeedAutoRefresh(delayMs = 900L, force = true)
+                            scheduleFeedAutoRefresh(delayMs = 250L, force = true)
+                        }
+
+                        val hub = telegramChannelHub
+                        if (hub != null && hub.isTracked(update.message.chatId)) {
+                            val post = hub.absorbNewMessage(update.message)
+                            if (post != null) {
+                                runOnUiThread { handleRealtimeTelegramChannelPost(post) }
+                            }
                         }
                     }
                 }
@@ -766,6 +797,9 @@ class MainActivity : AppCompatActivity() {
                 telegramReady = true
                 ensureStreamServer()
                 cleanupStorage()
+                if (telegramChannelHub == null) {
+                    telegramChannelHub = TelegramChannelHub(client)
+                }
 
                 settings.postLoginTourSeen = true
                 onboardingActive = false
@@ -788,6 +822,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 // Do not block the first usable screen on a fresh network sync.
+                refreshTelegramChannels(silent = true)
                 loadVideos(inPlace = true, quiet = true)
                 scheduleFeedAutoRefresh(delayMs = 2_000L, force = false)
             }
@@ -2905,6 +2940,27 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
         }
         body.addView(contentHost)
+
+        if (videoSection == 2 && settings.videoSource == "telegram" && !settings.guestMode) {
+            searchButton.visibility = View.GONE
+            contentHost.addView(
+                TelegramChannelUi.buildDirectory(
+                    activity = this,
+                    settings = settings,
+                    channels = telegramChannels,
+                    loading = telegramChannelsLoading,
+                    onOpen = { channel, source -> openTelegramChannel(channel, source) }
+                )
+            )
+
+            replaceRoot(withBottomNav(page, SohrTab.VIDEOS))
+            root.postDelayed({ consumeUpdateNotificationIntent() }, 220L)
+
+            if (!telegramChannelsLoading && telegramChannels.isEmpty()) {
+                refreshTelegramChannels(silent = true)
+            }
+            return
+        }
 
         var searchFilter = "all"
         val chipViews = linkedMapOf<String, TextView>()
@@ -5483,6 +5539,303 @@ class MainActivity : AppCompatActivity() {
                 )
             }
         }
+    }
+
+    private fun refreshTelegramChannels(silent: Boolean = false) {
+        if (!telegramReady || settings.guestMode) return
+        val hub = telegramChannelHub ?: TelegramChannelHub(client).also { telegramChannelHub = it }
+        if (telegramChannelRefreshJob?.isActive == true) return
+
+        telegramChannelsLoading = true
+        if (!silent && videoSection == 2 && auxiliaryScreen == null && settings.videoSource == "telegram") {
+            suppressNextRootAnimation = true
+            showFeed(currentVideos)
+        }
+
+        telegramChannelRefreshJob = lifecycleScope.launch {
+            val loaded = runCatching { hub.refreshChannels() }
+                .getOrElse { emptyList() }
+
+            telegramChannels = if (loaded.isNotEmpty()) loaded else hub.cachedChannels()
+            telegramChannelsLoading = false
+            telegramChannelRefreshJob = null
+
+            if (
+                settings.videoSource == "telegram" &&
+                videoSection == 2 &&
+                auxiliaryScreen == null &&
+                !isFinishing
+            ) {
+                suppressNextRootAnimation = true
+                showFeed(currentVideos)
+            }
+        }
+    }
+
+    private fun openTelegramChannel(channel: TelegramChannelSummary, sourceView: View? = null) {
+        if (!telegramReady) return
+        stopInlinePreview()
+        stopTelegramChannelAudio()
+        auxiliaryScreen = "telegram_channel"
+        openTelegramChannelSummary = channel
+        openTelegramPosts = emptyList()
+        pendingRootSlide = 1
+
+        renderTelegramChannel(channel, loading = true, canLoadOlder = false)
+
+        lifecycleScope.launch {
+            val hub = telegramChannelHub ?: return@launch
+            val posts = runCatching { hub.loadPosts(channel.chatId, limit = 60) }
+                .getOrElse {
+                    if (auxiliaryScreen == "telegram_channel" && openTelegramChannelSummary?.chatId == channel.chatId) {
+                        showMessage("Не удалось открыть канал", it.message ?: "Ошибка Telegram")
+                    }
+                    return@launch
+                }
+
+            if (auxiliaryScreen != "telegram_channel" || openTelegramChannelSummary?.chatId != channel.chatId) {
+                return@launch
+            }
+
+            openTelegramPosts = posts
+            hub.markViewed(channel.chatId, posts)
+            val freshSummary = hub.cachedSummary(channel.chatId)?.copy(unreadCount = 0) ?: channel.copy(unreadCount = 0)
+            openTelegramChannelSummary = freshSummary
+            telegramChannels = hub.cachedChannels()
+            renderTelegramChannel(freshSummary, loading = false, canLoadOlder = posts.size >= 60)
+            telegramChannelRender?.scroll?.post {
+                telegramChannelRender?.scroll?.fullScroll(View.FOCUS_DOWN)
+            }
+        }
+    }
+
+    private fun renderTelegramChannel(
+        channel: TelegramChannelSummary,
+        loading: Boolean,
+        canLoadOlder: Boolean
+    ) {
+        auxiliaryScreen = "telegram_channel"
+        val render = TelegramChannelUi.buildChannel(
+            activity = this,
+            settings = settings,
+            channel = channel,
+            posts = openTelegramPosts,
+            loading = loading,
+            canLoadOlder = canLoadOlder,
+            onBack = {
+                stopTelegramChannelAudio()
+                auxiliaryScreen = null
+                openTelegramChannelSummary = null
+                openTelegramPosts = emptyList()
+                telegramChannelRender = null
+                videoSection = 2
+                pendingRootSlide = -1
+                suppressNextRootAnimation = true
+                showFeed(currentVideos)
+            },
+            onLoadOlder = { loadOlderTelegramChannelPosts() },
+            onVideo = { post, source -> openTelegramChannelVideo(post, source) },
+            onPhoto = { post, source -> openTelegramChannelPhoto(post, source) },
+            onVoice = { post, source -> toggleTelegramChannelAudio(post, source) }
+        )
+        telegramChannelRender = render
+        replaceRoot(render.root)
+    }
+
+    private fun loadOlderTelegramChannelPosts() {
+        val channel = openTelegramChannelSummary ?: return
+        val hub = telegramChannelHub ?: return
+        val oldest = openTelegramPosts.firstOrNull() ?: return
+
+        lifecycleScope.launch {
+            val older = runCatching {
+                hub.loadPosts(channel.chatId, fromMessageId = oldest.message.id, limit = 60)
+            }.getOrDefault(emptyList())
+
+            if (auxiliaryScreen != "telegram_channel" || openTelegramChannelSummary?.chatId != channel.chatId) {
+                return@launch
+            }
+
+            if (older.isEmpty()) return@launch
+            openTelegramPosts = (older + openTelegramPosts)
+                .distinctBy { it.message.id }
+                .sortedWith(compareBy<TelegramChannelPost> { it.message.date }.thenBy { it.message.id })
+            renderTelegramChannel(channel, loading = false, canLoadOlder = older.size >= 60)
+        }
+    }
+
+    private fun handleRealtimeTelegramChannelPost(post: TelegramChannelPost) {
+        val hub = telegramChannelHub ?: return
+        telegramChannels = hub.cachedChannels()
+
+        val channel = openTelegramChannelSummary
+        if (
+            auxiliaryScreen == "telegram_channel" &&
+            channel != null &&
+            channel.chatId == post.message.chatId
+        ) {
+            openTelegramPosts = (openTelegramPosts + post)
+                .distinctBy { it.message.id }
+                .sortedWith(compareBy<TelegramChannelPost> { it.message.date }.thenBy { it.message.id })
+
+            val updated = hub.cachedSummary(channel.chatId)?.copy(unreadCount = 0) ?: channel.copy(unreadCount = 0)
+            openTelegramChannelSummary = updated
+
+            val host = telegramChannelRender?.messagesHost
+            if (host != null && host.isAttachedToWindow) {
+                val card = TelegramChannelUi.buildPostCard(
+                    activity = this,
+                    settings = settings,
+                    post = post,
+                    onVideo = { item, source -> openTelegramChannelVideo(item, source) },
+                    onPhoto = { item, source -> openTelegramChannelPhoto(item, source) },
+                    onVoice = { item, source -> toggleTelegramChannelAudio(item, source) }
+                )
+                if (settings.animations) {
+                    card.alpha = 0f
+                    card.translationY = dp(8).toFloat()
+                }
+                host.addView(
+                    card,
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { bottomMargin = dp(9) }
+                )
+                if (settings.animations) {
+                    card.animate()
+                        .alpha(1f)
+                        .translationY(0f)
+                        .setDuration(SohrMotion.NORMAL)
+                        .setInterpolator(SohrMotion.smooth())
+                        .start()
+                }
+                telegramChannelRender?.scroll?.post {
+                    telegramChannelRender?.scroll?.smoothScrollTo(
+                        0,
+                        telegramChannelRender?.scroll?.getChildAt(0)?.height ?: 0
+                    )
+                }
+            } else {
+                renderTelegramChannel(updated, loading = false, canLoadOlder = openTelegramPosts.size >= 60)
+            }
+
+            lifecycleScope.launch { hub.markViewed(channel.chatId, listOf(post)) }
+            return
+        }
+
+        if (videoSection == 2 && auxiliaryScreen == null && settings.videoSource == "telegram") {
+            suppressNextRootAnimation = true
+            showFeed(currentVideos)
+        }
+    }
+
+    private fun openTelegramChannelVideo(post: TelegramChannelPost, source: View?) {
+        val fileId = post.fileId ?: return
+        if (fileId <= 0 || post.fileSize <= 0L) return
+        stopTelegramChannelAudio()
+
+        val item = VideoItem(
+            messageId = post.message.id,
+            chatId = post.message.chatId,
+            title = post.text.ifBlank {
+                if (post.kind == "video_note") "Видеосообщение" else "Видео"
+            },
+            date = post.message.date,
+            durationSeconds = post.durationSeconds,
+            fileId = fileId,
+            fileSize = post.fileSize,
+            mimeType = post.mimeType.ifBlank { "video/mp4" },
+            thumbnailPath = post.previewPath
+        )
+        openPlayer(item, sourceView = source)
+    }
+
+    private fun openTelegramChannelPhoto(post: TelegramChannelPost, source: View?) {
+        val path = post.previewPath ?: return
+        val file = File(path)
+        if (!file.exists()) return
+
+        val dialog = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        val frame = FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+            isClickable = true
+            setOnClickListener { dialog.dismiss() }
+        }
+        val image = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            load(file)
+        }
+        frame.addView(
+            image,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+        dialog.setContentView(frame)
+        dialog.setOnShowListener {
+            if (settings.animations) {
+                image.alpha = 0f
+                image.scaleX = 0.96f
+                image.scaleY = 0.96f
+                image.animate()
+                    .alpha(1f)
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(SohrMotion.NORMAL)
+                    .setInterpolator(SohrMotion.smooth())
+                    .start()
+            }
+        }
+        dialog.show()
+    }
+
+    private fun toggleTelegramChannelAudio(post: TelegramChannelPost, source: View?) {
+        val fileId = post.fileId ?: return
+        if (fileId <= 0 || post.fileSize <= 0L) return
+
+        if (telegramAudioMessageId == post.message.id && telegramAudioPlayer?.isPlaying == true) {
+            telegramAudioPlayer?.pause()
+            source?.alpha = 0.82f
+            return
+        }
+
+        stopTelegramChannelAudio()
+        val server = streamServer ?: return
+        val item = VideoItem(
+            messageId = post.message.id,
+            chatId = post.message.chatId,
+            title = post.text.ifBlank { if (post.kind == "voice") "Голосовое" else "Аудио" },
+            date = post.message.date,
+            durationSeconds = post.durationSeconds,
+            fileId = fileId,
+            fileSize = post.fileSize,
+            mimeType = post.mimeType.ifBlank { "audio/ogg" }
+        )
+        server.prefetch(item)
+
+        val player = androidx.media3.exoplayer.ExoPlayer.Builder(this).build()
+        telegramAudioPlayer = player
+        telegramAudioMessageId = post.message.id
+        player.setMediaItem(androidx.media3.common.MediaItem.fromUri(server.url(item)))
+        player.prepare()
+        player.playWhenReady = true
+        source?.alpha = 1f
+
+        player.addListener(object : androidx.media3.common.Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == androidx.media3.common.Player.STATE_ENDED) {
+                    stopTelegramChannelAudio()
+                }
+            }
+        })
+    }
+
+    private fun stopTelegramChannelAudio() {
+        telegramAudioPlayer?.release()
+        telegramAudioPlayer = null
+        telegramAudioMessageId = 0L
     }
 
     private fun showSelectedVideoSource(forceRefresh: Boolean = false) {
@@ -8277,6 +8630,9 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         unregisterSearchBackInterceptor()
         stopInlinePreview()
+        stopTelegramChannelAudio()
+        telegramChannelRefreshJob?.cancel()
+        telegramChannelRefreshJob = null
         inlinePreviewPlayer?.release()
         inlinePreviewPlayer = null
         inlinePreviewView = null
