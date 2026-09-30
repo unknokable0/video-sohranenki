@@ -203,6 +203,7 @@ class MainActivity : AppCompatActivity() {
     private var telegramChannelRender: TelegramChannelRender? = null
     private var telegramAudioPlayer: androidx.media3.exoplayer.ExoPlayer? = null
     private var telegramAudioMessageId: Long = 0L
+    private var telegramUnreadBadgeView: TextView? = null
 
     private val palette get() = settings.palette()
     private val bg get() = palette.background
@@ -2786,14 +2787,10 @@ class MainActivity : AppCompatActivity() {
             elevation = dp(2).toFloat()
         }
 
+        telegramUnreadBadgeView = null
         listOf("Главная" to 1, "Лента" to 2, "Просмотренные" to 3).forEach { (label, section) ->
             val selected = videoSection == section
-            val tab = TextView(this).apply {
-                text = label
-                textSize = 12f
-                gravity = Gravity.CENTER
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(if (selected) Color.WHITE else muted)
+            val tab = FrameLayout(this).apply {
                 background = null
                 isClickable = true
                 isFocusable = true
@@ -2832,8 +2829,73 @@ class MainActivity : AppCompatActivity() {
                     switchVideoSection(section)
                 }
             }
+
+            val labelView = TextView(this).apply {
+                text = label
+                textSize = 12f
+                gravity = Gravity.CENTER
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(if (selected) Color.WHITE else muted)
+                includeFontPadding = false
+                isClickable = false
+                isFocusable = false
+            }
+
+            val labelRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                isClickable = false
+                isFocusable = false
+                addView(
+                    labelView,
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                )
+            }
+
+            if (section == 2) {
+                val badge = TextView(this).apply {
+                    textSize = 9.8f
+                    gravity = Gravity.CENTER
+                    setTypeface(typeface, Typeface.BOLD)
+                    includeFontPadding = false
+                    minWidth = dp(20)
+                    setPadding(dp(6), 0, dp(6), 0)
+                    setTextColor(Color.WHITE)
+                    background = roundedBg(
+                        if (selected) Color.argb(58, 255, 255, 255) else purple,
+                        10
+                    )
+                    visibility = View.GONE
+                    scaleX = 0.84f
+                    scaleY = 0.84f
+                    alpha = 0f
+                }
+                telegramUnreadBadgeView = badge
+                labelRow.addView(
+                    badge,
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        dp(20)
+                    ).apply {
+                        marginStart = dp(6)
+                    }
+                )
+            }
+
+            tab.addView(
+                labelRow,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.CENTER
+                )
+            )
             tabButtons.addView(tab, LinearLayout.LayoutParams(0, dp(40), 1f))
         }
+        updateTelegramUnreadBadge(animated = false)
 
         tabs.addView(
             tabIndicator,
@@ -5566,6 +5628,7 @@ class MainActivity : AppCompatActivity() {
                 .getOrElse { emptyList() }
 
             telegramChannels = if (loaded.isNotEmpty()) loaded else hub.cachedChannels()
+            updateTelegramUnreadBadge(animated = true)
             telegramChannelsLoading = false
             telegramChannelRefreshJob = null
 
@@ -5610,6 +5673,7 @@ class MainActivity : AppCompatActivity() {
             val freshSummary = hub.cachedSummary(channel.chatId)?.copy(unreadCount = 0) ?: channel.copy(unreadCount = 0)
             openTelegramChannelSummary = freshSummary
             telegramChannels = hub.cachedChannels()
+            updateTelegramUnreadBadge(animated = true)
             renderTelegramChannel(freshSummary, loading = false, canLoadOlder = posts.size >= 60)
             telegramChannelRender?.scroll?.post {
                 telegramChannelRender?.scroll?.fullScroll(View.FOCUS_DOWN)
@@ -5675,6 +5739,7 @@ class MainActivity : AppCompatActivity() {
     private fun handleRealtimeTelegramChannelPost(post: TelegramChannelPost) {
         val hub = telegramChannelHub ?: return
         telegramChannels = hub.cachedChannels()
+        updateTelegramUnreadBadge(animated = true)
 
         val channel = openTelegramChannelSummary
         if (
@@ -5728,13 +5793,65 @@ class MainActivity : AppCompatActivity() {
                 renderTelegramChannel(updated, loading = false, canLoadOlder = openTelegramPosts.size >= 60)
             }
 
-            lifecycleScope.launch { hub.markViewed(channel.chatId, listOf(post)) }
+            lifecycleScope.launch {
+                hub.markViewed(channel.chatId, listOf(post))
+                telegramChannels = hub.cachedChannels()
+                updateTelegramUnreadBadge(animated = true)
+            }
             return
         }
 
         if (videoSection == 2 && auxiliaryScreen == null) {
             suppressNextRootAnimation = true
             showFeed(currentVideos)
+        }
+    }
+
+    private fun telegramUnreadCount(): Int =
+        telegramChannels.sumOf { it.unreadCount.coerceAtLeast(0) }
+
+    private fun updateTelegramUnreadBadge(animated: Boolean) {
+        val badge = telegramUnreadBadgeView ?: return
+        val count = telegramUnreadCount()
+        if (count <= 0) {
+            if (badge.visibility != View.VISIBLE) return
+            if (animated && settings.animations) {
+                badge.animate().cancel()
+                badge.animate()
+                    .alpha(0f)
+                    .scaleX(0.78f)
+                    .scaleY(0.78f)
+                    .setDuration(SohrMotion.FAST)
+                    .setInterpolator(SohrMotion.smooth())
+                    .withEndAction {
+                        badge.visibility = View.GONE
+                    }
+                    .start()
+            } else {
+                badge.visibility = View.GONE
+                badge.alpha = 0f
+            }
+            return
+        }
+
+        badge.text = if (count > 99) "99+" else count.toString()
+        badge.visibility = View.VISIBLE
+        if (animated && settings.animations) {
+            badge.animate().cancel()
+            badge.alpha = 0f
+            badge.scaleX = 0.72f
+            badge.scaleY = 0.72f
+            badge.animate()
+                .alpha(1f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(SohrMotion.NORMAL)
+                .setInterpolator(SohrMotion.smooth())
+                .start()
+        } else {
+            badge.alpha = 1f
+            badge.scaleX = 1f
+            badge.scaleY = 1f
         }
     }
 
@@ -7923,6 +8040,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun fallbackReleaseNotes(version: String): String = when (version) {
+        "6.4.3" -> listOf(
+            "У вкладки «Лента» появился живой счётчик непрочитанных сообщений, как у папок в Telegram.",
+            "Счётчик суммирует непрочитанные посты по каналам, обновляется сразу при новом сообщении и уменьшается после чтения.",
+            "Бейдж аккуратно появляется и скрывается с SOHR-анимацией и показывает 99+ для больших значений."
+        ).joinToString(" • ")
         "6.4.2" -> listOf(
             "«Лента» с Telegram-каналами теперь работает независимо от выбранного источника видео — и в режиме Twitch, и в режиме Telegram.",
             "Галочки верификации выровнены и заменены на аккуратный отдельный значок.",
