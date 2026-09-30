@@ -121,7 +121,7 @@ class MainActivity : AppCompatActivity() {
     private var t2x2WatchJob: kotlinx.coroutines.Job? = null
     private var t2x2LiveSlot: FrameLayout? = null
     private var lastT2x2Live: TwitchLiveStream? = null
-    private val t2x2LiveAccent = Color.parseColor("#7C83FF")
+    private val t2x2LiveAccent = Color.parseColor("#FF304F")
     private lateinit var twitchCategoryTracker: TwitchCategoryTracker
     private var lastT2x2Timeline: TwitchCategoryTimeline? = null
     private var lastT2x2LiveCheckedAt = 0L
@@ -3831,7 +3831,7 @@ class MainActivity : AppCompatActivity() {
                 ?: twitchCategoryTracker.observe(live).also { lastT2x2Timeline = it }
 
             label.text = "T2x2 • в сети"
-            label.setTextColor(t2x2LiveAccent)
+            label.setTextColor(text)
 
             val current = timeline.current
             val previous = timeline.previous
