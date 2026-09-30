@@ -22,6 +22,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -73,7 +74,8 @@ class PlayerScreen(
     private val onWatchedChange: ((VideoItem, Boolean) -> Unit)? = null,
     private val onBack: () -> Unit,
     private val onFullscreen: (Boolean) -> Unit,
-    private val onPlaybackStarted: () -> Unit
+    private val onPlaybackStarted: () -> Unit,
+    private val onMiniModeChanged: ((Boolean) -> Unit)? = null
 ) {
     val root = LinearLayout(activity)
     val player: ExoPlayer
@@ -150,6 +152,15 @@ class PlayerScreen(
     private var destroyed = false
     private var lastProgressPersistAt = 0L
     private var speedActionButton: TextView? = null
+    private var interactionBoostUntilElapsed = SystemClock.elapsedRealtime() + 4_000L
+    private var lastChapterIndex = -1
+
+    private data class Chapter(
+        val positionMs: Long,
+        val title: String
+    )
+
+    private val chapters: List<Chapter> by lazy { parseChapters(item.title) }
 
     private data class PlayerActionPill(
         val root: LinearLayout,
