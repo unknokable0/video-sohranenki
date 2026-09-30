@@ -167,6 +167,7 @@ class MainActivity : AppCompatActivity() {
     private val twitchAutoRefreshIntervalMs = 180_000L
     private var startupUpdateCheckDone = false
     private var updateAutoCheckJob: kotlinx.coroutines.Job? = null
+    private var updateNotificationWatchJob: kotlinx.coroutines.Job? = null
     private val automaticUpdateCheckIntervalMs = 45_000L
     private var onboardingActive = false
     private var videoSection = 1 // 1 home, 2 feed, 3 watched
