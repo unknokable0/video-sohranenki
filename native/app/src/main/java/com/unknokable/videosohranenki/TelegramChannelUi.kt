@@ -8,7 +8,14 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.text.SpannableString
+import android.text.Spanned
 import android.text.method.LinkMovementMethod
+import android.text.style.StrikethroughSpan
+import android.text.style.StyleSpan
+import android.text.style.TypefaceSpan
+import android.text.style.URLSpan
+import android.text.style.UnderlineSpan
 import android.text.util.Linkify
 import android.view.Gravity
 import android.view.View
@@ -22,6 +29,7 @@ import android.widget.Toast
 import androidx.core.widget.NestedScrollView
 import coil.load
 import coil.transform.CircleCropTransformation
+import org.drinkless.tdlib.TdApi
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -714,17 +722,22 @@ object TelegramChannelUi {
             i += 2
         }
 
-        val caption = posts.firstOrNull { it.text.isNotBlank() }?.text.orEmpty()
+        val captionPost = posts.firstOrNull { it.text.isNotBlank() }
+        val caption = captionPost?.text.orEmpty()
         if (caption.isNotBlank()) {
             card.addView(TextView(activity).apply {
-                text = caption
                 textSize = 14.4f
                 setTextColor(palette.text)
                 setLineSpacing(0f, 1.08f)
                 setTextIsSelectable(true)
                 includeFontPadding = false
                 setPadding(dp(activity, 4), dp(activity, 9), dp(activity, 4), 0)
-                enableTelegramLinks(this, palette.accent)
+                applyTelegramFormattedText(
+                    this,
+                    captionPost?.formattedText,
+                    caption,
+                    palette.accent
+                )
                 setOnLongClickListener {
                     copyText(activity, caption)
                     true
@@ -934,14 +947,18 @@ object TelegramChannelUi {
         val showText = post.text.isNotBlank() && !(post.kind == "video_note" && post.text == "Видеосообщение")
         if (showText) {
             card.addView(TextView(activity).apply {
-                text = post.text
                 textSize = 14.4f
                 setTextColor(palette.text)
                 setLinkTextColor(palette.accent)
                 setLineSpacing(0f, 1.08f)
                 setTextIsSelectable(true)
                 includeFontPadding = false
-                enableTelegramLinks(this, palette.accent)
+                applyTelegramFormattedText(
+                    this,
+                    post.formattedText,
+                    post.text,
+                    palette.accent
+                )
                 setOnLongClickListener {
                     copyText(activity, post.text)
                     true
@@ -1029,6 +1046,46 @@ object TelegramChannelUi {
             setPadding(padding, padding, padding, padding)
             contentDescription = "Подтверждённый канал"
         }
+
+    private fun applyTelegramFormattedText(
+        textView: TextView,
+        formatted: TdApi.FormattedText?,
+        fallback: String,
+        accent: Int
+    ) {
+        val raw = formatted?.text?.takeIf { it.isNotBlank() } ?: fallback
+        val spannable = SpannableString(raw)
+        formatted?.entities.orEmpty().forEach { entity ->
+            val start = entity.offset.coerceIn(0, raw.length)
+            val end = (entity.offset + entity.length).coerceIn(start, raw.length)
+            if (start >= end) return@forEach
+
+            val span: Any? = when (val type = entity.type) {
+                is TdApi.TextEntityTypeTextUrl -> URLSpan(type.url)
+                is TdApi.TextEntityTypeUrl -> URLSpan(raw.substring(start, end))
+                is TdApi.TextEntityTypeEmailAddress -> URLSpan("mailto:" + raw.substring(start, end))
+                is TdApi.TextEntityTypePhoneNumber -> URLSpan("tel:" + raw.substring(start, end))
+                is TdApi.TextEntityTypeMention -> {
+                    val username = raw.substring(start, end).removePrefix("@")
+                    URLSpan("https://t.me/$username")
+                }
+                is TdApi.TextEntityTypeBold -> StyleSpan(Typeface.BOLD)
+                is TdApi.TextEntityTypeItalic -> StyleSpan(Typeface.ITALIC)
+                is TdApi.TextEntityTypeUnderline -> UnderlineSpan()
+                is TdApi.TextEntityTypeStrikethrough -> StrikethroughSpan()
+                is TdApi.TextEntityTypeCode,
+                is TdApi.TextEntityTypePre,
+                is TdApi.TextEntityTypePreCode -> TypefaceSpan("monospace")
+                else -> null
+            }
+            if (span != null) {
+                spannable.setSpan(span, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+        }
+
+        textView.text = spannable
+        enableTelegramLinks(textView, accent)
+    }
 
     @Suppress("DEPRECATION")
     private fun enableTelegramLinks(textView: TextView, accent: Int) {
