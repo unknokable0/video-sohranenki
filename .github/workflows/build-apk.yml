@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.3.4 version
+      - name: Assign SOHR 6.3.5 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=630004" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.3.4" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=630005" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.3.5" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -242,6 +242,18 @@ jobs:
           if "topMargin = dp(13)" in player:
               raise SystemExit("SOHR 6.3.4 player regression: detached strip above Telegram player returned")
 
+          if "root.background = ambientGradient" in player:
+              raise SystemExit("SOHR 6.3.5 player regression: full-screen ambient background returned")
+          if "listener(onSuccess = { _, result -> updateAmbientFromDrawable" in player:
+              raise SystemExit("SOHR 6.3.5 player regression: poster ambient sampling returned")
+          for required in [
+              "root.setBackgroundColor(palette.background)",
+              "ambientColor = target",
+              "root.setBackgroundColor(palette.background)"
+          ]:
+              if required not in player:
+                  raise SystemExit(f"SOHR 6.3.5 unified-player-background regression: {required}")
+
 
           manifest = Path("native/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
           if 'android:enableOnBackInvokedCallback="true"' not in manifest:
@@ -291,30 +303,33 @@ jobs:
                   raise SystemExit(f"SOHR 6.3.2 top-tabs/search/cache regression: {required}")
 
           for required in [
-              "Crossfade only:",
+              "pendingVideoSectionCrossfade = false",
+              "suppressNextContentAnimation = true",
+              "body.alpha = 0.92f",
+              ".setDuration(170L)",
               "SohrBackgroundCheckWorker.schedule(this)",
               'UPDATE_NOTIFICATION_CHANNEL = "sohr_updates"',
               'setContentTitle("T2x2 в эфире")',
               "consumeUpdateNotificationIntent"
           ]:
               if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.3.4 smooth-tabs/notification regression: {required}")
+                  raise SystemExit(f"SOHR 6.3.5 stable-tabs/notification regression: {required}")
           if "val travel = dp(20).toFloat()" in sohr_main:
-              raise SystemExit("SOHR 6.3.4 top-tab regression: horizontal page travel returned")
+              raise SystemExit("SOHR 6.3.5 top-tab regression: horizontal page travel returned")
 
 
           if 'sohr_brand_logo' in loader or 'ImageView' in loader:
               raise SystemExit("SOHR 6.3.1 regression: launcher artwork returned to cloud loading animation")
 
           for required in [
-              "baseStroke = (minDp * 0.055f)",
-              "activeStroke = (minDp * 0.076f)",
+              "baseStroke = (minDp * 0.082f)",
+              "activeStroke = (minDp * 0.108f)",
               "cycleMs = 1850L",
-              "0.052f * sin",
-              "val segmentLength = length * 0.235f"
+              "0.068f * sin",
+              "val segmentLength = length * 0.275f"
           ]:
               if required not in loader:
-                  raise SystemExit(f"SOHR 6.3.4 premium cloud-loader regression: {required}")
+                  raise SystemExit(f"SOHR 6.3.5 premium cloud-loader regression: {required}")
           if "setStroke(dp(context, 1), palette.stroke)" in home_cards:
               raise SystemExit("Home card outline regression")
           if "compactPreviewHeight + dp(68)" not in sohr_main:
@@ -519,15 +534,16 @@ jobs:
                   raise SystemExit(f"SOHR 6.2.3 search-motion regression: {required}")
 
           for required in [
-              "val travel = dp(20).toFloat() * direction",
-              "content.alpha = 0f",
-              ".setStartDelay(28L)",
+              "pendingVideoSectionDirection = if (section > videoSection) 1 else -1",
+              "suppressNextContentAnimation = true",
+              "body.animate().cancel()",
+              "tabIndicator.animate().cancel()",
               "nav.clearAnimation()",
               "nav.scaleX = 1f",
               "nav.scaleY = 1f"
           ]:
               if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.3.2 smooth-tabs/nav regression: {required}")
+                  raise SystemExit(f"SOHR 6.3.5 smooth-tabs/nav regression: {required}")
 
           manifest = Path("native/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
           styles = Path("native/app/src/main/res/values/styles.xml").read_text(encoding="utf-8")
@@ -581,8 +597,8 @@ jobs:
               "cycleMs = 1850L",
               "duration = 60_000L",
               "SystemClock.uptimeMillis()",
-              "0.052f * sin",
-              "val segmentLength = length * 0.235f"
+              "0.068f * sin",
+              "val segmentLength = length * 0.275f"
           ]:
               if required not in loader:
                   raise SystemExit(f"SOHR 6.3.2 cloud-loader regression: {required}")
@@ -615,7 +631,7 @@ jobs:
               raise SystemExit("SOHR 6.2.5 loading regression: raster brand artwork returned to loading UI")
           for required in [
               "val loader = LoadingWaveView(this, purple)",
-              "FrameLayout.LayoutParams(dp(76), dp(76), Gravity.CENTER)",
+              "FrameLayout.LayoutParams(dp(84), dp(84), Gravity.CENTER)",
               ".setDuration(SohrMotion.NORMAL)"
           ]:
               if required not in startup_section:
@@ -877,7 +893,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "Верхние вкладки переключаются чистым crossfade без рывков • убран отдельный зазор между шапкой и видео • облачная загрузка стала плотнее без неона и без картинки • добавлены фоновые уведомления о новых версиях SOHR • уведомления о старте T2x2 работают и после закрытия приложения через периодическую фоновую проверку • уведомления не дублируются на одну версию или один эфир"
+            "notes": "Убрана двойная анимация верхних вкладок • контент вкладок проявляется мягко без рывка всего экрана • плеер получил единый фон без отдельной ambient-полосы сверху • облако загрузки стало толще и плотнее без неона • движущийся сегмент только замедляется и ускоряется, но не останавливается • стартовое облако увеличено до среднего размера • исправлена устаревшая CI-проверка 6.3.4"
           }
           EOF
           cat update.json
