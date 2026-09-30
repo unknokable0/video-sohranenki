@@ -11,6 +11,7 @@ data class TelegramChannelSummary(
     val chatId: Long,
     val title: String,
     val verified: Boolean,
+    val subscriberCount: Int,
     val avatarPath: String?,
     val unreadCount: Int,
     val lastMessageId: Long,
@@ -81,13 +82,16 @@ class TelegramChannelHub(
         usernameByChatId[chat.id] = username
         runCatching { client.send(TdApi.OpenChat(chat.id)) }
 
-        val verified = if (chat.type is TdApi.ChatTypeSupergroup) {
+        val supergroup = if (chat.type is TdApi.ChatTypeSupergroup) {
             val type = chat.type as TdApi.ChatTypeSupergroup
-            val supergroup: TdApi.Supergroup = client.send(TdApi.GetSupergroup(type.supergroupId))
-            supergroup.verificationStatus?.isVerified == true
+            runCatching {
+                client.send(TdApi.GetSupergroup(type.supergroupId))
+            }.getOrNull()
         } else {
-            false
+            null
         }
+        val verified = supergroup?.verificationStatus?.isVerified == true
+        val subscriberCount = supergroup?.memberCount?.coerceAtLeast(0) ?: 0
 
         val avatarPath = downloadPreview(chat.photo?.small?.id)
 
@@ -100,6 +104,7 @@ class TelegramChannelHub(
             chatId = chat.id,
             title = chat.title.ifBlank { "@$username" },
             verified = verified,
+            subscriberCount = subscriberCount,
             avatarPath = avatarPath,
             unreadCount = chat.unreadCount.coerceAtLeast(0),
             lastMessageId = last?.id ?: 0L,
