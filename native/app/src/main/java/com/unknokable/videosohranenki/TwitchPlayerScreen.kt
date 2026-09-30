@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
@@ -23,6 +24,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import org.json.JSONObject
 import org.json.JSONTokener
+import kotlin.math.abs
 import kotlin.math.roundToLong
 
 class TwitchPlayerScreen(
@@ -67,6 +69,8 @@ class TwitchPlayerScreen(
     private var qualities: List<String> = emptyList()
     private var currentQuality = ""
     private var lastPersistAt = 0L
+    private var gestureDownX = 0f
+    private var gestureDownY = 0f
 
     val isFullscreen: Boolean
         get() = fullscreen || customView != null
@@ -225,6 +229,30 @@ class TwitchPlayerScreen(
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
         }
         webView.webViewClient = WebViewClient()
+        webView.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    gestureDownX = event.x
+                    gestureDownY = event.y
+                }
+                MotionEvent.ACTION_UP -> {
+                    val dx = event.x - gestureDownX
+                    val dy = event.y - gestureDownY
+                    val threshold = dp(72).toFloat()
+                    if (abs(dy) > threshold && abs(dy) > abs(dx) * 1.25f) {
+                        if (dy < 0f && !fullscreen) {
+                            onFullscreen(true)
+                            return@setOnTouchListener true
+                        }
+                        if (dy > 0f && fullscreen) {
+                            onFullscreen(false)
+                            return@setOnTouchListener true
+                        }
+                    }
+                }
+            }
+            false
+        }
         webView.webChromeClient = object : WebChromeClient() {
             override fun onShowCustomView(view: View, callback: CustomViewCallback) {
                 if (customView != null) {
@@ -570,6 +598,11 @@ class TwitchPlayerScreen(
 
     fun setFullscreenMode(enabled: Boolean) {
         fullscreen = enabled
+        if (::fullscreenButton.isInitialized) {
+            fullscreenButton.setImageResource(
+                if (enabled) R.drawable.ic_fullscreen_exit else R.drawable.ic_fullscreen
+            )
+        }
         if (customView != null) return
 
         header.visibility = if (enabled) View.GONE else View.VISIBLE
