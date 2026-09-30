@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.5.0: new brand avatar and Telegram album/navigation polish
+# SOHR 6.5.1: reliable background alerts, Telegram rich links and smooth channel back
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.5.0 version
+      - name: Assign SOHR 6.5.1 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=650000" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.5.0" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=650001" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.5.1" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -451,7 +451,9 @@ jobs:
               "memberCount",
               "mediaAlbumId = message.mediaAlbumId",
               "editDate = message.editDate",
-              "isPinned = message.isPinned"
+              "isPinned = message.isPinned",
+              "formattedText = formattedTextOf(message)",
+              "private fun formattedTextOf"
           ]:
               if required not in channel_hub:
                   raise SystemExit(f"SOHR 6.4.0 Telegram channel hub regression: {required}")
@@ -475,7 +477,10 @@ jobs:
               '"К последним сообщениям"',
               '"Закреплено"',
               '"изменено • $time"',
-              '"Текст скопирован"'
+              '"Текст скопирован"',
+              "applyTelegramFormattedText",
+              "TdApi.TextEntityTypeTextUrl",
+              "URLSpan(type.url)"
           ]:
               if required not in channel_ui:
                   raise SystemExit(f"SOHR 6.4.0 Telegram channel UI regression: {required}")
@@ -509,6 +514,28 @@ jobs:
           ]:
               if required not in sohr_main:
                   raise SystemExit(f"SOHR 6.5.0 Telegram album/navigation regression: {required}")
+
+          for required in [
+              "SohrNotificationWatchService.start(this)",
+              "telegramChannelReturnView",
+              "replaceRoot(returnView)",
+              '"6.5.1" -> listOf('
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.5.1 notification/back-navigation regression: {required}")
+
+          notification_watch = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/SohrNotificationWatchService.kt"
+          ).read_text(encoding="utf-8")
+          for required in [
+              "START_STICKY",
+              "FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING",
+              "T2X2_CHECK_INTERVAL_MS = 12_000L",
+              "SohrUpdateManager(applicationContext).check()",
+              'TwitchApi.loadLiveStream(clientId, token, "t2x2")'
+          ]:
+              if required not in notification_watch:
+                  raise SystemExit(f"SOHR 6.5.1 background watch regression: {required}")
 
           settings_screen = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/SettingsScreen.kt"
@@ -704,7 +731,10 @@ jobs:
               'android:icon="@drawable/sohr_brand_logo_v3"',
               'android:roundIcon="@drawable/sohr_brand_logo_v3"',
               'android:theme="@style/AppTheme.Starting"',
-              "android.permission.ACCESS_NETWORK_STATE"
+              "android.permission.ACCESS_NETWORK_STATE",
+              "android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING",
+              'android:name=".SohrNotificationWatchService"',
+              'android:foregroundServiceType="remoteMessaging"'
           ]:
               if required not in manifest:
                   raise SystemExit(f"SOHR 6.2.5 manifest branding/network regression: {required}")
@@ -1041,7 +1071,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.5.0 • новая аватарка приложения • Telegram-фото и видео с одним mediaAlbumId объединяются в один альбом • внутри канала появился разделитель Новые сообщения и плавающая кнопка перехода к последним постам • закреплённые посты и изменённые сообщения помечаются • долгое нажатие копирует текст • ссылки/email/@упоминания остаются кликабельными • realtime-обновления пересобирают альбомы без распада на отдельные карточки"
+            "notes": "SOHR 6.5.1 • быстрые уведомления T2x2 и обновлений поддерживаются отдельным foreground-watch даже когда интерфейс приложения закрыт, а WorkManager остаётся резервом • Telegram TextUrl/URL/email/@username и форматирование сохраняются из TDLib и кликаются прямо за текстом • возврат из канала восстанавливает готовую ленту без полной пересборки и рывка • сохранены альбомы, непрочитанные, новая ава и все функции 6.5.0"
           }
           EOF
           cat update.json
