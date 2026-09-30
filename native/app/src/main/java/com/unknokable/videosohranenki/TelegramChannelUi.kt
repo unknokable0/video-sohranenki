@@ -91,7 +91,7 @@ object TelegramChannelUi {
 
         if (channels.isEmpty()) {
             root.addView(TextView(activity).apply {
-                text = "Не удалось получить каналы. Проверь подключение к Telegram."
+                text = "Не удалось получить каналы. Проверьте подключение к Telegram."
                 textSize = 13.5f
                 gravity = Gravity.CENTER
                 setTextColor(palette.muted)
