@@ -90,6 +90,7 @@ class PlayerScreen(
     private lateinit var seekBar: SohrTimeBar
     private lateinit var currentTime: TextView
     private lateinit var totalTime: TextView
+    private lateinit var remainingTime: TextView
     private lateinit var qualityButton: TextView
     private lateinit var speedBadge: TextView
     private lateinit var seekFeedback: TextView
@@ -610,6 +611,16 @@ class PlayerScreen(
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
             setPadding(dp(4), 0, dp(5), 0)
         }
+        remainingTime = TextView(activity).apply {
+            text = remainingTimeLabel(0L, item.durationSeconds.coerceAtLeast(0) * 1000L)
+            textSize = 9.6f
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            background = rounded("#38221A30", 10)
+            setPadding(dp(7), 0, dp(7), 0)
+        }
         val spacer = View(activity)
 
         qualityButton = TextView(activity).apply {
@@ -662,6 +673,12 @@ class PlayerScreen(
         times.addView(totalTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)).apply {
             marginStart = dp(4)
         })
+        times.addView(
+            remainingTime,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(25)).apply {
+                marginStart = dp(5)
+            }
+        )
         times.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
         times.addView(
             actionGroup,
@@ -745,6 +762,9 @@ class PlayerScreen(
     private fun updatePreviewUi(positionMs: Long, fraction: Float) {
         previewTime.text = formatMs(positionMs)
         currentTime.text = formatMs(positionMs)
+        if (::remainingTime.isInitialized) {
+            remainingTime.text = remainingTimeLabel(positionMs, resolvedDurationMs())
+        }
         val maxShift = ((playerCard.width - dp(174)) / 2f).coerceAtLeast(0f)
         previewBubble.translationX = ((fraction.coerceIn(0f, 1f) - 0.5f) * 2f * maxShift)
     }
@@ -1415,13 +1435,17 @@ class PlayerScreen(
                     hidePreview()
                 }
             },
-            onVolume = { showTransientIndicator("♪  $it%") },
             onFillMode = { fill ->
                 playerView.resizeMode = if (fill) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
                 showTransientIndicator(if (fill) "Заполнить экран" else "Уменьшить")
             },
-            onSwipeDown = { if (fullscreen) onFullscreen(false) else enterMiniPlayer() },
-            onSwipeUp = { if (fullscreen) onFullscreen(false); exitMiniPlayer(); nextVideosBlock.visibility = View.VISIBLE },
+            onSwipeDown = {
+                if (fullscreen) onFullscreen(false) else enterMiniPlayer()
+            },
+            onSwipeUp = {
+                if (miniMode) exitMiniPlayer()
+                if (!fullscreen) onFullscreen(true) else showOverlay()
+            },
             onInteraction = { markPlayerInteraction() }
         )
         playerCard.setOnTouchListener(gestureOverlay)
@@ -2393,6 +2417,7 @@ class PlayerScreen(
             if (duration > 0) {
                 seekBar.setProgress(player.currentPosition, duration, player.bufferedPosition)
                 totalTime.text = formatMs(duration)
+                remainingTime.text = remainingTimeLabel(player.currentPosition, duration)
             }
         }
         currentTime.text = formatMs(player.currentPosition)
@@ -2410,7 +2435,11 @@ class PlayerScreen(
 
     private fun updateDurationLabel() {
         if (!::totalTime.isInitialized) return
-        totalTime.text = formatMs(resolvedDurationMs())
+        val duration = resolvedDurationMs()
+        totalTime.text = formatMs(duration)
+        if (::remainingTime.isInitialized) {
+            remainingTime.text = remainingTimeLabel(player.currentPosition, duration)
+        }
     }
 
     fun flushPlaybackPosition() {
@@ -2614,6 +2643,11 @@ class PlayerScreen(
     private fun buildSize(): String {
         val mb = item.fileSize / 1048576.0
         return if (mb >= 1024) "%.1f ГБ".format(mb / 1024.0) else "%.0f МБ".format(mb)
+    }
+
+    private fun remainingTimeLabel(positionMs: Long, durationMs: Long): String {
+        val remaining = (durationMs - positionMs).coerceAtLeast(0L)
+        return "ост. " + formatMs(remaining)
     }
 
     private fun formatMs(ms: Long): String {
