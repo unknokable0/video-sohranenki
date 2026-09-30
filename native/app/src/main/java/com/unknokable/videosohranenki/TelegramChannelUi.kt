@@ -39,51 +39,42 @@ object TelegramChannelUi {
         val palette = settings.palette()
         val root = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(activity, 16), dp(activity, 12), dp(activity, 16), dp(activity, 18))
+            setPadding(0, dp(activity, 4), 0, dp(activity, 14))
             setBackgroundColor(Color.TRANSPARENT)
         }
 
-        root.addView(TextView(activity).apply {
-            text = "Каналы"
-            textSize = 19f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(palette.text)
-            includeFontPadding = false
-        })
-        root.addView(TextView(activity).apply {
-            text = "Посты Telegram прямо внутри SOHR"
-            textSize = 11.8f
-            setTextColor(palette.muted)
-            setPadding(0, dp(activity, 3), 0, dp(activity, 12))
-            includeFontPadding = false
-        })
-
         if (loading && channels.isEmpty()) {
             repeat(4) { index ->
-                root.addView(
+                val row = LinearLayout(activity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(activity, 14), dp(activity, 9), dp(activity, 12), dp(activity, 9))
+                    alpha = 0.58f + index * 0.05f
+                }
+                row.addView(
+                    View(activity).apply { background = oval(palette.surfaceAlt) },
+                    LinearLayout.LayoutParams(dp(activity, 60), dp(activity, 60))
+                )
+                row.addView(
                     LinearLayout(activity).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        gravity = Gravity.CENTER_VERTICAL
-                        setPadding(dp(activity, 12), dp(activity, 12), dp(activity, 12), dp(activity, 12))
-                        background = rounded(palette.surface, 18)
-                        alpha = 0.58f + index * 0.06f
-                        addView(View(activity).apply {
-                            background = oval(palette.surfaceAlt)
-                        }, LinearLayout.LayoutParams(dp(activity, 50), dp(activity, 50)))
-                        addView(LinearLayout(activity).apply {
-                            orientation = LinearLayout.VERTICAL
-                            setPadding(dp(activity, 11), 0, 0, 0)
-                            addView(View(activity).apply { background = rounded(palette.surfaceAlt, 6) },
-                                LinearLayout.LayoutParams(dp(activity, 132), dp(activity, 13)))
-                            addView(View(activity).apply { background = rounded(palette.surfaceAlt, 6) },
-                                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(activity, 11)).apply {
-                                    topMargin = dp(activity, 9)
-                                })
-                        }, LinearLayout.LayoutParams(0, dp(activity, 50), 1f))
+                        orientation = LinearLayout.VERTICAL
+                        setPadding(dp(activity, 12), 0, 0, 0)
+                        addView(
+                            View(activity).apply { background = rounded(palette.surfaceAlt, 6) },
+                            LinearLayout.LayoutParams(dp(activity, 150), dp(activity, 15))
+                        )
+                        addView(
+                            View(activity).apply { background = rounded(palette.surfaceAlt, 6) },
+                            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(activity, 12)).apply {
+                                topMargin = dp(activity, 10)
+                            }
+                        )
                     },
-                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(activity, 76)).apply {
-                        bottomMargin = dp(activity, 8)
-                    }
+                    LinearLayout.LayoutParams(0, dp(activity, 60), 1f)
+                )
+                root.addView(
+                    row,
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(activity, 78))
                 )
             }
             return root
@@ -95,7 +86,7 @@ object TelegramChannelUi {
                 textSize = 13.5f
                 gravity = Gravity.CENTER
                 setTextColor(palette.muted)
-                setPadding(dp(activity, 18), dp(activity, 28), dp(activity, 18), dp(activity, 28))
+                setPadding(dp(activity, 18), dp(activity, 36), dp(activity, 18), dp(activity, 36))
             })
             return root
         }
@@ -104,8 +95,8 @@ object TelegramChannelUi {
             val row = LinearLayout(activity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(activity, 11), dp(activity, 10), dp(activity, 11), dp(activity, 10))
-                background = rounded(palette.surface, 19)
+                setPadding(dp(activity, 14), dp(activity, 8), dp(activity, 12), dp(activity, 8))
+                background = null
                 isClickable = true
                 isFocusable = true
             }
@@ -121,76 +112,120 @@ object TelegramChannelUi {
                     }
                 }
             }
-            row.addView(avatar, LinearLayout.LayoutParams(dp(activity, 52), dp(activity, 52)))
+            row.addView(
+                avatar,
+                LinearLayout.LayoutParams(dp(activity, 60), dp(activity, 60))
+            )
 
             val center = LinearLayout(activity).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(dp(activity, 11), 0, dp(activity, 8), 0)
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(activity, 12), 0, dp(activity, 8), 0)
             }
 
             val nameLine = LinearLayout(activity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
             }
-            nameLine.addView(TextView(activity).apply {
-                text = channel.title
-                textSize = 14.8f
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(palette.text)
-                maxLines = 1
-                ellipsize = android.text.TextUtils.TruncateAt.END
-                includeFontPadding = false
-            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-            if (channel.verified) {
-                nameLine.addView(TextView(activity).apply {
-                    text = "✓"
-                    textSize = 10.5f
-                    gravity = Gravity.CENTER
+            nameLine.addView(
+                TextView(activity).apply {
+                    text = channel.title
+                    textSize = 16.2f
                     setTypeface(typeface, Typeface.BOLD)
-                    setTextColor(Color.WHITE)
-                    background = oval(palette.accent)
+                    setTextColor(palette.text)
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
                     includeFontPadding = false
-                }, LinearLayout.LayoutParams(dp(activity, 17), dp(activity, 17)).apply {
-                    marginStart = dp(activity, 5)
-                })
+                },
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            )
+            if (channel.verified) {
+                nameLine.addView(
+                    TextView(activity).apply {
+                        text = "✓"
+                        textSize = 10.5f
+                        gravity = Gravity.CENTER
+                        setTypeface(typeface, Typeface.BOLD)
+                        setTextColor(Color.WHITE)
+                        background = oval(palette.accent)
+                        includeFontPadding = false
+                    },
+                    LinearLayout.LayoutParams(dp(activity, 18), dp(activity, 18)).apply {
+                        marginStart = dp(activity, 6)
+                    }
+                )
             }
             center.addView(nameLine)
-            center.addView(TextView(activity).apply {
-                text = channel.lastMessagePreview
-                textSize = 12.2f
-                setTextColor(palette.muted)
-                maxLines = 1
-                ellipsize = android.text.TextUtils.TruncateAt.END
-                includeFontPadding = false
-                setPadding(0, dp(activity, 5), 0, 0)
-            })
-            row.addView(center, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+            val previewLine = LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(activity, 6), 0, 0)
+            }
+            if (!channel.lastMessagePreviewPath.isNullOrBlank()) {
+                previewLine.addView(
+                    ImageView(activity).apply {
+                        scaleType = ImageView.ScaleType.CENTER_CROP
+                        background = rounded(palette.surfaceAlt, if (channel.lastMessageKind == "video_note") 13 else 6)
+                        clipToOutline = true
+                        load(channel.lastMessagePreviewPath) { crossfade(true) }
+                    },
+                    LinearLayout.LayoutParams(dp(activity, 27), dp(activity, 27)).apply {
+                        marginEnd = dp(activity, 7)
+                    }
+                )
+            }
+            previewLine.addView(
+                TextView(activity).apply {
+                    text = channel.lastMessagePreview
+                    textSize = 13.4f
+                    setTextColor(palette.muted)
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    includeFontPadding = false
+                },
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            )
+            center.addView(previewLine)
+            row.addView(
+                center,
+                LinearLayout.LayoutParams(0, dp(activity, 60), 1f)
+            )
 
             val end = LinearLayout(activity).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.END
+                setPadding(0, dp(activity, 2), 0, dp(activity, 2))
             }
-            end.addView(TextView(activity).apply {
-                text = channelTime(channel.lastMessageDate)
-                textSize = 10.5f
-                setTextColor(if (channel.unreadCount > 0) palette.accent else palette.muted)
-                includeFontPadding = false
-            })
-            if (channel.unreadCount > 0) {
-                end.addView(TextView(activity).apply {
-                    text = if (channel.unreadCount > 99) "99+" else channel.unreadCount.toString()
-                    textSize = 10.5f
-                    gravity = Gravity.CENTER
-                    setTypeface(typeface, Typeface.BOLD)
-                    setTextColor(Color.WHITE)
-                    background = rounded(palette.accent, 11)
+            end.addView(
+                TextView(activity).apply {
+                    text = channelTime(channel.lastMessageDate)
+                    textSize = 11.4f
+                    setTextColor(if (channel.unreadCount > 0) palette.accent else palette.muted)
                     includeFontPadding = false
-                    setPadding(dp(activity, 7), 0, dp(activity, 7), 0)
-                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(activity, 22)).apply {
-                    topMargin = dp(activity, 7)
-                })
+                }
+            )
+            if (channel.unreadCount > 0) {
+                end.addView(
+                    TextView(activity).apply {
+                        text = if (channel.unreadCount > 99) "99+" else channel.unreadCount.toString()
+                        textSize = 10.5f
+                        gravity = Gravity.CENTER
+                        setTypeface(typeface, Typeface.BOLD)
+                        setTextColor(Color.WHITE)
+                        background = rounded(palette.accent, 11)
+                        includeFontPadding = false
+                        setPadding(dp(activity, 7), 0, dp(activity, 7), 0)
+                    },
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(activity, 22)).apply {
+                        topMargin = dp(activity, 11)
+                    }
+                )
             }
-            row.addView(end, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            row.addView(
+                end,
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(activity, 60))
+            )
 
             row.setOnClickListener {
                 SohrMotion.press(row, settings.animations)
@@ -199,7 +234,7 @@ object TelegramChannelUi {
 
             if (settings.animations) {
                 row.alpha = 0f
-                row.translationY = dp(activity, 8).toFloat()
+                row.translationY = dp(activity, 6).toFloat()
                 row.postDelayed({
                     if (!row.isAttachedToWindow) return@postDelayed
                     row.animate()
@@ -208,12 +243,29 @@ object TelegramChannelUi {
                         .setDuration(SohrMotion.NORMAL)
                         .setInterpolator(SohrMotion.smooth())
                         .start()
-                }, (index * 32L).coerceAtMost(120L))
+                }, (index * 28L).coerceAtMost(110L))
             }
 
-            root.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(activity, 76)).apply {
-                bottomMargin = dp(activity, 8)
-            })
+            root.addView(
+                row,
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(activity, 78))
+            )
+
+            if (index != channels.lastIndex) {
+                root.addView(
+                    View(activity).apply {
+                        setBackgroundColor(palette.surfaceAlt)
+                        alpha = 0.52f
+                    },
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        dp(activity, 1)
+                    ).apply {
+                        marginStart = dp(activity, 86)
+                        marginEnd = dp(activity, 12)
+                    }
+                )
+            }
         }
 
         return root
