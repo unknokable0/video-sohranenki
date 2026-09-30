@@ -121,6 +121,7 @@ class MainActivity : AppCompatActivity() {
     private var t2x2WatchJob: kotlinx.coroutines.Job? = null
     private var t2x2LiveSlot: FrameLayout? = null
     private var lastT2x2Live: TwitchLiveStream? = null
+    private val t2x2LiveAccent = Color.parseColor("#7C83FF")
     private lateinit var twitchCategoryTracker: TwitchCategoryTracker
     private var lastT2x2Timeline: TwitchCategoryTimeline? = null
     private var lastT2x2LiveCheckedAt = 0L
@@ -3775,7 +3776,7 @@ class MainActivity : AppCompatActivity() {
             background = roundedBg(palette.surfaceAlt, 16)
         }
         val liveDot = LivePulseView(this).apply {
-            setLiveColor(purple)
+            setLiveColor(t2x2LiveAccent)
             setState(lastT2x2Live != null, settings.animations)
         }
         val liveText = TextView(this).apply {
@@ -3821,7 +3822,7 @@ class MainActivity : AppCompatActivity() {
         val label = todayLiveStatusView ?: return
         val dot = todayLiveDot
         val isLive = live != null
-        dot?.setLiveColor(purple)
+        dot?.setLiveColor(t2x2LiveAccent)
         dot?.setState(isLive, settings.animations)
 
         if (isLive && live != null) {
@@ -3830,7 +3831,7 @@ class MainActivity : AppCompatActivity() {
                 ?: twitchCategoryTracker.observe(live).also { lastT2x2Timeline = it }
 
             label.text = "T2x2 • в сети"
-            label.setTextColor(purple)
+            label.setTextColor(t2x2LiveAccent)
 
             val current = timeline.current
             val previous = timeline.previous
@@ -4864,7 +4865,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val pulse = LivePulseView(this).apply {
-            setLiveColor(purple)
+            setLiveColor(t2x2LiveAccent)
             setState(live != null, settings.animations)
         }
         card.addView(
@@ -4908,6 +4909,8 @@ class MainActivity : AppCompatActivity() {
                     ?.takeIf { it.streamStartedAt == live.startedAt }
                     ?: twitchCategoryTracker.observe(live).also { lastT2x2Timeline = it }
                 val current = timeline.current
+                val previous = timeline.previous
+                status.maxLines = if (previous != null) 3 else 2
                 status.text = buildString {
                     append(current?.gameName?.takeIf { it.isNotBlank() } ?: live.gameName.ifBlank { "Без категории" })
                     current?.let {
@@ -4919,6 +4922,12 @@ class MainActivity : AppCompatActivity() {
                     append(" • ")
                     append(formatViewerCountCompact(live.viewerCount))
                     append(" зр.")
+                    if (previous != null) {
+                        append("\nДо этого • ")
+                        append(previous.gameName)
+                        append(" • ")
+                        append(formatCategoryDuration(previous.elapsedMs()))
+                    }
                 }
                 status.setTextColor(muted)
             }
@@ -4975,7 +4984,7 @@ class MainActivity : AppCompatActivity() {
             card,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(84),
+                dp(98),
                 Gravity.CENTER
             )
         )
@@ -5816,8 +5825,7 @@ class MainActivity : AppCompatActivity() {
             onVideo = { post, source -> openTelegramChannelVideo(post, source) },
             onPhoto = { post, source -> openTelegramChannelPhoto(post, source) },
             onVoice = { post, source -> toggleTelegramChannelAudio(post, source) },
-            onDownload = { post -> downloadTelegramChannelPost(post) },
-            onReact = null
+            onDownload = { post -> downloadTelegramChannelPost(post) }
         )
         telegramChannelRender = render
         replaceRoot(render.root)
