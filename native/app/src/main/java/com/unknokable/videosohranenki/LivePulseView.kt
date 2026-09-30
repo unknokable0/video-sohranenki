@@ -7,13 +7,12 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.view.View
 import android.view.animation.LinearInterpolator
+import kotlin.math.PI
+import kotlin.math.sin
 
 class LivePulseView(context: Context) : View(context) {
 
     private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
-    }
-    private val haloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
     private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -24,10 +23,13 @@ class LivePulseView(context: Context) : View(context) {
     private var live = false
     private var animations = true
     private var phase = 0f
-    private var liveColor = Color.parseColor("#E91916")
+
+    // Deliberately muted live red: visible on the dark SOHR surface without
+    // looking neon or glowing.
+    private var liveColor = Color.parseColor("#E5484D")
 
     private val animator = ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = 1600L
+        duration = 1800L
         repeatCount = ValueAnimator.INFINITE
         interpolator = LinearInterpolator()
         addUpdateListener {
@@ -71,55 +73,40 @@ class LivePulseView(context: Context) : View(context) {
         val cy = height / 2f
 
         if (!live) {
-            val idle = Color.parseColor("#777B86")
-            haloPaint.color = withAlpha(idle, 14)
-            canvas.drawCircle(cx, cy, dp(3.8f), haloPaint)
-
-            dotPaint.color = idle
-            canvas.drawCircle(cx, cy, dp(2.55f), dotPaint)
+            dotPaint.color = Color.parseColor("#747984")
+            canvas.drawCircle(cx, cy, dp(2.45f), dotPaint)
             return
         }
 
         if (animations) {
-            // Twitch-like minimal pulse: one clean primary ring and one much
-            // softer trailing ring. Both share the exact same geometry.
-            drawWave(canvas, cx, cy, phase, 1f)
-            drawWave(canvas, cx, cy, (phase + 0.5f) % 1f, 0.56f)
+            drawRipple(canvas, cx, cy, phase)
         } else {
-            ringPaint.color = withAlpha(liveColor, 34)
+            ringPaint.color = withAlpha(liveColor, 40)
             ringPaint.strokeWidth = dp(0.78f)
-            canvas.drawCircle(cx, cy, dp(5.8f), ringPaint)
+            canvas.drawCircle(cx, cy, dp(5.3f), ringPaint)
         }
 
-        // Keep the red contained to the indicator itself. No red labels/cards.
-        haloPaint.color = withAlpha(liveColor, 24)
-        canvas.drawCircle(cx, cy, dp(4.0f), haloPaint)
-
-        ringPaint.color = withAlpha(liveColor, 58)
-        ringPaint.strokeWidth = dp(0.72f)
-        canvas.drawCircle(cx, cy, dp(3.7f), ringPaint)
+        // A very small breathing motion gives life to the dot without a glow.
+        val breath = if (animations) {
+            ((sin(phase * PI * 2.0) + 1.0) * 0.5).toFloat()
+        } else {
+            0.5f
+        }
+        val dotRadius = dp(2.55f + breath * 0.18f)
 
         dotPaint.color = liveColor
-        canvas.drawCircle(cx, cy, dp(2.7f), dotPaint)
+        canvas.drawCircle(cx, cy, dotRadius, dotPaint)
     }
 
-    private fun drawWave(
-        canvas: Canvas,
-        cx: Float,
-        cy: Float,
-        wavePhase: Float,
-        strength: Float
-    ) {
+    private fun drawRipple(canvas: Canvas, cx: Float, cy: Float, wavePhase: Float) {
         val progress = wavePhase.coerceIn(0f, 1f)
-        val inverse = 1f - progress
-        val eased = 1f - inverse * inverse * inverse
-        val radius = dp(4.15f + eased * 5.25f)
-        val alpha = (inverse * inverse * 62f * strength)
-            .toInt()
-            .coerceIn(0, 62)
+        val eased = 1f - (1f - progress) * (1f - progress)
+        val radius = dp(4.1f + eased * 4.6f)
+        val fade = 1f - progress
+        val alpha = (fade * fade * 46f).toInt().coerceIn(0, 46)
 
         ringPaint.color = withAlpha(liveColor, alpha)
-        ringPaint.strokeWidth = dp(0.86f - 0.24f * eased)
+        ringPaint.strokeWidth = dp(0.82f - 0.18f * eased)
         canvas.drawCircle(cx, cy, radius, ringPaint)
     }
 
