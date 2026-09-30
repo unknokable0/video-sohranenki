@@ -524,6 +524,18 @@ jobs:
               if required not in sohr_main:
                   raise SystemExit(f"SOHR 6.5.1 notification/back-navigation regression: {required}")
 
+          boot_receiver = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/SohrBootReceiver.kt"
+          ).read_text(encoding="utf-8")
+          for required in [
+              "Intent.ACTION_BOOT_COMPLETED",
+              "Intent.ACTION_MY_PACKAGE_REPLACED",
+              "SohrBackgroundCheckWorker.schedule(context)",
+              "SohrNotificationWatchService.start(context)"
+          ]:
+              if required not in boot_receiver:
+                  raise SystemExit(f"SOHR 6.5.1 boot notification regression: {required}")
+
           notification_watch = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/SohrNotificationWatchService.kt"
           ).read_text(encoding="utf-8")
@@ -734,7 +746,9 @@ jobs:
               "android.permission.ACCESS_NETWORK_STATE",
               "android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING",
               'android:name=".SohrNotificationWatchService"',
-              'android:foregroundServiceType="remoteMessaging"'
+              'android:foregroundServiceType="remoteMessaging"',
+              "android.permission.RECEIVE_BOOT_COMPLETED",
+              'android:name=".SohrBootReceiver"'
           ]:
               if required not in manifest:
                   raise SystemExit(f"SOHR 6.2.5 manifest branding/network regression: {required}")
@@ -1071,7 +1085,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.5.1 • быстрые уведомления T2x2 и обновлений поддерживаются отдельным foreground-watch даже когда интерфейс приложения закрыт, а WorkManager остаётся резервом • Telegram TextUrl/URL/email/@username и форматирование сохраняются из TDLib и кликаются прямо за текстом • возврат из канала восстанавливает готовую ленту без полной пересборки и рывка • сохранены альбомы, непрочитанные, новая ава и все функции 6.5.0"
+            "notes": "SOHR 6.5.1 • быстрые уведомления T2x2 и обновлений поддерживаются отдельным foreground-watch даже когда интерфейс приложения закрыт, WorkManager остаётся резервом, а после перезагрузки телефона мониторинг запускается снова • Telegram TextUrl/URL/email/@username и форматирование сохраняются из TDLib и кликаются прямо за текстом • возврат из канала восстанавливает готовую ленту без полной пересборки и рывка • сохранены альбомы, непрочитанные, новая ава и все функции 6.5.0"
           }
           EOF
           cat update.json
