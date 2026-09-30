@@ -92,6 +92,7 @@ class PlayerScreen(
     private lateinit var totalTime: TextView
     private lateinit var remainingTime: TextView
     private lateinit var qualityButton: TextView
+    private lateinit var fullscreenButton: ImageButton
     private lateinit var speedBadge: TextView
     private lateinit var seekFeedback: TextView
     private lateinit var bufferingLoader: LoadingWaveView
@@ -642,7 +643,7 @@ class PlayerScreen(
             setOnClickListener { pulse(this); showSettingsSheet() }
         }
 
-        val fullscreenButton = iconButton(R.drawable.ic_fullscreen, "#44221A30", 28).apply {
+        fullscreenButton = iconButton(R.drawable.ic_fullscreen, "#44221A30", 28).apply {
             contentDescription = "Полный экран"
             setOnClickListener {
                 onFullscreen(!fullscreen)
@@ -2192,6 +2193,10 @@ class PlayerScreen(
 
                 fullscreenHost = host
                 fullscreen = true
+                if (::fullscreenButton.isInitialized) {
+                    fullscreenButton.setImageResource(R.drawable.ic_fullscreen_exit)
+                    fullscreenButton.contentDescription = "Выйти из полного экрана"
+                }
                 playerCard.clipToOutline = false
                 playerCard.background = rounded("#000000", 0)
                 playerCard.requestLayout()
@@ -2252,6 +2257,10 @@ class PlayerScreen(
                 fullscreenOriginalIndex = -1
                 fullscreenOriginalLayoutParams = null
                 fullscreen = false
+                if (::fullscreenButton.isInitialized) {
+                    fullscreenButton.setImageResource(R.drawable.ic_fullscreen)
+                    fullscreenButton.contentDescription = "Полный экран"
+                }
 
                 playerCard.clipToOutline = true
                 playerCard.background = rounded("#000000", 18)
@@ -2301,6 +2310,10 @@ class PlayerScreen(
             }
 
             fullscreen = false
+            if (::fullscreenButton.isInitialized) {
+                fullscreenButton.setImageResource(R.drawable.ic_fullscreen)
+                fullscreenButton.contentDescription = "Полный экран"
+            }
             fullscreenOriginalIndex = -1
             fullscreenOriginalLayoutParams = null
             playerCard.clipToOutline = true
