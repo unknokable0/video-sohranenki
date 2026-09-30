@@ -167,7 +167,7 @@ class PlayerScreen(
 
     init {
         root.orientation = LinearLayout.VERTICAL
-        root.background = ambientGradient(palette.accent)
+        root.setBackgroundColor(palette.background)
         root.keepScreenOn = false
 
         val loadControl = DefaultLoadControl.Builder()
@@ -223,11 +223,9 @@ class PlayerScreen(
             when {
                 localThumb != null -> load(java.io.File(localThumb)) {
                     crossfade(settings.animations)
-                    listener(onSuccess = { _, result -> updateAmbientFromDrawable(result.drawable) })
                 }
                 !item.thumbnailUrl.isNullOrBlank() -> load(item.thumbnailUrl) {
                     crossfade(settings.animations)
-                    listener(onSuccess = { _, result -> updateAmbientFromDrawable(result.drawable) })
                 }
             }
         }
@@ -1975,27 +1973,12 @@ class PlayerScreen(
     }
 
     private fun applyAmbientColor(target: Int) {
+        // Keep the whole inline player screen visually unified with SOHR.
+        // Ambient sampling is retained for compatibility, but it must never
+        // repaint the root and create a detached colored strip above the video.
         ambientAnimator?.cancel()
-        if (!settings.animations) {
-            ambientColor = target
-            root.background = ambientGradient(target)
-            return
-        }
-        val from = ambientColor
-        ambientAnimator = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 360L
-            interpolator = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
-            addUpdateListener { animator ->
-                val f = animator.animatedFraction
-                ambientColor = Color.rgb(
-                    (Color.red(from) + (Color.red(target) - Color.red(from)) * f).toInt(),
-                    (Color.green(from) + (Color.green(target) - Color.green(from)) * f).toInt(),
-                    (Color.blue(from) + (Color.blue(target) - Color.blue(from)) * f).toInt()
-                )
-                root.background = ambientGradient(ambientColor)
-            }
-            start()
-        }
+        ambientColor = target
+        root.setBackgroundColor(palette.background)
     }
 
     private fun ambientGradient(color: Int): GradientDrawable {
