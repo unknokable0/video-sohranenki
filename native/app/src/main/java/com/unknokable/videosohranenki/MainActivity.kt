@@ -167,7 +167,7 @@ class MainActivity : AppCompatActivity() {
     private val twitchAutoRefreshIntervalMs = 180_000L
     private var startupUpdateCheckDone = false
     private var updateAutoCheckJob: kotlinx.coroutines.Job? = null
-    private val automaticUpdateCheckIntervalMs = 10L * 60L * 1000L
+    private val automaticUpdateCheckIntervalMs = 2L * 60L * 1000L
     private var onboardingActive = false
     private var videoSection = 1 // 1 home, 2 feed, 3 watched
     private var pendingVideoSectionCrossfade = false
@@ -4987,7 +4987,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                delay(20_000L)
+                delay(8_000L)
             }
         }
     }
@@ -7222,7 +7222,10 @@ class MainActivity : AppCompatActivity() {
 
             val nav = SohrBottomNavView(this, palette, selected) { tab ->
                 if (tab != currentPrimaryTab) {
-                    pendingRootSlide = if (tab.ordinal > currentPrimaryTab.ordinal) 1 else -1
+                    // Lower navigation must feel immediate: switch content in the
+                    // same tap, keep motion only on the nav indicator/icon.
+                    pendingRootSlide = 0
+                    suppressNextContentAnimation = true
                     when (tab) {
                         SohrTab.VIDEOS -> showSelectedVideoSource()
                         SohrTab.SETTINGS -> showSettings()
