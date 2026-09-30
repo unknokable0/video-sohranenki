@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.6.10: true highest-bitrate defaults and whole-row quality dialogs
+# SOHR 6.6.11: unified primary navigation motion and Settings stagger
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.6.10 version
+      - name: Assign SOHR 6.6.11 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=660010" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.6.10" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=660011" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.6.11" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -656,7 +656,7 @@ jobs:
                   raise SystemExit(f"SOHR 6.6.8 external-link icon regression: {required}")
 
           for required in [
-              '"6.6.10" -> listOf(',
+              '"6.6.11" -> listOf(',
               't2x2LiveAccent = Color.parseColor("#E5484D")',
               "TwitchCategoryTracker",
               "formatCategoryDuration",
@@ -685,6 +685,17 @@ jobs:
 
           if ".coerceIn(dp(246), dp(390))" in sohr_main:
               raise SystemExit("SOHR 6.6.8 regression: T2x2 expanded card height cap returned")
+
+          for required in [
+              "private var pendingPrimaryTabTransition = false",
+              "pendingPrimaryTabTransition = true",
+              "suppressNextContentAnimation = false",
+              "val primaryTabTransition = pendingPrimaryTabTransition",
+              "val incomingOffset = dp(14).toFloat() * direction",
+              "} else if (slide == 0) {"
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.6.11 primary navigation motion regression: {required}")
           for required in [
               "else if (slide < 0)",
               ".translationX(dp(34).toFloat())",
@@ -904,6 +915,14 @@ jobs:
           for required in ["previewModeSelector", '"Wi‑Fi"', '"Всегда"', '"Выкл"']:
               if required not in settings_screen:
                   raise SystemExit(f"SOHR 6.2 preview-setting regression: {required}")
+          for required in [
+              "val visibleCount = root.childCount.coerceAtMost(10)",
+              "child.translationY = dp(8).toFloat()",
+              ".setStartDelay((index * 22L).coerceAtMost(150L))",
+              ".setDuration(230L)"
+          ]:
+              if required not in settings_screen:
+                  raise SystemExit(f"SOHR 6.6.11 Settings entrance regression: {required}")
 
           app_settings = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/AppSettings.kt"
@@ -1457,7 +1476,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.6.10 • режим Лучшее в Media3 теперь реально форсит максимальный поддерживаемый битрейт, а Auto вынесен в отдельный адаптивный режим • Twitch VOD удерживает Source/максимальный поток весь сеанс и больше не откатывается в Auto после первых секунд • окно качества в landscape показывает только целые строки без обрезанного нижнего пункта • inline Twitch-плеер стал компактнее при сохранённом 16:9 • сохранены Осталось, жесты без свайпа громкости, автопортрет, video-only PiP, themed progress, Google-поиск игр и плавный Back"
+            "notes": "SOHR 6.6.11 • нижняя навигация Видео/Стрик/Настройки/Аккаунт получила единый мягкий slide + crossfade без движения самой панели • обновления внутри текущей вкладки используют короткий fade вместо резкой подмены • экран Настроек получил лёгкое каскадное появление первых блоков • анимации короткие, синхронные и полностью уважают общую настройку Анимации • сохранены все исправления качества, fullscreen, PiP, themed progress и T2x2 из 6.6.10"
           }
           EOF
           cat update.json
