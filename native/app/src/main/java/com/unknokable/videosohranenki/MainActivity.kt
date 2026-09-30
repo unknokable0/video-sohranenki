@@ -200,6 +200,7 @@ class MainActivity : AppCompatActivity() {
     private var telegramChannelRefreshJob: kotlinx.coroutines.Job? = null
     private var openTelegramChannelSummary: TelegramChannelSummary? = null
     private var openTelegramPosts: List<TelegramChannelPost> = emptyList()
+    private var openTelegramUnreadAtOpen: Int = 0
     private var telegramChannelRender: TelegramChannelRender? = null
     private var telegramAudioPlayer: androidx.media3.exoplayer.ExoPlayer? = null
     private var telegramAudioMessageId: Long = 0L
@@ -5650,6 +5651,7 @@ class MainActivity : AppCompatActivity() {
         auxiliaryScreen = "telegram_channel"
         openTelegramChannelSummary = channel
         openTelegramPosts = emptyList()
+        openTelegramUnreadAtOpen = channel.unreadCount.coerceAtLeast(0)
         pendingRootSlide = 1
 
         renderTelegramChannel(channel, loading = true, canLoadOlder = false)
@@ -5694,11 +5696,13 @@ class MainActivity : AppCompatActivity() {
             posts = openTelegramPosts,
             loading = loading,
             canLoadOlder = canLoadOlder,
+            unreadCountAtOpen = openTelegramUnreadAtOpen,
             onBack = {
                 stopTelegramChannelAudio()
                 auxiliaryScreen = null
                 openTelegramChannelSummary = null
                 openTelegramPosts = emptyList()
+                openTelegramUnreadAtOpen = 0
                 telegramChannelRender = null
                 videoSection = 2
                 pendingRootSlide = -1
@@ -5754,43 +5758,16 @@ class MainActivity : AppCompatActivity() {
             val updated = hub.cachedSummary(channel.chatId)?.copy(unreadCount = 0) ?: channel.copy(unreadCount = 0)
             openTelegramChannelSummary = updated
 
-            val host = telegramChannelRender?.messagesHost
-            if (host != null && host.isAttachedToWindow) {
-                val card = TelegramChannelUi.buildPostCard(
-                    activity = this,
-                    settings = settings,
-                    post = post,
-                    onVideo = { item, source -> openTelegramChannelVideo(item, source) },
-                    onPhoto = { item, source -> openTelegramChannelPhoto(item, source) },
-                    onVoice = { item, source -> toggleTelegramChannelAudio(item, source) }
+            renderTelegramChannel(
+                updated,
+                loading = false,
+                canLoadOlder = openTelegramPosts.size >= 60
+            )
+            telegramChannelRender?.scroll?.post {
+                telegramChannelRender?.scroll?.smoothScrollTo(
+                    0,
+                    telegramChannelRender?.scroll?.getChildAt(0)?.height ?: 0
                 )
-                if (settings.animations) {
-                    card.alpha = 0f
-                    card.translationY = dp(8).toFloat()
-                }
-                host.addView(
-                    card,
-                    LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    ).apply { bottomMargin = dp(9) }
-                )
-                if (settings.animations) {
-                    card.animate()
-                        .alpha(1f)
-                        .translationY(0f)
-                        .setDuration(SohrMotion.NORMAL)
-                        .setInterpolator(SohrMotion.smooth())
-                        .start()
-                }
-                telegramChannelRender?.scroll?.post {
-                    telegramChannelRender?.scroll?.smoothScrollTo(
-                        0,
-                        telegramChannelRender?.scroll?.getChildAt(0)?.height ?: 0
-                    )
-                }
-            } else {
-                renderTelegramChannel(updated, loading = false, canLoadOlder = openTelegramPosts.size >= 60)
             }
 
             lifecycleScope.launch {
@@ -8040,6 +8017,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun fallbackReleaseNotes(version: String): String = when (version) {
+        "6.5.0" -> listOf(
+            "Новая аватарка SOHR.",
+            "Фото и видео, отправленные одним Telegram-альбомом, собираются в одну медиагруппу.",
+            "Добавлен разделитель непрочитанных и быстрый переход к последним сообщениям.",
+            "Долгое нажатие по тексту копирует его, а ссылки и @упоминания остаются кликабельными.",
+            "Realtime-обновления канала пересобирают медиагруппы, поэтому альбомы не распадаются на отдельные карточки."
+        ).joinToString(" • ")
         "6.4.4" -> listOf(
             "Финальная полировка Telegram-ленты.",
             "Счётчик непрочитанных возле «Ленты» работает как у папок Telegram.",
