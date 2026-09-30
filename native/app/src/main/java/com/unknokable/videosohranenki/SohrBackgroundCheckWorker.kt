@@ -13,7 +13,9 @@ import androidx.core.app.NotificationCompat
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -174,6 +176,7 @@ class SohrBackgroundCheckWorker(
         const val EXTRA_OPEN_UPDATE = "sohr_open_update"
 
         private const val UNIQUE_WORK = "sohr_background_checks"
+        private const val UNIQUE_IMMEDIATE_WORK = "sohr_background_check_now"
         private const val RUNTIME_PREFS = "sohr_runtime"
         private const val KEY_LAST_UPDATE_NOTIFICATION = "last_update_notified_code"
         private const val KEY_LAST_T2X2_NOTIFICATION = "last_t2x2_notified_started_at"
@@ -184,9 +187,23 @@ class SohrBackgroundCheckWorker(
         private const val T2X2_NOTIFICATION_ID = 2202
 
         fun schedule(context: Context) {
+            val appContext = context.applicationContext
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
+
+            val manager = WorkManager.getInstance(appContext)
+
+            // Check immediately whenever SOHR schedules background monitoring.
+            // Periodic WorkManager has a 15-minute platform minimum, so this
+            // one-shot check removes the unnecessary startup delay.
+            manager.enqueueUniqueWork(
+                UNIQUE_IMMEDIATE_WORK,
+                ExistingWorkPolicy.REPLACE,
+                OneTimeWorkRequestBuilder<SohrBackgroundCheckWorker>()
+                    .setConstraints(constraints)
+                    .build()
+            )
 
             val request = PeriodicWorkRequestBuilder<SohrBackgroundCheckWorker>(
                 15,
@@ -195,12 +212,11 @@ class SohrBackgroundCheckWorker(
                 .setConstraints(constraints)
                 .build()
 
-            WorkManager.getInstance(context.applicationContext)
-                .enqueueUniquePeriodicWork(
-                    UNIQUE_WORK,
-                    ExistingPeriodicWorkPolicy.UPDATE,
-                    request
-                )
+            manager.enqueueUniquePeriodicWork(
+                UNIQUE_WORK,
+                ExistingPeriodicWorkPolicy.UPDATE,
+                request
+            )
         }
     }
 }
