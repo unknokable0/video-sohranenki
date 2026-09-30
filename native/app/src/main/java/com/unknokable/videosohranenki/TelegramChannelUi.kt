@@ -818,11 +818,11 @@ object TelegramChannelUi {
                         )
                     )
                     if (item.kind == "video") {
-                        media.addView(TextView(activity).apply {
-                            text = "▶"
-                            textSize = 21f
-                            gravity = Gravity.CENTER
-                            setTextColor(Color.WHITE)
+                        media.addView(ImageView(activity).apply {
+                            setImageResource(R.drawable.ic_play)
+                            imageTintList = ColorStateList.valueOf(Color.WHITE)
+                            scaleType = ImageView.ScaleType.CENTER_INSIDE
+                            setPadding(dp(activity, 11), dp(activity, 11), dp(activity, 11), dp(activity, 11))
                             background = oval(Color.argb(150, 0, 0, 0))
                         }, FrameLayout.LayoutParams(dp(activity, 44), dp(activity, 44), Gravity.CENTER))
                         if (item.durationSeconds > 0) {
@@ -1013,11 +1013,11 @@ object TelegramChannelUi {
                 }
                 preview.addView(image, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
                 if (post.kind != "photo") {
-                    preview.addView(TextView(activity).apply {
-                        text = "▶"
-                        textSize = if (isCircle) 25f else 30f
-                        gravity = Gravity.CENTER
-                        setTextColor(Color.WHITE)
+                    preview.addView(ImageView(activity).apply {
+                        setImageResource(R.drawable.ic_play)
+                        imageTintList = ColorStateList.valueOf(Color.WHITE)
+                        scaleType = ImageView.ScaleType.CENTER_INSIDE
+                        setPadding(dp(activity, 13), dp(activity, 13), dp(activity, 13), dp(activity, 13))
                         background = oval(Color.argb(150, 0, 0, 0))
                     }, FrameLayout.LayoutParams(dp(activity, 52), dp(activity, 52), Gravity.CENTER))
                     if (post.durationSeconds > 0) {
@@ -1053,13 +1053,13 @@ object TelegramChannelUi {
                     isClickable = true
                     isFocusable = true
                 }
-                voice.addView(TextView(activity).apply {
-                    text = "▶"
-                    textSize = 17f
-                    gravity = Gravity.CENTER
-                    setTextColor(Color.WHITE)
+                voice.addView(ImageView(activity).apply {
+                    setImageResource(R.drawable.ic_play)
+                    imageTintList = ColorStateList.valueOf(Color.WHITE)
+                    scaleType = ImageView.ScaleType.CENTER_INSIDE
+                    setPadding(dp(activity, 11), dp(activity, 11), dp(activity, 11), dp(activity, 11))
                     background = oval(palette.accent)
-                }, LinearLayout.LayoutParams(dp(activity, 40), dp(activity, 40)))
+                }, LinearLayout.LayoutParams(dp(activity, 48), dp(activity, 48)))
                 voice.addView(LinearLayout(activity).apply {
                     orientation = LinearLayout.VERTICAL
                     setPadding(dp(activity, 10), 0, 0, 0)
@@ -1082,7 +1082,7 @@ object TelegramChannelUi {
                     SohrMotion.press(voice, settings.animations)
                     onVoice(post, voice)
                 }
-                card.addView(voice, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(activity, 58)).apply {
+                card.addView(voice, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(activity, 64)).apply {
                     bottomMargin = if (post.text.isBlank()) 0 else dp(activity, 9)
                 })
             }
