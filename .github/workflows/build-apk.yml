@@ -280,9 +280,10 @@ jobs:
               "native/app/src/main/java/com/unknokable/videosohranenki/SohrBottomNavView.kt"
           ).read_text(encoding="utf-8")
           for required in [
-              "if (!animate) positionIndicator(false)",
+              "indicatorAnimator?.isRunning != true",
               "Always forward the tap",
-              "ValueAnimator.ofFloat(from, to)"
+              "ValueAnimator.ofFloat(from, to)",
+              "duration = SohrMotion.NORMAL"
           ]:
               if required not in bottom_nav:
                   raise SystemExit(f"Bottom navigation animation regression: {required}")
