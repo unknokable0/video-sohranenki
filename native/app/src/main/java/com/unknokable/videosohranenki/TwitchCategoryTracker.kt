@@ -18,7 +18,8 @@ data class TwitchCategorySegment(
 data class TwitchCategoryTimeline(
     val streamStartedAt: String,
     val current: TwitchCategorySegment?,
-    val previous: TwitchCategorySegment?
+    val previous: TwitchCategorySegment?,
+    val recent: List<TwitchCategorySegment> = emptyList()
 )
 
 class TwitchCategoryTracker(context: Context) {
@@ -96,7 +97,12 @@ class TwitchCategoryTracker(context: Context) {
         val previous = segments
             .asReversed()
             .firstOrNull { segment -> segment.endedAtMs != null && segment !== current }
-        return TwitchCategoryTimeline(streamStartedAt, current, previous)
+        return TwitchCategoryTimeline(
+            streamStartedAt = streamStartedAt,
+            current = current,
+            previous = previous,
+            recent = segments.takeLast(5).asReversed()
+        )
     }
 
     private fun readSegments(): List<TwitchCategorySegment> {
