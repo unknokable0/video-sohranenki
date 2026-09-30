@@ -64,7 +64,7 @@ class SohrTimeBar(context: Context, accentColor: Int = Color.rgb(255, 0, 51)) : 
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val desired = dp(22f).toInt()
+        val desired = dp(18f).toInt()
         setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), resolveSize(desired, heightMeasureSpec))
     }
 
@@ -72,7 +72,7 @@ class SohrTimeBar(context: Context, accentColor: Int = Color.rgb(255, 0, 51)) : 
         super.onDraw(canvas)
         if (width <= 0) return
         val centerY = height / 2f
-        val trackH = dp(if (scrubbing) 2.5f else 1.5f)
+        val trackH = dp(if (scrubbing) 2.2f else 1.35f)
         val radius = trackH / 2f
         val played = if (scrubbing) scrubPositionMs else positionMs
         val playedX = width * fractionFor(played)
@@ -89,7 +89,7 @@ class SohrTimeBar(context: Context, accentColor: Int = Color.rgb(255, 0, 51)) : 
             canvas.drawRoundRect(rect, radius, radius, playedPaint)
         }
         if (durationMs > 0L && chapterPositionsMs.isNotEmpty()) {
-            val chapterH = dp(if (scrubbing) 6f else 4f)
+            val chapterH = dp(if (scrubbing) 5f else 3.5f)
             chapterPositionsMs.forEach { chapterMs ->
                 val x = width * fractionFor(chapterMs)
                 canvas.drawRoundRect(
@@ -104,7 +104,7 @@ class SohrTimeBar(context: Context, accentColor: Int = Color.rgb(255, 0, 51)) : 
             }
         }
         if (scrubbing) {
-            canvas.drawCircle(playedX.coerceIn(dp(4.5f), width - dp(4.5f)), centerY, dp(4.5f), thumbPaint)
+            canvas.drawCircle(playedX.coerceIn(dp(4f), width - dp(4f)), centerY, dp(4f), thumbPaint)
         }
     }
 
