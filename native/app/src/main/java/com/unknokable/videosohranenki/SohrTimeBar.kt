@@ -10,7 +10,7 @@ import android.view.View
 import kotlin.math.roundToLong
 
 /** Lightweight YouTube-like timeline: played + buffered + scrubber with a larger touch target. */
-class SohrTimeBar(context: Context) : View(context) {
+class SohrTimeBar(context: Context, accentColor: Int = Color.rgb(255, 0, 51)) : View(context) {
     interface Listener {
         fun onScrubStart(positionMs: Long)
         fun onScrubMove(positionMs: Long, fraction: Float)
@@ -30,8 +30,8 @@ class SohrTimeBar(context: Context) : View(context) {
     private val density = resources.displayMetrics.density
     private val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(105, 255, 255, 255) }
     private val bufferPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(190, 255, 255, 255) }
-    private val playedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(255, 0, 51) }
-    private val thumbPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(255, 0, 51) }
+    private val playedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = accentColor }
+    private val thumbPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = accentColor }
     private val rect = RectF()
 
     fun setProgress(positionMs: Long, durationMs: Long, bufferedPositionMs: Long) {
