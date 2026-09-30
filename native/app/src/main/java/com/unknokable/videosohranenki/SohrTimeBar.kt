@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import kotlin.math.roundToLong
@@ -26,6 +27,11 @@ class SohrTimeBar(context: Context, accentColor: Int = Color.rgb(255, 0, 51)) : 
     private var scrubPositionMs = 0L
     private var touchStartY = 0f
     private var fineScrub = false
+    private var chapterPositionsMs: List<Long> = emptyList()
+    private var lastScrubChapterIndex = -1
+    private val chapterPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(205, 255, 255, 255)
+    }
 
     private val density = resources.displayMetrics.density
     private val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(105, 255, 255, 255) }
@@ -33,6 +39,14 @@ class SohrTimeBar(context: Context, accentColor: Int = Color.rgb(255, 0, 51)) : 
     private val playedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = accentColor }
     private val thumbPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = accentColor }
     private val rect = RectF()
+
+    fun setChapters(positionsMs: List<Long>) {
+        chapterPositionsMs = positionsMs
+            .filter { it > 0L }
+            .distinct()
+            .sorted()
+        invalidate()
+    }
 
     fun setProgress(positionMs: Long, durationMs: Long, bufferedPositionMs: Long) {
         this.durationMs = durationMs.coerceAtLeast(0L)
@@ -74,6 +88,21 @@ class SohrTimeBar(context: Context, accentColor: Int = Color.rgb(255, 0, 51)) : 
             rect.right = playedX
             canvas.drawRoundRect(rect, radius, radius, playedPaint)
         }
+        if (durationMs > 0L && chapterPositionsMs.isNotEmpty()) {
+            val chapterH = dp(if (scrubbing) 6f else 4f)
+            chapterPositionsMs.forEach { chapterMs ->
+                val x = width * fractionFor(chapterMs)
+                canvas.drawRoundRect(
+                    x - dp(0.75f),
+                    centerY - chapterH / 2f,
+                    x + dp(0.75f),
+                    centerY + chapterH / 2f,
+                    dp(0.75f),
+                    dp(0.75f),
+                    chapterPaint
+                )
+            }
+        }
         if (scrubbing) {
             canvas.drawCircle(playedX.coerceIn(dp(4.5f), width - dp(4.5f)), centerY, dp(4.5f), thumbPaint)
         }
@@ -88,6 +117,7 @@ class SohrTimeBar(context: Context, accentColor: Int = Color.rgb(255, 0, 51)) : 
                 touchStartY = event.y
                 fineScrub = false
                 scrubPositionMs = positionFor(event.x)
+                lastScrubChapterIndex = chapterPositionsMs.indexOfLast { it <= scrubPositionMs }
                 listener?.onScrubStart(scrubPositionMs)
                 listener?.onScrubMove(scrubPositionMs, fractionFor(scrubPositionMs))
                 invalidate()
@@ -95,6 +125,11 @@ class SohrTimeBar(context: Context, accentColor: Int = Color.rgb(255, 0, 51)) : 
             }
             MotionEvent.ACTION_MOVE -> {
                 scrubPositionMs = positionFor(event.x)
+                val chapterIndex = chapterPositionsMs.indexOfLast { it <= scrubPositionMs }
+                if (chapterIndex >= 0 && chapterIndex != lastScrubChapterIndex) {
+                    lastScrubChapterIndex = chapterIndex
+                    performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                }
                 val nextFine = touchStartY - event.y > dp(28f)
                 if (nextFine != fineScrub) {
                     fineScrub = nextFine
@@ -126,6 +161,7 @@ class SohrTimeBar(context: Context, accentColor: Int = Color.rgb(255, 0, 51)) : 
                     )
                 }
                 fineScrub = false
+                lastScrubChapterIndex = -1
                 scrubbing = false
                 parent?.requestDisallowInterceptTouchEvent(false)
                 listener?.onScrubStop(positionMs, canceled)
