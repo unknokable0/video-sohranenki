@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.4.3: Telegram unread folder-style badge and channel polish
+# SOHR 6.4.4: final Telegram feed polish, unread badge and verified alignment
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.4.3 version
+      - name: Assign SOHR 6.4.4 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=640003" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.4.3" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=640004" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.4.4" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -463,7 +463,9 @@ jobs:
               "Linkify.addLinks",
               "subscriberLabel",
               "dayLabel",
-              "dp(activity, 268)"
+              "dp(activity, 268)",
+              "val channelTitle = TextView(activity)",
+              "channelTitle.maxWidth"
           ]:
               if required not in channel_ui:
                   raise SystemExit(f"SOHR 6.4.0 Telegram channel UI regression: {required}")
@@ -484,7 +486,8 @@ jobs:
               "telegramUnreadCount()",
               "updateTelegramUnreadBadge(animated = true)",
               'badge.text = if (count > 99) "99+" else count.toString()',
-              '"6.4.3" -> listOf('
+              '"6.4.3" -> listOf(',
+              '"6.4.4" -> listOf('
           ]:
               if required not in sohr_main:
                   raise SystemExit(f"SOHR 6.4.3 unread feed badge regression: {required}")
@@ -1020,7 +1023,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "У вкладки Лента появился живой счётчик непрочитанных, как у папок Telegram • он суммирует непрочитанные посты по каналам, обновляется сразу при новых сообщениях и уменьшается после чтения • Telegram-лента работает и при Twitch, и при Telegram • verified-галочки выровнены • в каналах есть подписчики, даты, крупные медиа, реакции, просмотры, кликабельные ссылки и @упоминания • плавные SOHR-анимации сохранены"
+            "notes": "Финальная полировка Telegram-ленты • живой счётчик непрочитанных возле вкладки Лента работает как у папок Telegram • галочка верификации теперь стоит ровно сразу возле имени канала, а длинные названия аккуратно обрезаются • лента доступна и в режиме Twitch, и в Telegram • внутри каналов есть подписчики, Сегодня/Вчера/даты, крупные медиа, реакции, просмотры, время, кликабельные ссылки/email/@упоминания и плавные SOHR-анимации"
           }
           EOF
           cat update.json
