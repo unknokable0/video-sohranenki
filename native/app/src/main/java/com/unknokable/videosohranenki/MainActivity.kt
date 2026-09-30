@@ -5745,6 +5745,10 @@ class MainActivity : AppCompatActivity() {
                 suppressNextRootAnimation = true
                 showFeed(currentVideos)
             }
+
+            lifecycleScope.launch {
+                runCatching { hub.warmRecentPosts(limit = 18) }
+            }
         }
     }
 
@@ -5784,6 +5788,7 @@ class MainActivity : AppCompatActivity() {
                 return@launch
             }
 
+            val previousPosts = openTelegramPosts
             openTelegramPosts = posts
             activeHub.markViewed(channel.chatId, posts)
             val freshSummary = activeHub.cachedSummary(channel.chatId)?.copy(unreadCount = 0)
@@ -5792,13 +5797,24 @@ class MainActivity : AppCompatActivity() {
             telegramChannels = activeHub.cachedChannels()
             updateTelegramUnreadBadge(animated = true)
 
-            suppressNextRootAnimation = true
-            renderTelegramChannel(
-                channel = freshSummary,
-                loading = false,
-                canLoadOlder = posts.size >= 60,
-                animatePosts = false
-            )
+            val contentChanged =
+                previousPosts.size != posts.size ||
+                    previousPosts.zip(posts).any { (oldPost, newPost) ->
+                        oldPost.message.id != newPost.message.id ||
+                            oldPost.editDate != newPost.editDate ||
+                            oldPost.reactionCount != newPost.reactionCount ||
+                            oldPost.viewCount != newPost.viewCount
+                    }
+
+            if (previousPosts.isEmpty() || contentChanged) {
+                suppressNextRootAnimation = true
+                renderTelegramChannel(
+                    channel = freshSummary,
+                    loading = false,
+                    canLoadOlder = posts.size >= 60,
+                    animatePosts = false
+                )
+            }
         }
     }
 
