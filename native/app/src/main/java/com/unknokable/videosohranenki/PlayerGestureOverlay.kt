@@ -24,7 +24,8 @@ class PlayerGestureOverlay(
     private val onVolume: (Int) -> Unit,
     private val onFillMode: (Boolean) -> Unit,
     private val onSwipeDown: () -> Unit,
-    private val onSwipeUp: () -> Unit
+    private val onSwipeUp: () -> Unit,
+    private val onInteraction: () -> Unit = {}
 ) : View.OnTouchListener {
     companion object {
         const val DOUBLE_TAP_MS = 320L
@@ -97,6 +98,7 @@ class PlayerGestureOverlay(
         scaleDetector.onTouchEvent(event)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                onInteraction()
                 downX = event.x
                 downY = event.y
                 downAt = SystemClock.uptimeMillis()
@@ -110,6 +112,7 @@ class PlayerGestureOverlay(
                 return true
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
+                onInteraction()
                 v.removeCallbacks(longPress)
                 moved = true
                 return true
