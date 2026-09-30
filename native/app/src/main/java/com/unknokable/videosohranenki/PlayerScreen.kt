@@ -205,6 +205,10 @@ class PlayerScreen(
             .setSeekBackIncrementMs(10_000)
             .setSeekForwardIncrementMs(10_000)
             .build()
+        player.trackSelectionParameters = player.trackSelectionParameters
+            .buildUpon()
+            .setForceHighestSupportedBitrate(true)
+            .build()
         mediaSessionBridge = SohrMediaSessionBridge(activity, player, item, mediaUrl)
 
         header = buildHeader()
@@ -634,7 +638,7 @@ class PlayerScreen(
         val spacer = View(activity)
 
         qualityButton = TextView(activity).apply {
-            text = "Авто"
+            text = "Лучшее"
             textSize = 10f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
@@ -2484,22 +2488,33 @@ class PlayerScreen(
             return
         }
 
-        val labels = mutableListOf("Авто • лучшее доступное")
+        val labels = mutableListOf(
+            "Лучшее • максимальный битрейт",
+            "Авто • адаптивное качество"
+        )
         labels.addAll(options.map { it.label })
 
         ModernDialogs.showChoices(activity, palette, "Качество видео", labels, qualitySelection) { which ->
             qualitySelection = which
-            if (which == 0) {
-                player.trackSelectionParameters = player.trackSelectionParameters
+            player.trackSelectionParameters = when (which) {
+                0 -> player.trackSelectionParameters
                     .buildUpon()
                     .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+                    .setForceHighestSupportedBitrate(true)
                     .build()
-            } else {
-                val option = options[which - 1]
-                player.trackSelectionParameters = player.trackSelectionParameters
+                1 -> player.trackSelectionParameters
                     .buildUpon()
-                    .setOverrideForType(TrackSelectionOverride(option.group, option.trackIndex))
+                    .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+                    .setForceHighestSupportedBitrate(false)
                     .build()
+                else -> {
+                    val option = options[which - 2]
+                    player.trackSelectionParameters
+                        .buildUpon()
+                        .setForceHighestSupportedBitrate(false)
+                        .setOverrideForType(TrackSelectionOverride(option.group, option.trackIndex))
+                        .build()
+                }
             }
             updateQualityLabel()
         }
