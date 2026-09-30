@@ -39,6 +39,12 @@ object ModernDialogs {
             orientation = LinearLayout.VERTICAL
         }
 
+        val compactLandscape =
+            context.resources.displayMetrics.widthPixels >
+                context.resources.displayMetrics.heightPixels
+        val choiceMinHeight = if (compactLandscape) 46 else 50
+        val choiceVerticalPadding = if (compactLandscape) 8 else 11
+
         options.forEachIndexed { index, label ->
             val selectedNow = index == selected
             val row = LinearLayout(context).apply {
@@ -81,11 +87,16 @@ object ModernDialogs {
                 includeFontPadding = false
                 setTextColor(if (selectedNow) palette.accent else palette.text)
                 setTypeface(typeface, if (selectedNow) Typeface.BOLD else Typeface.NORMAL)
-                setPadding(dp(context, 10), dp(context, 11), 0, dp(context, 11))
+                setPadding(
+                    dp(context, 10),
+                    dp(context, choiceVerticalPadding),
+                    0,
+                    dp(context, choiceVerticalPadding)
+                )
                 maxLines = 3
             }
 
-            row.minimumHeight = dp(context, 50)
+            row.minimumHeight = dp(context, choiceMinHeight)
             row.addView(marker, LinearLayout.LayoutParams(dp(context, 22), dp(context, 22)))
             row.addView(
                 text,
@@ -112,13 +123,28 @@ object ModernDialogs {
 
         val scroll = ScrollView(context).apply {
             isVerticalScrollBarEnabled = false
+            isFillViewport = false
             overScrollMode = View.OVER_SCROLL_NEVER
+            clipToPadding = false
+            setPadding(0, 0, 0, dp(context, 10))
             addView(list)
         }
         box.addView(scroll)
 
         showDialog(context, dialog, box, 0.88f)
-        scroll.limitHeight((context.resources.displayMetrics.heightPixels * 0.52f).toInt())
+
+        // In landscape a tall choices dialog used to end in the middle of the
+        // final row. Keep a comfortable inset and size the scroll area to whole
+        // choice rows so the lower edge always looks intentional and rounded.
+        val rowSlot = dp(context, choiceMinHeight + 6)
+        val visibleRows = if (compactLandscape) 3 else 5
+        val naturalHeight = options.size * rowSlot + dp(context, 10)
+        val screenCap = (
+            context.resources.displayMetrics.heightPixels *
+                if (compactLandscape) 0.62f else 0.52f
+            ).toInt()
+        val wholeRowsCap = visibleRows * rowSlot + dp(context, 10)
+        scroll.limitHeight(minOf(naturalHeight, screenCap, wholeRowsCap))
     }
 
     fun showAppearancePicker(
@@ -676,6 +702,7 @@ object ModernDialogs {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(context, 18), dp(context, 16), dp(context, 18), dp(context, 18))
             background = rounded(palette.surface, dp(context, 26).toFloat())
+            clipToOutline = true
             elevation = dp(context, 10).toFloat()
         }
 
