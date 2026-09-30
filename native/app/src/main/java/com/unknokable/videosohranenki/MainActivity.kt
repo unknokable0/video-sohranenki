@@ -3156,7 +3156,7 @@ class MainActivity : AppCompatActivity() {
                         adapter = VideoAdapter(
                             items = filtered,
                             palette = palette,
-                            animationsEnabled = settings.animations && pendingRootSlide >= 0,
+                            animationsEnabled = settings.animations,
                             progressFor = { playbackProgress(it) },
                             onClick = { item, source -> openPlayer(item, sourceView = source) },
                             onLongClick = { item, source -> showVideoQuickActions(item, source) }
@@ -4260,7 +4260,6 @@ class MainActivity : AppCompatActivity() {
                         dp(48)
                     )
                 )
-            }
             }
         }
 
@@ -5853,7 +5852,7 @@ class MainActivity : AppCompatActivity() {
             adapter = VideoAdapter(
                 items = sortedVideos,
                 palette = palette,
-                animationsEnabled = settings.animations && pendingRootSlide >= 0,
+                animationsEnabled = settings.animations,
                 progressFor = { playbackProgress(it) },
                 onClick = { item, source -> openPlayer(item, sourceView = source) },
                 onLongClick = { item, source -> showVideoQuickActions(item, source) }
@@ -6188,7 +6187,7 @@ class MainActivity : AppCompatActivity() {
                     accessToken = token,
                     accountLogin = login,
                     palette = palette,
-                    animationsEnabled = settings.animations && pendingRootSlide >= 0,
+                    animationsEnabled = settings.animations,
                     onBack = { closeCurrentPlayerScreen() },
                     onFullscreen = { setFullscreen(it) },
                     onChatScopeMissing = {
