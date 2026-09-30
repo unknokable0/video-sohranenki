@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.4.1: Telegram-style channel list inside SOHR
+# SOHR 6.4.2: polished Telegram-like channel reading inside SOHR
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.4.1 version
+      - name: Assign SOHR 6.4.2 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=640001" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.4.1" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=640002" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.4.2" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -446,7 +446,9 @@ jobs:
               "MessageVideoNote",
               "MessageVoiceNote",
               "lastMessagePreviewPath",
-              "listPreviewFileId"
+              "listPreviewFileId",
+              "subscriberCount",
+              "memberCount"
           ]:
               if required not in channel_hub:
                   raise SystemExit(f"SOHR 6.4.0 Telegram channel hub regression: {required}")
@@ -456,10 +458,26 @@ jobs:
               "buildPostCard",
               "channel.lastMessagePreviewPath",
               "dp(activity, 60)",
-              "marginStart = dp(activity, 86)"
+              "marginStart = dp(activity, 86)",
+              "verifiedBadge",
+              "Linkify.addLinks",
+              "subscriberLabel",
+              "dayLabel",
+              "dp(activity, 268)"
           ]:
               if required not in channel_ui:
                   raise SystemExit(f"SOHR 6.4.0 Telegram channel UI regression: {required}")
+
+          for required in [
+              '2 -> "Telegram-каналы • Лента"',
+              'if (videoSection == 2 && !settings.guestMode)',
+              'if (!silent && videoSection == 2 && auxiliaryScreen == null)',
+              '"6.4.2" -> listOf('
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.4.2 Telegram feed mode/link polish regression: {required}")
+          if 'videoSection == 2 && settings.videoSource == "telegram"' in sohr_main:
+              raise SystemExit("SOHR 6.4.2 regression: Telegram channel feed became source-dependent again")
 
           settings_screen = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/SettingsScreen.kt"
@@ -992,7 +1010,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "Лента теперь выглядит как список каналов Telegram в стиле SOHR • убраны отдельные карточки, строки стали компактными и цельными • крупная круглая аватарка, название, верификация, время и непрочитанные отображаются как в списке чатов • последнее фото или видео показывается мини-превью рядом с текстом последнего поста • канал открывается внутри SOHR, история и realtime TDLib-обновления сохранены"
+            "notes": "Telegram-лента теперь работает и при выбранном Twitch, и при Telegram • verified-галочки выровнены и заменены на отдельный аккуратный значок • в шапке канала показывается количество подписчиков • внутри канала появились разделители Сегодня/Вчера/дата, крупные медиа, реакции, просмотры и время в Telegram-подобном виде • ссылки, email и @упоминания в постах кликабельны • плавные SOHR-анимации сохранены"
           }
           EOF
           cat update.json
