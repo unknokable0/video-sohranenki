@@ -192,13 +192,33 @@ object ModernDialogs {
 
         dark.setOnClickListener {
             if (!selectedLight) return@setOnClickListener
+            SohrHaptics.select(dark)
             selectedLight = false
             syncMode(true)
+            dark.animate().cancel()
+            dark.scaleX = 0.94f
+            dark.scaleY = 0.94f
+            dark.animate()
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(SohrMotion.FAST)
+                .setInterpolator(SohrMotion.smooth())
+                .start()
         }
         light.setOnClickListener {
             if (selectedLight) return@setOnClickListener
+            SohrHaptics.select(light)
             selectedLight = true
             syncMode(true)
+            light.animate().cancel()
+            light.scaleX = 0.94f
+            light.scaleY = 0.94f
+            light.animate()
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(SohrMotion.FAST)
+                .setInterpolator(SohrMotion.smooth())
+                .start()
         }
         mode.post { syncMode(false) }
         box.addView(mode, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(context, 54)))
@@ -232,8 +252,9 @@ object ModernDialogs {
             selectedLabel.setTextColor(current?.previewColor ?: palette.accent)
         }
 
-        fun rebuildGrid() {
+        fun rebuildGrid(animate: Boolean = false) {
             syncSelectedLabel()
+            grid.animate().cancel()
             grid.removeAllViews()
             presets.chunked(3).forEach { chunk ->
                 val row = LinearLayout(context).apply {
@@ -303,8 +324,19 @@ object ModernDialogs {
 
                     tile.setOnClickListener {
                         if (selectedAccent == preset.key) return@setOnClickListener
-                        selectedAccent = preset.key
-                        rebuildGrid()
+                        SohrHaptics.select(tile)
+                        tile.animate().cancel()
+                        tile.animate()
+                            .scaleX(0.90f)
+                            .scaleY(0.90f)
+                            .alpha(0.82f)
+                            .setDuration(SohrMotion.FAST / 2)
+                            .setInterpolator(SohrMotion.smooth())
+                            .withEndAction {
+                                selectedAccent = preset.key
+                                rebuildGrid(true)
+                            }
+                            .start()
                     }
                     row.addView(tile, LinearLayout.LayoutParams(0, dp(context, 96), 1f))
                 }
@@ -313,6 +345,29 @@ object ModernDialogs {
                     row.addView(View(context), LinearLayout.LayoutParams(0, dp(context, 96), 1f))
                 }
                 grid.addView(row)
+            }
+
+            if (animate) {
+                grid.alpha = 0.72f
+                grid.scaleX = 0.985f
+                grid.scaleY = 0.985f
+                grid.animate()
+                    .alpha(1f)
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(SohrMotion.NORMAL)
+                    .setInterpolator(SohrMotion.smooth())
+                    .start()
+
+                selectedLabel.animate().cancel()
+                selectedLabel.alpha = 0.55f
+                selectedLabel.translationY = dp(context, 3).toFloat()
+                selectedLabel.animate()
+                    .alpha(1f)
+                    .translationY(0f)
+                    .setDuration(SohrMotion.NORMAL)
+                    .setInterpolator(SohrMotion.smooth())
+                    .start()
             }
         }
         rebuildGrid()
