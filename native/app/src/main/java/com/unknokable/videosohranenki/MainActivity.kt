@@ -5254,22 +5254,35 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun prefetchNextCandidate(
+    private fun prefetchNextCandidates(
         server: TelegramStreamServer?,
-        item: VideoItem
+        candidates: List<VideoItem>
     ) {
-        if (server == null || item.fileId <= 0 || item.fileSize <= 0L) return
+        if (server == null || candidates.isEmpty()) return
         val connectivity = getSystemService(android.net.ConnectivityManager::class.java)
-        val maxBytes = if (connectivity?.isActiveNetworkMetered == true) {
-            6L * 1024L * 1024L
+        val metered = connectivity?.isActiveNetworkMetered == true
+        val limit = if (metered) 1 else 3
+        val maxBytes = if (metered) {
+            5L * 1024L * 1024L
         } else {
-            24L * 1024L * 1024L
+            14L * 1024L * 1024L
         }
-        server.prefetchFraction(
-            item = item,
-            fraction = 0.15f,
-            maxBytes = maxBytes
-        )
+
+        candidates
+            .asSequence()
+            .filter { it.source != "twitch" }
+            .filter { it.localPath.isNullOrBlank() && it.fileId > 0 && it.fileSize > 0L }
+            .take(limit)
+            .forEachIndexed { index, candidate ->
+                val fraction =
+                    if (index == 0) 0.18f
+                    else 0.10f
+                server.prefetchFraction(
+                    item = candidate,
+                    fraction = fraction,
+                    maxBytes = if (index == 0) maxBytes else maxBytes / 2L
+                )
+            }
     }
 
     private fun openPlayer(
