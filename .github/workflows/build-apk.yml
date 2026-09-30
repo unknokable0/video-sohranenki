@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.3.6: smoother navigation, smarter search back, themed player and faster notifications
+# SOHR 6.3.7: immediate bottom nav, stronger notifications and lighter cloud loader
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.3.6 version
+      - name: Assign SOHR 6.3.7 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=630006" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.3.6" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=630007" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.3.7" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -308,7 +308,7 @@ jobs:
               "body.alpha = 0.92f",
               ".setDuration(170L)",
               "SohrBackgroundCheckWorker.schedule(this)",
-              'UPDATE_NOTIFICATION_CHANNEL = "sohr_updates"',
+              'UPDATE_NOTIFICATION_CHANNEL = "sohr_updates_v2"',
               'setContentTitle("T2x2 в эфире")',
               "consumeUpdateNotificationIntent"
           ]:
@@ -322,8 +322,8 @@ jobs:
               raise SystemExit("SOHR 6.3.1 regression: launcher artwork returned to cloud loading animation")
 
           for required in [
-              "baseStroke = (minDp * 0.082f)",
-              "activeStroke = (minDp * 0.108f)",
+              "baseStroke = (minDp * 0.046f)",
+              "activeStroke = (minDp * 0.061f)",
               "cycleMs = 1850L",
               "0.068f * sin",
               "val segmentLength = length * 0.275f"
@@ -349,6 +349,13 @@ jobs:
               raise SystemExit("Bottom navigation touch interception regression")
           if "requestLocked" in bottom_nav:
               raise SystemExit("Bottom navigation artificial lock regression")
+          for required in [
+              "postOnAnimation",
+              "duration = 105L",
+              ".setDuration(90L)"
+          ]:
+              if required not in bottom_nav:
+                  raise SystemExit(f"SOHR 6.3.7 bottom-nav responsiveness regression: {required}")
 
           experience_store = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/SohrExperienceStore.kt"
@@ -569,6 +576,14 @@ jobs:
           ]:
               if required not in background_worker:
                   raise SystemExit(f"SOHR 6.3.6 immediate background-check regression: {required}")
+          for required in [
+              'T2X2_CHANNEL = "t2x2_live_v2"',
+              'UPDATE_CHANNEL = "sohr_updates_v2"',
+              'UNIQUE_FAST_WORK_2 = "sohr_background_check_2m"',
+              ".setInitialDelay(2, TimeUnit.MINUTES)"
+          ]:
+              if required not in background_worker:
+                  raise SystemExit(f"SOHR 6.3.7 background notification regression: {required}")
 
           manifest = Path("native/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
           styles = Path("native/app/src/main/res/values/styles.xml").read_text(encoding="utf-8")
@@ -925,7 +940,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "Поиск теперь сначала скрывает клавиатуру и сохраняет запрос • основные вкладки переключаются мягким crossfade без дёрганий • play/pause стала тёмной полупрозрачной и удобнее • прогресс видео использует выбранный цвет SOHR • уведомления об обновлениях и эфире T2x2 проверяются быстрее • умное скачивание получило новую отдельную иконку • выбор темы и цвета анимирован"
+            "notes": "Нижняя панель снова реагирует сразу без ощущения задержки • LIVE T2x2 проверяется сразу и каждые 4 секунды в открытом SOHR • обновления проверяются чаще, фоновые уведомления используют новые HIGH-каналы • умное скачивание получило ровную облачную иконку • облачная загрузка стала примерно на 25% тоньше без неона и не останавливается"
           }
           EOF
           cat update.json
