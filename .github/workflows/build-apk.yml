@@ -845,11 +845,11 @@ jobs:
           for required in [
               "SCREEN_ORIENTATION_SENSOR_LANDSCAPE",
               "SCREEN_ORIENTATION_PORTRAIT",
-              "seekBy(if (dx > 0f) 10_000L else -10_000L)",
+              "Horizontal dragging over the video never seeks",
               "Vertical gestures only navigate fullscreen"
           ]:
               if required not in twitch_player:
-                  raise SystemExit(f"SOHR 6.6.8 Twitch VOD gesture/orientation regression: {required}")
+                  raise SystemExit(f"SOHR 6.6.13 Twitch VOD gesture/orientation regression: {required}")
 
           for required in [
               "fun prepareForPictureInPicture(): Boolean",
@@ -875,12 +875,12 @@ jobs:
                   raise SystemExit(f"SOHR 6.6.8 Twitch live PiP regression: {required}")
 
           for required in [
-              "dragScrubActive",
-              "YouTube-style horizontal scrub",
-              "absX > absY * 1.35f"
+              "Horizontal dragging over the video never seeks",
+              "player.seekTo((player.currentPosition + direction * 10_000L)",
+              "onDoubleTap(direction > 0, chainSeconds)"
           ]:
               if required not in gesture_overlay:
-                  raise SystemExit(f"SOHR 6.6.8 horizontal scrub regression: {required}")
+                  raise SystemExit(f"SOHR 6.6.13 native gesture regression: {required}")
 
           twitch_embed = Path("docs/twitch-player/index.html").read_text(encoding="utf-8")
           for required in [
@@ -1529,7 +1529,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.6.12 • Twitch VOD заранее определяет участки, где Twitch заглушил звук из-за авторских прав • такие интервалы отмечаются отдельной тонкой полосой на таймлайне • при входе в muted-отрезок появляется компактная карточка Звук заглушён Twitch с оставшимся временем • кнопка Пропустить переводит воспроизведение сразу за конец текущего заглушенного участка • уведомление автоматически скрывается после выхода из него • сохранены все исправления качества, fullscreen, PiP, themed progress, T2x2 и motion из 6.6.11"
+            "notes": "SOHR 6.6.13 • горизонтальный свайп по самому видео больше не перематывает Telegram и Twitch VOD — перемотка только через таймлайн или двойной тап ±10 секунд • вертикальные жесты не меняют громкость и используются только для fullscreen • copyright-muted участки Twitch определяются только по реальным muted HLS-сегментам, отмечаются на таймлайне и показывают кнопку Пропустить • сохраняются Лучшее качество Twitch, video-only PiP, автопортрет, Осталось до конца, themed progress и Google-поиск игр T2x2"
           }
           EOF
           cat update.json
