@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.6.7: collection back motion, themed progress and source-quality Twitch VOD
+# SOHR 6.6.8: remaining time, YouTube-like gestures and portrait restore
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.6.7 version
+      - name: Assign SOHR 6.6.8 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=660007" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.6.7" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=660008" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.6.8" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -645,7 +645,7 @@ jobs:
                   raise SystemExit(f"SOHR 6.6.0 action icon missing: {icon_name}")
 
           for required in [
-              '"6.6.7" -> listOf(',
+              '"6.6.8" -> listOf(',
               't2x2LiveAccent = Color.parseColor("#E5484D")',
               "TwitchCategoryTracker",
               "formatCategoryDuration",
@@ -670,17 +670,17 @@ jobs:
               "todayLiveExpandAnimator"
           ]:
               if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.6.7 live/card polish regression: {required}")
+                  raise SystemExit(f"SOHR 6.6.8 live/card polish regression: {required}")
 
           if ".coerceIn(dp(246), dp(390))" in sohr_main:
-              raise SystemExit("SOHR 6.6.7 regression: T2x2 expanded card height cap returned")
+              raise SystemExit("SOHR 6.6.8 regression: T2x2 expanded card height cap returned")
           for required in [
               "else if (slide < 0)",
               ".translationX(dp(34).toFloat())",
               "animationsEnabled = settings.animations && pendingRootSlide >= 0"
           ]:
               if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.6.7 collection back-motion regression: {required}")
+                  raise SystemExit(f"SOHR 6.6.8 collection back-motion regression: {required}")
 
           video_adapter = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/VideoAdapter.kt"
@@ -689,6 +689,61 @@ jobs:
               raise SystemExit("SOHR 6.6.7 regression: fixed red video progress returned")
           if "setColor(palette.accent)" not in video_adapter:
               raise SystemExit("SOHR 6.6.7 themed video progress missing")
+
+          player_screen = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt"
+          ).read_text(encoding="utf-8")
+          twitch_player = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/TwitchPlayerScreen.kt"
+          ).read_text(encoding="utf-8")
+          gesture_overlay = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/PlayerGestureOverlay.kt"
+          ).read_text(encoding="utf-8")
+          time_bar = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/SohrTimeBar.kt"
+          ).read_text(encoding="utf-8")
+
+          for required in [
+              "private lateinit var remainingTime: TextView",
+              'return "ост. " + formatMs(remaining)',
+              "onSwipeUp = {",
+              "if (!fullscreen) onFullscreen(true)",
+              "onSwipeDown = {"
+          ]:
+              if required not in player_screen:
+                  raise SystemExit(f"SOHR 6.6.8 native player regression: {required}")
+
+          for required in [
+              "private lateinit var remainingTime: TextView",
+              '"ост. " + formatMs',
+              "MotionEvent.ACTION_UP",
+              "if (dy < 0f && !fullscreen)",
+              "SohrTimeBar(activity, palette.accent)"
+          ]:
+              if required not in twitch_player:
+                  raise SystemExit(f"SOHR 6.6.8 Twitch VOD player regression: {required}")
+
+          for forbidden in [
+              "AudioManager",
+              "onVolume",
+              "volumeStart",
+              "VERTICAL_CONTROL_DP"
+          ]:
+              if forbidden in gesture_overlay:
+                  raise SystemExit(f"SOHR 6.6.8 regression: swipe volume control returned: {forbidden}")
+
+          if "accentColor: Int =" in time_bar or "255, 0, 51" in time_bar:
+              raise SystemExit("SOHR 6.6.8 regression: red default timeline color returned")
+
+          for required in [
+              "SCREEN_ORIENTATION_SENSOR_LANDSCAPE",
+              "SCREEN_ORIENTATION_SENSOR_PORTRAIT",
+              "private fun openGameSearch(gameName: String)",
+              '.authority("www.google.com")',
+              '.appendQueryParameter("q", "$gameName игра")'
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.6.8 orientation/game-search regression: {required}")
 
           twitch_embed = Path("docs/twitch-player/index.html").read_text(encoding="utf-8")
           for required in [
@@ -729,7 +784,7 @@ jobs:
               "recent = segments.takeLast(5).asReversed()"
           ]:
               if required not in category_tracker:
-                  raise SystemExit(f"SOHR 6.6.7 category history regression: {required}")
+                  raise SystemExit(f"SOHR 6.6.8 category history regression: {required}")
 
           for required in [
               "TwitchCategorySegment",
@@ -1288,7 +1343,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.6.7 • карточка T2x2 больше не обрезается снизу и открывается нажатием по всей площади • история игр показывает понятные интервалы начала и конца, длительность и кликабельную ссылку на поиск игры в Twitch • возврат из сборника получил плавный pop без повторной анимации ленты • полоска прогресса видео использует цвет выбранной темы вместо красного • Twitch VOD предпочитает Source/Оригинал или самое высокое доступное качество • Telegram-видео продолжают идти из исходного файла без перекодирования"
+            "notes": "SOHR 6.6.8 • в обычном плеере и Twitch VOD видно сколько осталось до конца • fullscreen автоматически возвращается в портрет при выходе • свайп вверх открывает fullscreen, свайп вниз из fullscreen возвращает обычный режим • двойной тап ±10 сек, удержание 2× и pinch-to-fill сохранены • регулировка системной громкости свайпом полностью удалена • игра из истории T2x2 открывает Google-поиск по названию игры • иконка внешнего перехода выровнена • прогресс Twitch VOD и карточек использует цвет выбранной темы • также включены исправления 6.6.7: таймлайн T2x2 без обрезания, интервалы с–до, плавный Back из сборников и Source-качество Twitch"
           }
           EOF
           cat update.json
