@@ -168,7 +168,15 @@ class SohrBottomNavView(
         updateStates(target)
         positionIndicator(animate = true)
         animatePress(target)
-        onSelect(tabs[target])
+
+        // Paint the selected tab immediately, then build the destination screen
+        // on the next frame. This removes the "tap, wait, then highlight" feeling
+        // when a destination screen has more work to construct.
+        postOnAnimation {
+            if (selectedIndex == target && isAttachedToWindow) {
+                onSelect(tabs[target])
+            }
+        }
     }
 
     fun syncSelected(tab: SohrTab, animate: Boolean = false) {
@@ -206,7 +214,7 @@ class SohrBottomNavView(
             val from = indicator.translationX
             val to = target * slot
             indicatorAnimator = ValueAnimator.ofFloat(from, to).apply {
-                duration = 145L
+                duration = 105L
                 interpolator = smoothInterpolator
                 addUpdateListener { indicator.translationX = it.animatedValue as Float }
                 start()
@@ -232,13 +240,13 @@ class SohrBottomNavView(
         column.animate()
             .scaleX(0.955f)
             .scaleY(0.955f)
-            .setDuration(SohrMotion.FAST / 2)
+            .setDuration(45L)
             .setInterpolator(smoothInterpolator)
             .withEndAction {
                 column.animate()
                     .scaleX(1f)
                     .scaleY(1f)
-                    .setDuration(SohrMotion.FAST)
+                    .setDuration(90L)
                     .setInterpolator(smoothInterpolator)
                     .start()
             }
@@ -314,7 +322,7 @@ class SohrBottomNavView(
             }
             indicator.animate()
                 .scaleY(1f)
-                .setDuration(145L)
+                .setDuration(105L)
                 .setInterpolator(smoothInterpolator)
                 .start()
         } else {
