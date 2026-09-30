@@ -95,6 +95,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var root: FrameLayout
     private var streamServer: TelegramStreamServer? = null
     private var playerScreen: PlayerScreen? = null
+    private var playerReturnView: View? = null
     private var twitchPlayerScreen: TwitchPlayerScreen? = null
     private var twitchLivePlayerScreen: TwitchLivePlayerScreen? = null
     private var currentStreamingItem: VideoItem? = null
@@ -343,7 +344,7 @@ class MainActivity : AppCompatActivity() {
                 ) {
                     return
                 }
-                if (closeCurrentPlayerScreen()) return
+                if (playerScreen?.isMiniMode != true && closeCurrentPlayerScreen()) return
 
                 if (auxiliaryScreen == "telegram_channel") {
                     closeTelegramChannelToFeed()
@@ -379,6 +380,10 @@ class MainActivity : AppCompatActivity() {
                     currentDay = null
                     pendingRootSlide = -1
                     showSelectedVideoSource()
+                    return
+                }
+                if (playerScreen?.isMiniMode == true) {
+                    closeCurrentPlayerScreen()
                     return
                 }
                 finish()
@@ -602,6 +607,22 @@ class MainActivity : AppCompatActivity() {
         playerBackInProgress = true
 
         val outgoingPlayer = playerScreen
+        if (outgoingPlayer?.isMiniMode == true) {
+            outgoingPlayer.flushPlaybackPosition()
+            val playerRoot = outgoingPlayer.root
+            runCatching { if (playerRoot.parent === root) root.removeView(playerRoot) }
+            playerScreen = null
+            isPlayerScreen = false
+            playerReturnView = null
+            outgoingPlayer.destroy()
+            currentStreamingItem?.let { streamed -> streamServer?.release(streamed) }
+            currentStreamingItem = null
+            playerBackInProgress = false
+            return true
+        }
+
+        val exactReturnView = playerReturnView
+        playerReturnView = null
         val outgoingTwitchPlayer = twitchPlayerScreen
         val outgoingTwitchLivePlayer = twitchLivePlayerScreen
 
@@ -618,7 +639,9 @@ class MainActivity : AppCompatActivity() {
         val channelToRestore =
             if (auxiliaryScreen == "telegram_channel") openTelegramChannelSummary else null
         val day = currentDay
-        if (channelToRestore != null) {
+        if (exactReturnView != null) {
+            replaceRoot(exactReturnView)
+        } else if (channelToRestore != null) {
             currentDay = null
             renderTelegramChannel(
                 channel = channelToRestore,
@@ -5284,9 +5307,13 @@ class MainActivity : AppCompatActivity() {
         val currentIndex = orderedForPlayback.indexOfFirst { it.messageId == item.messageId }
         val naturalNext = if (currentIndex >= 0) orderedForPlayback.getOrNull(currentIndex + 1) else null
         val nextItem = queueItems.firstOrNull() ?: naturalNext
-        nextItem?.takeIf { it.localPath == null }?.let { candidate ->
-            prefetchNextCandidate(server, candidate)
-        }
+        prefetchNextCandidates(
+            server = server,
+            candidates = (queueItems + orderedForPlayback.drop((currentIndex + 1).coerceAtLeast(0)))
+                .filterNot { it.messageId == item.messageId }
+                .distinctBy { it.messageId }
+        )
+        playerReturnView = capturePlayerReturnView()
         playerScreen?.destroy()
         currentStreamingItem?.let { previous -> streamServer?.release(previous) }
         currentStreamingItem = if (localFile == null) item else null
@@ -5354,7 +5381,8 @@ class MainActivity : AppCompatActivity() {
                 onPlaybackStarted = {
                     settings.markPlayed(item.messageId)
                     streakTracker.markWatched()
-                }
+                },
+                onMiniModeChanged = { enabled -> handlePlayerMiniMode(enabled) }
             )
         }.getOrElse { error ->
             currentStreamingItem?.let { streamed -> streamServer?.release(streamed) }
@@ -5446,7 +5474,8 @@ class MainActivity : AppCompatActivity() {
                     onPlaybackStarted = {
                         settings.markPlayed(item.messageId)
                         streakTracker.markWatched()
-                    }
+                    },
+                    onMiniModeChanged = { enabled -> handlePlayerMiniMode(enabled) }
                 )
 
                 pendingRootSlide = 1
@@ -8690,6 +8719,36 @@ class MainActivity : AppCompatActivity() {
         val requestedSlide = pendingRootSlide
         pendingRootSlide = 0
 
+        val miniOverlay = playerScreen
+            ?.takeIf { it.isMiniMode }
+            ?.root
+            ?.takeIf { it.parent === root }
+        if (miniOverlay != null && view !== miniOverlay) {
+            suppressNextRootAnimation = false
+            (view.parent as? ViewGroup)?.removeView(view)
+
+            val stale = (0 until root.childCount)
+                .map { root.getChildAt(it) }
+                .filter { it !== miniOverlay }
+            stale.forEach {
+                it.animate().cancel()
+                root.removeView(it)
+            }
+
+            installPressAnimations(view)
+            root.addView(
+                view,
+                0,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
+            playerReturnView = view
+            miniOverlay.bringToFront()
+            return
+        }
+
         if (root.childCount == 1 && root.getChildAt(0) === view) {
             suppressNextRootAnimation = false
             return
@@ -8788,6 +8847,47 @@ class MainActivity : AppCompatActivity() {
                 }
                 .start()
         }
+    }
+
+    private fun handlePlayerMiniMode(enabled: Boolean) {
+        val screen = playerScreen ?: return
+        val playerRoot = screen.root
+
+        if (enabled) {
+            isPlayerScreen = false
+            val underlay = playerReturnView
+            if (underlay != null && underlay.parent !== root) {
+                (underlay.parent as? ViewGroup)?.removeView(underlay)
+                root.addView(
+                    underlay,
+                    0,
+                    FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                )
+            }
+            playerRoot.setBackgroundColor(Color.TRANSPARENT)
+            playerRoot.bringToFront()
+        } else {
+            val underlay = (0 until root.childCount)
+                .map { root.getChildAt(it) }
+                .firstOrNull { it !== playerRoot }
+            if (underlay != null) {
+                playerReturnView = underlay
+                root.removeView(underlay)
+            }
+            isPlayerScreen = true
+            playerRoot.setBackgroundColor(bg)
+            playerRoot.bringToFront()
+        }
+    }
+
+    private fun capturePlayerReturnView(): View? {
+        val existingPlayerRoot = playerScreen?.root
+        return (root.childCount - 1 downTo 0)
+            .map { root.getChildAt(it) }
+            .firstOrNull { it !== existingPlayerRoot }
     }
 
     private fun installPressAnimations(view: View) {
