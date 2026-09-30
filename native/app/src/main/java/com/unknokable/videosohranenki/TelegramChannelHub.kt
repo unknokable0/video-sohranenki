@@ -31,7 +31,10 @@ data class TelegramChannelPost(
     val mimeType: String,
     val durationSeconds: Int,
     val viewCount: Int,
-    val reactionCount: Int
+    val reactionCount: Int,
+    val mediaAlbumId: Long,
+    val editDate: Int,
+    val isPinned: Boolean
 )
 
 class TelegramChannelHub(
@@ -268,7 +271,10 @@ class TelegramChannelHub(
             mimeType = mimeType,
             durationSeconds = duration,
             viewCount = interaction?.viewCount?.coerceAtLeast(0) ?: 0,
-            reactionCount = reactions
+            reactionCount = reactions,
+            mediaAlbumId = message.mediaAlbumId,
+            editDate = message.editDate,
+            isPinned = message.isPinned
         )
     }
 
