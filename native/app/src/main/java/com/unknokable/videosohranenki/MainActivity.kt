@@ -3937,14 +3937,17 @@ class MainActivity : AppCompatActivity() {
 
         if (expanded) {
             details.alpha = 0f
-            details.translationY = -dp(8).toFloat()
+            details.translationY = -dp(5).toFloat()
             details.animate().cancel()
             details.animate()
                 .alpha(1f)
                 .translationY(0f)
-                .setStartDelay(45L)
-                .setDuration(SohrMotion.NORMAL)
+                .setStartDelay(35L)
+                .setDuration(190L)
                 .setInterpolator(SohrMotion.smooth())
+                .withStartAction {
+                    animateTodayLiveExpandedChildren(details)
+                }
                 .start()
         } else {
             details.animate().cancel()
@@ -3957,7 +3960,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val animator = android.animation.ValueAnimator.ofInt(currentHeight, targetHeight).apply {
-            duration = SohrMotion.HERO
+            duration = 360L
             interpolator = SohrMotion.smooth()
             addUpdateListener { value ->
                 card.layoutParams = card.layoutParams.apply {
@@ -3986,33 +3989,19 @@ class MainActivity : AppCompatActivity() {
     ) {
         panel.removeAllViews()
 
+        val divider = View(this).apply {
+            setBackgroundColor(palette.stroke)
+            alpha = 0.48f
+        }
         panel.addView(
-            View(this).apply {
-                setBackgroundColor(palette.stroke)
-                alpha = 0.72f
-            },
+            divider,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(1)
             ).apply {
-                bottomMargin = dp(13)
+                bottomMargin = dp(15)
             }
         )
-
-        val headline = TextView(this).apply {
-            text = when {
-                live != null -> live.title.ifBlank { "Эфир T2x2" }
-                unavailable -> "Статус Twitch временно недоступен"
-                else -> "T2x2 сейчас не в сети"
-            }
-            textSize = 15.5f
-            includeFontPadding = false
-            maxLines = 2
-            ellipsize = android.text.TextUtils.TruncateAt.END
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(this@MainActivity.text)
-        }
-        panel.addView(headline)
 
         val timeline = if (live != null) {
             lastT2x2Timeline
@@ -4024,113 +4013,184 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        val eyebrow = TextView(this).apply {
+            text = when {
+                live != null -> "СЕЙЧАС В ЭФИРЕ"
+                unavailable -> "TWITCH"
+                else -> "ПОСЛЕДНИЙ ЭФИР"
+            }
+            textSize = 9.6f
+            includeFontPadding = false
+            letterSpacing = 0.08f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(if (live != null) purple else muted)
+        }
+        panel.addView(eyebrow)
+
+        val headline = TextView(this).apply {
+            text = when {
+                live != null -> live.title.ifBlank { "Эфир T2x2" }
+                unavailable -> "Статус временно недоступен"
+                else -> "T2x2 сейчас не в сети"
+            }
+            textSize = 17f
+            includeFontPadding = false
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+            setPadding(0, dp(5), 0, 0)
+        }
+        panel.addView(headline)
+
         val meta = TextView(this).apply {
             text = if (live != null) {
+                val started = runCatching {
+                    java.time.Instant.parse(live.startedAt)
+                        .atZone(java.time.ZoneId.systemDefault())
+                        .toLocalTime()
+                        .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+                }.getOrNull()
                 buildString {
-                    append("Эфир ")
                     append(formatLiveDuration(live.startedAt))
-                    append(" • ")
-                    append(formatViewerCountCompact(live.viewerCount))
-                    append(" зрителей")
-                    val started = runCatching {
-                        java.time.Instant.parse(live.startedAt)
-                            .atZone(java.time.ZoneId.systemDefault())
-                            .toLocalTime()
-                            .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
-                    }.getOrNull()
+                    append(" в эфире")
+                    if (live.viewerCount > 0) {
+                        append("  •  ")
+                        append(formatViewerCountCompact(live.viewerCount))
+                        append(" зр.")
+                    }
                     if (!started.isNullOrBlank()) {
-                        append(" • начало ")
+                        append("  •  с ")
                         append(started)
                     }
                 }
+            } else if (timeline.recent.isNotEmpty()) {
+                "История последнего эфира"
             } else {
-                "Повторное касание сворачивает карточку"
+                "История появится после следующего эфира"
             }
-            textSize = 11.3f
+            textSize = 11.4f
             includeFontPadding = false
             setTextColor(muted)
-            setPadding(0, dp(5), 0, dp(12))
+            setPadding(0, dp(6), 0, dp(15))
         }
         panel.addView(meta)
 
         val recent = timeline.recent.take(4)
         if (recent.isNotEmpty()) {
             panel.addView(TextView(this).apply {
-                text = if (live != null) "Что было в эфире" else "Последние категории"
-                textSize = 10.8f
+                text = "ИСТОРИЯ ЭФИРА"
+                textSize = 9.6f
                 includeFontPadding = false
+                letterSpacing = 0.07f
                 setTypeface(typeface, Typeface.BOLD)
                 setTextColor(muted)
                 setPadding(0, 0, 0, dp(6))
             })
 
             recent.forEachIndexed { index, segment ->
+                val active = live != null && segment.endedAtMs == null
+
                 val row = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
-                    setPadding(dp(10), dp(7), dp(10), dp(7))
-                    background = roundedBg(
-                        if (index == 0 && segment.endedAtMs == null) palette.accentSoft
-                        else palette.surfaceAlt,
-                        14
-                    )
+                    minimumHeight = dp(42)
+                    tag = "t2x2_timeline_row"
                 }
 
-                row.addView(View(this).apply {
-                    background = roundedBg(
-                        if (index == 0 && segment.endedAtMs == null) purple
-                        else palette.stroke,
-                        99
+                val startClock = java.time.Instant.ofEpochMilli(segment.startedAtMs)
+                    .atZone(java.time.ZoneId.systemDefault())
+                    .toLocalTime()
+                    .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+
+                row.addView(
+                    TextView(this).apply {
+                        text = if (active) "сейчас" else startClock
+                        textSize = 10.6f
+                        gravity = Gravity.CENTER_VERTICAL
+                        includeFontPadding = false
+                        setTypeface(typeface, if (active) Typeface.BOLD else Typeface.NORMAL)
+                        setTextColor(if (active) purple else muted)
+                    },
+                    LinearLayout.LayoutParams(dp(45), dp(42))
+                )
+
+                val rail = FrameLayout(this)
+                rail.addView(
+                    View(this).apply {
+                        setBackgroundColor(palette.stroke)
+                        alpha = if (index == recent.lastIndex) 0f else 0.55f
+                    },
+                    FrameLayout.LayoutParams(dp(1), dp(42), Gravity.CENTER_HORIZONTAL).apply {
+                        topMargin = dp(21)
+                    }
+                )
+                rail.addView(
+                    View(this).apply {
+                        background = roundedBg(
+                            if (active) purple else palette.stroke,
+                            99
+                        )
+                    },
+                    FrameLayout.LayoutParams(
+                        dp(if (active) 7 else 6),
+                        dp(if (active) 7 else 6),
+                        Gravity.CENTER
                     )
-                }, LinearLayout.LayoutParams(dp(6), dp(6)).apply {
-                    marginEnd = dp(9)
+                )
+                row.addView(rail, LinearLayout.LayoutParams(dp(22), dp(42)).apply {
+                    marginEnd = dp(6)
                 })
 
-                val segmentText = TextView(this).apply {
-                    val startClock = java.time.Instant.ofEpochMilli(segment.startedAtMs)
-                        .atZone(java.time.ZoneId.systemDefault())
-                        .toLocalTime()
-                        .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
-                    text = buildString {
-                        append(
-                            if (segment.endedAtMs == null && live != null) "Сейчас"
-                            else startClock
-                        )
-                        append("  •  ")
-                        append(segment.gameName)
-                        append("  •  ")
-                        append(formatCategoryDuration(segment.elapsedMs()))
-                    }
-                    textSize = 11.5f
+                val title = TextView(this).apply {
+                    text = segment.gameName
+                    textSize = 12.2f
                     includeFontPadding = false
                     maxLines = 1
                     ellipsize = android.text.TextUtils.TruncateAt.END
+                    setTypeface(typeface, if (active) Typeface.BOLD else Typeface.NORMAL)
                     setTextColor(this@MainActivity.text)
                 }
                 row.addView(
-                    segmentText,
+                    title,
                     LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                )
+
+                row.addView(
+                    TextView(this).apply {
+                        text = formatCategoryDuration(segment.elapsedMs())
+                        textSize = 10.2f
+                        gravity = Gravity.CENTER
+                        includeFontPadding = false
+                        setTypeface(typeface, Typeface.BOLD)
+                        setTextColor(if (active) purple else muted)
+                        background = roundedBg(
+                            if (active) palette.accentSoft else palette.surfaceAlt,
+                            11
+                        )
+                        setPadding(dp(8), 0, dp(8), 0)
+                    },
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        dp(25)
+                    ).apply {
+                        marginStart = dp(8)
+                    }
                 )
 
                 panel.addView(
                     row,
                     LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        if (index != recent.lastIndex) bottomMargin = dp(6)
-                    }
+                        dp(42)
+                    )
                 )
             }
         }
 
-        val twitchButton = TextView(this).apply {
-            text = if (live != null) "Перейти на эфир" else "Открыть T2x2 на Twitch"
-            textSize = 13f
+        val twitchButton = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            includeFontPadding = false
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(purple)
             background = roundedBg(palette.accentSoft, 17)
             isClickable = true
             isFocusable = true
@@ -4140,15 +4200,55 @@ class MainActivity : AppCompatActivity() {
                 openT2x2OnTwitch()
             }
         }
+        twitchButton.addView(
+            TextView(this).apply {
+                text = if (live != null) "Перейти на эфир" else "Открыть T2x2 на Twitch"
+                textSize = 12.8f
+                includeFontPadding = false
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(purple)
+            }
+        )
+        twitchButton.addView(
+            ImageView(this).apply {
+                setImageResource(R.drawable.ic_action_open)
+                imageTintList = android.content.res.ColorStateList.valueOf(purple)
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+            },
+            LinearLayout.LayoutParams(dp(17), dp(17)).apply {
+                marginStart = dp(7)
+            }
+        )
+
         panel.addView(
             twitchButton,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(46)
             ).apply {
-                topMargin = dp(12)
+                topMargin = dp(14)
             }
         )
+    }
+
+    private fun animateTodayLiveExpandedChildren(panel: LinearLayout) {
+        if (!settings.animations) return
+        var delay = 35L
+        for (index in 1 until panel.childCount) {
+            val child = panel.getChildAt(index)
+            child.animate().cancel()
+            child.alpha = 0f
+            child.translationY = dp(7).toFloat()
+            child.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setStartDelay(delay)
+                .setDuration(190L)
+                .setInterpolator(SohrMotion.smooth())
+                .start()
+            delay = (delay + if (child.tag == "t2x2_timeline_row") 28L else 18L)
+                .coerceAtMost(155L)
+        }
     }
 
     private fun updateTodayLiveSummary(
