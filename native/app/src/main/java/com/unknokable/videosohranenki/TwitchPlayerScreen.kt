@@ -71,6 +71,7 @@ class TwitchPlayerScreen(
     private var lastPersistAt = 0L
     private var gestureDownX = 0f
     private var gestureDownY = 0f
+    private var gestureConsumed = false
 
     val isFullscreen: Boolean
         get() = fullscreen || customView != null
@@ -234,12 +235,34 @@ class TwitchPlayerScreen(
                 MotionEvent.ACTION_DOWN -> {
                     gestureDownX = event.x
                     gestureDownY = event.y
+                    gestureConsumed = false
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.x - gestureDownX
+                    val dy = event.y - gestureDownY
+                    val threshold = dp(26).toFloat()
+                    if (
+                        abs(dx) > threshold && abs(dx) > abs(dy) * 1.25f ||
+                        abs(dy) > threshold && abs(dy) > abs(dx) * 1.25f
+                    ) {
+                        gestureConsumed = true
+                        return@setOnTouchListener true
+                    }
                 }
                 MotionEvent.ACTION_UP -> {
                     val dx = event.x - gestureDownX
                     val dy = event.y - gestureDownY
-                    val threshold = dp(72).toFloat()
-                    if (abs(dy) > threshold && abs(dy) > abs(dx) * 1.25f) {
+                    val verticalThreshold = dp(72).toFloat()
+                    val horizontalThreshold = dp(58).toFloat()
+
+                    if (abs(dx) > horizontalThreshold && abs(dx) > abs(dy) * 1.25f) {
+                        seekBy(if (dx > 0f) 10_000L else -10_000L)
+                        return@setOnTouchListener true
+                    }
+
+                    if (abs(dy) > verticalThreshold && abs(dy) > abs(dx) * 1.25f) {
+                        // Vertical gestures only navigate fullscreen. They never
+                        // change system/media volume.
                         if (dy < 0f && !fullscreen) {
                             onFullscreen(true)
                             return@setOnTouchListener true
@@ -249,7 +272,10 @@ class TwitchPlayerScreen(
                             return@setOnTouchListener true
                         }
                     }
+
+                    if (gestureConsumed) return@setOnTouchListener true
                 }
+                MotionEvent.ACTION_CANCEL -> gestureConsumed = false
             }
             false
         }
@@ -598,6 +624,14 @@ class TwitchPlayerScreen(
 
     fun setFullscreenMode(enabled: Boolean) {
         fullscreen = enabled
+        if (activity.resources.configuration.smallestScreenWidthDp < 600) {
+            activity.requestedOrientation =
+                if (enabled) {
+                    android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                } else {
+                    android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                }
+        }
         if (::fullscreenButton.isInitialized) {
             fullscreenButton.setImageResource(
                 if (enabled) R.drawable.ic_fullscreen_exit else R.drawable.ic_fullscreen
@@ -730,7 +764,7 @@ class TwitchPlayerScreen(
     }
 
     private fun remainingTimeLabel(positionMs: Long, durationMs: Long): String =
-        "ост. " + formatMs((durationMs - positionMs).coerceAtLeast(0L))
+        "До конца " + formatMs((durationMs - positionMs).coerceAtLeast(0L))
 
     private fun formatMs(ms: Long): String {
         val safe = ms.coerceAtLeast(0L)
