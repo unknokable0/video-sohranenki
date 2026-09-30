@@ -73,7 +73,7 @@ class SohrBackgroundCheckWorker(
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
 
         applicationContext
@@ -153,7 +153,7 @@ class SohrBackgroundCheckWorker(
             NotificationChannel(
                 T2X2_CHANNEL,
                 "Эфиры T2x2",
-                NotificationManager.IMPORTANCE_DEFAULT
+                NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "Уведомляет, когда T2x2 начинает трансляцию"
                 enableVibration(true)
@@ -164,10 +164,10 @@ class SohrBackgroundCheckWorker(
             NotificationChannel(
                 UPDATE_CHANNEL,
                 "Обновления SOHR",
-                NotificationManager.IMPORTANCE_DEFAULT
+                NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "Уведомляет о новых версиях SOHR"
-                enableVibration(false)
+                enableVibration(true)
             }
         )
     }
@@ -177,6 +177,8 @@ class SohrBackgroundCheckWorker(
 
         private const val UNIQUE_WORK = "sohr_background_checks"
         private const val UNIQUE_IMMEDIATE_WORK = "sohr_background_check_now"
+        private const val UNIQUE_FAST_WORK_5 = "sohr_background_check_5m"
+        private const val UNIQUE_FAST_WORK_10 = "sohr_background_check_10m"
         private const val RUNTIME_PREFS = "sohr_runtime"
         private const val KEY_LAST_UPDATE_NOTIFICATION = "last_update_notified_code"
         private const val KEY_LAST_T2X2_NOTIFICATION = "last_t2x2_notified_started_at"
@@ -201,6 +203,27 @@ class SohrBackgroundCheckWorker(
                 UNIQUE_IMMEDIATE_WORK,
                 ExistingWorkPolicy.REPLACE,
                 OneTimeWorkRequestBuilder<SohrBackgroundCheckWorker>()
+                    .setConstraints(constraints)
+                    .build()
+            )
+
+            // WorkManager periodic work is limited to 15 minutes. Add two
+            // lightweight one-shot checks after scheduling so update/LIVE
+            // notifications are discovered noticeably earlier without keeping
+            // a permanent foreground service alive.
+            manager.enqueueUniqueWork(
+                UNIQUE_FAST_WORK_5,
+                ExistingWorkPolicy.REPLACE,
+                OneTimeWorkRequestBuilder<SohrBackgroundCheckWorker>()
+                    .setInitialDelay(5, TimeUnit.MINUTES)
+                    .setConstraints(constraints)
+                    .build()
+            )
+            manager.enqueueUniqueWork(
+                UNIQUE_FAST_WORK_10,
+                ExistingWorkPolicy.REPLACE,
+                OneTimeWorkRequestBuilder<SohrBackgroundCheckWorker>()
+                    .setInitialDelay(10, TimeUnit.MINUTES)
                     .setConstraints(constraints)
                     .build()
             )
