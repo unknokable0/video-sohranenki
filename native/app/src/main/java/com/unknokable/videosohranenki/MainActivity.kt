@@ -5747,17 +5747,23 @@ class MainActivity : AppCompatActivity() {
         telegramChannelReturnView =
             root.takeIf { it.childCount > 0 }?.getChildAt(root.childCount - 1)
         openTelegramChannelSummary = channel
-        openTelegramPosts = emptyList()
+        val hub = telegramChannelHub
+        openTelegramPosts = hub?.cachedPosts(channel.chatId).orEmpty()
         openTelegramUnreadAtOpen = channel.unreadCount.coerceAtLeast(0)
         openTelegramChannelScrollY =
             if (openTelegramUnreadAtOpen > 0) 0 else telegramChannelScrollPosition(channel.chatId)
         pendingRootSlide = 1
 
-        renderTelegramChannel(channel, loading = true, canLoadOlder = false)
+        renderTelegramChannel(
+            channel = channel,
+            loading = openTelegramPosts.isEmpty(),
+            canLoadOlder = openTelegramPosts.size >= 60,
+            animatePosts = openTelegramPosts.isNotEmpty()
+        )
 
         lifecycleScope.launch {
-            val hub = telegramChannelHub ?: return@launch
-            val posts = runCatching { hub.loadPosts(channel.chatId, limit = 60) }
+            val activeHub = telegramChannelHub ?: return@launch
+            val posts = runCatching { activeHub.loadPosts(channel.chatId, limit = 60) }
                 .getOrElse {
                     if (auxiliaryScreen == "telegram_channel" && openTelegramChannelSummary?.chatId == channel.chatId) {
                         showMessage("Не удалось открыть канал", it.message ?: "Ошибка Telegram")
@@ -5770,22 +5776,28 @@ class MainActivity : AppCompatActivity() {
             }
 
             openTelegramPosts = posts
-            hub.markViewed(channel.chatId, posts)
-            val freshSummary = hub.cachedSummary(channel.chatId)?.copy(unreadCount = 0) ?: channel.copy(unreadCount = 0)
+            activeHub.markViewed(channel.chatId, posts)
+            val freshSummary = activeHub.cachedSummary(channel.chatId)?.copy(unreadCount = 0)
+                ?: channel.copy(unreadCount = 0)
             openTelegramChannelSummary = freshSummary
-            telegramChannels = hub.cachedChannels()
+            telegramChannels = activeHub.cachedChannels()
             updateTelegramUnreadBadge(animated = true)
-            renderTelegramChannel(freshSummary, loading = false, canLoadOlder = posts.size >= 60)
-            telegramChannelRender?.scroll?.post {
-                telegramChannelRender?.scroll?.fullScroll(View.FOCUS_DOWN)
-            }
+
+            suppressNextRootAnimation = true
+            renderTelegramChannel(
+                channel = freshSummary,
+                loading = false,
+                canLoadOlder = posts.size >= 60,
+                animatePosts = false
+            )
         }
     }
 
     private fun renderTelegramChannel(
         channel: TelegramChannelSummary,
         loading: Boolean,
-        canLoadOlder: Boolean
+        canLoadOlder: Boolean,
+        animatePosts: Boolean = true
     ) {
         auxiliaryScreen = "telegram_channel"
         val render = TelegramChannelUi.buildChannel(
@@ -5797,6 +5809,7 @@ class MainActivity : AppCompatActivity() {
             canLoadOlder = canLoadOlder,
             unreadCountAtOpen = openTelegramUnreadAtOpen,
             initialScrollY = openTelegramChannelScrollY,
+            animatePosts = animatePosts,
             onScrollYChanged = { y -> openTelegramChannelScrollY = y },
             onBack = { closeTelegramChannelToFeed() },
             onLoadOlder = { loadOlderTelegramChannelPosts() },
@@ -5804,7 +5817,7 @@ class MainActivity : AppCompatActivity() {
             onPhoto = { post, source -> openTelegramChannelPhoto(post, source) },
             onVoice = { post, source -> toggleTelegramChannelAudio(post, source) },
             onDownload = { post -> downloadTelegramChannelPost(post) },
-            onReact = { post, emoji -> toggleTelegramChannelReaction(post, emoji) }
+            onReact = null
         )
         telegramChannelRender = render
         replaceRoot(render.root)
@@ -5935,7 +5948,13 @@ class MainActivity : AppCompatActivity() {
             openTelegramPosts = (older + openTelegramPosts)
                 .distinctBy { it.message.id }
                 .sortedWith(compareBy<TelegramChannelPost> { it.message.date }.thenBy { it.message.id })
-            renderTelegramChannel(channel, loading = false, canLoadOlder = older.size >= 60)
+            suppressNextRootAnimation = true
+            renderTelegramChannel(
+                channel,
+                loading = false,
+                canLoadOlder = older.size >= 60,
+                animatePosts = false
+            )
         }
     }
 
@@ -5957,16 +5976,26 @@ class MainActivity : AppCompatActivity() {
             val updated = hub.cachedSummary(channel.chatId)?.copy(unreadCount = 0) ?: channel.copy(unreadCount = 0)
             openTelegramChannelSummary = updated
 
+            val previousScroll = telegramChannelRender?.scroll
+            val wasNearBottom = previousScroll?.let { scroll ->
+                val contentHeight = scroll.getChildAt(0)?.height ?: 0
+                contentHeight - (scroll.scrollY + scroll.height) < dp(180)
+            } ?: true
+
+            suppressNextRootAnimation = true
             renderTelegramChannel(
                 updated,
                 loading = false,
-                canLoadOlder = openTelegramPosts.size >= 60
+                canLoadOlder = openTelegramPosts.size >= 60,
+                animatePosts = false
             )
-            telegramChannelRender?.scroll?.post {
-                telegramChannelRender?.scroll?.smoothScrollTo(
-                    0,
-                    telegramChannelRender?.scroll?.getChildAt(0)?.height ?: 0
-                )
+            if (wasNearBottom) {
+                telegramChannelRender?.scroll?.post {
+                    telegramChannelRender?.scroll?.smoothScrollTo(
+                        0,
+                        telegramChannelRender?.scroll?.getChildAt(0)?.height ?: 0
+                    )
+                }
             }
 
             lifecycleScope.launch {
@@ -6057,17 +6086,18 @@ class MainActivity : AppCompatActivity() {
         val file = File(path)
         if (!file.exists()) return
 
-        val sourceBounds = source?.let { view ->
-            Rect().takeIf { rect -> view.getGlobalVisibleRect(rect) && !rect.isEmpty }
-        }
         val dialog = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
         val frame = FrameLayout(this).apply {
             setBackgroundColor(Color.BLACK)
             isClickable = true
+            alpha = 0f
         }
         val image = ImageView(this).apply {
             scaleType = ImageView.ScaleType.FIT_CENTER
-            load(file)
+            adjustViewBounds = true
+            load(file) { crossfade(false) }
+            scaleX = 0.988f
+            scaleY = 0.988f
         }
         frame.addView(
             image,
@@ -6078,70 +6108,49 @@ class MainActivity : AppCompatActivity() {
         )
 
         var closing = false
-        fun closeAnimated() {
+        fun closePhoto() {
             if (closing) return
             closing = true
             SohrHaptics.tap(image)
-
-            if (!settings.animations || sourceBounds == null || image.width <= 0 || image.height <= 0) {
+            if (!settings.animations) {
                 dialog.dismiss()
                 return
             }
-
-            val location = IntArray(2)
-            image.getLocationOnScreen(location)
-            val centerX = location[0] + image.width / 2f
-            val centerY = location[1] + image.height / 2f
-            val sourceCenterX = sourceBounds.exactCenterX()
-            val sourceCenterY = sourceBounds.exactCenterY()
-            val scaleX = (sourceBounds.width().toFloat() / image.width.coerceAtLeast(1)).coerceIn(0.12f, 1f)
-            val scaleY = (sourceBounds.height().toFloat() / image.height.coerceAtLeast(1)).coerceIn(0.12f, 1f)
-
+            frame.animate().cancel()
             image.animate().cancel()
-            image.pivotX = image.width / 2f
-            image.pivotY = image.height / 2f
+            frame.animate()
+                .alpha(0f)
+                .setDuration(SohrMotion.FAST)
+                .start()
             image.animate()
-                .scaleX(scaleX)
-                .scaleY(scaleY)
-                .translationX(sourceCenterX - centerX)
-                .translationY(sourceCenterY - centerY)
-                .alpha(0.25f)
-                .setDuration(SohrMotion.HERO)
+                .scaleX(0.988f)
+                .scaleY(0.988f)
+                .setDuration(SohrMotion.FAST)
                 .setInterpolator(SohrMotion.smooth())
                 .withEndAction { dialog.dismiss() }
                 .start()
         }
 
-        frame.setOnClickListener { closeAnimated() }
-        image.setOnClickListener { closeAnimated() }
+        frame.setOnClickListener { closePhoto() }
+        image.setOnClickListener { closePhoto() }
         dialog.setContentView(frame)
         dialog.setOnShowListener {
-            image.post {
-                if (!settings.animations || sourceBounds == null || image.width <= 0 || image.height <= 0) {
-                    image.alpha = 1f
-                    return@post
-                }
-                val location = IntArray(2)
-                image.getLocationOnScreen(location)
-                val centerX = location[0] + image.width / 2f
-                val centerY = location[1] + image.height / 2f
-                image.pivotX = image.width / 2f
-                image.pivotY = image.height / 2f
-                image.scaleX = (sourceBounds.width().toFloat() / image.width.coerceAtLeast(1)).coerceIn(0.12f, 1f)
-                image.scaleY = (sourceBounds.height().toFloat() / image.height.coerceAtLeast(1)).coerceIn(0.12f, 1f)
-                image.translationX = sourceBounds.exactCenterX() - centerX
-                image.translationY = sourceBounds.exactCenterY() - centerY
-                image.alpha = 0.55f
-                image.animate()
-                    .scaleX(1f)
-                    .scaleY(1f)
-                    .translationX(0f)
-                    .translationY(0f)
-                    .alpha(1f)
-                    .setDuration(SohrMotion.HERO)
-                    .setInterpolator(SohrMotion.smooth())
-                    .start()
+            if (!settings.animations) {
+                frame.alpha = 1f
+                image.scaleX = 1f
+                image.scaleY = 1f
+                return@setOnShowListener
             }
+            frame.animate()
+                .alpha(1f)
+                .setDuration(140L)
+                .start()
+            image.animate()
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(180L)
+                .setInterpolator(SohrMotion.smooth())
+                .start()
         }
         dialog.show()
     }
