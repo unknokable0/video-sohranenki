@@ -59,6 +59,11 @@ class TwitchPlayerScreen(
     private var customView: View? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
     private var fullscreen = false
+    private var pipMode = false
+    private var pipHost: FrameLayout? = null
+    private var pipOriginalParent: ViewGroup? = null
+    private var pipOriginalIndex = -1
+    private var pipOriginalLayoutParams: ViewGroup.LayoutParams? = null
     private var destroyed = false
     private var ready = false
     private var paused = true
@@ -678,8 +683,87 @@ class TwitchPlayerScreen(
         if (fullscreen || view != null) onFullscreen(false)
     }
 
+    fun isPlayingForPictureInPicture(): Boolean =
+        !destroyed && ready && !paused
+
+    fun prepareForPictureInPicture(): Boolean {
+        if (destroyed) return false
+        if (pipMode) return true
+
+        if (customView != null || fullscreen) {
+            exitFullscreen()
+        }
+
+        val parent = playerCard.parent as? ViewGroup ?: return false
+        pipOriginalParent = parent
+        pipOriginalIndex = parent.indexOfChild(playerCard)
+        pipOriginalLayoutParams = playerCard.layoutParams
+
+        parent.removeView(playerCard)
+
+        val activityContent = activity.findViewById<ViewGroup>(android.R.id.content)
+        val host = FrameLayout(activity).apply {
+            setBackgroundColor(Color.BLACK)
+            clipChildren = true
+            clipToPadding = true
+            elevation = dp(220).toFloat()
+        }
+        activityContent.addView(
+            host,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+        root.visibility = View.INVISIBLE
+        host.addView(
+            playerCard,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                Gravity.CENTER
+            )
+        )
+
+        pipHost = host
+        pipMode = true
+        playerCard.clipToOutline = false
+        playerCard.background = rounded(Color.BLACK, 0)
+        controlsCard.visibility = View.GONE
+        return true
+    }
+
+    fun restoreFromPictureInPicture() {
+        if (!pipMode) return
+
+        val host = pipHost
+        runCatching { host?.removeView(playerCard) }
+        runCatching { (host?.parent as? ViewGroup)?.removeView(host) }
+
+        val parent = pipOriginalParent
+        if (parent != null && playerCard.parent == null) {
+            val params = pipOriginalLayoutParams ?: normalPlayerLayoutParams()
+            val index = pipOriginalIndex.coerceIn(0, parent.childCount)
+            parent.addView(playerCard, index, params)
+        }
+
+        pipHost = null
+        pipOriginalParent = null
+        pipOriginalIndex = -1
+        pipOriginalLayoutParams = null
+        pipMode = false
+
+        playerCard.background = rounded(Color.BLACK, 18)
+        playerCard.clipToOutline = true
+        controlsCard.visibility = View.VISIBLE
+        root.visibility = View.VISIBLE
+        root.requestLayout()
+        playerCard.requestLayout()
+    }
+
     fun destroy() {
         if (destroyed) return
+        runCatching { if (pipMode || pipHost != null) restoreFromPictureInPicture() }
         persistPosition(force = true)
         destroyed = true
         handler.removeCallbacks(progressPoll)
