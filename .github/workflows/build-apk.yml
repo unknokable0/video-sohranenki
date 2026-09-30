@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.6.12: Twitch copyright-muted timeline and skip UX
+# SOHR 6.6.13: safe gestures and accurate Twitch muted ranges
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.6.12 version
+      - name: Assign SOHR 6.6.13 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=660012" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.6.12" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=660013" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.6.13" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -718,6 +718,26 @@ jobs:
           twitch_player = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/TwitchPlayerScreen.kt"
           ).read_text(encoding="utf-8")
+          gesture_overlay = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/PlayerGestureOverlay.kt"
+          ).read_text(encoding="utf-8")
+          twitch_resolver = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/TwitchVodResolver.kt"
+          ).read_text(encoding="utf-8")
+
+          if "dragScrubActive" in gesture_overlay or "YouTube-style horizontal scrub" in gesture_overlay:
+              raise SystemExit("SOHR 6.6.13 regression: direct drag seeking returned")
+          if "horizontalThreshold" in twitch_player and "seekBy(if (dx > 0f)" in twitch_player:
+              raise SystemExit("SOHR 6.6.13 regression: Twitch horizontal swipe seeking returned")
+          if '"-unmuted." in lower ||' in twitch_resolver:
+              raise SystemExit("SOHR 6.6.13 regression: unmuted HLS segments marked as muted")
+          for required in [
+              '("-muted." in lower && "-unmuted." !in lower)',
+              '"index-muted" in lower'
+          ]:
+              if required not in twitch_resolver:
+                  raise SystemExit(f"SOHR 6.6.13 muted detection regression: {required}")
+
           twitch_live_player = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/TwitchLivePlayerScreen.kt"
           ).read_text(encoding="utf-8")
