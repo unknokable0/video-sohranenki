@@ -1597,6 +1597,7 @@ class TwitchLivePlayerScreen(
 
         activity.requestedOrientation =
             when {
+                !enabled && shouldForceLandscape() -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                 !enabled -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                 shouldForceLandscape() -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                 else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
@@ -1753,7 +1754,12 @@ class TwitchLivePlayerScreen(
 
         if (fullscreen) {
             fullscreen = false
-            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            activity.requestedOrientation =
+                if (shouldForceLandscape()) {
+                    ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                } else {
+                    ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                }
             if (!activity.isFinishing && !activity.isDestroyed) onFullscreen(false)
         }
 
