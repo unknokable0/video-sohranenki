@@ -152,6 +152,7 @@ class MainActivity : AppCompatActivity() {
     private var suppressNextContentAnimation = false
     private var currentPrimaryTab = SohrTab.VIDEOS
     private var pendingRootSlide = 0
+    private var pendingPrimaryTabTransition = false
     private var primaryShell: LinearLayout? = null
     private var primaryContentHost: FrameLayout? = null
     private var primaryNav: SohrBottomNavView? = null
@@ -7996,6 +7997,8 @@ class MainActivity : AppCompatActivity() {
         nextNav = SohrBottomNavView(this, palette, SohrTab.SETTINGS) { tab ->
             if (tab != currentPrimaryTab) {
                 pendingRootSlide = if (tab.ordinal > currentPrimaryTab.ordinal) 1 else -1
+                pendingPrimaryTabTransition = true
+                suppressNextContentAnimation = false
                 when (tab) {
                     SohrTab.VIDEOS -> showSelectedVideoSource()
                     SohrTab.SETTINGS -> showSettings()
@@ -8582,10 +8585,13 @@ class MainActivity : AppCompatActivity() {
 
             val nav = SohrBottomNavView(this, palette, selected) { tab ->
                 if (tab != currentPrimaryTab) {
-                    // Lower navigation must feel immediate: switch content in the
-                    // same tap, keep motion only on the nav indicator/icon.
-                    pendingRootSlide = 0
-                    suppressNextContentAnimation = true
+                    // Keep the navigation bar stable and animate only the page
+                    // content. This makes primary navigation feel alive without
+                    // moving the whole app shell.
+                    pendingRootSlide =
+                        if (tab.ordinal > currentPrimaryTab.ordinal) 1 else -1
+                    pendingPrimaryTabTransition = true
+                    suppressNextContentAnimation = false
                     when (tab) {
                         SohrTab.VIDEOS -> showSelectedVideoSource()
                         SohrTab.SETTINGS -> showSettings()
@@ -8648,6 +8654,8 @@ class MainActivity : AppCompatActivity() {
 
         val slide = pendingRootSlide
         pendingRootSlide = 0
+        val primaryTabTransition = pendingPrimaryTabTransition
+        pendingPrimaryTabTransition = false
         currentPrimaryTab = selected
         nav.syncSelected(selected, animate = settings.animations && slide != 0)
 
@@ -8683,7 +8691,7 @@ class MainActivity : AppCompatActivity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
         )
-        if (animateContent && slide < 0 && old != null) {
+        if (animateContent && slide < 0 && old != null && !primaryTabTransition) {
             val oldIndex = host.indexOfChild(old).coerceAtLeast(0)
             host.addView(content, oldIndex, contentParams)
         } else {
@@ -8722,6 +8730,57 @@ class MainActivity : AppCompatActivity() {
                             if (old.parent === host) host.removeView(old)
                         }
                         .start()
+                } else if (primaryTabTransition) {
+                    val direction = if (slide >= 0) 1f else -1f
+                    val incomingOffset = dp(14).toFloat() * direction
+                    val outgoingOffset = -dp(8).toFloat() * direction
+
+                    content.alpha = 0f
+                    content.translationX = incomingOffset
+                    content.translationY = dp(3).toFloat()
+                    content.scaleX = 0.995f
+                    content.scaleY = 0.995f
+
+                    old.alpha = 1f
+                    old.translationX = 0f
+                    old.translationY = 0f
+                    old.scaleX = 1f
+                    old.scaleY = 1f
+
+                    old.animate()
+                        .alpha(0.72f)
+                        .translationX(outgoingOffset)
+                        .scaleX(0.998f)
+                        .scaleY(0.998f)
+                        .setDuration(190L)
+                        .setInterpolator(SohrMotion.exit())
+                        .start()
+
+                    content.animate()
+                        .alpha(1f)
+                        .translationX(0f)
+                        .translationY(0f)
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setDuration(250L)
+                        .setInterpolator(SohrMotion.smooth())
+                        .withEndAction {
+                            old.animate().cancel()
+                            old.alpha = 1f
+                            old.translationX = 0f
+                            old.translationY = 0f
+                            old.scaleX = 1f
+                            old.scaleY = 1f
+                            content.alpha = 1f
+                            content.translationX = 0f
+                            content.translationY = 0f
+                            content.scaleX = 1f
+                            content.scaleY = 1f
+                            old.setLayerType(View.LAYER_TYPE_NONE, null)
+                            content.setLayerType(View.LAYER_TYPE_NONE, null)
+                            if (old.parent === host) host.removeView(old)
+                        }
+                        .start()
                 } else if (slide < 0) {
                     // Real collection pop: keep the rebuilt feed fixed underneath
                     // and move only the outgoing collection. This removes the
@@ -8738,6 +8797,40 @@ class MainActivity : AppCompatActivity() {
                         .withEndAction {
                             old.alpha = 1f
                             old.translationX = 0f
+                            old.setLayerType(View.LAYER_TYPE_NONE, null)
+                            content.setLayerType(View.LAYER_TYPE_NONE, null)
+                            if (old.parent === host) host.removeView(old)
+                        }
+                        .start()
+                } else if (slide == 0) {
+                    old.alpha = 1f
+                    old.translationY = 0f
+                    content.alpha = 0f
+                    content.translationY = dp(6).toFloat()
+                    content.scaleX = 0.997f
+                    content.scaleY = 0.997f
+
+                    old.animate()
+                        .alpha(0.78f)
+                        .setDuration(140L)
+                        .setInterpolator(SohrMotion.exit())
+                        .start()
+
+                    content.animate()
+                        .alpha(1f)
+                        .translationY(0f)
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setDuration(210L)
+                        .setInterpolator(SohrMotion.smooth())
+                        .withEndAction {
+                            old.animate().cancel()
+                            old.alpha = 1f
+                            old.translationY = 0f
+                            content.alpha = 1f
+                            content.translationY = 0f
+                            content.scaleX = 1f
+                            content.scaleY = 1f
                             old.setLayerType(View.LAYER_TYPE_NONE, null)
                             content.setLayerType(View.LAYER_TYPE_NONE, null)
                             if (old.parent === host) host.removeView(old)
