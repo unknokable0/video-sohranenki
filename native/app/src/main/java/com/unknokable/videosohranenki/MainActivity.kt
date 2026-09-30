@@ -4237,11 +4237,15 @@ class MainActivity : AppCompatActivity() {
                         imageTintList = android.content.res.ColorStateList.valueOf(
                             if (active) purple else muted
                         )
-                        alpha = 0.82f
+                        background = roundedBg(
+                            if (active) palette.accentSoft else palette.surfaceAlt,
+                            9
+                        )
+                        setPadding(dp(5), dp(5), dp(5), dp(5))
                         scaleType = ImageView.ScaleType.CENTER_INSIDE
                     },
-                    LinearLayout.LayoutParams(dp(15), dp(15)).apply {
-                        marginStart = dp(6)
+                    LinearLayout.LayoutParams(dp(24), dp(24)).apply {
+                        marginStart = dp(7)
                     }
                 )
                 copy.addView(
