@@ -314,8 +314,7 @@ object TelegramChannelUi {
         onVideo: (TelegramChannelPost, View) -> Unit,
         onPhoto: (TelegramChannelPost, View) -> Unit,
         onVoice: (TelegramChannelPost, View) -> Unit,
-        onDownload: ((TelegramChannelPost) -> Unit)? = null,
-        onReact: ((TelegramChannelPost, String) -> Unit)? = null
+        onDownload: ((TelegramChannelPost) -> Unit)? = null
     ): TelegramChannelRender {
         val palette = settings.palette()
         val page = FrameLayout(activity).apply {
@@ -557,9 +556,9 @@ object TelegramChannelUi {
 
                 val card =
                     if (group.size > 1 && albumId != 0L) {
-                        buildAlbumCard(activity, settings, group, onVideo, onPhoto, onReact)
+                        buildAlbumCard(activity, settings, group, onVideo, onPhoto)
                     } else {
-                        buildPostCard(activity, settings, first, onVideo, onPhoto, onVoice, onReact)
+                        buildPostCard(activity, settings, first, onVideo, onPhoto, onVoice)
                     }
 
                 card.setOnLongClickListener {
@@ -569,8 +568,7 @@ object TelegramChannelUi {
                         settings = settings,
                         channel = channel,
                         post = first,
-                        onDownload = onDownload,
-                        onReact = onReact
+                        onDownload = onDownload
                     )
                     true
                 }
@@ -763,8 +761,7 @@ object TelegramChannelUi {
         settings: AppSettings,
         posts: List<TelegramChannelPost>,
         onVideo: (TelegramChannelPost, View) -> Unit,
-        onPhoto: (TelegramChannelPost, View) -> Unit,
-        onReact: ((TelegramChannelPost, String) -> Unit)? = null
+        onPhoto: (TelegramChannelPost, View) -> Unit
     ): View {
         val palette = settings.palette()
         val card = LinearLayout(activity).apply {
@@ -892,7 +889,7 @@ object TelegramChannelUi {
         }
 
         val reactionSource = posts.firstOrNull { it.reactions.isNotEmpty() } ?: posts.first()
-        buildReactionRow(activity, settings, reactionSource, onReact)?.let { reactions ->
+        buildReactionRow(activity, settings, reactionSource)?.let { reactions ->
             card.addView(
                 reactions,
                 LinearLayout.LayoutParams(
@@ -951,8 +948,7 @@ object TelegramChannelUi {
         post: TelegramChannelPost,
         onVideo: (TelegramChannelPost, View) -> Unit,
         onPhoto: (TelegramChannelPost, View) -> Unit,
-        onVoice: (TelegramChannelPost, View) -> Unit,
-        onReact: ((TelegramChannelPost, String) -> Unit)? = null
+        onVoice: (TelegramChannelPost, View) -> Unit
     ): View {
         val palette = settings.palette()
         val card = LinearLayout(activity).apply {
@@ -1119,7 +1115,7 @@ object TelegramChannelUi {
             })
         }
 
-        buildReactionRow(activity, settings, post, onReact)?.let { reactions ->
+        buildReactionRow(activity, settings, post)?.let { reactions ->
             card.addView(
                 reactions,
                 LinearLayout.LayoutParams(
@@ -1168,10 +1164,9 @@ object TelegramChannelUi {
     private fun buildReactionRow(
         activity: Activity,
         settings: AppSettings,
-        post: TelegramChannelPost,
-        onReact: ((TelegramChannelPost, String) -> Unit)?
+        post: TelegramChannelPost
     ): View? {
-        if (post.reactions.isEmpty() && onReact == null) return null
+        if (post.reactions.isEmpty()) return null
         val palette = settings.palette()
         val row = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -1185,21 +1180,12 @@ object TelegramChannelUi {
                     textSize = 12f
                     gravity = Gravity.CENTER
                     setTypeface(typeface, Typeface.BOLD)
-                    setTextColor(if (reaction.chosen) Color.WHITE else palette.text)
-                    background = rounded(
-                        if (reaction.chosen) palette.accent else palette.surfaceAlt,
-                        15
-                    )
+                    setTextColor(palette.text)
+                    background = rounded(palette.surfaceAlt, 15)
                     includeFontPadding = false
                     setPadding(dp(activity, 10), dp(activity, 6), dp(activity, 10), dp(activity, 6))
-                    isClickable = onReact != null
-                    isFocusable = onReact != null
-                    if (onReact != null) {
-                        setOnClickListener {
-                            SohrMotion.press(this, settings.animations)
-                            onReact.invoke(post, reaction.emoji)
-                        }
-                    }
+                    isClickable = false
+                    isFocusable = false
                 },
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -1207,75 +1193,7 @@ object TelegramChannelUi {
                 ).apply { marginEnd = dp(activity, 6) }
             )
         }
-
-        if (onReact != null) {
-            row.addView(
-                ImageButton(activity).apply {
-                    setImageResource(R.drawable.ic_action_reaction)
-                    imageTintList = ColorStateList.valueOf(palette.muted)
-                    scaleType = ImageView.ScaleType.CENTER_INSIDE
-                    background = rounded(palette.surfaceAlt, 16)
-                    setPadding(dp(activity, 8), dp(activity, 8), dp(activity, 8), dp(activity, 8))
-                    contentDescription = "Добавить реакцию"
-                    setOnClickListener {
-                        SohrMotion.press(this, settings.animations)
-                        showReactionPicker(activity, settings, post, onReact)
-                    }
-                },
-                LinearLayout.LayoutParams(dp(activity, 36), dp(activity, 36))
-            )
-        }
         return row
-    }
-
-    private fun showReactionPicker(
-        activity: Activity,
-        settings: AppSettings,
-        post: TelegramChannelPost,
-        onReact: (TelegramChannelPost, String) -> Unit
-    ) {
-        val palette = settings.palette()
-        val dialog = BottomSheetDialog(activity)
-        val box = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(activity, 16), dp(activity, 14), dp(activity, 16), dp(activity, 20))
-            background = rounded(palette.surface, 24)
-        }
-        box.addView(TextView(activity).apply {
-            text = "Реакция"
-            textSize = 17f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(palette.text)
-            includeFontPadding = false
-            setPadding(dp(activity, 2), 0, 0, dp(activity, 12))
-        })
-        val row = LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-        }
-        listOf("👍", "❤", "🔥", "😂", "🎉").forEach { emoji ->
-            row.addView(
-                TextView(activity).apply {
-                    text = emoji
-                    textSize = 22f
-                    gravity = Gravity.CENTER
-                    background = rounded(palette.surfaceAlt, 18)
-                    isClickable = true
-                    isFocusable = true
-                    setOnClickListener {
-                        SohrHaptics.select(this)
-                        onReact(post, emoji)
-                        dialog.dismiss()
-                    }
-                },
-                LinearLayout.LayoutParams(0, dp(activity, 52), 1f).apply {
-                    marginEnd = dp(activity, 6)
-                }
-            )
-        }
-        box.addView(row)
-        dialog.setContentView(box)
-        dialog.show()
     }
 
     private fun showPostActions(
@@ -1283,8 +1201,7 @@ object TelegramChannelUi {
         settings: AppSettings,
         channel: TelegramChannelSummary,
         post: TelegramChannelPost,
-        onDownload: ((TelegramChannelPost) -> Unit)?,
-        onReact: ((TelegramChannelPost, String) -> Unit)?
+        onDownload: ((TelegramChannelPost) -> Unit)?
     ) {
         val palette = settings.palette()
         val dialog = BottomSheetDialog(activity)
@@ -1356,12 +1273,6 @@ object TelegramChannelUi {
                 onDownload(post)
             }
         }
-        if (onReact != null) {
-            action(R.drawable.ic_action_reaction, "Добавить реакцию") {
-                showReactionPicker(activity, settings, post, onReact)
-            }
-        }
-
         dialog.setContentView(sheet)
         dialog.show()
     }
