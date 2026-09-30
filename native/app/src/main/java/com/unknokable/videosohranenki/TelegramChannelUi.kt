@@ -1,6 +1,9 @@
 package com.unknokable.videosohranenki
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
@@ -15,6 +18,7 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.core.widget.NestedScrollView
 import coil.load
 import coil.transform.CircleCropTransformation
@@ -287,6 +291,7 @@ object TelegramChannelUi {
         posts: List<TelegramChannelPost>,
         loading: Boolean,
         canLoadOlder: Boolean,
+        unreadCountAtOpen: Int = 0,
         onBack: () -> Unit,
         onLoadOlder: () -> Unit,
         onVideo: (TelegramChannelPost, View) -> Unit,
@@ -294,7 +299,10 @@ object TelegramChannelUi {
         onVoice: (TelegramChannelPost, View) -> Unit
     ): TelegramChannelRender {
         val palette = settings.palette()
-        val page = LinearLayout(activity).apply {
+        val page = FrameLayout(activity).apply {
+            setBackgroundColor(palette.background)
+        }
+        val content = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(palette.background)
         }
@@ -370,7 +378,7 @@ object TelegramChannelUi {
             setPadding(0, dp(activity, 3), 0, 0)
         })
         header.addView(titleBlock, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        page.addView(header, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(activity, 60)))
+        content.addView(header, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(activity, 60)))
 
         val scroll = NestedScrollView(activity).apply {
             isFillViewport = true
@@ -427,12 +435,34 @@ object TelegramChannelUi {
             })
         } else {
             var lastDayKey = ""
-            posts.forEachIndexed { index, post ->
-                val currentDayKey = dayKey(post.message.date)
+            val unreadStartIndex =
+                if (unreadCountAtOpen > 0) {
+                    (posts.size - unreadCountAtOpen).coerceIn(0, posts.size)
+                } else {
+                    -1
+                }
+
+            var index = 0
+            while (index < posts.size) {
+                val first = posts[index]
+                val albumId = first.mediaAlbumId
+                var endExclusive = index + 1
+                if (albumId != 0L && first.kind in setOf("photo", "video")) {
+                    while (
+                        endExclusive < posts.size &&
+                        posts[endExclusive].mediaAlbumId == albumId &&
+                        posts[endExclusive].kind in setOf("photo", "video")
+                    ) {
+                        endExclusive++
+                    }
+                }
+                val group = posts.subList(index, endExclusive)
+                val currentDayKey = dayKey(first.message.date)
+
                 if (currentDayKey != lastDayKey) {
                     messagesHost.addView(
                         TextView(activity).apply {
-                            text = dayLabel(post.message.date)
+                            text = dayLabel(first.message.date)
                             textSize = 12f
                             gravity = Gravity.CENTER
                             setTypeface(typeface, Typeface.BOLD)
@@ -450,7 +480,29 @@ object TelegramChannelUi {
                     lastDayKey = currentDayKey
                 }
 
-                val card = buildPostCard(activity, settings, post, onVideo, onPhoto, onVoice)
+                if (
+                    unreadStartIndex >= 0 &&
+                    unreadStartIndex in index until endExclusive
+                ) {
+                    messagesHost.addView(
+                        newMessagesDivider(activity, palette.accent),
+                        LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            topMargin = dp(activity, 2)
+                            bottomMargin = dp(activity, 8)
+                        }
+                    )
+                }
+
+                val card =
+                    if (group.size > 1 && albumId != 0L) {
+                        buildAlbumCard(activity, settings, group, onVideo, onPhoto)
+                    } else {
+                        buildPostCard(activity, settings, first, onVideo, onPhoto, onVoice)
+                    }
+
                 if (settings.animations) {
                     card.alpha = 0f
                     card.translationY = dp(activity, 7).toFloat()
@@ -462,7 +514,7 @@ object TelegramChannelUi {
                             .setDuration(SohrMotion.NORMAL)
                             .setInterpolator(SohrMotion.smooth())
                             .start()
-                    }, (index * 24L).coerceAtMost(140L))
+                    }, (index * 22L).coerceAtMost(140L))
                 }
                 messagesHost.addView(
                     card,
@@ -470,11 +522,270 @@ object TelegramChannelUi {
                         bottomMargin = dp(activity, 9)
                     }
                 )
+                index = endExclusive
             }
         }
 
-        page.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        content.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        page.addView(
+            content,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        val jumpToLatest = TextView(activity).apply {
+            text = "↓"
+            textSize = 22f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            background = oval(palette.accent)
+            visibility = View.GONE
+            alpha = 0f
+            scaleX = 0.84f
+            scaleY = 0.84f
+            elevation = dp(activity, 8).toFloat()
+            contentDescription = "К последним сообщениям"
+            setOnClickListener {
+                SohrMotion.press(this, settings.animations)
+                scroll.smoothScrollTo(0, scroll.getChildAt(0)?.height ?: 0)
+            }
+        }
+        page.addView(
+            jumpToLatest,
+            FrameLayout.LayoutParams(dp(activity, 48), dp(activity, 48), Gravity.END or Gravity.BOTTOM).apply {
+                marginEnd = dp(activity, 16)
+                bottomMargin = dp(activity, 18)
+            }
+        )
+
+        scroll.setOnScrollChangeListener(
+            NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
+                val child = scroll.getChildAt(0)
+                val remaining = ((child?.height ?: 0) - (scrollY + scroll.height)).coerceAtLeast(0)
+                val shouldShow = remaining > dp(activity, 420)
+                if (shouldShow && jumpToLatest.visibility != View.VISIBLE) {
+                    jumpToLatest.visibility = View.VISIBLE
+                    if (settings.animations) {
+                        jumpToLatest.animate().cancel()
+                        jumpToLatest.alpha = 0f
+                        jumpToLatest.scaleX = 0.82f
+                        jumpToLatest.scaleY = 0.82f
+                        jumpToLatest.animate()
+                            .alpha(1f)
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .setDuration(SohrMotion.NORMAL)
+                            .setInterpolator(SohrMotion.smooth())
+                            .start()
+                    } else {
+                        jumpToLatest.alpha = 1f
+                        jumpToLatest.scaleX = 1f
+                        jumpToLatest.scaleY = 1f
+                    }
+                } else if (!shouldShow && jumpToLatest.visibility == View.VISIBLE) {
+                    if (settings.animations) {
+                        jumpToLatest.animate().cancel()
+                        jumpToLatest.animate()
+                            .alpha(0f)
+                            .scaleX(0.82f)
+                            .scaleY(0.82f)
+                            .setDuration(SohrMotion.FAST)
+                            .withEndAction { jumpToLatest.visibility = View.GONE }
+                            .start()
+                    } else {
+                        jumpToLatest.visibility = View.GONE
+                    }
+                }
+            }
+        )
+
         return TelegramChannelRender(page, messagesHost, scroll)
+    }
+
+    private fun buildAlbumCard(
+        activity: Activity,
+        settings: AppSettings,
+        posts: List<TelegramChannelPost>,
+        onVideo: (TelegramChannelPost, View) -> Unit,
+        onPhoto: (TelegramChannelPost, View) -> Unit
+    ): View {
+        val palette = settings.palette()
+        val card = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(activity, 8), dp(activity, 8), dp(activity, 8), dp(activity, 10))
+            background = rounded(palette.surface, 18)
+        }
+
+        if (posts.any { it.isPinned }) {
+            card.addView(TextView(activity).apply {
+                text = "Закреплено"
+                textSize = 10.8f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(palette.accent)
+                includeFontPadding = false
+                setPadding(dp(activity, 4), 0, 0, dp(activity, 7))
+            })
+        }
+
+        var i = 0
+        while (i < posts.size) {
+            val row = LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            repeat(2) { column ->
+                val item = posts.getOrNull(i + column)
+                if (item == null) {
+                    row.addView(
+                        View(activity),
+                        LinearLayout.LayoutParams(0, dp(activity, 156), 1f).apply {
+                            if (column == 0) marginEnd = dp(activity, 3)
+                        }
+                    )
+                } else {
+                    val media = FrameLayout(activity).apply {
+                        background = rounded(palette.surfaceAlt, 12)
+                        clipToOutline = true
+                        isClickable = true
+                        isFocusable = true
+                    }
+                    media.addView(
+                        ImageView(activity).apply {
+                            scaleType = ImageView.ScaleType.CENTER_CROP
+                            if (!item.previewPath.isNullOrBlank()) {
+                                load(item.previewPath) { crossfade(true) }
+                            }
+                        },
+                        FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT
+                        )
+                    )
+                    if (item.kind == "video") {
+                        media.addView(TextView(activity).apply {
+                            text = "▶"
+                            textSize = 21f
+                            gravity = Gravity.CENTER
+                            setTextColor(Color.WHITE)
+                            background = oval(Color.argb(150, 0, 0, 0))
+                        }, FrameLayout.LayoutParams(dp(activity, 44), dp(activity, 44), Gravity.CENTER))
+                        if (item.durationSeconds > 0) {
+                            media.addView(TextView(activity).apply {
+                                text = formatDuration(item.durationSeconds)
+                                textSize = 10f
+                                gravity = Gravity.CENTER
+                                setTextColor(Color.WHITE)
+                                background = rounded(Color.argb(160, 0, 0, 0), 8)
+                                setPadding(dp(activity, 6), 0, dp(activity, 6), 0)
+                            }, FrameLayout.LayoutParams(
+                                ViewGroup.LayoutParams.WRAP_CONTENT,
+                                dp(activity, 22),
+                                Gravity.END or Gravity.BOTTOM
+                            ).apply {
+                                marginEnd = dp(activity, 7)
+                                bottomMargin = dp(activity, 7)
+                            })
+                        }
+                    }
+                    media.setOnClickListener {
+                        SohrMotion.press(media, settings.animations)
+                        if (item.kind == "photo") onPhoto(item, media) else onVideo(item, media)
+                    }
+                    row.addView(
+                        media,
+                        LinearLayout.LayoutParams(0, dp(activity, 156), 1f).apply {
+                            if (column == 0) marginEnd = dp(activity, 3)
+                        }
+                    )
+                }
+            }
+            card.addView(
+                row,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dp(activity, 156)
+                ).apply {
+                    if (i + 2 < posts.size) bottomMargin = dp(activity, 3)
+                }
+            )
+            i += 2
+        }
+
+        val caption = posts.firstOrNull { it.text.isNotBlank() }?.text.orEmpty()
+        if (caption.isNotBlank()) {
+            card.addView(TextView(activity).apply {
+                text = caption
+                textSize = 14.4f
+                setTextColor(palette.text)
+                setLineSpacing(0f, 1.08f)
+                setTextIsSelectable(true)
+                includeFontPadding = false
+                setPadding(dp(activity, 4), dp(activity, 9), dp(activity, 4), 0)
+                enableTelegramLinks(this, palette.accent)
+                setOnLongClickListener {
+                    copyText(activity, caption)
+                    true
+                }
+            })
+        }
+
+        val reactionCount = posts.sumOf { it.reactionCount.coerceAtLeast(0) }
+        if (reactionCount > 0) {
+            card.addView(TextView(activity).apply {
+                text = "♥ " + compact(reactionCount)
+                textSize = 12f
+                gravity = Gravity.CENTER
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(palette.text)
+                background = rounded(palette.surfaceAlt, 14)
+                includeFontPadding = false
+                setPadding(dp(activity, 10), dp(activity, 5), dp(activity, 10), dp(activity, 5))
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(activity, 9)
+                marginStart = dp(activity, 4)
+            })
+        }
+
+        val last = posts.last()
+        val footer = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(activity, 4), dp(activity, 9), dp(activity, 4), 0)
+        }
+        val views = posts.maxOfOrNull { it.viewCount } ?: 0
+        footer.addView(LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            if (views > 0) {
+                addView(ImageView(activity).apply {
+                    setImageResource(R.drawable.ic_visibility)
+                    imageTintList = ColorStateList.valueOf(palette.muted)
+                    scaleType = ImageView.ScaleType.CENTER_INSIDE
+                }, LinearLayout.LayoutParams(dp(activity, 16), dp(activity, 16)).apply {
+                    marginEnd = dp(activity, 4)
+                })
+                addView(TextView(activity).apply {
+                    text = compact(views)
+                    textSize = 10.8f
+                    setTextColor(palette.muted)
+                    includeFontPadding = false
+                })
+            }
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        footer.addView(TextView(activity).apply {
+            text = buildString {
+                if (posts.any { it.editDate > 0 }) append("изменено • ")
+                append(messageTime(last.message.date))
+            }
+            textSize = 10.8f
+            setTextColor(palette.muted)
+            includeFontPadding = false
+        })
+        card.addView(footer)
+        return card
     }
 
     fun buildPostCard(
@@ -493,6 +804,18 @@ object TelegramChannelUi {
         }
 
         val time = messageTime(post.message.date)
+
+        if (post.isPinned) {
+            card.addView(TextView(activity).apply {
+                text = "Закреплено"
+                textSize = 10.8f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(palette.accent)
+                includeFontPadding = false
+                setPadding(0, 0, 0, dp(activity, 7))
+            })
+        }
+
         val mediaTitle = when (post.kind) {
             "video" -> "Видео"
             "video_note" -> "Видеосообщение"
@@ -619,6 +942,10 @@ object TelegramChannelUi {
                 setTextIsSelectable(true)
                 includeFontPadding = false
                 enableTelegramLinks(this, palette.accent)
+                setOnLongClickListener {
+                    copyText(activity, post.text)
+                    true
+                }
             })
         }
 
@@ -663,7 +990,7 @@ object TelegramChannelUi {
         }
         footer.addView(viewsLine, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         footer.addView(TextView(activity).apply {
-            text = time
+            text = if (post.editDate > 0) "изменено • $time" else time
             textSize = 10.8f
             setTextColor(palette.muted)
             includeFontPadding = false
@@ -671,6 +998,25 @@ object TelegramChannelUi {
         card.addView(footer)
 
         return card
+    }
+
+    private fun newMessagesDivider(activity: Activity, accent: Int): View =
+        TextView(activity).apply {
+            text = "Новые сообщения"
+            textSize = 11.5f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(accent)
+            includeFontPadding = false
+            setPadding(0, dp(activity, 5), 0, dp(activity, 5))
+            background = rounded(Color.argb(24, Color.red(accent), Color.green(accent), Color.blue(accent)), 12)
+        }
+
+    private fun copyText(activity: Activity, value: String) {
+        if (value.isBlank()) return
+        val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("SOHR", value))
+        Toast.makeText(activity, "Текст скопирован", Toast.LENGTH_SHORT).show()
     }
 
     private fun verifiedBadge(activity: Activity, accent: Int, sizeDp: Int): ImageView =
