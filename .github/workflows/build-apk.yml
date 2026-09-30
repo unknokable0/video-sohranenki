@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.6.3: Twitch-like live pulse, stable live card and UX hardening
+# SOHR 6.6.4: softer live pulse and smooth Telegram channel entry
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.6.3 version
+      - name: Assign SOHR 6.6.4 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=660003" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.6.3" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=660004" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.6.4" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -500,6 +500,15 @@ jobs:
               if required not in channel_ui:
                   raise SystemExit(f"SOHR 6.4.0 Telegram channel UI regression: {required}")
 
+          for required in [
+              "val needsInitialPosition =",
+              "scroll.alpha = 0f",
+              ".setDuration(110L)",
+              "load(item.previewPath) { crossfade(false) }"
+          ]:
+              if required not in channel_ui:
+                  raise SystemExit(f"SOHR 6.6.4 Telegram channel smooth-entry regression: {required}")
+
           for forbidden in [
               "fun toggleReaction(",
               "TdApi.AddMessageReaction",
@@ -636,8 +645,8 @@ jobs:
                   raise SystemExit(f"SOHR 6.6.0 action icon missing: {icon_name}")
 
           for required in [
-              '"6.6.3" -> listOf(',
-              't2x2LiveAccent = Color.parseColor("#E91916")',
+              '"6.6.4" -> listOf(',
+              't2x2LiveAccent = Color.parseColor("#E5484D")',
               "TwitchCategoryTracker",
               "formatCategoryDuration",
               "До этого •",
@@ -645,22 +654,27 @@ jobs:
               'tag = "t2x2_live_status"',
               "warmRecentPosts(limit = 18)",
               "visibleContentChanged",
-              "animatePosts = false"
+              "animatePosts = false",
+              "loadPosts(channel.chatId, limit = 32)",
+              "oldPost.text != newPost.text"
           ]:
               if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.6.3 live/channel polish regression: {required}")
+                  raise SystemExit(f"SOHR 6.6.4 live/channel polish regression: {required}")
 
           live_pulse = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/LivePulseView.kt"
           ).read_text(encoding="utf-8")
           for required in [
-              'liveColor = Color.parseColor("#E91916")',
-              "drawWave(canvas, cx, cy, phase, 1f)",
-              "drawWave(canvas, cx, cy, (phase + 0.5f) % 1f, 0.56f)",
-              "radius = dp(4.15f + eased * 5.25f)"
+              'liveColor = Color.parseColor("#E5484D")',
+              "drawRipple(canvas, cx, cy, phase)",
+              "duration = 1800L",
+              "dotRadius = dp(2.55f + breath * 0.18f)",
+              "radius = dp(4.1f + eased * 4.6f)"
           ]:
               if required not in live_pulse:
-                  raise SystemExit(f"SOHR 6.6.3 live pulse regression: {required}")
+                  raise SystemExit(f"SOHR 6.6.4 live pulse regression: {required}")
+          if "haloPaint" in live_pulse or "BlurMaskFilter" in live_pulse:
+              raise SystemExit("SOHR 6.6.4 regression: neon live glow returned")
 
           twitch_api = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/TwitchApi.kt"
@@ -1227,7 +1241,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.6.3 • T2x2 получил минималистичный Twitch-подобный live-индикатор: красная точка и две тонкие мягкие волны, красный остаётся только внутри индикатора • live-карточка обновляется на месте без лишнего мерцания • быстрые переключения разделов больше не теряются • настройки плеера не наслаиваются и стабильнее работают в fullscreen • Умное скачивание получило отдельную cloud-bolt иконку"
+            "notes": "SOHR 6.6.4 • live-индикатор T2x2 теперь матовый и без неонового свечения: спокойная красная точка, одно тонкое ripple-кольцо и лёгкое breathing • вход в Telegram-канал больше не запускает каскад анимаций карточек и локальных превью • начальная позиция канала выставляется до показа сообщений без прыжка сверху вниз • изменения просмотров и реакций больше не вызывают полную пересборку экрана • первая загрузка канала облегчена до 32 сообщений"
           }
           EOF
           cat update.json
