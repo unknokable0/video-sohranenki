@@ -177,14 +177,14 @@ class SohrBackgroundCheckWorker(
 
         private const val UNIQUE_WORK = "sohr_background_checks"
         private const val UNIQUE_IMMEDIATE_WORK = "sohr_background_check_now"
+        private const val UNIQUE_FAST_WORK_2 = "sohr_background_check_2m"
         private const val UNIQUE_FAST_WORK_5 = "sohr_background_check_5m"
-        private const val UNIQUE_FAST_WORK_10 = "sohr_background_check_10m"
         private const val RUNTIME_PREFS = "sohr_runtime"
         private const val KEY_LAST_UPDATE_NOTIFICATION = "last_update_notified_code"
         private const val KEY_LAST_T2X2_NOTIFICATION = "last_t2x2_notified_started_at"
 
-        private const val UPDATE_CHANNEL = "sohr_updates"
-        private const val T2X2_CHANNEL = "t2x2_live"
+        private const val UPDATE_CHANNEL = "sohr_updates_v2"
+        private const val T2X2_CHANNEL = "t2x2_live_v2"
         private const val UPDATE_NOTIFICATION_ID = 6304
         private const val T2X2_NOTIFICATION_ID = 2202
 
@@ -212,18 +212,18 @@ class SohrBackgroundCheckWorker(
             // notifications are discovered noticeably earlier without keeping
             // a permanent foreground service alive.
             manager.enqueueUniqueWork(
-                UNIQUE_FAST_WORK_5,
+                UNIQUE_FAST_WORK_2,
                 ExistingWorkPolicy.REPLACE,
                 OneTimeWorkRequestBuilder<SohrBackgroundCheckWorker>()
-                    .setInitialDelay(5, TimeUnit.MINUTES)
+                    .setInitialDelay(2, TimeUnit.MINUTES)
                     .setConstraints(constraints)
                     .build()
             )
             manager.enqueueUniqueWork(
-                UNIQUE_FAST_WORK_10,
+                UNIQUE_FAST_WORK_5,
                 ExistingWorkPolicy.REPLACE,
                 OneTimeWorkRequestBuilder<SohrBackgroundCheckWorker>()
-                    .setInitialDelay(10, TimeUnit.MINUTES)
+                    .setInitialDelay(5, TimeUnit.MINUTES)
                     .setConstraints(constraints)
                     .build()
             )
