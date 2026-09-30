@@ -307,6 +307,7 @@ object TelegramChannelUi {
         canLoadOlder: Boolean,
         unreadCountAtOpen: Int = 0,
         initialScrollY: Int = 0,
+        animatePosts: Boolean = true,
         onScrollYChanged: (Int) -> Unit = {},
         onBack: () -> Unit,
         onLoadOlder: () -> Unit,
@@ -576,7 +577,7 @@ object TelegramChannelUi {
 
                 renderedCards += card to group
 
-                if (settings.animations) {
+                if (settings.animations && animatePosts) {
                     card.alpha = 0f
                     card.translationY = dp(activity, 7).toFloat()
                     card.postDelayed({
@@ -1006,9 +1007,12 @@ object TelegramChannelUi {
                     isFocusable = true
                 }
                 val image = ImageView(activity).apply {
-                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    scaleType =
+                        if (post.kind == "photo") ImageView.ScaleType.FIT_CENTER
+                        else ImageView.ScaleType.CENTER_CROP
+                    adjustViewBounds = post.kind == "photo"
                     if (!post.previewPath.isNullOrBlank()) {
-                        load(post.previewPath) { crossfade(true) }
+                        load(post.previewPath) { crossfade(settings.animations) }
                     }
                 }
                 preview.addView(image, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -1039,7 +1043,12 @@ object TelegramChannelUi {
                     if (post.kind == "photo") onPhoto(post, preview) else onVideo(post, preview)
                 }
                 val size = if (isCircle) dp(activity, 188) else ViewGroup.LayoutParams.MATCH_PARENT
-                card.addView(preview, LinearLayout.LayoutParams(size, if (isCircle) dp(activity, 188) else dp(activity, 268)).apply {
+                val mediaHeight = when {
+                    isCircle -> dp(activity, 188)
+                    post.kind == "photo" -> mediaPreviewHeight(activity, post)
+                    else -> dp(activity, 268)
+                }
+                card.addView(preview, LinearLayout.LayoutParams(size, mediaHeight).apply {
                     gravity = if (isCircle) Gravity.CENTER_HORIZONTAL else Gravity.NO_GRAVITY
                     bottomMargin = if (post.text.isBlank()) 0 else dp(activity, 9)
                 })
@@ -1185,9 +1194,11 @@ object TelegramChannelUi {
                     setPadding(dp(activity, 10), dp(activity, 6), dp(activity, 10), dp(activity, 6))
                     isClickable = onReact != null
                     isFocusable = onReact != null
-                    setOnClickListener {
-                        SohrMotion.press(this, settings.animations)
-                        onReact?.invoke(post, reaction.emoji)
+                    if (onReact != null) {
+                        setOnClickListener {
+                            SohrMotion.press(this, settings.animations)
+                            onReact.invoke(post, reaction.emoji)
+                        }
                     }
                 },
                 LinearLayout.LayoutParams(
@@ -1358,6 +1369,17 @@ object TelegramChannelUi {
     private fun postLink(channel: TelegramChannelSummary, post: TelegramChannelPost): String {
         val publicId = (post.message.id shr 20).takeIf { it > 0L } ?: post.message.id
         return "https://t.me/${channel.username}/$publicId"
+    }
+
+    private fun mediaPreviewHeight(activity: Activity, post: TelegramChannelPost): Int {
+        if (post.mediaWidth <= 0 || post.mediaHeight <= 0) return dp(activity, 268)
+        val availableWidth = (
+            activity.resources.displayMetrics.widthPixels - dp(activity, 48)
+        ).coerceAtLeast(dp(activity, 220))
+        val ratio = post.mediaHeight.toFloat() / post.mediaWidth.toFloat()
+        return (availableWidth * ratio)
+            .toInt()
+            .coerceIn(dp(activity, 180), dp(activity, 560))
     }
 
     private fun newMessagesDivider(activity: Activity, accent: Int): View =
