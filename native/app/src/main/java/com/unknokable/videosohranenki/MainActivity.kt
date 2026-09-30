@@ -183,6 +183,11 @@ class MainActivity : AppCompatActivity() {
     private var todayLiveStatusView: TextView? = null
     private var todayLiveDot: LivePulseView? = null
     private var todaySummaryView: TextView? = null
+    private var todayLiveCard: LinearLayout? = null
+    private var todayLiveDetailsPanel: LinearLayout? = null
+    private var todayLiveExpandIcon: ImageView? = null
+    private var todayLiveExpanded = false
+    private var todayLiveExpandAnimator: android.animation.ValueAnimator? = null
     private var auxiliaryScreen: String? = null
     private val inlinePreviewHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var inlinePreviewPlayer: androidx.media3.exoplayer.ExoPlayer? = null
@@ -3718,6 +3723,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun buildTodayCard(unwatchedVideos: List<VideoItem>): View {
+        todayLiveExpandAnimator?.cancel()
+        todayLiveExpanded = false
+
         val hour = java.time.LocalTime.now().hour
         val greeting = when (hour) {
             in 5..11 -> "Доброе утро"
@@ -3728,9 +3736,7 @@ class MainActivity : AppCompatActivity() {
         val streak = streakTracker.currentStreak()
 
         val card = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(17), dp(14), dp(14), dp(14))
+            orientation = LinearLayout.VERTICAL
             background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
                 intArrayOf(palette.accentSoft, palette.surface)
@@ -3739,12 +3745,22 @@ class MainActivity : AppCompatActivity() {
                 setStroke(dp(1), palette.stroke)
             }
             elevation = dp(2).toFloat()
+            clipChildren = true
+            clipToPadding = true
             isClickable = true
             isFocusable = true
             setOnClickListener {
-                animatePress(this)
-                openT2x2OnTwitch()
+                if (todayLiveExpanded) {
+                    setTodayLiveExpanded(false)
+                }
             }
+        }
+        todayLiveCard = card
+
+        val topRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(17), dp(14), dp(14), dp(14))
         }
 
         val copy = LinearLayout(this).apply {
@@ -3757,11 +3773,13 @@ class MainActivity : AppCompatActivity() {
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(this@MainActivity.text)
         })
+
         val fallbackSummary = when (unwatchedVideos.size) {
             0 -> "Всё просмотрено"
             1 -> "1 новое"
             else -> unwatchedVideos.size.toString() + " новых"
         } + " • Стрик " + streak
+
         val summary = TextView(this).apply {
             text = fallbackSummary
             tag = fallbackSummary
@@ -3775,7 +3793,8 @@ class MainActivity : AppCompatActivity() {
         }
         copy.addView(summary)
         todaySummaryView = summary
-        card.addView(
+
+        topRow.addView(
             copy,
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         )
@@ -3783,9 +3802,16 @@ class MainActivity : AppCompatActivity() {
         val livePill = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(dp(7), 0, dp(10), 0)
+            setPadding(dp(7), 0, dp(7), 0)
             background = roundedBg(palette.surfaceAlt, 15)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                SohrHaptics.select(this)
+                setTodayLiveExpanded(!todayLiveExpanded)
+            }
         }
+
         val liveDot = LivePulseView(this).apply {
             setLiveColor(t2x2LiveAccent)
             setState(lastT2x2Live != null, settings.animations)
@@ -3794,20 +3820,59 @@ class MainActivity : AppCompatActivity() {
             text = "T2x2 • не в сети"
             textSize = 10.8f
             gravity = Gravity.CENTER
+            includeFontPadding = false
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(muted)
         }
+        val expandIcon = ImageView(this).apply {
+            setImageResource(R.drawable.ic_chevron_right)
+            imageTintList = android.content.res.ColorStateList.valueOf(muted)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            rotation = 90f
+            contentDescription = "Показать детали эфира"
+        }
+
         livePill.addView(liveDot, LinearLayout.LayoutParams(dp(20), dp(20)).apply {
             marginEnd = dp(4)
         })
         livePill.addView(liveText)
-        card.addView(
+        livePill.addView(expandIcon, LinearLayout.LayoutParams(dp(18), dp(18)).apply {
+            marginStart = dp(3)
+        })
+        topRow.addView(
             livePill,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(34))
         )
 
+        card.addView(
+            topRow,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(108))
+        )
+
+        val detailsPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            alpha = 0f
+            translationY = -dp(8).toFloat()
+            setPadding(dp(17), 0, dp(17), dp(17))
+            isClickable = true
+            setOnClickListener {
+                if (todayLiveExpanded) setTodayLiveExpanded(false)
+            }
+        }
+        card.addView(
+            detailsPanel,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
         todayLiveDot = liveDot
         todayLiveStatusView = liveText
+        todayLiveExpandIcon = expandIcon
+        todayLiveDetailsPanel = detailsPanel
+        renderTodayLiveExpandedPanel(detailsPanel, lastT2x2Live, lastT2x2LiveUnavailable)
         updateTodayLiveSummary(lastT2x2Live, lastT2x2LiveUnavailable)
 
         val wrapper = FrameLayout(this)
@@ -3826,6 +3891,265 @@ class MainActivity : AppCompatActivity() {
         return wrapper
     }
 
+    private fun setTodayLiveExpanded(expanded: Boolean, animated: Boolean = true) {
+        val card = todayLiveCard ?: return
+        val details = todayLiveDetailsPanel ?: return
+        val icon = todayLiveExpandIcon
+        if (todayLiveExpanded == expanded && todayLiveExpandAnimator == null) return
+
+        todayLiveExpandAnimator?.cancel()
+        todayLiveExpandAnimator = null
+        todayLiveExpanded = expanded
+
+        if (expanded) {
+            renderTodayLiveExpandedPanel(details, lastT2x2Live, lastT2x2LiveUnavailable)
+            details.visibility = View.VISIBLE
+        }
+
+        val collapsedHeight = dp(108)
+        details.measure(
+            View.MeasureSpec.makeMeasureSpec(card.width.coerceAtLeast(dp(280)), View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        )
+        val expandedHeight = (collapsedHeight + details.measuredHeight)
+            .coerceIn(dp(246), dp(390))
+
+        val currentHeight = card.layoutParams.height
+            .takeIf { it > 0 }
+            ?: if (expanded) collapsedHeight else expandedHeight
+        val targetHeight = if (expanded) expandedHeight else collapsedHeight
+
+        icon?.animate()?.cancel()
+        icon?.animate()
+            ?.rotation(if (expanded) -90f else 90f)
+            ?.setDuration(if (settings.animations && animated) SohrMotion.NORMAL else 0L)
+            ?.setInterpolator(SohrMotion.smooth())
+            ?.start()
+
+        if (!settings.animations || !animated) {
+            card.layoutParams = card.layoutParams.apply { height = targetHeight }
+            card.requestLayout()
+            details.alpha = if (expanded) 1f else 0f
+            details.translationY = 0f
+            details.visibility = if (expanded) View.VISIBLE else View.GONE
+            return
+        }
+
+        if (expanded) {
+            details.alpha = 0f
+            details.translationY = -dp(8).toFloat()
+            details.animate().cancel()
+            details.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setStartDelay(45L)
+                .setDuration(SohrMotion.NORMAL)
+                .setInterpolator(SohrMotion.smooth())
+                .start()
+        } else {
+            details.animate().cancel()
+            details.animate()
+                .alpha(0f)
+                .translationY(-dp(6).toFloat())
+                .setDuration(SohrMotion.FAST)
+                .setInterpolator(SohrMotion.exit())
+                .start()
+        }
+
+        val animator = android.animation.ValueAnimator.ofInt(currentHeight, targetHeight).apply {
+            duration = SohrMotion.HERO
+            interpolator = SohrMotion.smooth()
+            addUpdateListener { value ->
+                card.layoutParams = card.layoutParams.apply {
+                    height = value.animatedValue as Int
+                }
+                card.requestLayout()
+            }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    if (!todayLiveExpanded) {
+                        details.visibility = View.GONE
+                        details.translationY = -dp(8).toFloat()
+                    }
+                    todayLiveExpandAnimator = null
+                }
+            })
+        }
+        todayLiveExpandAnimator = animator
+        animator.start()
+    }
+
+    private fun renderTodayLiveExpandedPanel(
+        panel: LinearLayout,
+        live: TwitchLiveStream?,
+        unavailable: Boolean
+    ) {
+        panel.removeAllViews()
+
+        panel.addView(
+            View(this).apply {
+                setBackgroundColor(palette.stroke)
+                alpha = 0.72f
+            },
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(1)
+            ).apply {
+                bottomMargin = dp(13)
+            }
+        )
+
+        val headline = TextView(this).apply {
+            text = when {
+                live != null -> live.title.ifBlank { "Эфир T2x2" }
+                unavailable -> "Статус Twitch временно недоступен"
+                else -> "T2x2 сейчас не в сети"
+            }
+            textSize = 15.5f
+            includeFontPadding = false
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+        }
+        panel.addView(headline)
+
+        val timeline = if (live != null) {
+            lastT2x2Timeline
+                ?.takeIf { it.streamStartedAt == live.startedAt }
+                ?: twitchCategoryTracker.observe(live).also { lastT2x2Timeline = it }
+        } else {
+            lastT2x2Timeline ?: twitchCategoryTracker.timeline().also {
+                lastT2x2Timeline = it
+            }
+        }
+
+        val meta = TextView(this).apply {
+            text = if (live != null) {
+                buildString {
+                    append("Эфир ")
+                    append(formatLiveDuration(live.startedAt))
+                    append(" • ")
+                    append(formatViewerCountCompact(live.viewerCount))
+                    append(" зрителей")
+                    val started = runCatching {
+                        java.time.Instant.parse(live.startedAt)
+                            .atZone(java.time.ZoneId.systemDefault())
+                            .toLocalTime()
+                            .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+                    }.getOrNull()
+                    if (!started.isNullOrBlank()) {
+                        append(" • начало ")
+                        append(started)
+                    }
+                }
+            } else {
+                "Нажми ещё раз по карточке, чтобы свернуть"
+            }
+            textSize = 11.3f
+            includeFontPadding = false
+            setTextColor(muted)
+            setPadding(0, dp(5), 0, dp(12))
+        }
+        panel.addView(meta)
+
+        val recent = timeline.recent.take(4)
+        if (recent.isNotEmpty()) {
+            panel.addView(TextView(this).apply {
+                text = if (live != null) "Что было в эфире" else "Последние категории"
+                textSize = 10.8f
+                includeFontPadding = false
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(muted)
+                setPadding(0, 0, 0, dp(6))
+            })
+
+            recent.forEachIndexed { index, segment ->
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(10), dp(7), dp(10), dp(7))
+                    background = roundedBg(
+                        if (index == 0 && segment.endedAtMs == null) palette.accentSoft
+                        else palette.surfaceAlt,
+                        14
+                    )
+                }
+
+                row.addView(View(this).apply {
+                    background = oval(
+                        if (index == 0 && segment.endedAtMs == null) purple
+                        else palette.stroke
+                    )
+                }, LinearLayout.LayoutParams(dp(6), dp(6)).apply {
+                    marginEnd = dp(9)
+                })
+
+                val segmentText = TextView(this).apply {
+                    val startClock = java.time.Instant.ofEpochMilli(segment.startedAtMs)
+                        .atZone(java.time.ZoneId.systemDefault())
+                        .toLocalTime()
+                        .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+                    text = buildString {
+                        append(
+                            if (segment.endedAtMs == null && live != null) "Сейчас"
+                            else startClock
+                        )
+                        append("  •  ")
+                        append(segment.gameName)
+                        append("  •  ")
+                        append(formatCategoryDuration(segment.elapsedMs()))
+                    }
+                    textSize = 11.5f
+                    includeFontPadding = false
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    setTextColor(this@MainActivity.text)
+                }
+                row.addView(
+                    segmentText,
+                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                )
+
+                panel.addView(
+                    row,
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        if (index != recent.lastIndex) bottomMargin = dp(6)
+                    }
+                )
+            }
+        }
+
+        val twitchButton = TextView(this).apply {
+            text = if (live != null) "Перейти на эфир" else "Открыть T2x2 на Twitch"
+            textSize = 13f
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(purple)
+            background = roundedBg(palette.accentSoft, 17)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                SohrHaptics.tap(this)
+                animatePress(this)
+                openT2x2OnTwitch()
+            }
+        }
+        panel.addView(
+            twitchButton,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(46)
+            ).apply {
+                topMargin = dp(12)
+            }
+        )
+    }
+
     private fun updateTodayLiveSummary(
         live: TwitchLiveStream?,
         unavailable: Boolean = false
@@ -3835,6 +4159,9 @@ class MainActivity : AppCompatActivity() {
         val isLive = live != null
         dot?.setLiveColor(t2x2LiveAccent)
         dot?.setState(isLive, settings.animations)
+        todayLiveDetailsPanel?.let {
+            renderTodayLiveExpandedPanel(it, live, unavailable)
+        }
 
         if (isLive && live != null) {
             val timeline = lastT2x2Timeline
