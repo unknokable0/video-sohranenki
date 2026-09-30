@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.6.0: Telegram productivity + persistent mini player + chaptered playback
+# SOHR 6.6.1: T2x2 category timeline, full Telegram photos and channel smoothness
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.6.0 version
+      - name: Assign SOHR 6.6.1 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=660000" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.6.0" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=660001" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.6.1" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -455,10 +455,9 @@ jobs:
               "formattedText = formattedTextOf(message)",
               "private fun formattedTextOf",
               "TelegramReactionSnapshot",
-              "fun toggleReaction(",
-              "TdApi.ReactionTypeEmoji",
-              "TdApi.AddMessageReaction",
-              "TdApi.RemoveMessageReaction"
+              "mediaWidth",
+              "mediaHeight",
+              "fun warmRecentPosts("
           ]:
               if required not in channel_hub:
                   raise SystemExit(f"SOHR 6.4.0 Telegram channel hub regression: {required}")
@@ -490,15 +489,31 @@ jobs:
               "initialScrollY",
               "onScrollYChanged",
               "showPostActions",
-              "showReactionPicker",
               "buildReactionRow",
+              "mediaPreviewHeight",
+              "ImageView.ScaleType.FIT_CENTER",
+              "animatePosts",
               "R.drawable.ic_action_copy",
               "R.drawable.ic_action_share",
-              "R.drawable.ic_action_open",
-              "R.drawable.ic_action_reaction"
+              "R.drawable.ic_action_open"
           ]:
               if required not in channel_ui:
                   raise SystemExit(f"SOHR 6.4.0 Telegram channel UI regression: {required}")
+
+          for forbidden in [
+              "fun toggleReaction(",
+              "TdApi.AddMessageReaction",
+              "TdApi.RemoveMessageReaction"
+          ]:
+              if forbidden in channel_hub:
+                  raise SystemExit(f"SOHR 6.6.1 read-only reactions regression: {forbidden}")
+          for forbidden in [
+              "showReactionPicker",
+              "onReact",
+              "R.drawable.ic_action_reaction"
+          ]:
+              if forbidden in channel_ui or forbidden in sohr_main:
+                  raise SystemExit(f"SOHR 6.6.1 reaction control returned: {forbidden}")
 
           for required in [
               '2 -> "Telegram-каналы • Лента"',
@@ -615,11 +630,52 @@ jobs:
               "ic_action_copy.xml",
               "ic_action_share.xml",
               "ic_action_open.xml",
-              "ic_action_reaction.xml",
               "ic_more.xml"
           ]:
               if not Path("native/app/src/main/res/drawable", icon_name).is_file():
                   raise SystemExit(f"SOHR 6.6.0 action icon missing: {icon_name}")
+
+          for required in [
+              '"6.6.1" -> listOf(',
+              't2x2LiveAccent = Color.parseColor("#7C83FF")',
+              "TwitchCategoryTracker",
+              "formatCategoryDuration",
+              '"До этого • "',
+              "warmRecentPosts(limit = 18)",
+              "contentChanged",
+              "animatePosts = false"
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.6.1 live/channel polish regression: {required}")
+
+          live_pulse = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/LivePulseView.kt"
+          ).read_text(encoding="utf-8")
+          for required in [
+              'liveColor = Color.parseColor("#7C83FF")',
+              "drawWave(canvas, cx, cy, phase)",
+              "drawWave(canvas, cx, cy, (phase + 0.72f) % 1f)"
+          ]:
+              if required not in live_pulse:
+                  raise SystemExit(f"SOHR 6.6.1 live pulse regression: {required}")
+
+          twitch_api = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/TwitchApi.kt"
+          ).read_text(encoding="utf-8")
+          if "val gameId: String" not in twitch_api or 'gameId = stream.optString("game_id")' not in twitch_api:
+              raise SystemExit("SOHR 6.6.1 Twitch category id regression")
+
+          category_tracker = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/TwitchCategoryTracker.kt"
+          ).read_text(encoding="utf-8")
+          for required in [
+              "TwitchCategorySegment",
+              "fun observe(",
+              "fun markOffline(",
+              "MAX_SEGMENTS = 24"
+          ]:
+              if required not in category_tracker:
+                  raise SystemExit(f"SOHR 6.6.1 category timeline regression: {required}")
 
           settings_screen = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/SettingsScreen.kt"
@@ -1159,7 +1215,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.6.0 • Telegram TextUrl за текстом теперь действительно кликаются • каналы запоминают позицию, получили поиск, меню поста, скачивание и реальные реакции • predictive back возвращает готовую ленту без рывка • mini-player остаётся поверх других экранов SOHR • главы из таймкодов отображаются в описании и на таймлайне • prefetch готовит до трёх следующих Telegram-видео • adaptive motion уменьшает лишнюю работу при спокойном просмотре и сразу возвращает плавность при касании • улучшены haptics и touch targets • T2x2 background watch ускорен примерно до 8 секунд"
+            "notes": "SOHR 6.6.1 • T2x2 live-индикатор получил двойную сине-фиолетовую волну вместо красного пульса • live-карточка показывает текущую категорию, сколько T2x2 уже в ней, длительность эфира и предыдущую категорию с её временем • Telegram-фото отображаются целиком по реальному соотношению сторон • полноэкранное фото открывается стабильной лёгкой анимацией • реакции только отображаются, ставить/снимать их через SOHR нельзя • последние посты каналов прогреваются в фоне, используется кэш и пропускаются лишние повторные перерисовки"
           }
           EOF
           cat update.json
