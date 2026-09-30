@@ -2911,7 +2911,7 @@ class MainActivity : AppCompatActivity() {
                     Gravity.CENTER
                 )
             )
-            tabButtons.addView(tab, LinearLayout.LayoutParams(0, dp(40), 1f))
+            tabButtons.addView(tab, LinearLayout.LayoutParams(0, dp(48), 1f))
         }
         updateTelegramUnreadBadge(animated = false)
 
