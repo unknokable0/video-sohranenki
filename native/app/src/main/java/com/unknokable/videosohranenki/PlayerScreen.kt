@@ -512,14 +512,15 @@ class PlayerScreen(
             gravity = Gravity.CENTER
         }
 
-        playPause = iconButton(R.drawable.ic_play, "#8B5CF6", 48).apply {
+        playPause = iconButton(R.drawable.ic_play, "#A30B0A0F", 58).apply {
+            elevation = dp(2).toFloat()
             setOnClickListener {
                 if (player.isPlaying) player.pause() else player.play()
                 pulse(this)
             }
         }
 
-        center.addView(playPause, LinearLayout.LayoutParams(dp(50), dp(50)))
+        center.addView(playPause, LinearLayout.LayoutParams(dp(60), dp(60)))
 
         frame.addView(
             center,
@@ -536,7 +537,7 @@ class PlayerScreen(
             background = rounded("#360A0810", 10)
         }
 
-        seekBar = SohrTimeBar(activity).apply {
+        seekBar = SohrTimeBar(activity, palette.accent).apply {
             listener = object : SohrTimeBar.Listener {
                 override fun onScrubStart(positionMs: Long) {
                     dragging = true
@@ -596,7 +597,7 @@ class PlayerScreen(
 
         qualityButton = TextView(activity).apply {
             text = "Авто"
-            textSize = 10f
+            textSize = 11f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
@@ -607,12 +608,12 @@ class PlayerScreen(
             setOnClickListener { pulse(this); showQualityPicker() }
         }
 
-        val settingsButton = iconButton(R.drawable.ic_player_settings, "#36221A30", 30).apply {
+        val settingsButton = iconButton(R.drawable.ic_player_settings, "#52221A30", 34).apply {
             contentDescription = "Настройки плеера"
             setOnClickListener { pulse(this); showSettingsSheet() }
         }
 
-        val fullscreenButton = iconButton(R.drawable.ic_fullscreen, "#36221A30", 30).apply {
+        val fullscreenButton = iconButton(R.drawable.ic_fullscreen, "#52221A30", 34).apply {
             contentDescription = "Полный экран"
             setOnClickListener {
                 onFullscreen(!fullscreen)
@@ -628,28 +629,28 @@ class PlayerScreen(
         }
         actionGroup.addView(
             qualityButton,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(24))
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(28))
         )
         actionGroup.addView(
             settingsButton,
-            LinearLayout.LayoutParams(dp(28), dp(28)).apply { marginStart = dp(2) }
+            LinearLayout.LayoutParams(dp(32), dp(32)).apply { marginStart = dp(3) }
         )
         actionGroup.addView(
             fullscreenButton,
-            LinearLayout.LayoutParams(dp(30), dp(30)).apply { marginStart = dp(2) }
+            LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginStart = dp(3) }
         )
 
-        times.addView(currentTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(24)))
-        times.addView(totalTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(24)).apply {
+        times.addView(currentTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(28)))
+        times.addView(totalTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(28)).apply {
             marginStart = dp(4)
         })
         times.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
         times.addView(
             actionGroup,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(28))
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(34))
         )
 
-        bottom.addView(seekBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(18)))
+        bottom.addView(seekBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(22)))
         bottom.addView(times)
 
         frame.addView(
@@ -684,7 +685,7 @@ class PlayerScreen(
 
         previewTime = TextView(activity).apply {
             text = "0:00"
-            textSize = 12f
+            textSize = 13f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
