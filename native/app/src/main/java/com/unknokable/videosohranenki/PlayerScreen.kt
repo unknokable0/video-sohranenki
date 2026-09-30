@@ -2781,7 +2781,7 @@ class PlayerScreen(
 
     private fun remainingTimeLabel(positionMs: Long, durationMs: Long): String {
         val remaining = (durationMs - positionMs).coerceAtLeast(0L)
-        return "До конца " + formatMs(remaining)
+        return "Осталось " + formatMs(remaining)
     }
 
     private fun formatMs(ms: Long): String {
