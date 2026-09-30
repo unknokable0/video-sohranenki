@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.3.9: restored bottom-nav motion and distinct settings icons
+# SOHR 6.4.0: native Telegram channels inside SOHR
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.3.9 version
+      - name: Assign SOHR 6.4.0 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=630009" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.3.9" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=640000" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.4.0" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -429,6 +429,33 @@ jobs:
           for required in ["MediaSession.Builder", "MediaMetadata.Builder", "T2x2 • SOHR"]:
               if required not in media_session:
                   raise SystemExit(f"SOHR 6.2 MediaSession regression: {required}")
+
+          channel_hub = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/TelegramChannelHub.kt"
+          ).read_text(encoding="utf-8")
+          channel_ui = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/TelegramChannelUi.kt"
+          ).read_text(encoding="utf-8")
+          for required in [
+              '"t2x2_video"',
+              '"beerloga_t2x2"',
+              '"t2xtwitch"',
+              '"wT2x2"',
+              "TdApi.ViewMessages",
+              "absorbNewMessage",
+              "MessageVideoNote",
+              "MessageVoiceNote"
+          ]:
+              if required not in channel_hub:
+                  raise SystemExit(f"SOHR 6.4.0 Telegram channel hub regression: {required}")
+          for required in [
+              "buildDirectory",
+              "buildChannel",
+              "buildPostCard",
+              '"Посты Telegram прямо внутри SOHR"'
+          ]:
+              if required not in channel_ui:
+                  raise SystemExit(f"SOHR 6.4.0 Telegram channel UI regression: {required}")
 
           settings_screen = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/SettingsScreen.kt"
@@ -961,7 +988,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "Вернулась плавная заметная анимация перехода нижней панели без задержки экрана • syncSelected больше не обрывает активный indicator transition • Умное скачивание получило отдельное облако со стрелкой • Оформление получило отдельную иконку палитры"
+            "notes": "Лента стала полноценным каталогом Telegram-каналов @t2x2_video, @beerloga_t2x2, @t2xtwitch и @wT2x2 • аватар, название, верификация, последнее сообщение, время и непрочитанное берутся из Telegram • каналы и история открываются внутри SOHR • новые посты приходят через TDLib UpdateNewMessage без ожидания 15-секундного опроса • поддержаны текст, фото, видео, кружки, голосовые, GIF, аудио, файлы, стикеры и опросы • фото, видео и голосовые открываются и воспроизводятся внутри SOHR"
           }
           EOF
           cat update.json
