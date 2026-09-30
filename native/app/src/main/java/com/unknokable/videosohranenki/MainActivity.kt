@@ -5770,7 +5770,7 @@ class MainActivity : AppCompatActivity() {
         renderTelegramChannel(
             channel = channel,
             loading = openTelegramPosts.isEmpty(),
-            canLoadOlder = openTelegramPosts.size >= 60,
+            canLoadOlder = openTelegramPosts.isNotEmpty(),
             animatePosts = openTelegramPosts.isNotEmpty()
         )
 
@@ -5797,16 +5797,23 @@ class MainActivity : AppCompatActivity() {
             telegramChannels = activeHub.cachedChannels()
             updateTelegramUnreadBadge(animated = true)
 
-            val contentChanged =
-                previousPosts.size != posts.size ||
-                    previousPosts.zip(posts).any { (oldPost, newPost) ->
+            val visibleFreshTail =
+                if (previousPosts.isNotEmpty() && posts.size >= previousPosts.size) {
+                    posts.takeLast(previousPosts.size)
+                } else {
+                    posts
+                }
+            val visibleContentChanged =
+                previousPosts.isEmpty() ||
+                    previousPosts.size != visibleFreshTail.size ||
+                    previousPosts.zip(visibleFreshTail).any { (oldPost, newPost) ->
                         oldPost.message.id != newPost.message.id ||
                             oldPost.editDate != newPost.editDate ||
                             oldPost.reactionCount != newPost.reactionCount ||
                             oldPost.viewCount != newPost.viewCount
                     }
 
-            if (previousPosts.isEmpty() || contentChanged) {
+            if (visibleContentChanged) {
                 suppressNextRootAnimation = true
                 renderTelegramChannel(
                     channel = freshSummary,
