@@ -121,7 +121,7 @@ class MainActivity : AppCompatActivity() {
     private var t2x2WatchJob: kotlinx.coroutines.Job? = null
     private var t2x2LiveSlot: FrameLayout? = null
     private var lastT2x2Live: TwitchLiveStream? = null
-    private val t2x2LiveAccent = Color.parseColor("#E91916")
+    private val t2x2LiveAccent = Color.parseColor("#E5484D")
     private lateinit var twitchCategoryTracker: TwitchCategoryTracker
     private var lastT2x2Timeline: TwitchCategoryTimeline? = null
     private var lastT2x2LiveCheckedAt = 0L
@@ -5815,12 +5815,15 @@ class MainActivity : AppCompatActivity() {
             channel = channel,
             loading = openTelegramPosts.isEmpty(),
             canLoadOlder = openTelegramPosts.isNotEmpty(),
-            animatePosts = openTelegramPosts.isNotEmpty()
+            // Cached channel content should appear immediately. Animating every
+            // message card while the root itself is transitioning creates a
+            // visible stutter on entry.
+            animatePosts = false
         )
 
         lifecycleScope.launch {
             val activeHub = telegramChannelHub ?: return@launch
-            val posts = runCatching { activeHub.loadPosts(channel.chatId, limit = 60) }
+            val posts = runCatching { activeHub.loadPosts(channel.chatId, limit = 32) }
                 .getOrElse {
                     if (auxiliaryScreen == "telegram_channel" && openTelegramChannelSummary?.chatId == channel.chatId) {
                         showMessage("Не удалось открыть канал", it.message ?: "Ошибка Telegram")
@@ -5851,10 +5854,15 @@ class MainActivity : AppCompatActivity() {
                 previousPosts.isEmpty() ||
                     previousPosts.size != visibleFreshTail.size ||
                     previousPosts.zip(visibleFreshTail).any { (oldPost, newPost) ->
+                        // Rebuild only when visible content/layout actually
+                        // changed. View/reaction counters update frequently and
+                        // must not tear down the whole channel screen.
                         oldPost.message.id != newPost.message.id ||
-                            oldPost.editDate != newPost.editDate ||
-                            oldPost.reactionCount != newPost.reactionCount ||
-                            oldPost.viewCount != newPost.viewCount
+                            oldPost.text != newPost.text ||
+                            oldPost.kind != newPost.kind ||
+                            oldPost.previewPath != newPost.previewPath ||
+                            oldPost.mediaAlbumId != newPost.mediaAlbumId ||
+                            oldPost.isPinned != newPost.isPinned
                     }
 
             if (visibleContentChanged) {
@@ -5862,7 +5870,7 @@ class MainActivity : AppCompatActivity() {
                 renderTelegramChannel(
                     channel = freshSummary,
                     loading = false,
-                    canLoadOlder = posts.size >= 60,
+                    canLoadOlder = posts.size >= 32,
                     animatePosts = false
                 )
             }
