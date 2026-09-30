@@ -644,6 +644,17 @@ jobs:
               if not Path("native/app/src/main/res/drawable", icon_name).is_file():
                   raise SystemExit(f"SOHR 6.6.0 action icon missing: {icon_name}")
 
+          external_icon = Path(
+              "native/app/src/main/res/drawable/ic_action_open.xml"
+          ).read_text(encoding="utf-8")
+          for required in [
+              'android:strokeWidth="1.8"',
+              'android:strokeLineCap="round"',
+              'M18.6,5.4L10.4,13.6'
+          ]:
+              if required not in external_icon:
+                  raise SystemExit(f"SOHR 6.6.8 external-link icon regression: {required}")
+
           for required in [
               '"6.6.8" -> listOf(',
               't2x2LiveAccent = Color.parseColor("#E5484D")',
@@ -660,7 +671,7 @@ jobs:
               "private fun renderTodayLiveExpandedPanel(",
               "private fun animateTodayLiveExpandedChildren(",
               "private fun formatT2x2SegmentRange(",
-              "private fun openTwitchGameSearch(",
+              "private fun openGameSearch(",
               'contentDescription = "Найти ${segment.gameName} в браузере"',
               '"ИСТОРИЯ ЭФИРА"',
               'R.drawable.ic_action_open',
@@ -705,7 +716,7 @@ jobs:
 
           for required in [
               "private lateinit var remainingTime: TextView",
-              'return "ост. " + formatMs(remaining)',
+              'return "До конца " + formatMs(remaining)',
               "onSwipeUp = {",
               "if (!fullscreen) onFullscreen(true)",
               "onSwipeDown = {",
@@ -716,7 +727,7 @@ jobs:
 
           for required in [
               "private lateinit var remainingTime: TextView",
-              '"ост. " + formatMs',
+              '"До конца " + formatMs',
               "MotionEvent.ACTION_UP",
               "if (dy < 0f && !fullscreen)",
               "SohrTimeBar(activity, palette.accent)"
@@ -728,23 +739,52 @@ jobs:
               "AudioManager",
               "onVolume",
               "volumeStart",
-              "VERTICAL_CONTROL_DP"
+              "VERTICAL_CONTROL_DP",
+              "adjustStreamVolume"
           ]:
-              if forbidden in gesture_overlay:
+              if forbidden in gesture_overlay or forbidden in twitch_player:
                   raise SystemExit(f"SOHR 6.6.8 regression: swipe volume control returned: {forbidden}")
 
           if "accentColor: Int =" in time_bar or "255, 0, 51" in time_bar:
               raise SystemExit("SOHR 6.6.8 regression: red default timeline color returned")
 
           for required in [
-              "SCREEN_ORIENTATION_SENSOR_LANDSCAPE",
-              "SCREEN_ORIENTATION_SENSOR_PORTRAIT",
               "private fun openGameSearch(gameName: String)",
               '.authority("www.google.com")',
-              '.appendQueryParameter("q", "$gameName игра")'
+              '.appendQueryParameter("q", "$gameName игра")',
+              "if (activePlayer.isPlaying != true) return"
           ]:
               if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.6.8 orientation/game-search regression: {required}")
+                  raise SystemExit(f"SOHR 6.6.8 game-search/PiP regression: {required}")
+
+          for required in [
+              "SCREEN_ORIENTATION_SENSOR_LANDSCAPE",
+              "SCREEN_ORIENTATION_PORTRAIT",
+              "root.visibility = View.INVISIBLE",
+              "root.visibility = View.VISIBLE",
+              "private lateinit var miniRemainingTime: TextView",
+              "private lateinit var miniProgressTrack: FrameLayout",
+              "remainingTimeLabel("
+          ]:
+              if required not in player_screen:
+                  raise SystemExit(f"SOHR 6.6.8 native fullscreen/mini/PiP regression: {required}")
+
+          for required in [
+              "SCREEN_ORIENTATION_SENSOR_LANDSCAPE",
+              "SCREEN_ORIENTATION_PORTRAIT",
+              "seekBy(if (dx > 0f) 10_000L else -10_000L)",
+              "Vertical gestures only navigate fullscreen"
+          ]:
+              if required not in twitch_player:
+                  raise SystemExit(f"SOHR 6.6.8 Twitch VOD gesture/orientation regression: {required}")
+
+          for required in [
+              "dragScrubActive",
+              "YouTube-style horizontal scrub",
+              "absX > absY * 1.35f"
+          ]:
+              if required not in gesture_overlay:
+                  raise SystemExit(f"SOHR 6.6.8 horizontal scrub regression: {required}")
 
           twitch_embed = Path("docs/twitch-player/index.html").read_text(encoding="utf-8")
           for required in [
