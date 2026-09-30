@@ -2493,16 +2493,18 @@ class MainActivity : AppCompatActivity() {
         if (section !in 1..3 || videoSection == section || videoSectionSwitchLocked) return
 
         videoSectionSwitchLocked = true
-        pendingVideoSectionCrossfade = true
+        // Do not crossfade the whole screen here. Rebuilding the full page and
+        // moving the tab indicator at the same time caused the visible "jerk".
+        pendingVideoSectionCrossfade = false
         pendingVideoSectionDirection = if (section > videoSection) 1 else -1
         pendingRootSlide = 0
-        suppressNextContentAnimation = false
+        suppressNextContentAnimation = true
         videoSection = section
         showFeed(currentVideos)
 
         root.postDelayed({
             videoSectionSwitchLocked = false
-        }, if (settings.animations) 330L else 40L)
+        }, if (settings.animations) 240L else 40L)
     }
 
     private fun showFeed(videos: List<VideoItem>) {
@@ -2582,6 +2584,9 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(bg)
             setPadding(0, 0, 0, dp(16))
+            if (sectionTransitionDirection != 0 && settings.animations) {
+                alpha = 0.92f
+            }
         }
         scroll.addView(
             body,
@@ -2590,6 +2595,17 @@ class MainActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
         )
+        if (sectionTransitionDirection != 0 && settings.animations) {
+            body.post {
+                if (!body.isAttachedToWindow) return@post
+                body.animate().cancel()
+                body.animate()
+                    .alpha(1f)
+                    .setDuration(170L)
+                    .setInterpolator(SohrMotion.smooth())
+                    .start()
+            }
+        }
         page.addView(
             scroll,
             LinearLayout.LayoutParams(
@@ -2775,9 +2791,8 @@ class MainActivity : AppCompatActivity() {
                 tabIndicator.animate().cancel()
                 tabIndicator.animate()
                     .translationX(target)
-                    .setStartDelay(16L)
-                    .setDuration(275L)
-                    .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                    .setDuration(SohrMotion.NORMAL)
+                    .setInterpolator(SohrMotion.smooth())
                     .start()
             } else {
                 tabIndicator.translationX = target
