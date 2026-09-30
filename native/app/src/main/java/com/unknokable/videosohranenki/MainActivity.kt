@@ -5860,27 +5860,6 @@ class MainActivity : AppCompatActivity() {
             .apply()
     }
 
-    private fun toggleTelegramChannelReaction(post: TelegramChannelPost, emoji: String) {
-        val hub = telegramChannelHub ?: return
-        val channel = openTelegramChannelSummary ?: return
-        lifecycleScope.launch {
-            val refreshed = hub.toggleReaction(post, emoji) ?: return@launch
-            if (
-                auxiliaryScreen != "telegram_channel" ||
-                openTelegramChannelSummary?.chatId != channel.chatId
-            ) return@launch
-
-            openTelegramPosts = openTelegramPosts.map { existing ->
-                if (existing.message.id == refreshed.message.id) refreshed else existing
-            }
-            renderTelegramChannel(
-                channel = channel,
-                loading = false,
-                canLoadOlder = openTelegramPosts.size >= 60
-            )
-        }
-    }
-
     private fun downloadTelegramChannelPost(post: TelegramChannelPost) {
         val fileId = post.fileId ?: return
         if (fileId <= 0) return
