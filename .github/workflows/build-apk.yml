@@ -735,10 +735,10 @@ jobs:
           for required in [
               'background = rounded("#360A0810", 10)',
               "LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(18))",
-              "topMargin = dp(13)"
+              "bottomMargin = dp(7)"
           ]:
               if required not in player:
-                  raise SystemExit(f"SOHR 6.3.2 compact player chrome regression: {required}")
+                  raise SystemExit(f"SOHR 6.3.5 compact player chrome regression: {required}")
 
           telegram_stream = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/TelegramStreamServer.kt"
