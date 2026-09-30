@@ -169,14 +169,9 @@ class SohrBottomNavView(
         positionIndicator(animate = true)
         animatePress(target)
 
-        // Paint the selected tab immediately, then build the destination screen
-        // on the next frame. This removes the "tap, wait, then highlight" feeling
-        // when a destination screen has more work to construct.
-        postOnAnimation {
-            if (selectedIndex == target && isAttachedToWindow) {
-                onSelect(tabs[target])
-            }
-        }
+        // Keep navigation immediate. The previous next-frame deferral made
+        // the bottom bar feel laggy even though the animation itself was fast.
+        onSelect(tabs[target])
     }
 
     fun syncSelected(tab: SohrTab, animate: Boolean = false) {
