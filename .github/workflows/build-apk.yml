@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.4.2: polished Telegram-like channel reading inside SOHR
+# SOHR 6.4.3: Telegram unread folder-style badge and channel polish
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.4.2 version
+      - name: Assign SOHR 6.4.3 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=640002" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.4.2" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=640003" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.4.3" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -478,6 +478,16 @@ jobs:
                   raise SystemExit(f"SOHR 6.4.2 Telegram feed mode/link polish regression: {required}")
           if 'videoSection == 2 && settings.videoSource == "telegram"' in sohr_main:
               raise SystemExit("SOHR 6.4.2 regression: Telegram channel feed became source-dependent again")
+
+          for required in [
+              "telegramUnreadBadgeView",
+              "telegramUnreadCount()",
+              "updateTelegramUnreadBadge(animated = true)",
+              'badge.text = if (count > 99) "99+" else count.toString()',
+              '"6.4.3" -> listOf('
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.4.3 unread feed badge regression: {required}")
 
           settings_screen = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/SettingsScreen.kt"
@@ -1010,7 +1020,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "Telegram-лента теперь работает и при выбранном Twitch, и при Telegram • verified-галочки выровнены и заменены на отдельный аккуратный значок • в шапке канала показывается количество подписчиков • внутри канала появились разделители Сегодня/Вчера/дата, крупные медиа, реакции, просмотры и время в Telegram-подобном виде • ссылки, email и @упоминания в постах кликабельны • плавные SOHR-анимации сохранены"
+            "notes": "У вкладки Лента появился живой счётчик непрочитанных, как у папок Telegram • он суммирует непрочитанные посты по каналам, обновляется сразу при новых сообщениях и уменьшается после чтения • Telegram-лента работает и при Twitch, и при Telegram • verified-галочки выровнены • в каналах есть подписчики, даты, крупные медиа, реакции, просмотры, кликабельные ссылки и @упоминания • плавные SOHR-анимации сохранены"
           }
           EOF
           cat update.json
