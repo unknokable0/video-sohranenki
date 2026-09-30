@@ -1127,12 +1127,12 @@ jobs:
           if smart_download_icon == update_icon:
               raise SystemExit("SOHR 6.3.3 smart-download icon duplicates update icon")
           for required in [
-              "M7.2,18.2H16.7",
-              "M12,10.6V15.1",
-              "M9.9,13.2L12,15.3L14.1,13.2"
+              "M7.1,18.3H16.6",
+              "M13.2,9.6L9.9,13.8",
+              "L15.3,12.4H12.9"
           ]:
               if required not in smart_download_icon:
-                  raise SystemExit(f"SOHR 6.3.9 smart-download glyph regression: {required}")
+                  raise SystemExit(f"SOHR 6.6.3 smart-download glyph regression: {required}")
 
           for required in [
               "playbackRecoveryAttempts",
