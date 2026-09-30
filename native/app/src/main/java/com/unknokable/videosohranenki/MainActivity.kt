@@ -5441,6 +5441,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        playerReturnView = capturePlayerReturnView()
         playerScreen?.destroy()
         playerScreen = null
         twitchPlayerScreen?.destroy()
