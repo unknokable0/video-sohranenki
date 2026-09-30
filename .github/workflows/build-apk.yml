@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.5.1: reliable background alerts, Telegram rich links and smooth channel back
+# SOHR 6.6.0: Telegram productivity + persistent mini player + chaptered playback
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.5.1 version
+      - name: Assign SOHR 6.6.0 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=650001" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.5.1" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=660000" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.6.0" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -453,7 +453,12 @@ jobs:
               "editDate = message.editDate",
               "isPinned = message.isPinned",
               "formattedText = formattedTextOf(message)",
-              "private fun formattedTextOf"
+              "private fun formattedTextOf",
+              "TelegramReactionSnapshot",
+              "fun toggleReaction(",
+              "TdApi.ReactionTypeEmoji",
+              "TdApi.AddMessageReaction",
+              "TdApi.RemoveMessageReaction"
           ]:
               if required not in channel_hub:
                   raise SystemExit(f"SOHR 6.4.0 Telegram channel hub regression: {required}")
@@ -480,7 +485,17 @@ jobs:
               '"Текст скопирован"',
               "applyTelegramFormattedText",
               "TdApi.TextEntityTypeTextUrl",
-              "URLSpan(type.url)"
+              "URLSpan(type.url)",
+              "setSingleLine(true)",
+              "initialScrollY",
+              "onScrollYChanged",
+              "showPostActions",
+              "showReactionPicker",
+              "buildReactionRow",
+              "R.drawable.ic_action_copy",
+              "R.drawable.ic_action_share",
+              "R.drawable.ic_action_open",
+              "R.drawable.ic_action_reaction"
           ]:
               if required not in channel_ui:
                   raise SystemExit(f"SOHR 6.4.0 Telegram channel UI regression: {required}")
@@ -542,12 +557,69 @@ jobs:
           for required in [
               "START_STICKY",
               "FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING",
-              "T2X2_CHECK_INTERVAL_MS = 12_000L",
+              "T2X2_CHECK_INTERVAL_MS = 8_000L",
               "SohrUpdateManager(applicationContext).check()",
               'TwitchApi.loadLiveStream(clientId, token, "t2x2")'
           ]:
               if required not in notification_watch:
                   raise SystemExit(f"SOHR 6.5.1 background watch regression: {required}")
+
+          for required in [
+              '"6.6.0" -> listOf(',
+              "telegramChannelScrollPosition",
+              "saveTelegramChannelScrollPosition",
+              "closeTelegramChannelToFeed",
+              "playerReturnView",
+              "handlePlayerMiniMode",
+              "capturePlayerReturnView",
+              "prefetchNextCandidates"
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.6.0 main navigation/player regression: {required}")
+
+          player_screen = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/PlayerScreen.kt"
+          ).read_text(encoding="utf-8")
+          for required in [
+              "private fun parseChapters",
+              "setChapters(chapters.map { it.positionMs })",
+              "onMiniModeChanged",
+              "val isMiniMode",
+              "interactionBoostUntilElapsed",
+              "decorativeMotionEnabled",
+              "markPlayerInteraction",
+              "HorizontalScrollView",
+              '"Главы • " + chapters.size'
+          ]:
+              if required not in player_screen:
+                  raise SystemExit(f"SOHR 6.6.0 player polish regression: {required}")
+
+          time_bar = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/SohrTimeBar.kt"
+          ).read_text(encoding="utf-8")
+          for required in [
+              "chapterPositionsMs",
+              "fun setChapters(",
+              "HapticFeedbackConstants.CLOCK_TICK"
+          ]:
+              if required not in time_bar:
+                  raise SystemExit(f"SOHR 6.6.0 chapter timeline regression: {required}")
+
+          gesture_overlay = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/PlayerGestureOverlay.kt"
+          ).read_text(encoding="utf-8")
+          if "private val onInteraction: () -> Unit = {}" not in gesture_overlay:
+              raise SystemExit("SOHR 6.6.0 adaptive motion interaction callback missing")
+
+          for icon_name in [
+              "ic_action_copy.xml",
+              "ic_action_share.xml",
+              "ic_action_open.xml",
+              "ic_action_reaction.xml",
+              "ic_more.xml"
+          ]:
+              if not Path("native/app/src/main/res/drawable", icon_name).is_file():
+                  raise SystemExit(f"SOHR 6.6.0 action icon missing: {icon_name}")
 
           settings_screen = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/SettingsScreen.kt"
@@ -1085,7 +1157,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.5.1 • быстрые уведомления T2x2 и обновлений поддерживаются отдельным foreground-watch даже когда интерфейс приложения закрыт, WorkManager остаётся резервом, а после перезагрузки телефона мониторинг запускается снова • Telegram TextUrl/URL/email/@username и форматирование сохраняются из TDLib и кликаются прямо за текстом • возврат из канала восстанавливает готовую ленту без полной пересборки и рывка • сохранены альбомы, непрочитанные, новая ава и все функции 6.5.0"
+            "notes": "SOHR 6.6.0 • Telegram TextUrl за текстом теперь действительно кликаются • каналы запоминают позицию, получили поиск, меню поста, скачивание и реальные реакции • predictive back возвращает готовую ленту без рывка • mini-player остаётся поверх других экранов SOHR • главы из таймкодов отображаются в описании и на таймлайне • prefetch готовит до трёх следующих Telegram-видео • adaptive motion уменьшает лишнюю работу при спокойном просмотре и сразу возвращает плавность при касании • улучшены haptics и touch targets • T2x2 background watch ускорен примерно до 8 секунд"
           }
           EOF
           cat update.json
