@@ -46,7 +46,7 @@ class LoadingWaveView(
                 .coerceIn(0f, 0.999999f)
             // Old cloud path/timing stays the same. The segment only slows down
             // and speeds up; derivative remains positive, so it never stops.
-            phase = raw + 0.052f * sin(raw * Math.PI.toFloat() * 2f)
+            phase = raw + 0.068f * sin(raw * Math.PI.toFloat() * 2f)
             invalidate()
         }
     }
@@ -116,14 +116,14 @@ class LoadingWaveView(
         if (width <= 0 || height <= 0 || length <= 0f) return
 
         val minDp = minOf(width, height) / resources.displayMetrics.density
-        val baseStroke = (minDp * 0.055f).coerceIn(2.8f, 4.5f)
-        val activeStroke = (minDp * 0.076f).coerceIn(4.0f, 6.2f)
+        val baseStroke = (minDp * 0.082f).coerceIn(4.2f, 7.2f)
+        val activeStroke = (minDp * 0.108f).coerceIn(5.6f, 9.2f)
 
-        basePaint.color = withAlpha(color, 92)
+        basePaint.color = withAlpha(color, 104)
         basePaint.strokeWidth = dp(baseStroke)
         canvas.drawPath(outlinePath, basePaint)
 
-        val segmentLength = length * 0.235f
+        val segmentLength = length * 0.275f
         val start = phase * length
         val end = start + segmentLength
         segmentPath.reset()
