@@ -259,7 +259,7 @@ class SohrNotificationWatchService : Service() {
         private const val KEY_LAST_UPDATE_NOTIFICATION = "last_update_notified_code"
         private const val KEY_LAST_T2X2_NOTIFICATION = "last_t2x2_notified_started_at"
 
-        private const val T2X2_CHECK_INTERVAL_MS = 12_000L
+        private const val T2X2_CHECK_INTERVAL_MS = 8_000L
         private const val UPDATE_EVERY_TICKS = 5
 
         fun start(context: Context) {
