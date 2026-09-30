@@ -202,6 +202,7 @@ class MainActivity : AppCompatActivity() {
     private var openTelegramPosts: List<TelegramChannelPost> = emptyList()
     private var openTelegramUnreadAtOpen: Int = 0
     private var telegramChannelRender: TelegramChannelRender? = null
+    private var telegramChannelReturnView: View? = null
     private var telegramAudioPlayer: androidx.media3.exoplayer.ExoPlayer? = null
     private var telegramAudioMessageId: Long = 0L
     private var telegramUnreadBadgeView: TextView? = null
@@ -5008,6 +5009,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         SohrBackgroundCheckWorker.schedule(this)
+        SohrNotificationWatchService.start(this)
 
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -5649,6 +5651,8 @@ class MainActivity : AppCompatActivity() {
         stopInlinePreview()
         stopTelegramChannelAudio()
         auxiliaryScreen = "telegram_channel"
+        telegramChannelReturnView =
+            root.takeIf { it.childCount > 0 }?.getChildAt(root.childCount - 1)
         openTelegramChannelSummary = channel
         openTelegramPosts = emptyList()
         openTelegramUnreadAtOpen = channel.unreadCount.coerceAtLeast(0)
@@ -5699,15 +5703,22 @@ class MainActivity : AppCompatActivity() {
             unreadCountAtOpen = openTelegramUnreadAtOpen,
             onBack = {
                 stopTelegramChannelAudio()
+                val returnView = telegramChannelReturnView
                 auxiliaryScreen = null
                 openTelegramChannelSummary = null
                 openTelegramPosts = emptyList()
                 openTelegramUnreadAtOpen = 0
                 telegramChannelRender = null
+                telegramChannelReturnView = null
                 videoSection = 2
                 pendingRootSlide = -1
-                suppressNextRootAnimation = true
-                showFeed(currentVideos)
+                suppressNextRootAnimation = false
+                if (returnView != null) {
+                    replaceRoot(returnView)
+                } else {
+                    suppressNextRootAnimation = true
+                    showFeed(currentVideos)
+                }
             },
             onLoadOlder = { loadOlderTelegramChannelPosts() },
             onVideo = { post, source -> openTelegramChannelVideo(post, source) },
@@ -8017,6 +8028,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun fallbackReleaseNotes(version: String): String = when (version) {
+        "6.5.1" -> listOf(
+            "Фоновые уведомления T2x2 и обновлений теперь поддерживаются отдельным лёгким watch-сервисом даже когда интерфейс SOHR закрыт.",
+            "WorkManager остаётся резервным каналом, а foreground-watch проверяет эфир чаще без зависимости от открытого Activity.",
+            "Telegram TextUrl и другие текстовые entities отображаются как настоящие кликабельные ссылки за текстом.",
+            "Возврат из Telegram-канала восстанавливает уже готовую ленту вместо полной пересборки, поэтому исчезает рывок экрана."
+        ).joinToString(" • ")
         "6.5.0" -> listOf(
             "Новая аватарка SOHR.",
             "Фото и видео, отправленные одним Telegram-альбомом, собираются в одну медиагруппу.",
