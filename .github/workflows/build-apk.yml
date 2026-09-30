@@ -775,12 +775,12 @@ jobs:
           for required in [
               "data class TwitchMutedRange(",
               "suspend fun resolveMutedSegments(",
-              '"-unmuted." in lower',
-              '"-muted." in lower',
+              '("-muted." in lower && "-unmuted." !in lower)',
+              '"index-muted" in lower',
               "parseMutedRanges(media)"
           ]:
               if required not in twitch_resolver:
-                  raise SystemExit(f"SOHR 6.6.12 muted-range resolver regression: {required}")
+                  raise SystemExit(f"SOHR 6.6.13 muted-range resolver regression: {required}")
 
           for required in [
               "private lateinit var copyrightNotice: LinearLayout",
