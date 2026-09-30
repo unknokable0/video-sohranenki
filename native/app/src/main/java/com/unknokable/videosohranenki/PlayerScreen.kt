@@ -589,6 +589,7 @@ class PlayerScreen(
                     handler.postDelayed({ hidePreview() }, 90L)
                 }
             }
+            setChapters(chapters.map { it.positionMs })
         }
 
         val times = LinearLayout(activity).apply {
@@ -981,6 +982,83 @@ class PlayerScreen(
         }
 
         box.addView(meta)
+
+        if (chapters.size >= 2) {
+            box.addView(TextView(activity).apply {
+                text = "Главы • " + chapters.size
+                textSize = 13f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(palette.text)
+                includeFontPadding = false
+                setPadding(0, dp(14), 0, dp(8))
+            })
+
+            val horizontal = HorizontalScrollView(activity).apply {
+                isHorizontalScrollBarEnabled = false
+                overScrollMode = View.OVER_SCROLL_NEVER
+                clipToPadding = false
+            }
+            val chapterRow = LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            chapters.forEachIndexed { index, chapter ->
+                chapterRow.addView(
+                    LinearLayout(activity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        minimumWidth = dp(116)
+                        setPadding(dp(12), dp(9), dp(12), dp(9))
+                        background = roundedInt(palette.surfaceAlt, 16)
+                        isClickable = true
+                        isFocusable = true
+                        addView(TextView(activity).apply {
+                            text = formatMs(chapter.positionMs)
+                            textSize = 10.8f
+                            setTypeface(typeface, Typeface.BOLD)
+                            setTextColor(palette.accent)
+                            includeFontPadding = false
+                        })
+                        addView(TextView(activity).apply {
+                            text = chapter.title
+                            textSize = 11.8f
+                            maxLines = 1
+                            ellipsize = android.text.TextUtils.TruncateAt.END
+                            setTextColor(palette.text)
+                            includeFontPadding = false
+                            setPadding(0, dp(3), 0, 0)
+                        })
+                        setOnClickListener {
+                            markPlayerInteraction()
+                            SohrHaptics.select(this)
+                            player.seekTo(chapter.positionMs)
+                            currentTime.text = formatMs(chapter.positionMs)
+                            showTransientIndicator(chapter.title)
+                        }
+                    },
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        dp(58)
+                    ).apply {
+                        if (index > 0) marginStart = dp(7)
+                    }
+                )
+            }
+            horizontal.addView(
+                chapterRow,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+            box.addView(
+                horizontal,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dp(62)
+                )
+            )
+        }
         return box
     }
 
@@ -2385,6 +2463,48 @@ class PlayerScreen(
             setTextColor(Color.WHITE)
             setTypeface(typeface, Typeface.BOLD)
         }
+
+    private fun parseChapters(raw: String): List<Chapter> {
+        val pattern = Regex(
+            """^\s*((?:\d{1,2}:)?\d{1,2}:\d{2})\s*(?:[-–—•|]\s*)?(.+?)\s*$"""
+        )
+        fun parseTime(value: String): Long? {
+            val parts = value.split(':').mapNotNull { it.toLongOrNull() }
+            if (parts.size !in 2..3) return null
+            val seconds = if (parts.size == 3) {
+                parts[0] * 3600L + parts[1] * 60L + parts[2]
+            } else {
+                parts[0] * 60L + parts[1]
+            }
+            return seconds.coerceAtLeast(0L) * 1000L
+        }
+
+        val duration = item.durationSeconds.coerceAtLeast(0) * 1000L
+        return raw
+            .replace("\r\n", "\n")
+            .replace('\r', '\n')
+            .lineSequence()
+            .mapNotNull { line ->
+                val match = pattern.matchEntire(line) ?: return@mapNotNull null
+                val position = parseTime(match.groupValues[1]) ?: return@mapNotNull null
+                val title = match.groupValues[2].trim().take(64)
+                if (title.isBlank()) return@mapNotNull null
+                if (duration > 0L && position > duration) return@mapNotNull null
+                Chapter(position, title)
+            }
+            .distinctBy { it.positionMs }
+            .sortedBy { it.positionMs }
+            .take(40)
+            .toList()
+    }
+
+    private fun markPlayerInteraction() {
+        interactionBoostUntilElapsed = SystemClock.elapsedRealtime() + 3_500L
+    }
+
+    private fun decorativeMotionEnabled(): Boolean =
+        settings.animations &&
+            (!player.isPlaying || SystemClock.elapsedRealtime() <= interactionBoostUntilElapsed)
 
     private fun cleanTitle(raw: String): String {
         val normalized = raw.replace("\r\n", "\n").replace('\r', '\n').trim()
