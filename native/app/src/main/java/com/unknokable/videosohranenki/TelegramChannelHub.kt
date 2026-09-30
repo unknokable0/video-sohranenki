@@ -184,39 +184,6 @@ class TelegramChannelHub(
         post
     }
 
-    suspend fun toggleReaction(
-        post: TelegramChannelPost,
-        emoji: String
-    ): TelegramChannelPost? = withContext(Dispatchers.IO) {
-        val selected = post.reactions.firstOrNull { it.emoji == emoji }?.chosen == true
-        val reactionType = TdApi.ReactionTypeEmoji(emoji)
-        runCatching {
-            if (selected) {
-                client.send(
-                    TdApi.RemoveMessageReaction(
-                        post.message.chatId,
-                        post.message.id,
-                        reactionType
-                    )
-                )
-            } else {
-                client.send(
-                    TdApi.AddMessageReaction(
-                        post.message.chatId,
-                        post.message.id,
-                        reactionType,
-                        true,
-                        true
-                    )
-                )
-            }
-            val refreshed = client.send(
-                TdApi.GetMessage(post.message.chatId, post.message.id)
-            )
-            toPost(refreshed)
-        }.getOrNull()
-    }
-
     suspend fun markViewed(chatId: Long, posts: List<TelegramChannelPost>) {
         val ids = posts.map { it.message.id }.filter { it > 0L }.toLongArray()
         if (ids.isEmpty()) return
