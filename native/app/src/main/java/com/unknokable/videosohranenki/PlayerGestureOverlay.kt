@@ -38,6 +38,7 @@ class PlayerGestureOverlay(
     private var downAt = 0L
     private var downPosition = 0L
     private var scrubPosition = 0L
+    private var dragScrubActive = false
     private var moved = false
     private var longMode = 0
     private var lastTapAt = 0L
@@ -97,6 +98,7 @@ class PlayerGestureOverlay(
                 downAt = SystemClock.uptimeMillis()
                 downPosition = player.currentPosition
                 scrubPosition = downPosition
+                dragScrubActive = false
                 moved = false
                 longMode = 0
                 v.postDelayed(longPress, LONG_PRESS_MS)
@@ -114,7 +116,7 @@ class PlayerGestureOverlay(
                 val dy = event.y - downY
                 val absX = abs(dx)
                 val absY = abs(dy)
-                if (longMode == 2) {
+                if (longMode == 2 || dragScrubActive) {
                     val duration = durationProvider().coerceAtLeast(1L)
                     val delta = (dx / (target.width * SCRUB_RANGE_FRACTION) * duration).toLong()
                     scrubPosition = (downPosition + delta).coerceIn(0L, duration)
@@ -122,6 +124,26 @@ class PlayerGestureOverlay(
                     return true
                 }
                 if (longMode == 1) return true
+
+                // YouTube-style horizontal scrub: drag left/right directly on
+                // the video. Vertical motion is reserved for fullscreen/mini
+                // navigation and never changes device volume.
+                if (
+                    !dragScrubActive &&
+                    absX > 24f * density &&
+                    absX > absY * 1.35f &&
+                    !progressZone(downY)
+                ) {
+                    dragScrubActive = true
+                    moved = true
+                    v.removeCallbacks(longPress)
+                    val duration = durationProvider().coerceAtLeast(1L)
+                    val delta = (dx / (target.width * SCRUB_RANGE_FRACTION) * duration).toLong()
+                    scrubPosition = (downPosition + delta).coerceIn(0L, duration)
+                    onScrub(scrubPosition, false)
+                    return true
+                }
+
                 if (absX > 18f * density || absY > 18f * density) {
                     moved = true
                     v.removeCallbacks(longPress)
@@ -131,7 +153,7 @@ class PlayerGestureOverlay(
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 v.removeCallbacks(longPress)
                 if (longMode == 1) onTemporarySpeed(false)
-                if (longMode == 2) onScrub(scrubPosition, true)
+                if (longMode == 2 || dragScrubActive) onScrub(scrubPosition, true)
                 if (event.actionMasked == MotionEvent.ACTION_CANCEL) return true
                 val dx = event.x - downX
                 val dy = event.y - downY
@@ -165,6 +187,7 @@ class PlayerGestureOverlay(
                     }
                 }
                 longMode = 0
+                dragScrubActive = false
                 return true
             }
         }
