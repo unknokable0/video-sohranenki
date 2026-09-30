@@ -121,7 +121,7 @@ class MainActivity : AppCompatActivity() {
     private var t2x2WatchJob: kotlinx.coroutines.Job? = null
     private var t2x2LiveSlot: FrameLayout? = null
     private var lastT2x2Live: TwitchLiveStream? = null
-    private val t2x2LiveAccent = Color.parseColor("#FF304F")
+    private val t2x2LiveAccent = Color.parseColor("#E91916")
     private lateinit var twitchCategoryTracker: TwitchCategoryTracker
     private var lastT2x2Timeline: TwitchCategoryTimeline? = null
     private var lastT2x2LiveCheckedAt = 0L
@@ -178,6 +178,7 @@ class MainActivity : AppCompatActivity() {
     private var pendingVideoSectionCrossfade = false
     private var pendingVideoSectionDirection = 0
     private var videoSectionSwitchLocked = false
+    private var pendingVideoSectionTarget: Int? = null
     private var settingsScrollY = 0
     private var todayLiveStatusView: TextView? = null
     private var todayLiveDot: LivePulseView? = null
@@ -2584,11 +2585,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun switchVideoSection(section: Int) {
-        if (section !in 1..3 || videoSection == section || videoSectionSwitchLocked) return
+        if (section !in 1..3 || videoSection == section) return
+
+        if (videoSectionSwitchLocked) {
+            // Never drop a fast second tap. Keep only the latest requested tab
+            // and apply it as soon as the current lightweight rebuild settles.
+            pendingVideoSectionTarget = section
+            return
+        }
 
         videoSectionSwitchLocked = true
-        // Do not crossfade the whole screen here. Rebuilding the full page and
-        // moving the tab indicator at the same time caused the visible "jerk".
         pendingVideoSectionCrossfade = false
         pendingVideoSectionDirection = if (section > videoSection) 1 else -1
         pendingRootSlide = 0
@@ -2598,7 +2604,12 @@ class MainActivity : AppCompatActivity() {
 
         root.postDelayed({
             videoSectionSwitchLocked = false
-        }, if (settings.animations) 240L else 40L)
+            val queued = pendingVideoSectionTarget
+            pendingVideoSectionTarget = null
+            if (queued != null && queued != videoSection) {
+                switchVideoSection(queued)
+            }
+        }, if (settings.animations) 120L else 16L)
     }
 
     private fun showFeed(videos: List<VideoItem>) {
@@ -3772,8 +3783,8 @@ class MainActivity : AppCompatActivity() {
         val livePill = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(dp(8), 0, dp(11), 0)
-            background = roundedBg(palette.surfaceAlt, 16)
+            setPadding(dp(7), 0, dp(10), 0)
+            background = roundedBg(palette.surfaceAlt, 15)
         }
         val liveDot = LivePulseView(this).apply {
             setLiveColor(t2x2LiveAccent)
@@ -3781,18 +3792,18 @@ class MainActivity : AppCompatActivity() {
         }
         val liveText = TextView(this).apply {
             text = "T2x2 • не в сети"
-            textSize = 11f
+            textSize = 10.8f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(muted)
         }
-        livePill.addView(liveDot, LinearLayout.LayoutParams(dp(25), dp(25)).apply {
-            marginEnd = dp(2)
+        livePill.addView(liveDot, LinearLayout.LayoutParams(dp(20), dp(20)).apply {
+            marginEnd = dp(4)
         })
         livePill.addView(liveText)
         card.addView(
             livePill,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(36))
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(34))
         )
 
         todayLiveDot = liveDot
@@ -4846,13 +4857,75 @@ class MainActivity : AppCompatActivity() {
         if (slot.isAttachedToWindow) refreshT2x2Live(slot)
     }
 
+    private fun updateT2x2LiveStatusView(
+        status: TextView,
+        live: TwitchLiveStream?,
+        unavailable: Boolean
+    ) {
+        if (live == null) {
+            status.maxLines = 2
+            status.text =
+                if (unavailable) "Статус временно недоступен"
+                else "Не в сети"
+            status.setTextColor(muted)
+            return
+        }
+
+        val timeline = lastT2x2Timeline
+            ?.takeIf { it.streamStartedAt == live.startedAt }
+            ?: twitchCategoryTracker.observe(live).also { lastT2x2Timeline = it }
+
+        val current = timeline.current
+        val previous = timeline.previous
+        status.maxLines = if (previous != null) 3 else 2
+        status.text = buildString {
+            append(
+                current?.gameName?.takeIf { it.isNotBlank() }
+                    ?: live.gameName.ifBlank { "Без категории" }
+            )
+            current?.let {
+                append(" • ")
+                append(formatCategoryDuration(it.elapsedMs()))
+            }
+            append("\nЭфир ")
+            append(formatLiveDuration(live.startedAt))
+            append(" • ")
+            append(formatViewerCountCompact(live.viewerCount))
+            append(" зр.")
+            if (previous != null) {
+                append("\nДо этого • ")
+                append(previous.gameName)
+                append(" • ")
+                append(formatCategoryDuration(previous.elapsedMs()))
+            }
+        }
+        status.setTextColor(muted)
+    }
+
     private fun renderT2x2Live(
         slot: FrameLayout,
         live: TwitchLiveStream?,
         unavailable: Boolean = false
     ) {
         updateTodayLiveSummary(live, unavailable)
+
+        val renderKey = when {
+            live != null -> "live:${live.startedAt}:${live.gameId}"
+            unavailable -> "offline:unavailable"
+            else -> "offline"
+        }
+
+        // Polling should update content, not rebuild the whole card and make it jump.
+        if (slot.tag == renderKey && slot.childCount > 0) {
+            slot.findViewWithTag<LivePulseView>("t2x2_live_pulse")
+                ?.setState(live != null, settings.animations)
+            slot.findViewWithTag<TextView>("t2x2_live_status")
+                ?.let { updateT2x2LiveStatusView(it, live, unavailable) }
+            return
+        }
+
         val animateIn = slot.childCount == 0
+        slot.tag = renderKey
         slot.removeAllViews()
         slot.visibility = View.VISIBLE
 
@@ -4865,13 +4938,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         val pulse = LivePulseView(this).apply {
+            tag = "t2x2_live_pulse"
             setLiveColor(t2x2LiveAccent)
             setState(live != null, settings.animations)
         }
         card.addView(
             pulse,
-            LinearLayout.LayoutParams(dp(28), dp(28)).apply {
-                marginEnd = dp(11)
+            LinearLayout.LayoutParams(dp(22), dp(22)).apply {
+                marginEnd = dp(9)
             }
         )
 
@@ -4890,6 +4964,7 @@ class MainActivity : AppCompatActivity() {
         })
 
         val status = TextView(this).apply {
+            tag = "t2x2_live_status"
             textSize = 11.2f
             includeFontPadding = false
             maxLines = 2
@@ -4897,49 +4972,18 @@ class MainActivity : AppCompatActivity() {
             setLineSpacing(0f, 1.03f)
             setPadding(0, dp(4), 0, 0)
         }
-
-        fun updateStatus() {
-            if (live == null) {
-                status.text =
-                    if (unavailable) "Статус временно недоступен"
-                    else "Не в сети"
-                status.setTextColor(muted)
-            } else {
-                val timeline = lastT2x2Timeline
-                    ?.takeIf { it.streamStartedAt == live.startedAt }
-                    ?: twitchCategoryTracker.observe(live).also { lastT2x2Timeline = it }
-                val current = timeline.current
-                val previous = timeline.previous
-                status.maxLines = if (previous != null) 3 else 2
-                status.text = buildString {
-                    append(current?.gameName?.takeIf { it.isNotBlank() } ?: live.gameName.ifBlank { "Без категории" })
-                    current?.let {
-                        append(" • ")
-                        append(formatCategoryDuration(it.elapsedMs()))
-                    }
-                    append("\nЭфир ")
-                    append(formatLiveDuration(live.startedAt))
-                    append(" • ")
-                    append(formatViewerCountCompact(live.viewerCount))
-                    append(" зр.")
-                    if (previous != null) {
-                        append("\nДо этого • ")
-                        append(previous.gameName)
-                        append(" • ")
-                        append(formatCategoryDuration(previous.elapsedMs()))
-                    }
-                }
-                status.setTextColor(muted)
-            }
-        }
-        updateStatus()
+        updateT2x2LiveStatusView(status, live, unavailable)
         info.addView(status)
 
         if (live != null) {
             val ticker = object : Runnable {
                 override fun run() {
                     if (!slot.isAttachedToWindow || card.parent !== slot) return
-                    updateStatus()
+                    updateT2x2LiveStatusView(
+                        status,
+                        lastT2x2Live,
+                        lastT2x2LiveUnavailable
+                    )
                     slot.postDelayed(this, 30_000L)
                 }
             }
@@ -4966,8 +5010,8 @@ class MainActivity : AppCompatActivity() {
         }
         card.addView(
             action,
-            LinearLayout.LayoutParams(dp(76), dp(36)).apply {
-                marginStart = dp(10)
+            LinearLayout.LayoutParams(dp(72), dp(34)).apply {
+                marginStart = dp(9)
             }
         )
 
@@ -4984,22 +5028,22 @@ class MainActivity : AppCompatActivity() {
             card,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(98),
+                dp(94),
                 Gravity.CENTER
             )
         )
 
         if (animateIn && settings.animations) {
             card.alpha = 0f
-            card.translationY = dp(4).toFloat()
-            card.scaleX = 0.994f
-            card.scaleY = 0.994f
+            card.translationY = dp(3).toFloat()
+            card.scaleX = 0.996f
+            card.scaleY = 0.996f
             card.animate()
                 .alpha(1f)
                 .translationY(0f)
                 .scaleX(1f)
                 .scaleY(1f)
-                .setDuration(220L)
+                .setDuration(180L)
                 .setInterpolator(
                     android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
                 )
