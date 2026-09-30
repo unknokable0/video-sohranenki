@@ -32,6 +32,7 @@ data class TelegramChannelPost(
     val durationSeconds: Int,
     val viewCount: Int,
     val reactionCount: Int,
+    val formattedText: TdApi.FormattedText?,
     val mediaAlbumId: Long,
     val editDate: Int,
     val isPinned: Boolean
@@ -272,11 +273,24 @@ class TelegramChannelHub(
             durationSeconds = duration,
             viewCount = interaction?.viewCount?.coerceAtLeast(0) ?: 0,
             reactionCount = reactions,
+            formattedText = formattedTextOf(message),
             mediaAlbumId = message.mediaAlbumId,
             editDate = message.editDate,
             isPinned = message.isPinned
         )
     }
+
+    private fun formattedTextOf(message: TdApi.Message): TdApi.FormattedText? =
+        when (val content = message.content) {
+            is TdApi.MessageText -> content.text
+            is TdApi.MessagePhoto -> content.caption
+            is TdApi.MessageVideo -> content.caption
+            is TdApi.MessageVoiceNote -> content.caption
+            is TdApi.MessageAnimation -> content.caption
+            is TdApi.MessageAudio -> content.caption
+            is TdApi.MessageDocument -> content.caption
+            else -> null
+        }
 
     private fun messageKind(message: TdApi.Message): String = when (message.content) {
         is TdApi.MessageText -> "text"
