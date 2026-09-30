@@ -685,7 +685,9 @@ class MainActivity : AppCompatActivity() {
         super.onUserLeaveHint()
         val screen = playerScreen ?: return
         val activePlayer = screen.player
-        if (!isPlayerScreen || activePlayer.isPlaying != true) return
+        // Mini mode keeps the feed visible underneath, but leaving the app
+        // should still promote the actual video into Android PiP.
+        if (activePlayer.isPlaying != true) return
         if (!screen.prepareForPictureInPicture()) return
 
         val serviceIntent = Intent(this, PlaybackKeepAliveService::class.java)
