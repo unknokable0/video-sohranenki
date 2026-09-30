@@ -3156,7 +3156,7 @@ class MainActivity : AppCompatActivity() {
                         adapter = VideoAdapter(
                             items = filtered,
                             palette = palette,
-                            animationsEnabled = settings.animations,
+                            animationsEnabled = settings.animations && pendingRootSlide >= 0,
                             progressFor = { playbackProgress(it) },
                             onClick = { item, source -> openPlayer(item, sourceView = source) },
                             onLongClick = { item, source -> showVideoQuickActions(item, source) }
@@ -3490,7 +3490,7 @@ class MainActivity : AppCompatActivity() {
                     adapter = DayCollectionAdapter(
                         visibleGroups,
                         palette,
-                        settings.animations
+                        settings.animations && pendingRootSlide >= 0
                     ) { showDayCollection(it) }
                     setBackgroundColor(bg)
                     setHasFixedSize(false)
@@ -3557,7 +3557,7 @@ class MainActivity : AppCompatActivity() {
             adapter = HomeVideoShelfAdapter(
                 items = items,
                 palette = palette,
-                animationsEnabled = settings.animations,
+                animationsEnabled = settings.animations && pendingRootSlide >= 0,
                 mode = mode,
                 progressFor = { playbackProgress(it) },
                 lastPlayedAtFor = { settings.lastPlayedAt(it.messageId) },
@@ -3750,9 +3750,8 @@ class MainActivity : AppCompatActivity() {
             isClickable = true
             isFocusable = true
             setOnClickListener {
-                if (todayLiveExpanded) {
-                    setTodayLiveExpanded(false)
-                }
+                SohrHaptics.select(this)
+                setTodayLiveExpanded(!todayLiveExpanded)
             }
         }
         todayLiveCard = card
@@ -3911,8 +3910,8 @@ class MainActivity : AppCompatActivity() {
             View.MeasureSpec.makeMeasureSpec(card.width.coerceAtLeast(dp(280)), View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
         )
-        val expandedHeight = (collapsedHeight + details.measuredHeight)
-            .coerceIn(dp(246), dp(390))
+        val expandedHeight = (collapsedHeight + details.measuredHeight + dp(2))
+            .coerceAtLeast(dp(246))
 
         val currentHeight = card.layoutParams.height
             .takeIf { it > 0 }
@@ -3980,6 +3979,37 @@ class MainActivity : AppCompatActivity() {
         }
         todayLiveExpandAnimator = animator
         animator.start()
+    }
+
+    private fun formatT2x2Clock(epochMs: Long): String =
+        java.time.Instant.ofEpochMilli(epochMs)
+            .atZone(java.time.ZoneId.systemDefault())
+            .toLocalTime()
+            .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+
+    private fun formatT2x2SegmentRange(
+        segment: TwitchCategorySegment,
+        live: TwitchLiveStream?
+    ): String {
+        val start = formatT2x2Clock(segment.startedAtMs)
+        val end = segment.endedAtMs?.let(::formatT2x2Clock)
+            ?: if (live != null) "сейчас" else "—"
+        return "$start → $end"
+    }
+
+    private fun openTwitchGameSearch(gameName: String) {
+        if (gameName.isBlank()) return
+        val uri = Uri.Builder()
+            .scheme("https")
+            .authority("www.twitch.tv")
+            .appendPath("search")
+            .appendQueryParameter("term", gameName)
+            .build()
+        runCatching {
+            startActivity(Intent(Intent.ACTION_VIEW, uri))
+        }.onFailure {
+            Toast.makeText(this, "Не удалось открыть Twitch", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun renderTodayLiveExpandedPanel(
@@ -4094,38 +4124,21 @@ class MainActivity : AppCompatActivity() {
                 val row = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
-                    minimumHeight = dp(42)
+                    minimumHeight = dp(48)
                     tag = "t2x2_timeline_row"
                 }
-
-                val startClock = java.time.Instant.ofEpochMilli(segment.startedAtMs)
-                    .atZone(java.time.ZoneId.systemDefault())
-                    .toLocalTime()
-                    .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
-
-                row.addView(
-                    TextView(this).apply {
-                        text = if (active) "сейчас" else startClock
-                        textSize = 10.6f
-                        gravity = Gravity.CENTER_VERTICAL
-                        includeFontPadding = false
-                        setTypeface(typeface, if (active) Typeface.BOLD else Typeface.NORMAL)
-                        setTextColor(if (active) purple else muted)
-                    },
-                    LinearLayout.LayoutParams(dp(45), dp(42))
-                )
 
                 val rail = FrameLayout(this)
                 val lineParams = when {
                     recent.size <= 1 -> null
                     index == 0 -> FrameLayout.LayoutParams(
-                        dp(1), dp(21), Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                    ).apply { topMargin = dp(21) }
+                        dp(1), dp(24), Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                    ).apply { topMargin = dp(24) }
                     index == recent.lastIndex -> FrameLayout.LayoutParams(
-                        dp(1), dp(21), Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                        dp(1), dp(24), Gravity.TOP or Gravity.CENTER_HORIZONTAL
                     )
                     else -> FrameLayout.LayoutParams(
-                        dp(1), dp(42), Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                        dp(1), dp(48), Gravity.TOP or Gravity.CENTER_HORIZONTAL
                     )
                 }
                 if (lineParams != null) {
@@ -4150,28 +4163,78 @@ class MainActivity : AppCompatActivity() {
                         Gravity.CENTER
                     )
                 )
-                row.addView(rail, LinearLayout.LayoutParams(dp(22), dp(42)).apply {
+                row.addView(rail, LinearLayout.LayoutParams(dp(20), dp(48)).apply {
                     marginEnd = dp(6)
                 })
 
-                val title = TextView(this).apply {
-                    text = segment.gameName
-                    textSize = 12.2f
-                    includeFontPadding = false
-                    maxLines = 1
-                    ellipsize = android.text.TextUtils.TruncateAt.END
-                    setTypeface(typeface, if (active) Typeface.BOLD else Typeface.NORMAL)
-                    setTextColor(this@MainActivity.text)
+                val copy = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER_VERTICAL
                 }
+
+                val gameLink = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    isClickable = true
+                    isFocusable = true
+                    contentDescription = "Открыть ${segment.gameName} в Twitch"
+                    setOnClickListener {
+                        SohrHaptics.tap(this)
+                        animatePress(this)
+                        openTwitchGameSearch(segment.gameName)
+                    }
+                }
+                gameLink.addView(
+                    TextView(this).apply {
+                        text = segment.gameName
+                        textSize = 12.4f
+                        includeFontPadding = false
+                        maxLines = 1
+                        ellipsize = android.text.TextUtils.TruncateAt.END
+                        setTypeface(typeface, if (active) Typeface.BOLD else Typeface.NORMAL)
+                        setTextColor(this@MainActivity.text)
+                    },
+                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                )
+                gameLink.addView(
+                    ImageView(this).apply {
+                        setImageResource(R.drawable.ic_action_open)
+                        imageTintList = android.content.res.ColorStateList.valueOf(
+                            if (active) purple else muted
+                        )
+                        alpha = 0.82f
+                        scaleType = ImageView.ScaleType.CENTER_INSIDE
+                    },
+                    LinearLayout.LayoutParams(dp(13), dp(13)).apply {
+                        marginStart = dp(5)
+                    }
+                )
+                copy.addView(
+                    gameLink,
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                )
+                copy.addView(
+                    TextView(this).apply {
+                        text = formatT2x2SegmentRange(segment, live)
+                        textSize = 10.1f
+                        includeFontPadding = false
+                        setTextColor(if (active) purple else muted)
+                        setPadding(0, dp(3), 0, 0)
+                    }
+                )
+
                 row.addView(
-                    title,
+                    copy,
                     LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                 )
 
                 row.addView(
                     TextView(this).apply {
                         text = formatCategoryDuration(segment.elapsedMs())
-                        textSize = 10.2f
+                        textSize = 10.1f
                         gravity = Gravity.CENTER
                         includeFontPadding = false
                         setTypeface(typeface, Typeface.BOLD)
@@ -4194,9 +4257,10 @@ class MainActivity : AppCompatActivity() {
                     row,
                     LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
-                        dp(42)
+                        dp(48)
                     )
                 )
+            }
             }
         }
 
@@ -4272,8 +4336,25 @@ class MainActivity : AppCompatActivity() {
         val isLive = live != null
         dot?.setLiveColor(t2x2LiveAccent)
         dot?.setState(isLive, settings.animations)
-        todayLiveDetailsPanel?.let {
-            renderTodayLiveExpandedPanel(it, live, unavailable)
+        todayLiveDetailsPanel?.let { details ->
+            renderTodayLiveExpandedPanel(details, live, unavailable)
+            if (todayLiveExpanded) {
+                details.post {
+                    val card = todayLiveCard ?: return@post
+                    details.measure(
+                        View.MeasureSpec.makeMeasureSpec(
+                            card.width.coerceAtLeast(dp(280)),
+                            View.MeasureSpec.EXACTLY
+                        ),
+                        View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+                    )
+                    card.layoutParams = card.layoutParams.apply {
+                        height = (dp(108) + details.measuredHeight + dp(2))
+                            .coerceAtLeast(dp(246))
+                    }
+                    card.requestLayout()
+                }
+            }
         }
 
         if (isLive && live != null) {
@@ -5772,7 +5853,7 @@ class MainActivity : AppCompatActivity() {
             adapter = VideoAdapter(
                 items = sortedVideos,
                 palette = palette,
-                animationsEnabled = settings.animations,
+                animationsEnabled = settings.animations && pendingRootSlide >= 0,
                 progressFor = { playbackProgress(it) },
                 onClick = { item, source -> openPlayer(item, sourceView = source) },
                 onLongClick = { item, source -> showVideoQuickActions(item, source) }
@@ -6107,7 +6188,7 @@ class MainActivity : AppCompatActivity() {
                     accessToken = token,
                     accountLogin = login,
                     palette = palette,
-                    animationsEnabled = settings.animations,
+                    animationsEnabled = settings.animations && pendingRootSlide >= 0,
                     onBack = { closeCurrentPlayerScreen() },
                     onFullscreen = { setFullscreen(it) },
                     onChatScopeMissing = {
@@ -8579,9 +8660,7 @@ class MainActivity : AppCompatActivity() {
                 content.setLayerType(View.LAYER_TYPE_HARDWARE, null)
 
                 val telegramInterpolator = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
-                if (sectionCrossfade || slide != 0) {
-                    // Primary tabs should feel like one stable screen. Crossfade only:
-                    // no horizontal travel, so the whole page never visually "jumps".
+                if (sectionCrossfade) {
                     content.alpha = 0f
                     content.translationX = 0f
                     content.translationY = 0f
@@ -8590,9 +8669,6 @@ class MainActivity : AppCompatActivity() {
                     old.alpha = 1f
                     old.translationX = 0f
                     old.translationY = 0f
-
-                    // Keep the previous section fully stable underneath while
-                    // the new one fades in. This avoids a brightness dip/flicker.
                     content.animate()
                         .alpha(1f)
                         .setDuration(SohrMotion.NORMAL)
@@ -8603,24 +8679,23 @@ class MainActivity : AppCompatActivity() {
                             old.translationX = 0f
                             old.translationY = 0f
                             content.alpha = 1f
-                            content.translationX = 0f
-                            content.translationY = 0f
                             old.setLayerType(View.LAYER_TYPE_NONE, null)
                             content.setLayerType(View.LAYER_TYPE_NONE, null)
                             if (old.parent === host) host.removeView(old)
                         }
                         .start()
                 } else if (slide < 0) {
-                    // Telegram pop: reveal the previous screen underneath and
-                    // slide/fade only the current screen to the right.
+                    // Real collection pop: keep the rebuilt feed fixed underneath
+                    // and move only the outgoing collection. This removes the
+                    // "double motion" shake on Back.
                     content.alpha = 1f
                     content.translationX = 0f
                     old.alpha = 1f
                     old.translationX = 0f
                     old.animate()
                         .alpha(0f)
-                        .translationX(dp(48).toFloat())
-                        .setDuration(150L)
+                        .translationX(dp(34).toFloat())
+                        .setDuration(210L)
                         .setInterpolator(telegramInterpolator)
                         .withEndAction {
                             old.alpha = 1f
@@ -8631,16 +8706,14 @@ class MainActivity : AppCompatActivity() {
                         }
                         .start()
                 } else {
-                    // Telegram push: previous screen stays in place, the new
-                    // screen fades in while travelling only 48dp from the right.
                     old.alpha = 1f
                     old.translationX = 0f
                     content.alpha = 0f
-                    content.translationX = dp(48).toFloat()
+                    content.translationX = dp(34).toFloat()
                     content.animate()
                         .alpha(1f)
                         .translationX(0f)
-                        .setDuration(150L)
+                        .setDuration(210L)
                         .setInterpolator(telegramInterpolator)
                         .withEndAction {
                             old.setLayerType(View.LAYER_TYPE_NONE, null)
