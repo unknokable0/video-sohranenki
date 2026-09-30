@@ -201,6 +201,7 @@ class MainActivity : AppCompatActivity() {
     private var openTelegramChannelSummary: TelegramChannelSummary? = null
     private var openTelegramPosts: List<TelegramChannelPost> = emptyList()
     private var openTelegramUnreadAtOpen: Int = 0
+    private var openTelegramChannelScrollY: Int = 0
     private var telegramChannelRender: TelegramChannelRender? = null
     private var telegramChannelReturnView: View? = null
     private var telegramAudioPlayer: androidx.media3.exoplayer.ExoPlayer? = null
@@ -345,15 +346,7 @@ class MainActivity : AppCompatActivity() {
                 if (closeCurrentPlayerScreen()) return
 
                 if (auxiliaryScreen == "telegram_channel") {
-                    stopTelegramChannelAudio()
-                    auxiliaryScreen = null
-                    openTelegramChannelSummary = null
-                    openTelegramPosts = emptyList()
-                    telegramChannelRender = null
-                    videoSection = 2
-                    pendingRootSlide = -1
-                    suppressNextRootAnimation = true
-                    showFeed(currentVideos)
+                    closeTelegramChannelToFeed()
                     return
                 }
 
@@ -5656,6 +5649,8 @@ class MainActivity : AppCompatActivity() {
         openTelegramChannelSummary = channel
         openTelegramPosts = emptyList()
         openTelegramUnreadAtOpen = channel.unreadCount.coerceAtLeast(0)
+        openTelegramChannelScrollY =
+            if (openTelegramUnreadAtOpen > 0) 0 else telegramChannelScrollPosition(channel.chatId)
         pendingRootSlide = 1
 
         renderTelegramChannel(channel, loading = true, canLoadOlder = false)
@@ -5701,32 +5696,125 @@ class MainActivity : AppCompatActivity() {
             loading = loading,
             canLoadOlder = canLoadOlder,
             unreadCountAtOpen = openTelegramUnreadAtOpen,
-            onBack = {
-                stopTelegramChannelAudio()
-                val returnView = telegramChannelReturnView
-                auxiliaryScreen = null
-                openTelegramChannelSummary = null
-                openTelegramPosts = emptyList()
-                openTelegramUnreadAtOpen = 0
-                telegramChannelRender = null
-                telegramChannelReturnView = null
-                videoSection = 2
-                pendingRootSlide = -1
-                suppressNextRootAnimation = false
-                if (returnView != null) {
-                    replaceRoot(returnView)
-                } else {
-                    suppressNextRootAnimation = true
-                    showFeed(currentVideos)
-                }
-            },
+            initialScrollY = openTelegramChannelScrollY,
+            onScrollYChanged = { y -> openTelegramChannelScrollY = y },
+            onBack = { closeTelegramChannelToFeed() },
             onLoadOlder = { loadOlderTelegramChannelPosts() },
             onVideo = { post, source -> openTelegramChannelVideo(post, source) },
             onPhoto = { post, source -> openTelegramChannelPhoto(post, source) },
-            onVoice = { post, source -> toggleTelegramChannelAudio(post, source) }
+            onVoice = { post, source -> toggleTelegramChannelAudio(post, source) },
+            onDownload = { post -> downloadTelegramChannelPost(post) },
+            onReact = { post, emoji -> toggleTelegramChannelReaction(post, emoji) }
         )
         telegramChannelRender = render
         replaceRoot(render.root)
+    }
+
+    private fun closeTelegramChannelToFeed() {
+        stopTelegramChannelAudio()
+        val channel = openTelegramChannelSummary
+        channel?.let { saveTelegramChannelScrollPosition(it.chatId, openTelegramChannelScrollY) }
+        val returnView = telegramChannelReturnView
+
+        auxiliaryScreen = null
+        openTelegramChannelSummary = null
+        openTelegramPosts = emptyList()
+        openTelegramUnreadAtOpen = 0
+        openTelegramChannelScrollY = 0
+        telegramChannelRender = null
+        telegramChannelReturnView = null
+        videoSection = 2
+        pendingRootSlide = -1
+        suppressNextRootAnimation = false
+
+        if (returnView != null) {
+            replaceRoot(returnView)
+        } else {
+            suppressNextRootAnimation = true
+            showFeed(currentVideos)
+        }
+    }
+
+    private fun telegramChannelScrollPosition(chatId: Long): Int =
+        getSharedPreferences("sohr_telegram_channel_state", MODE_PRIVATE)
+            .getInt("scroll_$chatId", 0)
+            .coerceAtLeast(0)
+
+    private fun saveTelegramChannelScrollPosition(chatId: Long, scrollY: Int) {
+        getSharedPreferences("sohr_telegram_channel_state", MODE_PRIVATE)
+            .edit()
+            .putInt("scroll_$chatId", scrollY.coerceAtLeast(0))
+            .apply()
+    }
+
+    private fun toggleTelegramChannelReaction(post: TelegramChannelPost, emoji: String) {
+        val hub = telegramChannelHub ?: return
+        val channel = openTelegramChannelSummary ?: return
+        lifecycleScope.launch {
+            val refreshed = hub.toggleReaction(post, emoji) ?: return@launch
+            if (
+                auxiliaryScreen != "telegram_channel" ||
+                openTelegramChannelSummary?.chatId != channel.chatId
+            ) return@launch
+
+            openTelegramPosts = openTelegramPosts.map { existing ->
+                if (existing.message.id == refreshed.message.id) refreshed else existing
+            }
+            renderTelegramChannel(
+                channel = channel,
+                loading = false,
+                canLoadOlder = openTelegramPosts.size >= 60
+            )
+        }
+    }
+
+    private fun downloadTelegramChannelPost(post: TelegramChannelPost) {
+        val fileId = post.fileId ?: return
+        if (fileId <= 0) return
+        lifecycleScope.launch {
+            Toast.makeText(this@MainActivity, "Загрузка началась", Toast.LENGTH_SHORT).show()
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    val loaded = client.send(TdApi.DownloadFile(fileId, 20, 0, 0, true))
+                    val source = loaded.local.path
+                        .takeIf { loaded.local.isDownloadingCompleted && it.isNotBlank() }
+                        ?.let(::File)
+                        ?.takeIf { it.exists() }
+                        ?: error("Файл не загрузился")
+
+                    val pictures = post.mimeType.startsWith("image/", true)
+                    val baseDir = getExternalFilesDir(
+                        if (pictures) Environment.DIRECTORY_PICTURES else Environment.DIRECTORY_MOVIES
+                    ) ?: filesDir
+                    val dir = File(baseDir, "SOHR").apply { mkdirs() }
+                    val ext = when {
+                        post.mimeType.contains("jpeg", true) || post.mimeType.contains("jpg", true) -> "jpg"
+                        post.mimeType.contains("png", true) -> "png"
+                        post.mimeType.contains("webp", true) -> "webp"
+                        post.mimeType.contains("ogg", true) -> "ogg"
+                        post.mimeType.contains("mpeg", true) -> "mp3"
+                        post.mimeType.contains("webm", true) -> "webm"
+                        else -> "mp4"
+                    }
+                    val target = File(dir, "sohr_${post.message.id}.$ext")
+                    source.copyTo(target, overwrite = true)
+                    target
+                }
+            }
+            result.onSuccess { file ->
+                Toast.makeText(
+                    this@MainActivity,
+                    "Скачано • ${file.name}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }.onFailure {
+                Toast.makeText(
+                    this@MainActivity,
+                    "Не удалось скачать файл",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
     }
 
     private fun loadOlderTelegramChannelPosts() {
@@ -8028,6 +8116,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun fallbackReleaseNotes(version: String): String = when (version) {
+        "6.6.0" -> listOf(
+            "Исправлены скрытые Telegram-ссылки за текстом.",
+            "Канал запоминает позицию чтения и возвращает пользователя туда же.",
+            "Добавлены поиск внутри канала, меню поста, реальные реакции и быстрые действия.",
+            "Predictive Back теперь возвращает готовую ленту без повторной пересборки."
+        ).joinToString(" • ")
         "6.5.1" -> listOf(
             "Фоновые уведомления T2x2 и обновлений теперь поддерживаются отдельным лёгким watch-сервисом даже когда интерфейс SOHR закрыт.",
             "WorkManager остаётся резервным каналом, а foreground-watch проверяет эфир чаще без зависимости от открытого Activity.",
