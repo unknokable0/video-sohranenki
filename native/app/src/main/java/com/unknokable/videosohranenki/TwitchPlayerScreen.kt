@@ -24,6 +24,11 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import org.json.JSONObject
 import org.json.JSONTokener
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToLong
 
@@ -41,6 +46,7 @@ class TwitchPlayerScreen(
     val root = FrameLayout(activity)
 
     private val handler = Handler(Looper.getMainLooper())
+    private val playerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val content = LinearLayout(activity)
     private val webView = WebView(activity)
 
@@ -55,6 +61,9 @@ class TwitchPlayerScreen(
     private lateinit var remainingTime: TextView
     private lateinit var qualityButton: TextView
     private lateinit var fullscreenButton: ImageButton
+    private lateinit var copyrightNotice: LinearLayout
+    private lateinit var copyrightNoticeText: TextView
+    private lateinit var copyrightSkip: TextView
 
     private var customView: View? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
@@ -81,6 +90,9 @@ class TwitchPlayerScreen(
     private var gestureConsumed = false
     private var gestureLastTapAt = 0L
     private var gestureLastTapX = 0f
+    private var mutedRanges: List<TwitchMutedRange> = emptyList()
+    private var activeMutedRange: TwitchMutedRange? = null
+    private var copyrightNoticeVisible = false
 
     val isFullscreen: Boolean
         get() = fullscreen || customView != null
@@ -115,6 +127,20 @@ class TwitchPlayerScreen(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
+        )
+
+        copyrightNotice = buildCopyrightNotice()
+        playerCard.addView(
+            copyrightNotice,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            ).apply {
+                marginStart = dp(12)
+                marginEnd = dp(12)
+                bottomMargin = dp(12)
+            }
         )
 
         content.addView(playerCard, normalPlayerLayoutParams())
@@ -155,6 +181,7 @@ class TwitchPlayerScreen(
         )
 
         loadVideo()
+        loadMutedRanges()
         handler.post(progressPoll)
 
         if (animationsEnabled) {
@@ -340,6 +367,144 @@ class TwitchPlayerScreen(
             .build()
             .toString()
         webView.loadUrl(url)
+    }
+
+    private fun buildCopyrightNotice(): LinearLayout {
+        val box = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(11), dp(8), dp(8), dp(8))
+            background = rounded(Color.parseColor("#E61A1820"), 15)
+            visibility = View.GONE
+            alpha = 0f
+            translationY = dp(6).toFloat()
+            elevation = dp(6).toFloat()
+        }
+
+        val copy = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        copy.addView(TextView(activity).apply {
+            text = "Звук заглушён Twitch"
+            textSize = 11.8f
+            includeFontPadding = false
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+        })
+
+        copyrightNoticeText = TextView(activity).apply {
+            text = "Авторские права"
+            textSize = 9.8f
+            includeFontPadding = false
+            setTextColor(Color.parseColor("#BFC1CC"))
+            setPadding(0, dp(3), 0, 0)
+        }
+        copy.addView(copyrightNoticeText)
+
+        box.addView(
+            copy,
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        )
+
+        copyrightSkip = TextView(activity).apply {
+            text = "Пропустить"
+            textSize = 10.8f
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            background = rounded(palette.accent, 13)
+            setPadding(dp(10), 0, dp(10), 0)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                val range = activeMutedRange ?: return@setOnClickListener
+                pulse(this)
+                val target = (range.endMs + 250L).coerceAtMost(durationMs)
+                currentMs = target
+                seekTo(target)
+                updateCopyrightNotice()
+            }
+        }
+
+        box.addView(
+            copyrightSkip,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                dp(32)
+            ).apply {
+                marginStart = dp(10)
+            }
+        )
+        return box
+    }
+
+    private fun loadMutedRanges() {
+        playerScope.launch {
+            val ranges = TwitchVodResolver.resolveMutedSegments(videoId)
+            if (destroyed) return@launch
+            mutedRanges = ranges
+            seekBar.setMutedRanges(
+                ranges.map { range ->
+                    range.startMs..range.endMs
+                }
+            )
+            updateCopyrightNotice()
+        }
+    }
+
+    private fun updateCopyrightNotice() {
+        if (!::copyrightNotice.isInitialized) return
+
+        val range = mutedRanges.firstOrNull {
+            currentMs >= it.startMs && currentMs < it.endMs
+        }
+        activeMutedRange = range
+
+        if (range == null) {
+            if (!copyrightNoticeVisible) return
+            copyrightNoticeVisible = false
+            copyrightNotice.animate().cancel()
+            if (animationsEnabled) {
+                copyrightNotice.animate()
+                    .alpha(0f)
+                    .translationY(dp(5).toFloat())
+                    .setDuration(140L)
+                    .withEndAction {
+                        copyrightNotice.visibility = View.GONE
+                    }
+                    .start()
+            } else {
+                copyrightNotice.visibility = View.GONE
+                copyrightNotice.alpha = 0f
+            }
+            return
+        }
+
+        val mutedRemaining = (range.endMs - currentMs).coerceAtLeast(0L)
+        copyrightNoticeText.text =
+            "Авторские права • осталось ${formatMs(mutedRemaining)}"
+        copyrightSkip.text =
+            if (mutedRemaining >= 1_000L) "Пропустить ${formatMs(mutedRemaining)}" else "Пропустить"
+
+        if (copyrightNoticeVisible) return
+        copyrightNoticeVisible = true
+        copyrightNotice.visibility = View.VISIBLE
+        copyrightNotice.animate().cancel()
+        if (animationsEnabled) {
+            copyrightNotice.alpha = 0f
+            copyrightNotice.translationY = dp(6).toFloat()
+            copyrightNotice.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setDuration(180L)
+                .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                .start()
+        } else {
+            copyrightNotice.alpha = 1f
+            copyrightNotice.translationY = 0f
+        }
     }
 
     private fun buildControls(): LinearLayout {
@@ -570,6 +735,7 @@ class TwitchPlayerScreen(
         qualityButton.text =
             if (!manualQualityChosen && bestAvailableQuality() != null) "Лучшее"
             else qualityLabel(currentQuality.ifBlank { "auto" })
+        updateCopyrightNotice()
         activity.window.decorView.keepScreenOn = !paused
     }
 
@@ -879,6 +1045,7 @@ class TwitchPlayerScreen(
         runCatching { if (pipMode || pipHost != null) restoreFromPictureInPicture() }
         persistPosition(force = true)
         destroyed = true
+        playerScope.cancel()
         handler.removeCallbacks(progressPoll)
         activity.window.decorView.keepScreenOn = false
         customView?.let { root.removeView(it) }
