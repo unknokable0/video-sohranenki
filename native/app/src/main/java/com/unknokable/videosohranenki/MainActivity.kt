@@ -167,7 +167,7 @@ class MainActivity : AppCompatActivity() {
     private val twitchAutoRefreshIntervalMs = 180_000L
     private var startupUpdateCheckDone = false
     private var updateAutoCheckJob: kotlinx.coroutines.Job? = null
-    private val automaticUpdateCheckIntervalMs = 2L * 60L * 1000L
+    private val automaticUpdateCheckIntervalMs = 45_000L
     private var onboardingActive = false
     private var videoSection = 1 // 1 home, 2 feed, 3 watched
     private var pendingVideoSectionCrossfade = false
@@ -440,7 +440,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (!startupPhase && !isPlayerScreen && !isSettingsScreen && !isAccountScreen && !isStreakScreen) {
             scheduleFeedAutoRefresh(delayMs = 550L, force = false)
-            scheduleAutomaticUpdateCheck(delayMs = 1_100L, force = false)
+            scheduleAutomaticUpdateCheck(delayMs = 0L, force = false)
         }
     }
 
@@ -4848,7 +4848,7 @@ class MainActivity : AppCompatActivity() {
                 NotificationChannel(
                     T2X2_NOTIFICATION_CHANNEL,
                     "Эфиры T2x2",
-                    NotificationManager.IMPORTANCE_DEFAULT
+                    NotificationManager.IMPORTANCE_HIGH
                 ).apply {
                     description = "Уведомляет, когда T2x2 начинает трансляцию"
                     enableVibration(true)
@@ -4858,7 +4858,7 @@ class MainActivity : AppCompatActivity() {
                 NotificationChannel(
                     UPDATE_NOTIFICATION_CHANNEL,
                     "Обновления SOHR",
-                    NotificationManager.IMPORTANCE_DEFAULT
+                    NotificationManager.IMPORTANCE_HIGH
                 ).apply {
                     description = "Уведомляет о новых версиях SOHR"
                     enableVibration(false)
@@ -4949,7 +4949,9 @@ class MainActivity : AppCompatActivity() {
         if (t2x2WatchJob?.isActive == true) return
 
         t2x2WatchJob = lifecycleScope.launch {
-            delay(1_200L)
+            
+            // Check immediately when SOHR becomes active.
+            delay(0L)
 
             while (isActive) {
                 val clientId = BuildConfig.TWITCH_CLIENT_ID.trim()
@@ -4987,7 +4989,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                delay(8_000L)
+                delay(4_000L)
             }
         }
     }
@@ -8258,8 +8260,8 @@ class MainActivity : AppCompatActivity() {
     }
     companion object {
         private const val TWITCH_REDIRECT_URI = "https://unknokable0.github.io/video-sohranenki/twitch-auth/"
-        private const val T2X2_NOTIFICATION_CHANNEL = "t2x2_live"
-        private const val UPDATE_NOTIFICATION_CHANNEL = "sohr_updates"
+        private const val T2X2_NOTIFICATION_CHANNEL = "t2x2_live_v2"
+        private const val UPDATE_NOTIFICATION_CHANNEL = "sohr_updates_v2"
         private const val T2X2_NOTIFICATION_ID = 2202
         private const val UPDATE_NOTIFICATION_ID = 6304
         private const val T2X2_NOTIFICATION_PERMISSION_REQUEST = 2203
