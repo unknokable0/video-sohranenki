@@ -648,9 +648,9 @@ jobs:
               "native/app/src/main/res/drawable/ic_action_open.xml"
           ).read_text(encoding="utf-8")
           for required in [
-              'android:strokeWidth="1.8"',
+              'android:strokeWidth="1.7"',
               'android:strokeLineCap="round"',
-              'M18.6,5.4L10.4,13.6'
+              'M18.2,5.8L10.8,13.2'
           ]:
               if required not in external_icon:
                   raise SystemExit(f"SOHR 6.6.8 external-link icon regression: {required}")
@@ -707,6 +707,9 @@ jobs:
           twitch_player = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/TwitchPlayerScreen.kt"
           ).read_text(encoding="utf-8")
+          twitch_live_player = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/TwitchLivePlayerScreen.kt"
+          ).read_text(encoding="utf-8")
           gesture_overlay = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/PlayerGestureOverlay.kt"
           ).read_text(encoding="utf-8")
@@ -716,7 +719,7 @@ jobs:
 
           for required in [
               "private lateinit var remainingTime: TextView",
-              'return "До конца " + formatMs(remaining)',
+              'return "Осталось " + formatMs(remaining)',
               "onSwipeUp = {",
               "if (!fullscreen) onFullscreen(true)",
               "onSwipeDown = {",
@@ -727,7 +730,7 @@ jobs:
 
           for required in [
               "private lateinit var remainingTime: TextView",
-              '"До конца " + formatMs',
+              '"Осталось " + formatMs',
               "MotionEvent.ACTION_UP",
               "if (dy < 0f && !fullscreen)",
               "SohrTimeBar(activity, palette.accent)"
@@ -740,9 +743,14 @@ jobs:
               "onVolume",
               "volumeStart",
               "VERTICAL_CONTROL_DP",
-              "adjustStreamVolume"
+              "adjustStreamVolume",
+              "setStreamVolume"
           ]:
-              if forbidden in gesture_overlay or forbidden in twitch_player:
+              if (
+                  forbidden in gesture_overlay or
+                  forbidden in twitch_player or
+                  forbidden in twitch_live_player
+              ):
                   raise SystemExit(f"SOHR 6.6.8 regression: swipe volume control returned: {forbidden}")
 
           if "accentColor: Int =" in time_bar or "255, 0, 51" in time_bar:
@@ -752,7 +760,8 @@ jobs:
               "private fun openGameSearch(gameName: String)",
               '.authority("www.google.com")',
               '.appendQueryParameter("q", "$gameName игра")',
-              "if (activePlayer.isPlaying != true) return"
+              "twitchPlayerScreen?.isPlayingForPictureInPicture() == true",
+              "twitchLivePlayerScreen?.isPlayingForPictureInPicture() == true"
           ]:
               if required not in sohr_main:
                   raise SystemExit(f"SOHR 6.6.8 game-search/PiP regression: {required}")
@@ -777,6 +786,29 @@ jobs:
           ]:
               if required not in twitch_player:
                   raise SystemExit(f"SOHR 6.6.8 Twitch VOD gesture/orientation regression: {required}")
+
+          for required in [
+              "fun prepareForPictureInPicture(): Boolean",
+              "fun restoreFromPictureInPicture()",
+              "fun isPlayingForPictureInPicture(): Boolean",
+              "root.visibility = View.INVISIBLE",
+              "controlsCard.visibility = View.GONE",
+              "gestureLastTapAt",
+              "now - gestureLastTapAt <= 320L"
+          ]:
+              if required not in twitch_player:
+                  raise SystemExit(f"SOHR 6.6.8 Twitch VOD PiP/double-tap regression: {required}")
+
+          for required in [
+              "fun prepareForPictureInPicture(): Boolean",
+              "fun restoreFromPictureInPicture()",
+              "fun isPlayingForPictureInPicture(): Boolean",
+              "root.visibility = View.INVISIBLE",
+              "controlsOverlay.visibility = View.GONE",
+              "audioToggle.visibility = View.GONE"
+          ]:
+              if required not in twitch_live_player:
+                  raise SystemExit(f"SOHR 6.6.8 Twitch live PiP regression: {required}")
 
           for required in [
               "dragScrubActive",
@@ -1384,7 +1416,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.6.8 • в обычном плеере и Twitch VOD видно сколько осталось до конца • fullscreen автоматически возвращается в портрет при выходе • свайп вверх открывает fullscreen, свайп вниз из fullscreen возвращает обычный режим • двойной тап ±10 сек, удержание 2× и pinch-to-fill сохранены • регулировка системной громкости свайпом полностью удалена • игра из истории T2x2 открывает Google-поиск по названию игры • иконка внешнего перехода выровнена • прогресс Twitch VOD и карточек использует цвет выбранной темы • также включены исправления 6.6.7: таймлайн T2x2 без обрезания, интервалы с–до, плавный Back из сборников и Source-качество Twitch"
+            "notes": "SOHR 6.6.8 • обычный плеер и Twitch VOD показывают Осталось до конца • fullscreen автоматически возвращает телефон в портрет • двойной тап ±10 сек, горизонтальная перемотка, удержание 2×, pinch fit/fill и свайпы fullscreen/mini работают без регулировки громкости • Android PiP теперь показывает именно видео для Telegram, Twitch VOD и Twitch live, а не уменьшенный интерфейс SOHR • игра из истории T2x2 открывает Google-поиск по названию игры + игра • ссылка получила ровную отдельную кнопку • прогресс следует выбранной теме • включены исправления 6.6.7: таймлайн T2x2 без обрезания, интервалы с–до, плавный Back из сборников и Source-качество Twitch"
           }
           EOF
           cat update.json
