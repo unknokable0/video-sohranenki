@@ -185,6 +185,7 @@ class MainActivity : AppCompatActivity() {
     private var inlinePreviewStop: Runnable? = null
     private var feedSearchOpen = false
     private var closeFeedSearch: (() -> Boolean)? = null
+    private var activeSearchInput: EditText? = null
     private var searchSystemBackCallback: android.window.OnBackInvokedCallback? = null
     private var predictiveBackTarget: View? = null
     private var twitchNetworkCooldownUntilElapsed = 0L
@@ -633,7 +634,19 @@ class MainActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT < 33 || searchSystemBackCallback != null) return
 
         val callback = android.window.OnBackInvokedCallback {
-            if (feedSearchOpen) {
+            if (!feedSearchOpen) return@OnBackInvokedCallback
+
+            val input = activeSearchInput
+            val imeVisible = input?.let {
+                ViewCompat.getRootWindowInsets(it)
+                    ?.isVisible(WindowInsetsCompat.Type.ime())
+            } == true
+
+            if (imeVisible && input != null) {
+                (getSystemService(INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager)
+                    ?.hideSoftInputFromWindow(input.windowToken, 0)
+                input.clearFocus()
+            } else {
                 closeFeedSearch?.invoke()
             }
         }
@@ -2843,6 +2856,7 @@ class MainActivity : AppCompatActivity() {
             searchInput,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46))
         )
+        activeSearchInput = searchInput
 
         val chipsScroll = android.widget.HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
@@ -7321,8 +7335,8 @@ class MainActivity : AppCompatActivity() {
                 content.setLayerType(View.LAYER_TYPE_HARDWARE, null)
 
                 val telegramInterpolator = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
-                if (sectionCrossfade) {
-                    // Top sections should feel like one stable screen. Crossfade only:
+                if (sectionCrossfade || slide != 0) {
+                    // Primary tabs should feel like one stable screen. Crossfade only:
                     // no horizontal travel, so the whole page never visually "jumps".
                     content.alpha = 0f
                     content.translationX = 0f
