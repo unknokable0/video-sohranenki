@@ -132,7 +132,7 @@ class VideoAdapter(
             background = GradientDrawable().apply { setColor(Color.parseColor("#66000000")) }
         }
         val progressFill = View(context).apply {
-            background = GradientDrawable().apply { setColor(Color.parseColor("#FF0033")) }
+            background = GradientDrawable().apply { setColor(palette.accent) }
         }
         progressTrack.addView(
             progressFill,
