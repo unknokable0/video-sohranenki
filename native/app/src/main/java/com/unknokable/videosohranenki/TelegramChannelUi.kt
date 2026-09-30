@@ -130,25 +130,39 @@ object TelegramChannelUi {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
             }
+            val channelTitle = TextView(activity).apply {
+                text = channel.title
+                textSize = 16.2f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(palette.text)
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                includeFontPadding = false
+            }
             nameLine.addView(
-                TextView(activity).apply {
-                    text = channel.title
-                    textSize = 16.2f
-                    setTypeface(typeface, Typeface.BOLD)
-                    setTextColor(palette.text)
-                    maxLines = 1
-                    ellipsize = android.text.TextUtils.TruncateAt.END
-                    includeFontPadding = false
-                },
-                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                channelTitle,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
             )
             if (channel.verified) {
+                val badge = verifiedBadge(activity, palette.accent, 18)
                 nameLine.addView(
-                    verifiedBadge(activity, palette.accent, 18),
+                    badge,
                     LinearLayout.LayoutParams(dp(activity, 18), dp(activity, 18)).apply {
                         marginStart = dp(activity, 6)
                     }
                 )
+                nameLine.post {
+                    val available = (nameLine.width - dp(activity, 24)).coerceAtLeast(dp(activity, 72))
+                    if (channelTitle.maxWidth != available) channelTitle.maxWidth = available
+                }
+            } else {
+                nameLine.post {
+                    val available = nameLine.width.coerceAtLeast(dp(activity, 72))
+                    if (channelTitle.maxWidth != available) channelTitle.maxWidth = available
+                }
             }
             center.addView(nameLine)
 
