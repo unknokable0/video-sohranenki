@@ -289,13 +289,9 @@ class TwitchPlayerScreen(
                     val dx = event.x - gestureDownX
                     val dy = event.y - gestureDownY
                     val verticalThreshold = dp(72).toFloat()
-                    val horizontalThreshold = dp(58).toFloat()
 
-                    if (abs(dx) > horizontalThreshold && abs(dx) > abs(dy) * 1.25f) {
-                        seekBy(if (dx > 0f) 10_000L else -10_000L)
-                        return@setOnTouchListener true
-                    }
-
+                    // Horizontal dragging over the video never seeks.
+                    // Seeking stays on the timeline and double-tap ±10 seconds.
                     if (abs(dy) > verticalThreshold && abs(dy) > abs(dx) * 1.25f) {
                         // Vertical gestures only navigate fullscreen. They never
                         // change system/media volume.
