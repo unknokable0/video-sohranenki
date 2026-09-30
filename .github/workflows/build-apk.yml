@@ -689,7 +689,7 @@ jobs:
           manifest = Path("native/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
           styles = Path("native/app/src/main/res/values/styles.xml").read_text(encoding="utf-8")
           gradle_file = Path("native/app/build.gradle.kts").read_text(encoding="utf-8")
-          brand_file = Path("native/app/src/main/res/drawable-nodpi/sohr_brand_logo_v2.webp")
+          brand_file = Path("native/app/src/main/res/drawable-nodpi/sohr_brand_logo_v3.webp")
           loader = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/LoadingWaveView.kt"
           ).read_text(encoding="utf-8")
@@ -701,8 +701,8 @@ jobs:
               raise SystemExit("SOHR 6.2.6 brand artwork is not a valid WebP")
 
           for required in [
-              'android:icon="@drawable/sohr_brand_logo_v2"',
-              'android:roundIcon="@drawable/sohr_brand_logo_v2"',
+              'android:icon="@drawable/sohr_brand_logo_v3"',
+              'android:roundIcon="@drawable/sohr_brand_logo_v3"',
               'android:theme="@style/AppTheme.Starting"',
               "android.permission.ACCESS_NETWORK_STATE"
           ]:
@@ -1024,7 +1024,7 @@ jobs:
           if obsolete_splash.exists():
               raise SystemExit("SOHR 6.2.8 regression: obsolete static splash mark file returned")
 
-          icon = Path("native/app/src/main/res/drawable-nodpi/sohr_brand_logo_v2.webp")
+          icon = Path("native/app/src/main/res/drawable-nodpi/sohr_brand_logo_v3.webp")
           if not icon.is_file() or icon.stat().st_size < 4096:
               raise SystemExit(f"SOHR 6.3.4 launcher asset missing or too small: {icon}")
 
