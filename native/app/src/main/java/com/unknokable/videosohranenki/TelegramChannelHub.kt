@@ -68,7 +68,7 @@ class TelegramChannelHub(
     fun cachedSummary(chatId: Long): TelegramChannelSummary? = summaries[chatId]
 
     fun cachedPosts(chatId: Long): List<TelegramChannelPost> =
-        postsByChatId[chatId].orEmpty()
+        synchronized(postsByChatId) { postsByChatId[chatId].orEmpty() }
 
     fun cachedChannels(): List<TelegramChannelSummary> =
         summaries.values.sortedWith(
@@ -98,9 +98,8 @@ class TelegramChannelHub(
         val safeLimit = limit.coerceIn(6, 30)
         val chatIds = summaries.keys.toList()
         for (chatId in chatIds) {
-            if (postsByChatId[chatId].isNullOrEmpty()) {
-                runCatching { loadPosts(chatId, limit = safeLimit) }
-            }
+            val empty = synchronized(postsByChatId) { postsByChatId[chatId].isNullOrEmpty() }
+            if (empty) runCatching { loadPosts(chatId, limit = safeLimit) }
         }
     }
 
@@ -159,13 +158,15 @@ class TelegramChannelHub(
             }
             .sortedWith(compareBy<TelegramChannelPost> { it.message.date }.thenBy { it.message.id })
 
-        if (fromMessageId == 0L) {
-            postsByChatId[chatId] = loaded
-        } else if (loaded.isNotEmpty()) {
-            postsByChatId[chatId] = (loaded + postsByChatId[chatId].orEmpty())
-                .distinctBy { it.message.id }
-                .sortedWith(compareBy<TelegramChannelPost> { it.message.date }.thenBy { it.message.id })
-                .takeLast(160)
+        synchronized(postsByChatId) {
+            if (fromMessageId == 0L) {
+                postsByChatId[chatId] = loaded
+            } else if (loaded.isNotEmpty()) {
+                postsByChatId[chatId] = (loaded + postsByChatId[chatId].orEmpty())
+                    .distinctBy { it.message.id }
+                    .sortedWith(compareBy<TelegramChannelPost> { it.message.date }.thenBy { it.message.id })
+                    .takeLast(160)
+            }
         }
         loaded
     }
@@ -175,10 +176,12 @@ class TelegramChannelHub(
 
         val post = runCatching { toPost(message) }.getOrNull()
         if (post != null) {
-            postsByChatId[message.chatId] = (postsByChatId[message.chatId].orEmpty() + post)
-                .distinctBy { it.message.id }
-                .sortedWith(compareBy<TelegramChannelPost> { it.message.date }.thenBy { it.message.id })
-                .takeLast(160)
+            synchronized(postsByChatId) {
+                postsByChatId[message.chatId] = (postsByChatId[message.chatId].orEmpty() + post)
+                    .distinctBy { it.message.id }
+                    .sortedWith(compareBy<TelegramChannelPost> { it.message.date }.thenBy { it.message.id })
+                    .takeLast(160)
+            }
         }
         val old = summaries[message.chatId]
         if (old != null) {
