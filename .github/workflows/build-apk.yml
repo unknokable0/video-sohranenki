@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.4.0: native Telegram channels inside SOHR
+# SOHR 6.4.1: Telegram-style channel list inside SOHR
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.4.0 version
+      - name: Assign SOHR 6.4.1 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=640000" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.4.0" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=640001" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.4.1" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -444,7 +444,9 @@ jobs:
               "TdApi.ViewMessages",
               "absorbNewMessage",
               "MessageVideoNote",
-              "MessageVoiceNote"
+              "MessageVoiceNote",
+              "lastMessagePreviewPath",
+              "listPreviewFileId"
           ]:
               if required not in channel_hub:
                   raise SystemExit(f"SOHR 6.4.0 Telegram channel hub regression: {required}")
@@ -452,7 +454,9 @@ jobs:
               "buildDirectory",
               "buildChannel",
               "buildPostCard",
-              '"Посты Telegram прямо внутри SOHR"'
+              "channel.lastMessagePreviewPath",
+              "dp(activity, 60)",
+              "marginStart = dp(activity, 86)"
           ]:
               if required not in channel_ui:
                   raise SystemExit(f"SOHR 6.4.0 Telegram channel UI regression: {required}")
@@ -988,7 +992,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "Лента стала полноценным каталогом Telegram-каналов @t2x2_video, @beerloga_t2x2, @t2xtwitch и @wT2x2 • аватар, название, верификация, последнее сообщение, время и непрочитанное берутся из Telegram • каналы и история открываются внутри SOHR • новые посты приходят через TDLib UpdateNewMessage без ожидания 15-секундного опроса • поддержаны текст, фото, видео, кружки, голосовые, GIF, аудио, файлы, стикеры и опросы • фото, видео и голосовые открываются и воспроизводятся внутри SOHR"
+            "notes": "Лента теперь выглядит как список каналов Telegram в стиле SOHR • убраны отдельные карточки, строки стали компактными и цельными • крупная круглая аватарка, название, верификация, время и непрочитанные отображаются как в списке чатов • последнее фото или видео показывается мини-превью рядом с текстом последнего поста • канал открывается внутри SOHR, история и realtime TDLib-обновления сохранены"
           }
           EOF
           cat update.json
