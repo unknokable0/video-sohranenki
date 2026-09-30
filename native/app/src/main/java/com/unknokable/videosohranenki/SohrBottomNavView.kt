@@ -180,9 +180,11 @@ class SohrBottomNavView(
 
         if (target == selectedIndex) {
             updateStates(selectedIndex)
-            // A user tap may already be animating the indicator. Do not cancel
-            // that transition just because the destination screen rendered.
-            if (!animate) positionIndicator(false)
+            // The screen can render before the indicator finishes moving.
+            // Never snap/cancel an active user transition.
+            if (indicatorAnimator?.isRunning != true) {
+                positionIndicator(false)
+            }
             return
         }
 
@@ -209,7 +211,7 @@ class SohrBottomNavView(
             val from = indicator.translationX
             val to = target * slot
             indicatorAnimator = ValueAnimator.ofFloat(from, to).apply {
-                duration = 105L
+                duration = SohrMotion.NORMAL
                 interpolator = smoothInterpolator
                 addUpdateListener { indicator.translationX = it.animatedValue as Float }
                 start()
@@ -235,13 +237,13 @@ class SohrBottomNavView(
         column.animate()
             .scaleX(0.955f)
             .scaleY(0.955f)
-            .setDuration(45L)
+            .setDuration(SohrMotion.FAST / 2)
             .setInterpolator(smoothInterpolator)
             .withEndAction {
                 column.animate()
                     .scaleX(1f)
                     .scaleY(1f)
-                    .setDuration(90L)
+                    .setDuration(SohrMotion.FAST)
                     .setInterpolator(smoothInterpolator)
                     .start()
             }
@@ -317,7 +319,7 @@ class SohrBottomNavView(
             }
             indicator.animate()
                 .scaleY(1f)
-                .setDuration(105L)
+                .setDuration(SohrMotion.NORMAL)
                 .setInterpolator(smoothInterpolator)
                 .start()
         } else {
