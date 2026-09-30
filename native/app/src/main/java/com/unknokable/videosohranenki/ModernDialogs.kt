@@ -139,12 +139,19 @@ object ModernDialogs {
         val rowSlot = dp(context, choiceMinHeight + 6)
         val visibleRows = if (compactLandscape) 3 else 5
         val naturalHeight = options.size * rowSlot + dp(context, 10)
-        val screenCap = (
-            context.resources.displayMetrics.heightPixels *
-                if (compactLandscape) 0.62f else 0.52f
-            ).toInt()
         val wholeRowsCap = visibleRows * rowSlot + dp(context, 10)
-        scroll.limitHeight(minOf(naturalHeight, screenCap, wholeRowsCap))
+
+        // In landscape never cut through the last visible option. Three full
+        // rows + the inner bottom inset fit comfortably and keep the rounded
+        // lower edge visually clean; the rest scrolls below.
+        val targetHeight = if (compactLandscape) {
+            minOf(naturalHeight, wholeRowsCap)
+        } else {
+            val screenCap =
+                (context.resources.displayMetrics.heightPixels * 0.52f).toInt()
+            minOf(naturalHeight, screenCap, wholeRowsCap)
+        }
+        scroll.limitHeight(targetHeight)
     }
 
     fun showAppearancePicker(
