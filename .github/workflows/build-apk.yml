@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.4.4: final Telegram feed polish, unread badge and verified alignment
+# SOHR 6.5.0: new brand avatar and Telegram album/navigation polish
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.4.4 version
+      - name: Assign SOHR 6.5.0 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=640004" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.4.4" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=650000" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.5.0" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -448,7 +448,10 @@ jobs:
               "lastMessagePreviewPath",
               "listPreviewFileId",
               "subscriberCount",
-              "memberCount"
+              "memberCount",
+              "mediaAlbumId = message.mediaAlbumId",
+              "editDate = message.editDate",
+              "isPinned = message.isPinned"
           ]:
               if required not in channel_hub:
                   raise SystemExit(f"SOHR 6.4.0 Telegram channel hub regression: {required}")
@@ -465,7 +468,14 @@ jobs:
               "dayLabel",
               "dp(activity, 268)",
               "val channelTitle = TextView(activity)",
-              "channelTitle.maxWidth"
+              "channelTitle.maxWidth",
+              "buildAlbumCard",
+              "unreadCountAtOpen",
+              '"Новые сообщения"',
+              '"К последним сообщениям"',
+              '"Закреплено"',
+              '"изменено • $time"',
+              '"Текст скопирован"'
           ]:
               if required not in channel_ui:
                   raise SystemExit(f"SOHR 6.4.0 Telegram channel UI regression: {required}")
@@ -491,6 +501,14 @@ jobs:
           ]:
               if required not in sohr_main:
                   raise SystemExit(f"SOHR 6.4.3 unread feed badge regression: {required}")
+
+          for required in [
+              "openTelegramUnreadAtOpen",
+              "unreadCountAtOpen = openTelegramUnreadAtOpen",
+              '"6.5.0" -> listOf('
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.5.0 Telegram album/navigation regression: {required}")
 
           settings_screen = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/SettingsScreen.kt"
@@ -1023,7 +1041,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "Финальная полировка Telegram-ленты • живой счётчик непрочитанных возле вкладки Лента работает как у папок Telegram • галочка верификации теперь стоит ровно сразу возле имени канала, а длинные названия аккуратно обрезаются • лента доступна и в режиме Twitch, и в Telegram • внутри каналов есть подписчики, Сегодня/Вчера/даты, крупные медиа, реакции, просмотры, время, кликабельные ссылки/email/@упоминания и плавные SOHR-анимации"
+            "notes": "SOHR 6.5.0 • новая аватарка приложения • Telegram-фото и видео с одним mediaAlbumId объединяются в один альбом • внутри канала появился разделитель Новые сообщения и плавающая кнопка перехода к последним постам • закреплённые посты и изменённые сообщения помечаются • долгое нажатие копирует текст • ссылки/email/@упоминания остаются кликабельными • realtime-обновления пересобирают альбомы без распада на отдельные карточки"
           }
           EOF
           cat update.json
