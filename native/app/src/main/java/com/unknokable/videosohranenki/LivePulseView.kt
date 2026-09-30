@@ -26,10 +26,10 @@ class LivePulseView(context: Context) : View(context) {
     private var live = false
     private var animations = true
     private var phase = 0f
-    private var liveColor = Color.parseColor("#7C83FF")
+    private var liveColor = Color.parseColor("#FF304F")
 
     private val animator = ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = 1450L
+        duration = 1560L
         repeatCount = ValueAnimator.INFINITE
         interpolator = LinearInterpolator()
         addUpdateListener {
@@ -82,7 +82,7 @@ class LivePulseView(context: Context) : View(context) {
 
         if (animations) {
             drawWave(canvas, cx, cy, phase)
-            drawWave(canvas, cx, cy, (phase + 0.72f) % 1f)
+            drawWave(canvas, cx, cy, (phase + 0.34f) % 1f)
 
             glowPaint.color = withAlpha(liveColor, 36)
             canvas.drawCircle(cx, cy, dp(4.9f), glowPaint)
@@ -107,11 +107,12 @@ class LivePulseView(context: Context) : View(context) {
     }
 
     private fun drawWave(canvas: Canvas, cx: Float, cy: Float, wavePhase: Float) {
-        val eased = 1f - (1f - wavePhase) * (1f - wavePhase)
-        val radius = dp(5.6f + eased * 6.6f)
-        val alpha = ((1f - wavePhase) * 72f).toInt().coerceIn(0, 72)
+        val eased = wavePhase * wavePhase * (3f - 2f * wavePhase)
+        val radius = dp(5.25f + eased * 7.5f)
+        val fade = (1f - eased)
+        val alpha = (fade * fade * 78f).toInt().coerceIn(0, 78)
         ringPaint.color = withAlpha(liveColor, alpha)
-        ringPaint.strokeWidth = dp(1.05f - 0.25f * wavePhase)
+        ringPaint.strokeWidth = dp(1.05f - 0.28f * eased)
         canvas.drawCircle(cx, cy, radius, ringPaint)
     }
 
