@@ -50,6 +50,7 @@ class TwitchPlayerScreen(
     private lateinit var seekBar: SohrTimeBar
     private lateinit var currentTime: TextView
     private lateinit var totalTime: TextView
+    private lateinit var remainingTime: TextView
     private lateinit var qualityButton: TextView
     private lateinit var fullscreenButton: ImageButton
 
@@ -312,6 +313,16 @@ class TwitchPlayerScreen(
             minWidth = dp(44)
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
         }
+        remainingTime = TextView(activity).apply {
+            text = remainingTimeLabel(currentMs, durationMs)
+            textSize = 9.8f
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            background = rounded(Color.parseColor("#55221A30"), 12)
+            setPadding(dp(7), 0, dp(7), 0)
+        }
 
         qualityButton = TextView(activity).apply {
             text = "Авто"
@@ -365,6 +376,12 @@ class TwitchPlayerScreen(
         times.addView(totalTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)).apply {
             marginStart = dp(4)
         })
+        times.addView(
+            remainingTime,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(25)).apply {
+                marginStart = dp(5)
+            }
+        )
         times.addView(View(activity), LinearLayout.LayoutParams(0, 1, 1f))
         times.addView(actionGroup, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)))
         box.addView(times)
@@ -473,6 +490,7 @@ class TwitchPlayerScreen(
             currentTime.text = formatMs(currentMs)
         }
         totalTime.text = formatMs(durationMs)
+        remainingTime.text = remainingTimeLabel(currentMs, durationMs)
         qualityButton.text = qualityLabel(currentQuality.ifBlank { "auto" })
         activity.window.decorView.keepScreenOn = !paused
     }
@@ -519,6 +537,7 @@ class TwitchPlayerScreen(
                     seekTo(0L)
                     currentMs = 0L
                     currentTime.text = formatMs(0L)
+                    remainingTime.text = remainingTimeLabel(0L, durationMs)
                     seekBar.setProgress(0L, durationMs, bufferedMs)
                 }
             }
@@ -535,6 +554,7 @@ class TwitchPlayerScreen(
         val target = (currentMs + deltaMs).coerceIn(0L, durationMs.coerceAtLeast(0L))
         currentMs = target
         currentTime.text = formatMs(target)
+        remainingTime.text = remainingTimeLabel(target, durationMs)
         seekBar.setProgress(target, durationMs, bufferedMs)
         seekTo(target)
     }
@@ -675,6 +695,9 @@ class TwitchPlayerScreen(
             }
             .start()
     }
+
+    private fun remainingTimeLabel(positionMs: Long, durationMs: Long): String =
+        "ост. " + formatMs((durationMs - positionMs).coerceAtLeast(0L))
 
     private fun formatMs(ms: Long): String {
         val safe = ms.coerceAtLeast(0L)
