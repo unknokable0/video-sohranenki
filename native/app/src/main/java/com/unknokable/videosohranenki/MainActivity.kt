@@ -4292,7 +4292,7 @@ class MainActivity : AppCompatActivity() {
                 imageTintList = android.content.res.ColorStateList.valueOf(purple)
                 scaleType = ImageView.ScaleType.CENTER_INSIDE
             },
-            LinearLayout.LayoutParams(dp(17), dp(17)).apply {
+            LinearLayout.LayoutParams(dp(16), dp(16)).apply {
                 marginStart = dp(7)
             }
         )
