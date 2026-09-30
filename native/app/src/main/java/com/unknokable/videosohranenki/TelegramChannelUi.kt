@@ -5,6 +5,8 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.text.method.LinkMovementMethod
+import android.text.util.Linkify
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -20,6 +22,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import java.util.regex.Pattern
 
 data class TelegramChannelRender(
     val root: View,
@@ -141,15 +144,7 @@ object TelegramChannelUi {
             )
             if (channel.verified) {
                 nameLine.addView(
-                    TextView(activity).apply {
-                        text = "✓"
-                        textSize = 10.5f
-                        gravity = Gravity.CENTER
-                        setTypeface(typeface, Typeface.BOLD)
-                        setTextColor(Color.WHITE)
-                        background = oval(palette.accent)
-                        includeFontPadding = false
-                    },
+                    verifiedBadge(activity, palette.accent, 18),
                     LinearLayout.LayoutParams(dp(activity, 18), dp(activity, 18)).apply {
                         marginStart = dp(activity, 6)
                     }
@@ -341,21 +336,20 @@ object TelegramChannelUi {
             includeFontPadding = false
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         if (channel.verified) {
-            titleLine.addView(TextView(activity).apply {
-                text = "✓"
-                textSize = 9.5f
-                gravity = Gravity.CENTER
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(Color.WHITE)
-                background = oval(palette.accent)
-                includeFontPadding = false
-            }, LinearLayout.LayoutParams(dp(activity, 16), dp(activity, 16)).apply {
-                marginStart = dp(activity, 5)
-            })
+            titleLine.addView(
+                verifiedBadge(activity, palette.accent, 17),
+                LinearLayout.LayoutParams(dp(activity, 17), dp(activity, 17)).apply {
+                    marginStart = dp(activity, 5)
+                }
+            )
         }
         titleBlock.addView(titleLine)
         titleBlock.addView(TextView(activity).apply {
-            text = "@${channel.username}"
+            text = if (channel.subscriberCount > 0) {
+                subscriberLabel(channel.subscriberCount)
+            } else {
+                "@${channel.username}"
+            }
             textSize = 11f
             setTextColor(palette.muted)
             includeFontPadding = false
@@ -418,9 +412,46 @@ object TelegramChannelUi {
                 setPadding(0, dp(activity, 42), 0, dp(activity, 42))
             })
         } else {
-            posts.forEach { post ->
+            var lastDayKey = ""
+            posts.forEachIndexed { index, post ->
+                val currentDayKey = dayKey(post.message.date)
+                if (currentDayKey != lastDayKey) {
+                    messagesHost.addView(
+                        TextView(activity).apply {
+                            text = dayLabel(post.message.date)
+                            textSize = 12f
+                            gravity = Gravity.CENTER
+                            setTypeface(typeface, Typeface.BOLD)
+                            setTextColor(palette.text)
+                            background = rounded(palette.surfaceAlt, 13)
+                            includeFontPadding = false
+                            setPadding(dp(activity, 12), dp(activity, 5), dp(activity, 12), dp(activity, 5))
+                        },
+                        LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                            gravity = Gravity.CENTER_HORIZONTAL
+                            topMargin = if (index == 0) 0 else dp(activity, 5)
+                            bottomMargin = dp(activity, 8)
+                        }
+                    )
+                    lastDayKey = currentDayKey
+                }
+
+                val card = buildPostCard(activity, settings, post, onVideo, onPhoto, onVoice)
+                if (settings.animations) {
+                    card.alpha = 0f
+                    card.translationY = dp(activity, 7).toFloat()
+                    card.postDelayed({
+                        if (!card.isAttachedToWindow) return@postDelayed
+                        card.animate()
+                            .alpha(1f)
+                            .translationY(0f)
+                            .setDuration(SohrMotion.NORMAL)
+                            .setInterpolator(SohrMotion.smooth())
+                            .start()
+                    }, (index * 24L).coerceAtMost(140L))
+                }
                 messagesHost.addView(
-                    buildPostCard(activity, settings, post, onVideo, onPhoto, onVoice),
+                    card,
                     LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                         bottomMargin = dp(activity, 9)
                     }
@@ -514,7 +545,7 @@ object TelegramChannelUi {
                     if (post.kind == "photo") onPhoto(post, preview) else onVideo(post, preview)
                 }
                 val size = if (isCircle) dp(activity, 188) else ViewGroup.LayoutParams.MATCH_PARENT
-                card.addView(preview, LinearLayout.LayoutParams(size, if (isCircle) dp(activity, 188) else dp(activity, 196)).apply {
+                card.addView(preview, LinearLayout.LayoutParams(size, if (isCircle) dp(activity, 188) else dp(activity, 268)).apply {
                     gravity = if (isCircle) Gravity.CENTER_HORIZONTAL else Gravity.NO_GRAVITY
                     bottomMargin = if (post.text.isBlank()) 0 else dp(activity, 9)
                 })
@@ -567,11 +598,28 @@ object TelegramChannelUi {
         if (showText) {
             card.addView(TextView(activity).apply {
                 text = post.text
-                textSize = 13.8f
+                textSize = 14.4f
                 setTextColor(palette.text)
+                setLinkTextColor(palette.accent)
                 setLineSpacing(0f, 1.08f)
                 setTextIsSelectable(true)
                 includeFontPadding = false
+                enableTelegramLinks(this, palette.accent)
+            })
+        }
+
+        if (post.reactionCount > 0) {
+            card.addView(TextView(activity).apply {
+                text = "♥ " + compact(post.reactionCount)
+                textSize = 12f
+                gravity = Gravity.CENTER
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(palette.text)
+                background = rounded(palette.surfaceAlt, 14)
+                includeFontPadding = false
+                setPadding(dp(activity, 10), dp(activity, 5), dp(activity, 10), dp(activity, 5))
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(activity, 9)
             })
         }
 
@@ -580,27 +628,95 @@ object TelegramChannelUi {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, dp(activity, 9), 0, 0)
         }
-        footer.addView(TextView(activity).apply {
-            text = buildString {
-                if (post.viewCount > 0) append("Просмотры ").append(compact(post.viewCount))
-                if (post.reactionCount > 0) {
-                    if (isNotEmpty()) append("  •  ")
-                    append("Реакции ").append(compact(post.reactionCount))
-                }
-            }
-            textSize = 10.5f
-            setTextColor(palette.muted)
-            includeFontPadding = false
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        val viewsLine = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        if (post.viewCount > 0) {
+            viewsLine.addView(ImageView(activity).apply {
+                setImageResource(R.drawable.ic_visibility)
+                imageTintList = ColorStateList.valueOf(palette.muted)
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+            }, LinearLayout.LayoutParams(dp(activity, 16), dp(activity, 16)).apply {
+                marginEnd = dp(activity, 4)
+            })
+            viewsLine.addView(TextView(activity).apply {
+                text = compact(post.viewCount)
+                textSize = 10.8f
+                setTextColor(palette.muted)
+                includeFontPadding = false
+            })
+        }
+        footer.addView(viewsLine, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         footer.addView(TextView(activity).apply {
             text = time
-            textSize = 10.5f
+            textSize = 10.8f
             setTextColor(palette.muted)
             includeFontPadding = false
         })
         card.addView(footer)
 
         return card
+    }
+
+    private fun verifiedBadge(activity: Activity, accent: Int, sizeDp: Int): ImageView =
+        ImageView(activity).apply {
+            setImageResource(R.drawable.ic_check)
+            imageTintList = ColorStateList.valueOf(Color.WHITE)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            background = oval(accent)
+            val padding = dp(activity, if (sizeDp >= 18) 4 else 3)
+            setPadding(padding, padding, padding, padding)
+            contentDescription = "Подтверждённый канал"
+        }
+
+    @Suppress("DEPRECATION")
+    private fun enableTelegramLinks(textView: TextView, accent: Int) {
+        Linkify.addLinks(textView, Linkify.WEB_URLS or Linkify.EMAIL_ADDRESSES)
+        Linkify.addLinks(
+            textView,
+            Pattern.compile("(?<![A-Za-z0-9_])@([A-Za-z0-9_]{5,32})"),
+            "https://t.me/",
+            null,
+            Linkify.TransformFilter { matcher, _ -> matcher.group(1).orEmpty() }
+        )
+        textView.linksClickable = true
+        textView.movementMethod = LinkMovementMethod.getInstance()
+        textView.highlightColor = Color.TRANSPARENT
+        textView.setLinkTextColor(accent)
+    }
+
+    private fun dayKey(timestamp: Int): String {
+        if (timestamp <= 0) return ""
+        return Instant.ofEpochSecond(timestamp.toLong())
+            .atZone(ZoneId.systemDefault())
+            .toLocalDate()
+            .toString()
+    }
+
+    private fun dayLabel(timestamp: Int): String {
+        if (timestamp <= 0) return ""
+        val zone = ZoneId.systemDefault()
+        val date = Instant.ofEpochSecond(timestamp.toLong()).atZone(zone).toLocalDate()
+        val today = java.time.LocalDate.now(zone)
+        return when (date) {
+            today -> "Сегодня"
+            today.minusDays(1) -> "Вчера"
+            else -> date.format(DateTimeFormatter.ofPattern("dd.MM.yyyy", Locale.getDefault()))
+        }
+    }
+
+    private fun subscriberLabel(count: Int): String {
+        val value = String.format(Locale.US, "%,d", count).replace(',', ' ')
+        val mod100 = count % 100
+        val mod10 = count % 10
+        val suffix = when {
+            mod100 in 11..14 -> "подписчиков"
+            mod10 == 1 -> "подписчик"
+            mod10 in 2..4 -> "подписчика"
+            else -> "подписчиков"
+        }
+        return "$value $suffix"
     }
 
     private fun messageTime(timestamp: Int): String {
