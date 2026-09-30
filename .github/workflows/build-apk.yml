@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.6.11: unified primary navigation motion and Settings stagger
+# SOHR 6.6.12: Twitch copyright-muted timeline and skip UX
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.6.11 version
+      - name: Assign SOHR 6.6.12 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=660011" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.6.11" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=660012" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.6.12" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -656,7 +656,7 @@ jobs:
                   raise SystemExit(f"SOHR 6.6.8 external-link icon regression: {required}")
 
           for required in [
-              '"6.6.11" -> listOf(',
+              '"6.6.12" -> listOf(',
               't2x2LiveAccent = Color.parseColor("#E5484D")',
               "TwitchCategoryTracker",
               "formatCategoryDuration",
@@ -748,6 +748,39 @@ jobs:
           ]:
               if required not in twitch_player:
                   raise SystemExit(f"SOHR 6.6.8 Twitch VOD player regression: {required}")
+
+          twitch_resolver = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/TwitchVodResolver.kt"
+          ).read_text(encoding="utf-8")
+          for required in [
+              "data class TwitchMutedRange(",
+              "suspend fun resolveMutedSegments(",
+              '"-unmuted." in lower',
+              '"-muted." in lower',
+              "parseMutedRanges(media)"
+          ]:
+              if required not in twitch_resolver:
+                  raise SystemExit(f"SOHR 6.6.12 muted-range resolver regression: {required}")
+
+          for required in [
+              "private lateinit var copyrightNotice: LinearLayout",
+              "private fun buildCopyrightNotice()",
+              "private fun loadMutedRanges()",
+              "private fun updateCopyrightNotice()",
+              '"Звук заглушён Twitch"',
+              '"Пропустить',
+              "TwitchVodResolver.resolveMutedSegments(videoId)"
+          ]:
+              if required not in twitch_player:
+                  raise SystemExit(f"SOHR 6.6.12 muted-range player regression: {required}")
+
+          for required in [
+              "private var mutedRangesMs: List<LongRange>",
+              "fun setMutedRanges(",
+              "mutedRangesMs.forEach"
+          ]:
+              if required not in time_bar:
+                  raise SystemExit(f"SOHR 6.6.12 muted-range timeline regression: {required}")
 
           for forbidden in [
               "AudioManager",
@@ -1476,7 +1509,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.6.11 • нижняя навигация Видео/Стрик/Настройки/Аккаунт получила единый мягкий slide + crossfade без движения самой панели • обновления внутри текущей вкладки используют короткий fade вместо резкой подмены • экран Настроек получил лёгкое каскадное появление первых блоков • анимации короткие, синхронные и полностью уважают общую настройку Анимации • сохранены все исправления качества, fullscreen, PiP, themed progress и T2x2 из 6.6.10"
+            "notes": "SOHR 6.6.12 • Twitch VOD заранее определяет участки, где Twitch заглушил звук из-за авторских прав • такие интервалы отмечаются отдельной тонкой полосой на таймлайне • при входе в muted-отрезок появляется компактная карточка Звук заглушён Twitch с оставшимся временем • кнопка Пропустить переводит воспроизведение сразу за конец текущего заглушенного участка • уведомление автоматически скрывается после выхода из него • сохранены все исправления качества, fullscreen, PiP, themed progress, T2x2 и motion из 6.6.11"
           }
           EOF
           cat update.json
