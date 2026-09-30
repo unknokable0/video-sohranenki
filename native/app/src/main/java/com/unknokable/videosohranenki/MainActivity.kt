@@ -429,6 +429,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         startT2x2LiveWatch()
+        startUpdateNotificationWatch()
         if (android.os.Build.VERSION.SDK_INT >= 26 && !isInPictureInPictureMode) {
             stopService(Intent(this, PlaybackKeepAliveService::class.java))
         }
@@ -441,6 +442,17 @@ class MainActivity : AppCompatActivity() {
         if (!startupPhase && !isPlayerScreen && !isSettingsScreen && !isAccountScreen && !isStreakScreen) {
             scheduleFeedAutoRefresh(delayMs = 550L, force = false)
             scheduleAutomaticUpdateCheck(delayMs = 0L, force = false)
+        }
+    }
+
+    private fun startUpdateNotificationWatch() {
+        if (updateNotificationWatchJob?.isActive == true) return
+        updateNotificationWatchJob = lifecycleScope.launch {
+            delay(1_500L)
+            while (isActive) {
+                runCatching { checkForUpdates(manual = false) }
+                delay(60_000L)
+            }
         }
     }
 
@@ -4936,6 +4948,7 @@ class MainActivity : AppCompatActivity() {
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .setCategory(Notification.CATEGORY_EVENT)
+            .setPriority(Notification.PRIORITY_HIGH)
             .setOnlyAlertOnce(true)
             .build()
 
@@ -7865,6 +7878,7 @@ class MainActivity : AppCompatActivity() {
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
             .setCategory(Notification.CATEGORY_STATUS)
+            .setPriority(Notification.PRIORITY_HIGH)
             .build()
 
         manager.notify(UPDATE_NOTIFICATION_ID, notification)
@@ -8260,6 +8274,8 @@ class MainActivity : AppCompatActivity() {
         twitchLiveJob = null
         t2x2WatchJob?.cancel()
         t2x2WatchJob = null
+        updateNotificationWatchJob?.cancel()
+        updateNotificationWatchJob = null
         twitchAuthJob?.cancel()
         twitchAuthJob = null
         streamServer?.stop()
