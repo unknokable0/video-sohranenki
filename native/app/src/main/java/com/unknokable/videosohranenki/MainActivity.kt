@@ -4044,7 +4044,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             } else {
-                "Нажми ещё раз по карточке, чтобы свернуть"
+                "Повторное касание сворачивает карточку"
             }
             textSize = 11.3f
             includeFontPadding = false
