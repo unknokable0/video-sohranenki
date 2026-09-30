@@ -73,6 +73,9 @@ class TwitchPlayerScreen(
     private var bufferedMs = currentMs
     private var qualities: List<String> = emptyList()
     private var currentQuality = ""
+    private var manualQualityChosen = false
+    private var qualityGuardUntil = SystemClock.elapsedRealtime() + 7_000L
+    private var lastBestQualityApplyAt = 0L
     private var lastPersistAt = 0L
     private var gestureDownX = 0f
     private var gestureDownY = 0f
@@ -546,6 +549,7 @@ class TwitchPlayerScreen(
                     }.distinct()
                 }
 
+                enforceBestStartupQuality()
                 updateUi()
                 persistPosition()
 
@@ -568,27 +572,118 @@ class TwitchPlayerScreen(
         activity.window.decorView.keepScreenOn = !paused
     }
 
+    private fun qualityRank(raw: String): Int {
+        val value = raw.lowercase()
+        if (value == "chunked" || value.contains("source") || value.contains("оригинал")) {
+            return 1_000_000
+        }
+        if (value == "auto") return -1
+
+        val height = Regex("""(\d{3,4})p""")
+            .find(value)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.toIntOrNull()
+            ?: 0
+        val fps = when {
+            "120" in value -> 120
+            "60" in value -> 60
+            "50" in value -> 50
+            else -> 30
+        }
+        return height * 1_000 + fps
+    }
+
+    private fun bestAvailableQuality(): String? {
+        val explicit = qualities.filterNot { it.equals("auto", ignoreCase = true) }
+        return explicit.firstOrNull {
+            it.equals("chunked", ignoreCase = true) ||
+                it.contains("source", ignoreCase = true) ||
+                it.contains("оригинал", ignoreCase = true)
+        } ?: explicit.maxByOrNull(::qualityRank)
+    }
+
+    private fun enforceBestStartupQuality() {
+        if (!ready || manualQualityChosen) return
+        if (SystemClock.elapsedRealtime() > qualityGuardUntil) return
+
+        val best = bestAvailableQuality() ?: return
+        val now = SystemClock.elapsedRealtime()
+        val currentRank = qualityRank(currentQuality)
+        val bestRank = qualityRank(best)
+
+        if (
+            !currentQuality.equals(best, ignoreCase = true) &&
+            (currentQuality.equals("auto", ignoreCase = true) || currentRank < bestRank) &&
+            now - lastBestQualityApplyAt >= 650L
+        ) {
+            lastBestQualityApplyAt = now
+            runJs("window.sohr&&window.sohr.setQuality(${JSONObject.quote(best)})")
+            currentQuality = best
+        }
+    }
+
+    private data class QualityChoice(
+        val raw: String,
+        val label: String
+    )
+
     private fun showQualityPicker() {
         if (!ready || qualities.isEmpty()) {
             ModernDialogs.showChoices(
                 activity,
                 palette,
                 "Качество видео",
-                listOf("Авто • Twitch выберет качество"),
+                listOf("Лучшее доступное • загрузка вариантов…"),
                 0
             ) { }
             return
         }
 
-        val available = qualities
-        val labels = available.map(::qualityLabel)
-        val selected = available.indexOf(currentQuality).coerceAtLeast(0)
+        val best = bestAvailableQuality()
+        val choices = buildList {
+            if (best != null) {
+                add(
+                    QualityChoice(
+                        raw = best,
+                        label = "Лучшее доступное  •  ${qualityLabel(best)}"
+                    )
+                )
+            }
 
-        ModernDialogs.showChoices(activity, palette, "Качество видео", labels, selected) { which ->
-            val quality = available.getOrNull(which) ?: return@showChoices
-            runJs("window.sohr&&window.sohr.setQuality(${JSONObject.quote(quality)})")
-            currentQuality = quality
-            qualityButton.text = qualityLabel(quality)
+            qualities
+                .filter { it.equals("auto", ignoreCase = true) }
+                .forEach {
+                    add(QualityChoice(it, "Авто  •  адаптивное качество"))
+                }
+
+            qualities
+                .filterNot { it.equals("auto", ignoreCase = true) }
+                .filterNot { candidate ->
+                    best != null && candidate.equals(best, ignoreCase = true)
+                }
+                .sortedByDescending(::qualityRank)
+                .forEach { quality ->
+                    add(QualityChoice(quality, qualityLabel(quality)))
+                }
+        }
+
+        val selected = choices.indexOfFirst {
+            it.raw.equals(currentQuality, ignoreCase = true)
+        }.coerceAtLeast(0)
+
+        ModernDialogs.showChoices(
+            activity,
+            palette,
+            "Качество видео",
+            choices.map { it.label },
+            selected
+        ) { which ->
+            val choice = choices.getOrNull(which) ?: return@showChoices
+            manualQualityChosen = true
+            runJs("window.sohr&&window.sohr.setQuality(${JSONObject.quote(choice.raw)})")
+            currentQuality = choice.raw
+            qualityButton.text = qualityLabel(choice.raw)
         }
     }
 
