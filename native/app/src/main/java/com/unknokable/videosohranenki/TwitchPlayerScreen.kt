@@ -77,6 +77,8 @@ class TwitchPlayerScreen(
     private var gestureDownX = 0f
     private var gestureDownY = 0f
     private var gestureConsumed = false
+    private var gestureLastTapAt = 0L
+    private var gestureLastTapX = 0f
 
     val isFullscreen: Boolean
         get() = fullscreen || customView != null
@@ -279,6 +281,18 @@ class TwitchPlayerScreen(
                     }
 
                     if (gestureConsumed) return@setOnTouchListener true
+
+                    val now = SystemClock.uptimeMillis()
+                    if (
+                        now - gestureLastTapAt <= 320L &&
+                        abs(event.x - gestureLastTapX) < webView.width * 0.35f
+                    ) {
+                        seekBy(if (event.x >= webView.width / 2f) 10_000L else -10_000L)
+                        gestureLastTapAt = 0L
+                        return@setOnTouchListener true
+                    }
+                    gestureLastTapAt = now
+                    gestureLastTapX = event.x
                 }
                 MotionEvent.ACTION_CANCEL -> gestureConsumed = false
             }
@@ -848,7 +862,7 @@ class TwitchPlayerScreen(
     }
 
     private fun remainingTimeLabel(positionMs: Long, durationMs: Long): String =
-        "До конца " + formatMs((durationMs - positionMs).coerceAtLeast(0L))
+        "Осталось " + formatMs((durationMs - positionMs).coerceAtLeast(0L))
 
     private fun formatMs(ms: Long): String {
         val safe = ms.coerceAtLeast(0L)
