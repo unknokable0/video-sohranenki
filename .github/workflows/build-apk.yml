@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.6.1: T2x2 category timeline, full Telegram photos and channel smoothness
+# SOHR 6.6.2: refined T2x2 pulse and compact player controls
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.6.1 version
+      - name: Assign SOHR 6.6.2 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=660001" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.6.1" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=660002" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.6.2" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -636,7 +636,7 @@ jobs:
                   raise SystemExit(f"SOHR 6.6.0 action icon missing: {icon_name}")
 
           for required in [
-              '"6.6.1" -> listOf(',
+              '"6.6.2" -> listOf(',
               't2x2LiveAccent = Color.parseColor("#FF304F")',
               "TwitchCategoryTracker",
               "formatCategoryDuration",
@@ -646,7 +646,7 @@ jobs:
               "animatePosts = false"
           ]:
               if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.6.1 live/channel polish regression: {required}")
+                  raise SystemExit(f"SOHR 6.6.2 live/channel polish regression: {required}")
 
           live_pulse = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/LivePulseView.kt"
@@ -654,10 +654,10 @@ jobs:
           for required in [
               'liveColor = Color.parseColor("#FF304F")',
               "drawWave(canvas, cx, cy, phase)",
-              "drawWave(canvas, cx, cy, (phase + 0.34f) % 1f)"
+              "drawWave(canvas, cx, cy, (phase + 0.5f) % 1f)"
           ]:
               if required not in live_pulse:
-                  raise SystemExit(f"SOHR 6.6.1 live pulse regression: {required}")
+                  raise SystemExit(f"SOHR 6.6.2 live pulse regression: {required}")
 
           twitch_api = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/TwitchApi.kt"
@@ -1034,9 +1034,9 @@ jobs:
               "native/app/src/main/java/com/unknokable/videosohranenki/SohrTimeBar.kt"
           ).read_text(encoding="utf-8")
           for required in [
-              "val desired = dp(22f).toInt()",
-              "dp(if (scrubbing) 2.5f else 1.5f)",
-              "dp(4.5f)"
+              "val desired = dp(18f).toInt()",
+              "dp(if (scrubbing) 2.2f else 1.35f)",
+              "dp(4f)"
           ]:
               if required not in time_bar:
                   raise SystemExit(f"SOHR 6.3.2 slim timeline regression: {required}")
@@ -1048,11 +1048,11 @@ jobs:
               if required not in time_bar:
                   raise SystemExit(f"SOHR 6.3.0 fine-scrub regression: {required}")
           for required in [
-              'background = rounded("#300A0810", 9)',
-              "LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(30))",
-              'playPause = iconButton(R.drawable.ic_play, "#A30B0A0F", 48)',
+              'background = rounded("#260A0810", 8)',
+              "LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(20))",
+              'playPause = iconButton(R.drawable.ic_play, "#96100E16", 44)',
               "SohrTimeBar(activity, palette.accent)",
-              "bottomMargin = dp(5)"
+              "bottomMargin = dp(4)"
           ]:
               if required not in player:
                   raise SystemExit(f"SOHR 6.3.6 player chrome/accent regression: {required}")
@@ -1215,7 +1215,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.6.1 • T2x2 live-индикатор красный только в самом кружке и его двух аккуратных волнах • live-карточка показывает текущую категорию, время в ней, длительность эфира и предыдущую категорию • видеоплеер стал заметно компактнее: уменьшены play/control-кнопки, панель качества, таймлайн и отступы • Telegram-фото отображаются целиком • реакции только для просмотра • каналы используют прогретый кэш и избегают лишней повторной перерисовки"
+            "notes": "SOHR 6.6.2 • красный цвет используется только у пульсирующего кружка T2x2 и его двух волн • волны выровнены по одинаковой геометрии и половине цикла • панель видеоплеера стала ещё компактнее: уменьшены play, качество, настройки, fullscreen, таймлайн, время и отступы • live-карточка сохраняет категорию, время в ней, длительность эфира и предыдущую категорию"
           }
           EOF
           cat update.json
