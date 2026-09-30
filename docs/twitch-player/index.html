@@ -25,6 +25,26 @@
         try { return call(); } catch (_) { return fallback; }
       }
 
+      function qualityScore(value) {
+        const q = String(value || "").toLowerCase();
+        if (q === "chunked") return 100000;
+        if (q === "auto") return -1;
+        const height = parseInt((q.match(/(\d{3,4})p/) || [])[1] || "0", 10);
+        const fps = /60/.test(q) ? 60 : (/50/.test(q) ? 50 : 30);
+        return height * 100 + fps;
+      }
+
+      function preferBestQuality() {
+        if (!player || !ready) return;
+        const qualities = Array.from(safe(() => player.getQualities(), []) || []).map(String);
+        if (!qualities.length) return;
+        const source = qualities.find(q => q.toLowerCase() === "chunked");
+        const best = source || qualities
+          .filter(q => q.toLowerCase() !== "auto")
+          .sort((a, b) => qualityScore(b) - qualityScore(a))[0];
+        if (best) safe(() => player.setQuality(best), null);
+      }
+
       window.sohr = {
         play() { if (player && ready) safe(() => player.play(), null); },
         pause() { if (player && ready) safe(() => player.pause(), null); },
@@ -66,6 +86,12 @@
 
       player.addEventListener(Twitch.Player.READY, () => {
         ready = true;
+        // Twitch VODs often begin in a conservative Auto rendition. Prefer
+        // Source/Original immediately when the player exposes it; otherwise
+        // select the highest explicit rendition. The user can still change
+        // quality manually from SOHR afterwards.
+        setTimeout(preferBestQuality, 180);
+        setTimeout(preferBestQuality, 900);
         if (start > 0) {
           setTimeout(() => safe(() => player.seek(start), null), 250);
         }
