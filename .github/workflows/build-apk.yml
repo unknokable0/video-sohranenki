@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.3.3: refreshed launcher, stable downloads and continuous cloud loader
+# SOHR 6.3.6: smoother navigation, smarter search back, themed player and faster notifications
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.3.5 version
+      - name: Assign SOHR 6.3.6 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=630005" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.3.5" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=630006" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.3.6" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -545,6 +545,31 @@ jobs:
               if required not in sohr_main:
                   raise SystemExit(f"SOHR 6.3.5 smooth-tabs/nav regression: {required}")
 
+          for required in [
+              "activeSearchInput: EditText?",
+              "ViewCompat.getRootWindowInsets(it)",
+              "WindowInsetsCompat.Type.ime()",
+              "if (sectionCrossfade || slide != 0)",
+              "automaticUpdateCheckIntervalMs = 10L * 60L * 1000L",
+              "delay(20_000L)",
+              "maybeNotifyUpdateAvailable(info)",
+              'setContentTitle("Доступно обновление SOHR " + info.versionName)'
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.3.6 search/nav/notification regression: {required}")
+
+          background_worker = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/SohrBackgroundCheckWorker.kt"
+          ).read_text(encoding="utf-8")
+          for required in [
+              "OneTimeWorkRequestBuilder<SohrBackgroundCheckWorker>()",
+              "enqueueUniqueWork(",
+              "ExistingWorkPolicy.REPLACE",
+              'UNIQUE_IMMEDIATE_WORK = "sohr_background_check_now"'
+          ]:
+              if required not in background_worker:
+                  raise SystemExit(f"SOHR 6.3.6 immediate background-check regression: {required}")
+
           manifest = Path("native/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
           styles = Path("native/app/src/main/res/values/styles.xml").read_text(encoding="utf-8")
           gradle_file = Path("native/app/build.gradle.kts").read_text(encoding="utf-8")
@@ -734,11 +759,13 @@ jobs:
                   raise SystemExit(f"SOHR 6.3.0 fine-scrub regression: {required}")
           for required in [
               'background = rounded("#360A0810", 10)',
-              "LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(18))",
+              "LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(22))",
+              'playPause = iconButton(R.drawable.ic_play, "#A30B0A0F", 58)',
+              "SohrTimeBar(activity, palette.accent)",
               "bottomMargin = dp(7)"
           ]:
               if required not in player:
-                  raise SystemExit(f"SOHR 6.3.5 compact player chrome regression: {required}")
+                  raise SystemExit(f"SOHR 6.3.6 player chrome/accent regression: {required}")
 
           telegram_stream = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/TelegramStreamServer.kt"
@@ -797,8 +824,13 @@ jobs:
           ).read_text(encoding="utf-8")
           if smart_download_icon == update_icon:
               raise SystemExit("SOHR 6.3.3 smart-download icon duplicates update icon")
-          if "M12.8,8.9L10.7,12.7" not in smart_download_icon:
-              raise SystemExit("SOHR 6.3.3 smart-download automation glyph missing")
+          for required in [
+              "M9.6,13.7l1.55,1.55",
+              "M18.65,5.1",
+              "M15.95,7.9"
+          ]:
+              if required not in smart_download_icon:
+                  raise SystemExit(f"SOHR 6.3.6 smart-download automation glyph missing: {required}")
 
           for required in [
               "playbackRecoveryAttempts",
@@ -893,7 +925,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "Убрана двойная анимация верхних вкладок • контент вкладок проявляется мягко без рывка всего экрана • плеер получил единый фон без отдельной ambient-полосы сверху • облако загрузки стало толще и плотнее без неона • движущийся сегмент только замедляется и ускоряется, но не останавливается • стартовое облако увеличено до среднего размера • исправлена устаревшая CI-проверка 6.3.4"
+            "notes": "Поиск теперь сначала скрывает клавиатуру и сохраняет запрос • основные вкладки переключаются мягким crossfade без дёрганий • play/pause стала тёмной полупрозрачной и удобнее • прогресс видео использует выбранный цвет SOHR • уведомления об обновлениях и эфире T2x2 проверяются быстрее • умное скачивание получило новую отдельную иконку • выбор темы и цвета анимирован"
           }
           EOF
           cat update.json
