@@ -729,7 +729,7 @@ object TelegramChannelUi {
                 textSize = 14.4f
                 setTextColor(palette.text)
                 setLineSpacing(0f, 1.08f)
-                setTextIsSelectable(true)
+                setTextIsSelectable(false)
                 includeFontPadding = false
                 setPadding(dp(activity, 4), dp(activity, 9), dp(activity, 4), 0)
                 applyTelegramFormattedText(
@@ -951,7 +951,7 @@ object TelegramChannelUi {
                 setTextColor(palette.text)
                 setLinkTextColor(palette.accent)
                 setLineSpacing(0f, 1.08f)
-                setTextIsSelectable(true)
+                setTextIsSelectable(false)
                 includeFontPadding = false
                 applyTelegramFormattedText(
                     this,
@@ -1054,7 +1054,11 @@ object TelegramChannelUi {
         accent: Int
     ) {
         val raw = formatted?.text?.takeIf { it.isNotBlank() } ?: fallback
-        val spannable = SpannableString(raw)
+        textView.text = raw
+        textView.setTextIsSelectable(false)
+        enableTelegramLinks(textView, accent)
+
+        val spannable = SpannableString(textView.text)
         formatted?.entities.orEmpty().forEach { entity ->
             val start = entity.offset.coerceIn(0, raw.length)
             val end = (entity.offset + entity.length).coerceIn(start, raw.length)
@@ -1078,13 +1082,20 @@ object TelegramChannelUi {
                 is TdApi.TextEntityTypePreCode -> TypefaceSpan("monospace")
                 else -> null
             }
+
             if (span != null) {
+                if (span is URLSpan) {
+                    spannable.getSpans(start, end, URLSpan::class.java).forEach(spannable::removeSpan)
+                }
                 spannable.setSpan(span, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
         }
 
         textView.text = spannable
-        enableTelegramLinks(textView, accent)
+        textView.linksClickable = true
+        textView.movementMethod = LinkMovementMethod.getInstance()
+        textView.highlightColor = Color.TRANSPARENT
+        textView.setLinkTextColor(accent)
     }
 
     @Suppress("DEPRECATION")
