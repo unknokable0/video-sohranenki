@@ -79,11 +79,12 @@ class TelegramChannelHub(
         usernameByChatId[chat.id] = username
         runCatching { client.send(TdApi.OpenChat(chat.id)) }
 
-        val verified = when (val type = chat.type) {
-            is TdApi.ChatTypeSupergroup -> runCatching {
-                client.send(TdApi.GetSupergroup(type.supergroupId)).isVerified
-            }.getOrDefault(false)
-            else -> false
+        val verified = if (chat.type is TdApi.ChatTypeSupergroup) {
+            val type = chat.type as TdApi.ChatTypeSupergroup
+            val supergroup: TdApi.Supergroup = client.send(TdApi.GetSupergroup(type.supergroupId))
+            supergroup.verificationStatus?.isVerified == true
+        } else {
+            false
         }
 
         val avatarPath = downloadPreview(chat.photo?.small?.id)
