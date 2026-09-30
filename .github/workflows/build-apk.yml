@@ -911,8 +911,10 @@ jobs:
               "showDownloadCenter",
               "setupInlinePreviewShelf",
               "liveElapsedLabel",
-              "prefetchNextCandidate",
-              "fraction = 0.15f"
+              "prefetchNextCandidates",
+              "if (metered) 1 else 3",
+              "if (index == 0) 0.18f",
+              "else 0.10f"
           ]:
               if required not in sohr_main:
                   raise SystemExit(f"SOHR 6.2 main-experience regression: {required}")
