@@ -28,9 +28,13 @@ class SohrTimeBar(context: Context, accentColor: Int) : View(context) {
     private var touchStartY = 0f
     private var fineScrub = false
     private var chapterPositionsMs: List<Long> = emptyList()
+    private var mutedRangesMs: List<LongRange> = emptyList()
     private var lastScrubChapterIndex = -1
     private val chapterPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.argb(205, 255, 255, 255)
+    }
+    private val mutedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.rgb(201, 158, 88)
     }
 
     private val density = resources.displayMetrics.density
@@ -45,6 +49,13 @@ class SohrTimeBar(context: Context, accentColor: Int) : View(context) {
             .filter { it > 0L }
             .distinct()
             .sorted()
+        invalidate()
+    }
+
+    fun setMutedRanges(ranges: List<LongRange>) {
+        mutedRangesMs = ranges
+            .filter { it.last > it.first }
+            .sortedBy { it.first }
         invalidate()
     }
 
@@ -88,6 +99,26 @@ class SohrTimeBar(context: Context, accentColor: Int) : View(context) {
             rect.right = playedX
             canvas.drawRoundRect(rect, radius, radius, playedPaint)
         }
+        if (durationMs > 0L && mutedRangesMs.isNotEmpty()) {
+            val bandH = dp(if (scrubbing) 2.6f else 2.0f)
+            val bandY = centerY - dp(5.0f)
+            mutedRangesMs.forEach { range ->
+                val left = width * fractionFor(range.first)
+                val right = width * fractionFor(range.last)
+                if (right > left) {
+                    canvas.drawRoundRect(
+                        left,
+                        bandY - bandH / 2f,
+                        right,
+                        bandY + bandH / 2f,
+                        bandH / 2f,
+                        bandH / 2f,
+                        mutedPaint
+                    )
+                }
+            }
+        }
+
         if (durationMs > 0L && chapterPositionsMs.isNotEmpty()) {
             val chapterH = dp(if (scrubbing) 5f else 3.5f)
             chapterPositionsMs.forEach { chapterMs ->
