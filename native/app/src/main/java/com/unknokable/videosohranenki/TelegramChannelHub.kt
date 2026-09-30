@@ -21,6 +21,12 @@ data class TelegramChannelSummary(
     val lastMessageKind: String = "text"
 )
 
+data class TelegramReactionSnapshot(
+    val emoji: String,
+    val totalCount: Int,
+    val chosen: Boolean
+)
+
 data class TelegramChannelPost(
     val message: TdApi.Message,
     val text: String,
@@ -32,6 +38,7 @@ data class TelegramChannelPost(
     val durationSeconds: Int,
     val viewCount: Int,
     val reactionCount: Int,
+    val reactions: List<TelegramReactionSnapshot>,
     val formattedText: TdApi.FormattedText?,
     val mediaAlbumId: Long,
     val editDate: Int,
@@ -155,6 +162,39 @@ class TelegramChannelHub(
         post
     }
 
+    suspend fun toggleReaction(
+        post: TelegramChannelPost,
+        emoji: String
+    ): TelegramChannelPost? = withContext(Dispatchers.IO) {
+        val selected = post.reactions.firstOrNull { it.emoji == emoji }?.chosen == true
+        val reactionType = TdApi.ReactionTypeEmoji(emoji)
+        runCatching {
+            if (selected) {
+                client.send(
+                    TdApi.RemoveMessageReaction(
+                        post.message.chatId,
+                        post.message.id,
+                        reactionType
+                    )
+                )
+            } else {
+                client.send(
+                    TdApi.AddMessageReaction(
+                        post.message.chatId,
+                        post.message.id,
+                        reactionType,
+                        true,
+                        true
+                    )
+                )
+            }
+            val refreshed = client.send(
+                TdApi.GetMessage(post.message.chatId, post.message.id)
+            )
+            toPost(refreshed)
+        }.getOrNull()
+    }
+
     suspend fun markViewed(chatId: Long, posts: List<TelegramChannelPost>) {
         val ids = posts.map { it.message.id }.filter { it > 0L }.toLongArray()
         if (ids.isEmpty()) return
@@ -258,9 +298,20 @@ class TelegramChannelHub(
 
         val previewPath = downloadPreview(previewFileId)
         val interaction = message.interactionInfo
-        val reactions = interaction?.reactions?.reactions
-            ?.sumOf { it.totalCount.coerceAtLeast(0) }
-            ?: 0
+        val reactionItems = interaction?.reactions?.reactions
+            ?.mapNotNull { reaction ->
+                val emoji = when (val type = reaction.type) {
+                    is TdApi.ReactionTypeEmoji -> type.emoji
+                    else -> null
+                } ?: return@mapNotNull null
+                TelegramReactionSnapshot(
+                    emoji = emoji,
+                    totalCount = reaction.totalCount.coerceAtLeast(0),
+                    chosen = reaction.isChosen
+                )
+            }
+            .orEmpty()
+        val reactions = reactionItems.sumOf { it.totalCount }
 
         return TelegramChannelPost(
             message = message,
@@ -273,6 +324,7 @@ class TelegramChannelHub(
             durationSeconds = duration,
             viewCount = interaction?.viewCount?.coerceAtLeast(0) ?: 0,
             reactionCount = reactions,
+            reactions = reactionItems,
             formattedText = formattedTextOf(message),
             mediaAlbumId = message.mediaAlbumId,
             editDate = message.editDate,
