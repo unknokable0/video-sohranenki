@@ -15,7 +15,9 @@ data class TelegramChannelSummary(
     val unreadCount: Int,
     val lastMessageId: Long,
     val lastMessageDate: Int,
-    val lastMessagePreview: String
+    val lastMessagePreview: String,
+    val lastMessagePreviewPath: String? = null,
+    val lastMessageKind: String = "text"
 )
 
 data class TelegramChannelPost(
@@ -102,7 +104,9 @@ class TelegramChannelHub(
             unreadCount = chat.unreadCount.coerceAtLeast(0),
             lastMessageId = last?.id ?: 0L,
             lastMessageDate = last?.date ?: 0,
-            lastMessagePreview = last?.let(::previewText) ?: "Нет сообщений"
+            lastMessagePreview = last?.let(::previewText) ?: "Нет сообщений",
+            lastMessagePreviewPath = downloadPreview(last?.let(::listPreviewFileId)),
+            lastMessageKind = last?.let(::messageKind) ?: "text"
         )
         summaries[chat.id] = summary
         return summary
@@ -127,16 +131,19 @@ class TelegramChannelHub(
     suspend fun absorbNewMessage(message: TdApi.Message): TelegramChannelPost? = withContext(Dispatchers.IO) {
         if (!isTracked(message.chatId)) return@withContext null
 
+        val post = runCatching { toPost(message) }.getOrNull()
         val old = summaries[message.chatId]
         if (old != null) {
             summaries[message.chatId] = old.copy(
                 unreadCount = (old.unreadCount + 1).coerceAtLeast(1),
                 lastMessageId = message.id,
                 lastMessageDate = message.date,
-                lastMessagePreview = previewText(message)
+                lastMessagePreview = previewText(message),
+                lastMessagePreviewPath = downloadPreview(listPreviewFileId(message)),
+                lastMessageKind = messageKind(message)
             )
         }
-        runCatching { toPost(message) }.getOrNull()
+        post
     }
 
     suspend fun markViewed(chatId: Long, posts: List<TelegramChannelPost>) {
@@ -258,6 +265,36 @@ class TelegramChannelHub(
             viewCount = interaction?.viewCount?.coerceAtLeast(0) ?: 0,
             reactionCount = reactions
         )
+    }
+
+    private fun messageKind(message: TdApi.Message): String = when (message.content) {
+        is TdApi.MessageText -> "text"
+        is TdApi.MessagePhoto -> "photo"
+        is TdApi.MessageVideo -> "video"
+        is TdApi.MessageVideoNote -> "video_note"
+        is TdApi.MessageVoiceNote -> "voice"
+        is TdApi.MessageAnimation -> "animation"
+        is TdApi.MessageAudio -> "audio"
+        is TdApi.MessageDocument -> "document"
+        is TdApi.MessageSticker -> "sticker"
+        is TdApi.MessagePoll -> "poll"
+        else -> "other"
+    }
+
+    private fun listPreviewFileId(message: TdApi.Message): Int? = when (val content = message.content) {
+        is TdApi.MessagePhoto -> content.photo.sizes
+            .filter { it.photo.id > 0 }
+            .minByOrNull { size ->
+                kotlin.math.abs(size.width - 160) + kotlin.math.abs(size.height - 160)
+            }
+            ?.photo
+            ?.id
+        is TdApi.MessageVideo -> content.video.thumbnail?.file?.id
+        is TdApi.MessageVideoNote -> content.videoNote.thumbnail?.file?.id
+        is TdApi.MessageAnimation -> content.animation.thumbnail?.file?.id
+        is TdApi.MessageDocument -> content.document.thumbnail?.file?.id
+        is TdApi.MessageSticker -> content.sticker.thumbnail?.file?.id
+        else -> null
     }
 
     private fun previewText(message: TdApi.Message): String {
