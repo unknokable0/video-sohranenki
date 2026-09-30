@@ -40,6 +40,8 @@ data class TelegramChannelPost(
     val reactionCount: Int,
     val reactions: List<TelegramReactionSnapshot>,
     val formattedText: TdApi.FormattedText?,
+    val mediaWidth: Int,
+    val mediaHeight: Int,
     val mediaAlbumId: Long,
     val editDate: Int,
     val isPinned: Boolean
@@ -215,6 +217,8 @@ class TelegramChannelHub(
         var fileSize = 0L
         var mimeType = "application/octet-stream"
         var duration = 0
+        var mediaWidth = 0
+        var mediaHeight = 0
 
         when (content) {
             is TdApi.MessageText -> {
@@ -225,6 +229,8 @@ class TelegramChannelHub(
                 kind = "photo"
                 text = content.caption.text
                 val photoSize = content.photo.sizes.maxByOrNull { it.width.toLong() * it.height.toLong() }
+                mediaWidth = photoSize?.width ?: 0
+                mediaHeight = photoSize?.height ?: 0
                 previewFileId = photoSize?.photo?.id
                 fileId = previewFileId
                 fileSize = photoSize?.photo?.let { if (it.size > 0) it.size else it.expectedSize } ?: 0L
@@ -238,6 +244,8 @@ class TelegramChannelHub(
                 fileSize = content.video.video.let { if (it.size > 0) it.size else it.expectedSize }
                 mimeType = content.video.mimeType.ifBlank { "video/mp4" }
                 duration = content.video.duration
+                mediaWidth = content.video.width
+                mediaHeight = content.video.height
             }
             is TdApi.MessageVideoNote -> {
                 kind = "video_note"
@@ -247,6 +255,8 @@ class TelegramChannelHub(
                 fileSize = content.videoNote.video.let { if (it.size > 0) it.size else it.expectedSize }
                 mimeType = "video/mp4"
                 duration = content.videoNote.duration
+                mediaWidth = content.videoNote.length
+                mediaHeight = content.videoNote.length
             }
             is TdApi.MessageVoiceNote -> {
                 kind = "voice"
@@ -264,6 +274,8 @@ class TelegramChannelHub(
                 fileSize = content.animation.animation.let { if (it.size > 0) it.size else it.expectedSize }
                 mimeType = content.animation.mimeType.ifBlank { "video/mp4" }
                 duration = content.animation.duration
+                mediaWidth = content.animation.width
+                mediaHeight = content.animation.height
             }
             is TdApi.MessageAudio -> {
                 kind = "audio"
@@ -326,6 +338,8 @@ class TelegramChannelHub(
             reactionCount = reactions,
             reactions = reactionItems,
             formattedText = formattedTextOf(message),
+            mediaWidth = mediaWidth,
+            mediaHeight = mediaHeight,
             mediaAlbumId = message.mediaAlbumId,
             editDate = message.editDate,
             isPinned = message.isPinned
