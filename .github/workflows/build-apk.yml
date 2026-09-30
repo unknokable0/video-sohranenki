@@ -642,7 +642,7 @@ jobs:
               "formatCategoryDuration",
               "До этого •",
               "warmRecentPosts(limit = 18)",
-              "contentChanged",
+              "visibleContentChanged",
               "animatePosts = false"
           ]:
               if required not in sohr_main:
