@@ -683,33 +683,66 @@ class MainActivity : AppCompatActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        val screen = playerScreen ?: return
-        val activePlayer = screen.player
-        // Mini mode keeps the feed visible underneath, but leaving the app
-        // should still promote the actual video into Android PiP.
-        if (activePlayer.isPlaying != true) return
-        if (!screen.prepareForPictureInPicture()) return
+        if (android.os.Build.VERSION.SDK_INT < 26 || isInPictureInPictureMode) return
+
+        var restore: (() -> Unit)? = null
+        val prepared = when {
+            playerScreen?.player?.isPlaying == true -> {
+                val screen = playerScreen!!
+                if (screen.prepareForPictureInPicture()) {
+                    restore = { screen.restoreFromPictureInPicture() }
+                    true
+                } else false
+            }
+            twitchPlayerScreen?.isPlayingForPictureInPicture() == true -> {
+                val screen = twitchPlayerScreen!!
+                if (screen.prepareForPictureInPicture()) {
+                    restore = { screen.restoreFromPictureInPicture() }
+                    true
+                } else false
+            }
+            twitchLivePlayerScreen?.isPlayingForPictureInPicture() == true -> {
+                val screen = twitchLivePlayerScreen!!
+                if (screen.prepareForPictureInPicture()) {
+                    restore = { screen.restoreFromPictureInPicture() }
+                    true
+                } else false
+            }
+            else -> false
+        }
+        if (!prepared) return
 
         val serviceIntent = Intent(this, PlaybackKeepAliveService::class.java)
-        if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(serviceIntent) else startService(serviceIntent)
+        startForegroundService(serviceIntent)
 
-        if (android.os.Build.VERSION.SDK_INT >= 26 && !isInPictureInPictureMode) {
-            val entered = runCatching {
-                enterPictureInPictureMode(
-                    PictureInPictureParams.Builder()
-                        .setAspectRatio(Rational(16, 9))
-                        .build()
-                )
-            }.getOrDefault(false)
-            if (!entered) screen.restoreFromPictureInPicture()
+        val entered = runCatching {
+            enterPictureInPictureMode(
+                PictureInPictureParams.Builder()
+                    .setAspectRatio(Rational(16, 9))
+                    .build()
+            )
+        }.getOrDefault(false)
+
+        if (!entered) {
+            restore?.invoke()
         }
     }
 
-    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: android.content.res.Configuration
+    ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         if (!isInPictureInPictureMode) {
             playerScreen?.restoreFromPictureInPicture()
-            if (playerScreen?.player?.isPlaying != true) {
+            twitchPlayerScreen?.restoreFromPictureInPicture()
+            twitchLivePlayerScreen?.restoreFromPictureInPicture()
+
+            val anyPlaying =
+                playerScreen?.player?.isPlaying == true ||
+                    twitchPlayerScreen?.isPlayingForPictureInPicture() == true ||
+                    twitchLivePlayerScreen?.isPlayingForPictureInPicture() == true
+            if (!anyPlaying) {
                 stopService(Intent(this, PlaybackKeepAliveService::class.java))
             }
         }
