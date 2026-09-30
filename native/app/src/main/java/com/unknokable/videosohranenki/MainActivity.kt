@@ -688,7 +688,7 @@ class MainActivity : AppCompatActivity() {
         }
         page.addView(
             loader,
-            FrameLayout.LayoutParams(dp(76), dp(76), Gravity.CENTER)
+            FrameLayout.LayoutParams(dp(84), dp(84), Gravity.CENTER)
         )
 
         root.removeAllViews()
