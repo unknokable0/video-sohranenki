@@ -167,7 +167,7 @@ class MainActivity : AppCompatActivity() {
     private val twitchAutoRefreshIntervalMs = 180_000L
     private var startupUpdateCheckDone = false
     private var updateAutoCheckJob: kotlinx.coroutines.Job? = null
-    private val automaticUpdateCheckIntervalMs = 6L * 60L * 60L * 1000L
+    private val automaticUpdateCheckIntervalMs = 10L * 60L * 1000L
     private var onboardingActive = false
     private var videoSection = 1 // 1 home, 2 feed, 3 watched
     private var pendingVideoSectionCrossfade = false
@@ -4987,7 +4987,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                delay(60_000L)
+                delay(20_000L)
             }
         }
     }
@@ -7759,8 +7759,13 @@ class MainActivity : AppCompatActivity() {
 
                 val runtimePrefs = getSharedPreferences("sohr_runtime", MODE_PRIVATE)
                 if (!manual && runtimePrefs.getInt("ignored_update_code", -1) == info.versionCode) return@launch
-                if (manual) showSettings()
 
+                if (!manual) {
+                    maybeNotifyUpdateAvailable(info)
+                    return@launch
+                }
+
+                showSettings()
                 root.post {
                     ModernDialogs.showConfirm(
                         context = this@MainActivity,
@@ -7787,6 +7792,63 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    private fun maybeNotifyUpdateAvailable(info: UpdateInfo) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+
+        val prefs = getSharedPreferences("sohr_runtime", MODE_PRIVATE)
+        if (prefs.getInt("last_update_notified_code", -1) == info.versionCode) return
+
+        val launchIntent = packageManager
+            .getLaunchIntentForPackage(packageName)
+            ?.apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                putExtra(SohrBackgroundCheckWorker.EXTRA_OPEN_UPDATE, true)
+            }
+            ?: return
+
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            UPDATE_NOTIFICATION_ID,
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val manager = getSystemService(NotificationManager::class.java)
+        val builder =
+            if (Build.VERSION.SDK_INT >= 26) {
+                Notification.Builder(this, UPDATE_NOTIFICATION_CHANNEL)
+            } else {
+                @Suppress("DEPRECATION")
+                Notification.Builder(this)
+            }
+
+        val notification = builder
+            .setSmallIcon(R.drawable.ic_notification_update)
+            .setContentTitle("Доступно обновление SOHR " + info.versionName)
+            .setContentText("Нужно обновить приложение • нажмите, чтобы продолжить")
+            .setStyle(
+                Notification.BigTextStyle().bigText(
+                    info.notes.ifBlank {
+                        "Доступна новая версия SOHR " + info.versionName + ". Нажмите, чтобы обновить."
+                    }
+                )
+            )
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+            .setCategory(Notification.CATEGORY_STATUS)
+            .build()
+
+        manager.notify(UPDATE_NOTIFICATION_ID, notification)
+        prefs.edit()
+            .putInt("last_update_notified_code", info.versionCode)
+            .apply()
     }
 
     private fun downloadAndInstallUpdate(info: UpdateInfo) {
@@ -8187,6 +8249,7 @@ class MainActivity : AppCompatActivity() {
         private const val T2X2_NOTIFICATION_CHANNEL = "t2x2_live"
         private const val UPDATE_NOTIFICATION_CHANNEL = "sohr_updates"
         private const val T2X2_NOTIFICATION_ID = 2202
+        private const val UPDATE_NOTIFICATION_ID = 6304
         private const val T2X2_NOTIFICATION_PERMISSION_REQUEST = 2203
     }
 }
