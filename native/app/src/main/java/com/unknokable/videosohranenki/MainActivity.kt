@@ -2757,7 +2757,7 @@ class MainActivity : AppCompatActivity() {
         header.addView(
             TextView(this).apply {
                 text = when (videoSection) {
-                    2 -> sourceName + " • Лента"
+                    2 -> "Telegram-каналы • Лента"
                     3 -> sourceName + " • " + watchedVideos.size + " просмотрено"
                     else -> sourceName + " • " + regularVideos.size + " не просмотрено"
                 }
@@ -2950,7 +2950,7 @@ class MainActivity : AppCompatActivity() {
         }
         body.addView(contentHost)
 
-        if (videoSection == 2 && settings.videoSource == "telegram" && !settings.guestMode) {
+        if (videoSection == 2 && !settings.guestMode) {
             searchButton.visibility = View.GONE
             contentHost.addView(
                 TelegramChannelUi.buildDirectory(
@@ -5556,7 +5556,7 @@ class MainActivity : AppCompatActivity() {
         if (telegramChannelRefreshJob?.isActive == true) return
 
         telegramChannelsLoading = true
-        if (!silent && videoSection == 2 && auxiliaryScreen == null && settings.videoSource == "telegram") {
+        if (!silent && videoSection == 2 && auxiliaryScreen == null) {
             suppressNextRootAnimation = true
             showFeed(currentVideos)
         }
@@ -5570,7 +5570,6 @@ class MainActivity : AppCompatActivity() {
             telegramChannelRefreshJob = null
 
             if (
-                settings.videoSource == "telegram" &&
                 videoSection == 2 &&
                 auxiliaryScreen == null &&
                 !isFinishing
@@ -5733,7 +5732,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        if (videoSection == 2 && auxiliaryScreen == null && settings.videoSource == "telegram") {
+        if (videoSection == 2 && auxiliaryScreen == null) {
             suppressNextRootAnimation = true
             showFeed(currentVideos)
         }
@@ -7924,6 +7923,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun fallbackReleaseNotes(version: String): String = when (version) {
+        "6.4.2" -> listOf(
+            "«Лента» с Telegram-каналами теперь работает независимо от выбранного источника видео — и в режиме Twitch, и в режиме Telegram.",
+            "Галочки верификации выровнены и заменены на аккуратный отдельный значок.",
+            "В шапке канала показывается количество подписчиков.",
+            "Посты получили разделители по датам, более крупные медиа, реакции, просмотры и время в стиле Telegram.",
+            "Ссылки и @упоминания внутри текста распознаются и открываются по нажатию.",
+            "Для появления постов и элементов сохранены плавные SOHR-анимации."
+        ).joinToString(" • ")
         "6.4.1" -> listOf(
             "«Лента» теперь выглядит как список каналов Telegram, но в стиле SOHR.",
             "Каналы идут плоскими строками без отдельных карточек: крупная аватарка, название, верификация, время и непрочитанные.",
