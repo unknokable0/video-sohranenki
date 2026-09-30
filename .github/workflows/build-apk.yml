@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.6.4: softer live pulse and smooth Telegram channel entry
+# SOHR 6.6.5: animated expandable T2x2 live card
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.6.4 version
+      - name: Assign SOHR 6.6.5 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=660004" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.6.4" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=660005" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.6.5" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -645,21 +645,24 @@ jobs:
                   raise SystemExit(f"SOHR 6.6.0 action icon missing: {icon_name}")
 
           for required in [
-              '"6.6.4" -> listOf(',
+              '"6.6.5" -> listOf(',
               't2x2LiveAccent = Color.parseColor("#E5484D")',
               "TwitchCategoryTracker",
               "formatCategoryDuration",
-              "До этого •",
               "pendingVideoSectionTarget",
               'tag = "t2x2_live_status"',
               "warmRecentPosts(limit = 18)",
               "visibleContentChanged",
               "animatePosts = false",
               "loadPosts(channel.chatId, limit = 32)",
-              "oldPost.text != newPost.text"
+              "oldPost.text != newPost.text",
+              "private fun setTodayLiveExpanded(",
+              "private fun renderTodayLiveExpandedPanel(",
+              'text = if (live != null) "Перейти на эфир" else "Открыть T2x2 на Twitch"',
+              "todayLiveExpandAnimator"
           ]:
               if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.6.4 live/channel polish regression: {required}")
+                  raise SystemExit(f"SOHR 6.6.5 live/card polish regression: {required}")
 
           live_pulse = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/LivePulseView.kt"
@@ -685,6 +688,13 @@ jobs:
           category_tracker = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/TwitchCategoryTracker.kt"
           ).read_text(encoding="utf-8")
+          for required in [
+              "val recent: List<TwitchCategorySegment> = emptyList()",
+              "recent = segments.takeLast(5).asReversed()"
+          ]:
+              if required not in category_tracker:
+                  raise SystemExit(f"SOHR 6.6.5 category history regression: {required}")
+
           for required in [
               "TwitchCategorySegment",
               "fun observe(",
@@ -1241,7 +1251,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.6.4 • live-индикатор T2x2 теперь матовый и без неонового свечения: спокойная красная точка, одно тонкое ripple-кольцо и лёгкое breathing • вход в Telegram-канал больше не запускает каскад анимаций карточек и локальных превью • начальная позиция канала выставляется до показа сообщений без прыжка сверху вниз • изменения просмотров и реакций больше не вызывают полную пересборку экрана • первая загрузка канала облегчена до 32 сообщений"
+            "notes": "SOHR 6.6.5 • карточка T2x2 на главной плавно раскрывается прямо на месте • в раскрытом виде показываются название эфира, длительность, зрители, время начала и последние категории с временем • стрелка плавно поворачивается, детали появляются через fade/slide, а высота карточки анимируется единым SOHR motion • повторный тап сворачивает карточку • отдельная кнопка Перейти на эфир открывает Twitch • история хранит до пяти последних категорий"
           }
           EOF
           cat update.json
