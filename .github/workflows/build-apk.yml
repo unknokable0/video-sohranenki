@@ -640,7 +640,7 @@ jobs:
               't2x2LiveAccent = Color.parseColor("#7C83FF")',
               "TwitchCategoryTracker",
               "formatCategoryDuration",
-              '"До этого • "',
+              "До этого •",
               "warmRecentPosts(limit = 18)",
               "contentChanged",
               "animatePosts = false"
