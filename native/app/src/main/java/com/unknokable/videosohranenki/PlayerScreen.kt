@@ -335,7 +335,7 @@ class PlayerScreen(
         playerCard.addView(
             previewBubble,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
-                bottomMargin = dp(58)
+                bottomMargin = dp(44)
             }
         )
 
@@ -486,11 +486,11 @@ class PlayerScreen(
         val row = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), dp(8), dp(16), dp(8))
+            setPadding(dp(14), dp(5), dp(14), dp(5))
             setBackgroundColor(palette.background)
         }
 
-        val back = iconButton(R.drawable.ic_back, "#181322", 40).apply {
+        val back = iconButton(R.drawable.ic_back, "#181322", 36).apply {
             setOnClickListener { pulse(this); onBack() }
         }
 
@@ -508,9 +508,9 @@ class PlayerScreen(
 
         val spacer = View(activity)
 
-        row.addView(back, LinearLayout.LayoutParams(dp(48), dp(48)))
+        row.addView(back, LinearLayout.LayoutParams(dp(44), dp(44)))
         row.addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row.addView(spacer, LinearLayout.LayoutParams(dp(48), dp(48)))
+        row.addView(spacer, LinearLayout.LayoutParams(dp(44), dp(44)))
         return row
     }
 
@@ -524,7 +524,7 @@ class PlayerScreen(
             gravity = Gravity.CENTER
         }
 
-        playPause = iconButton(R.drawable.ic_play, "#A30B0A0F", 58).apply {
+        playPause = iconButton(R.drawable.ic_play, "#A30B0A0F", 48).apply {
             elevation = dp(2).toFloat()
             setOnClickListener {
                 if (player.isPlaying) player.pause() else player.play()
@@ -532,7 +532,7 @@ class PlayerScreen(
             }
         }
 
-        center.addView(playPause, LinearLayout.LayoutParams(dp(60), dp(60)))
+        center.addView(playPause, LinearLayout.LayoutParams(dp(52), dp(52)))
 
         frame.addView(
             center,
@@ -545,8 +545,8 @@ class PlayerScreen(
 
         val bottom = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(6), dp(1), dp(6), dp(2))
-            background = rounded("#360A0810", 10)
+            setPadding(dp(5), 0, dp(5), dp(1))
+            background = rounded("#300A0810", 9)
         }
 
         seekBar = SohrTimeBar(activity, palette.accent).apply {
@@ -613,24 +613,24 @@ class PlayerScreen(
 
         qualityButton = TextView(activity).apply {
             text = "Авто"
-            textSize = 11f
+            textSize = 10.5f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
-            minWidth = dp(48)
-            minHeight = dp(48)
-            setPadding(dp(7), 0, dp(7), 0)
+            minWidth = dp(42)
+            minHeight = dp(36)
+            setPadding(dp(6), 0, dp(6), 0)
             background = rounded("#42221A30", 12)
             contentDescription = "Качество видео"
             setOnClickListener { pulse(this); showQualityPicker() }
         }
 
-        val settingsButton = iconButton(R.drawable.ic_player_settings, "#52221A30", 34).apply {
+        val settingsButton = iconButton(R.drawable.ic_player_settings, "#52221A30", 30).apply {
             contentDescription = "Настройки плеера"
             setOnClickListener { pulse(this); showSettingsSheet() }
         }
 
-        val fullscreenButton = iconButton(R.drawable.ic_fullscreen, "#52221A30", 34).apply {
+        val fullscreenButton = iconButton(R.drawable.ic_fullscreen, "#52221A30", 30).apply {
             contentDescription = "Полный экран"
             setOnClickListener {
                 onFullscreen(!fullscreen)
@@ -646,28 +646,28 @@ class PlayerScreen(
         }
         actionGroup.addView(
             qualityButton,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48))
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38))
         )
         actionGroup.addView(
             settingsButton,
-            LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginStart = dp(2) }
+            LinearLayout.LayoutParams(dp(40), dp(38)).apply { marginStart = dp(2) }
         )
         actionGroup.addView(
             fullscreenButton,
-            LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginStart = dp(2) }
+            LinearLayout.LayoutParams(dp(40), dp(38)).apply { marginStart = dp(2) }
         )
 
-        times.addView(currentTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48)))
-        times.addView(totalTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48)).apply {
+        times.addView(currentTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)))
+        times.addView(totalTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)).apply {
             marginStart = dp(4)
         })
         times.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
         times.addView(
             actionGroup,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48))
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38))
         )
 
-        bottom.addView(seekBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
+        bottom.addView(seekBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(30)))
         bottom.addView(times)
 
         frame.addView(
@@ -677,9 +677,9 @@ class PlayerScreen(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.BOTTOM
             ).apply {
-                leftMargin = dp(9)
-                rightMargin = dp(9)
-                bottomMargin = dp(7)
+                leftMargin = dp(8)
+                rightMargin = dp(8)
+                bottomMargin = dp(5)
             }
         )
         return frame
@@ -949,7 +949,7 @@ class PlayerScreen(
     private fun buildDetails(): LinearLayout {
         val box = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(14), dp(16), dp(9))
+            setPadding(dp(14), dp(11), dp(14), dp(7))
         }
 
         val title = TextView(activity).apply {
@@ -1071,7 +1071,7 @@ class PlayerScreen(
         val row = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), dp(3), dp(16), dp(11))
+            setPadding(dp(14), dp(2), dp(14), dp(8))
         }
 
         var watched = isWatched
@@ -1136,13 +1136,13 @@ class PlayerScreen(
 
         row.addView(
             watchedButton.root,
-            LinearLayout.LayoutParams(0, dp(48), 1.15f).apply {
+            LinearLayout.LayoutParams(0, dp(44), 1.15f).apply {
                 marginEnd = dp(7)
             }
         )
         row.addView(
             downloadButton.root,
-            LinearLayout.LayoutParams(0, dp(48), 0.85f)
+            LinearLayout.LayoutParams(0, dp(44), 0.85f)
         )
         return row
     }
@@ -1150,7 +1150,7 @@ class PlayerScreen(
     private fun buildNextVideosBlock(): LinearLayout {
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(7), dp(16), dp(22))
+            setPadding(dp(14), dp(5), dp(14), dp(16))
 
             val candidates = (queueItems + listOfNotNull(nextItem))
                 .filterNot { it.messageId == item.messageId }
@@ -1181,7 +1181,7 @@ class PlayerScreen(
                         orientation = LinearLayout.HORIZONTAL
                         gravity = Gravity.CENTER_VERTICAL
                         setPadding(dp(13), dp(11), dp(12), dp(11))
-                        minimumHeight = dp(82)
+                        minimumHeight = dp(74)
                         background = roundedInt(palette.surfaceAlt, 19)
                         isClickable = true
                         isFocusable = true
@@ -1196,7 +1196,7 @@ class PlayerScreen(
                                 !next.thumbnailUrl.isNullOrBlank() -> load(next.thumbnailUrl) { crossfade(settings.animations) }
                             }
                         }
-                        addView(thumb, LinearLayout.LayoutParams(dp(108), dp(61)).apply { marginEnd = dp(12) })
+                        addView(thumb, LinearLayout.LayoutParams(dp(96), dp(54)).apply { marginEnd = dp(12) })
 
                         val textBox = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
                         textBox.addView(TextView(activity).apply {
@@ -1222,7 +1222,7 @@ class PlayerScreen(
                             scaleType = ImageView.ScaleType.CENTER_INSIDE
                             setPadding(dp(9), dp(9), dp(9), dp(9))
                             background = roundedInt(palette.accent, 18)
-                        }, LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginStart = dp(10) })
+                        }, LinearLayout.LayoutParams(dp(36), dp(36)).apply { marginStart = dp(10) })
 
                         setOnClickListener {
                             pulse(this)
@@ -1250,7 +1250,7 @@ class PlayerScreen(
                     }, LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT
-                    ).apply { if (index < candidates.lastIndex) bottomMargin = dp(7) })
+                    ).apply { if (index < candidates.lastIndex) bottomMargin = dp(5) })
                 }
             }
         }
