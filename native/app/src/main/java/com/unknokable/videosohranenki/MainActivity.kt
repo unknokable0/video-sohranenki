@@ -619,8 +619,17 @@ class MainActivity : AppCompatActivity() {
         pendingRootSlide = -1
         suppressNextContentAnimation = true
 
+        val channelToRestore =
+            if (auxiliaryScreen == "telegram_channel") openTelegramChannelSummary else null
         val day = currentDay
-        if (day != null && day.videos.isNotEmpty()) {
+        if (channelToRestore != null) {
+            currentDay = null
+            renderTelegramChannel(
+                channel = channelToRestore,
+                loading = false,
+                canLoadOlder = openTelegramPosts.size >= 60
+            )
+        } else if (day != null && day.videos.isNotEmpty()) {
             showDayCollection(day)
         } else {
             currentDay = null
@@ -5795,9 +5804,15 @@ class MainActivity : AppCompatActivity() {
         val fileId = post.fileId ?: return
         if (fileId <= 0 || post.fileSize <= 0L) return
 
-        if (telegramAudioMessageId == post.message.id && telegramAudioPlayer?.isPlaying == true) {
-            telegramAudioPlayer?.pause()
-            source?.alpha = 0.82f
+        if (telegramAudioMessageId == post.message.id && telegramAudioPlayer != null) {
+            val player = telegramAudioPlayer ?: return
+            if (player.isPlaying) {
+                player.pause()
+                source?.alpha = 0.82f
+            } else {
+                player.play()
+                source?.alpha = 1f
+            }
             return
         }
 
