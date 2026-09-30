@@ -359,6 +359,7 @@ class PlayerScreen(
 
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (!isPlaying) markPlayerInteraction()
                 updatePlayIcon()
                 root.keepScreenOn = isPlaying
                 if (isPlaying && ::endOverlay.isInitialized) endOverlay.visibility = View.GONE
@@ -379,7 +380,7 @@ class PlayerScreen(
                 posterImage.animate().cancel()
                 posterImage.animate()
                     .alpha(0f)
-                    .setDuration(if (settings.animations) 120L else 0L)
+                    .setDuration(if (decorativeMotionEnabled()) 120L else 0L)
                     .withEndAction { posterImage.visibility = View.GONE }
                     .start()
             }
@@ -489,7 +490,7 @@ class PlayerScreen(
             setBackgroundColor(palette.background)
         }
 
-        val back = iconButton(R.drawable.ic_back, "#181322", 38).apply {
+        val back = iconButton(R.drawable.ic_back, "#181322", 40).apply {
             setOnClickListener { pulse(this); onBack() }
         }
 
@@ -507,9 +508,9 @@ class PlayerScreen(
 
         val spacer = View(activity)
 
-        row.addView(back, LinearLayout.LayoutParams(dp(38), dp(38)))
+        row.addView(back, LinearLayout.LayoutParams(dp(48), dp(48)))
         row.addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row.addView(spacer, LinearLayout.LayoutParams(dp(38), dp(38)))
+        row.addView(spacer, LinearLayout.LayoutParams(dp(48), dp(48)))
         return row
     }
 
@@ -613,8 +614,9 @@ class PlayerScreen(
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
-            minWidth = dp(36)
-            setPadding(dp(5), 0, dp(5), 0)
+            minWidth = dp(48)
+            minHeight = dp(48)
+            setPadding(dp(7), 0, dp(7), 0)
             background = rounded("#42221A30", 12)
             contentDescription = "Качество видео"
             setOnClickListener { pulse(this); showQualityPicker() }
@@ -641,28 +643,28 @@ class PlayerScreen(
         }
         actionGroup.addView(
             qualityButton,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(28))
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48))
         )
         actionGroup.addView(
             settingsButton,
-            LinearLayout.LayoutParams(dp(32), dp(32)).apply { marginStart = dp(3) }
+            LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginStart = dp(2) }
         )
         actionGroup.addView(
             fullscreenButton,
-            LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginStart = dp(3) }
+            LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginStart = dp(2) }
         )
 
-        times.addView(currentTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(28)))
-        times.addView(totalTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(28)).apply {
+        times.addView(currentTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48)))
+        times.addView(totalTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48)).apply {
             marginStart = dp(4)
         })
         times.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
         times.addView(
             actionGroup,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(34))
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48))
         )
 
-        bottom.addView(seekBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(22)))
+        bottom.addView(seekBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(28)))
         bottom.addView(times)
 
         frame.addView(
@@ -1131,13 +1133,13 @@ class PlayerScreen(
 
         row.addView(
             watchedButton.root,
-            LinearLayout.LayoutParams(0, dp(42), 1.15f).apply {
+            LinearLayout.LayoutParams(0, dp(48), 1.15f).apply {
                 marginEnd = dp(7)
             }
         )
         row.addView(
             downloadButton.root,
-            LinearLayout.LayoutParams(0, dp(42), 0.85f)
+            LinearLayout.LayoutParams(0, dp(48), 0.85f)
         )
         return row
     }
@@ -1415,7 +1417,8 @@ class PlayerScreen(
                 showTransientIndicator(if (fill) "Заполнить экран" else "Уменьшить")
             },
             onSwipeDown = { if (fullscreen) onFullscreen(false) else enterMiniPlayer() },
-            onSwipeUp = { if (fullscreen) onFullscreen(false); exitMiniPlayer(); nextVideosBlock.visibility = View.VISIBLE }
+            onSwipeUp = { if (fullscreen) onFullscreen(false); exitMiniPlayer(); nextVideosBlock.visibility = View.VISIBLE },
+            onInteraction = { markPlayerInteraction() }
         )
         playerCard.setOnTouchListener(gestureOverlay)
     }
@@ -1857,7 +1860,7 @@ class PlayerScreen(
                 pulse(this)
             }
         }
-        addView(miniPlayPause, LinearLayout.LayoutParams(dp(42), dp(42)).apply {
+        addView(miniPlayPause, LinearLayout.LayoutParams(dp(48), dp(48)).apply {
             marginEnd = dp(6)
         })
 
@@ -1875,7 +1878,7 @@ class PlayerScreen(
                 onBack()
             }
         }
-        addView(close, LinearLayout.LayoutParams(dp(42), dp(42)))
+        addView(close, LinearLayout.LayoutParams(dp(48), dp(48)))
 
         setOnClickListener { exitMiniPlayer() }
         setOnTouchListener(object : View.OnTouchListener {
@@ -1914,14 +1917,17 @@ class PlayerScreen(
     }
 
     private fun enterMiniPlayer() {
-        if(miniMode||fullscreen)return; miniMode=true; persistPlaybackPosition(true)
+        if(miniMode||fullscreen)return; miniMode=true; markPlayerInteraction(); persistPlaybackPosition(true)
         header.visibility=View.GONE; details.visibility=View.GONE; socialActionsRow.visibility=View.GONE; actionsRow.visibility=View.GONE; nextVideosBlock.visibility=View.GONE; overlay.visibility=View.GONE
         (playerView.parent as? ViewGroup)?.removeView(playerView); miniVideoHost.removeAllViews(); miniVideoHost.addView(playerView,FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.MATCH_PARENT)); playerCard.visibility=View.GONE
-        root.gravity=Gravity.BOTTOM; miniBar.alpha=0f; miniBar.translationY=dp(76).toFloat(); miniBar.visibility=View.VISIBLE; miniBar.animate().alpha(1f).translationY(0f).setDuration(260L).start()
+        root.setBackgroundColor(Color.TRANSPARENT)
+        root.gravity=Gravity.BOTTOM; miniBar.alpha=0f; miniBar.translationY=dp(76).toFloat(); miniBar.visibility=View.VISIBLE; miniBar.animate().alpha(1f).translationY(0f).setDuration(if(settings.animations)260L else 0L).start()
+        onMiniModeChanged?.invoke(true)
     }
 
     private fun exitMiniPlayer() {
-        if(!miniMode)return; miniMode=false; (playerView.parent as? ViewGroup)?.removeView(playerView); playerCard.addView(playerView,0,FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.MATCH_PARENT)); miniBar.visibility=View.GONE; root.gravity=Gravity.TOP; playerCard.visibility=View.VISIBLE
+        if(!miniMode)return; miniMode=false; markPlayerInteraction(); onMiniModeChanged?.invoke(false); (playerView.parent as? ViewGroup)?.removeView(playerView); playerCard.addView(playerView,0,FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.MATCH_PARENT)); miniBar.visibility=View.GONE; root.gravity=Gravity.TOP; playerCard.visibility=View.VISIBLE
+        root.setBackgroundColor(palette.background)
         header.visibility=View.VISIBLE; details.visibility=View.VISIBLE; socialActionsRow.visibility=View.VISIBLE; actionsRow.visibility=View.VISIBLE; nextVideosBlock.visibility=View.VISIBLE; showOverlay()
     }
 
@@ -2086,6 +2092,9 @@ class PlayerScreen(
             intArrayOf(glow, palette.background, palette.background)
         )
     }
+
+    val isMiniMode: Boolean
+        get() = miniMode
 
     val isFullscreen: Boolean
         get() = fullscreen
@@ -2411,7 +2420,8 @@ class PlayerScreen(
     }
 
     private fun pulse(view: View) {
-        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        markPlayerInteraction()
+        SohrHaptics.tap(view)
         if (!settings.animations) return
         val ease = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
         view.animate().cancel()
