@@ -26,6 +26,7 @@ class LivePulseView(context: Context) : View(context) {
     private var live = false
     private var animations = true
     private var phase = 0f
+    private var liveColor = Color.parseColor("#7C83FF")
 
     private val animator = ValueAnimator.ofFloat(0f, 1f).apply {
         duration = 1450L
@@ -35,6 +36,11 @@ class LivePulseView(context: Context) : View(context) {
             phase = it.animatedFraction
             invalidate()
         }
+    }
+
+    fun setLiveColor(color: Int) {
+        liveColor = color
+        invalidate()
     }
 
     fun setState(live: Boolean, animations: Boolean) {
@@ -74,32 +80,39 @@ class LivePulseView(context: Context) : View(context) {
             return
         }
 
-        val roseRed = Color.parseColor("#FF2E43")
-
         if (animations) {
-            val eased = 1f - (1f - phase) * (1f - phase)
-            val radius = dp(5.4f + eased * 5.8f)
-            val alpha = ((1f - phase) * 62f).toInt().coerceIn(0, 62)
+            drawWave(canvas, cx, cy, phase)
+            drawWave(canvas, cx, cy, (phase + 0.72f) % 1f)
 
-            ringPaint.color = withAlpha(roseRed, alpha)
-            ringPaint.strokeWidth = dp(1.15f)
-            canvas.drawCircle(cx, cy, radius, ringPaint)
+            glowPaint.color = withAlpha(liveColor, 36)
+            canvas.drawCircle(cx, cy, dp(4.9f), glowPaint)
 
-            glowPaint.color = withAlpha(roseRed, 42)
-            canvas.drawCircle(cx, cy, dp(4.7f), glowPaint)
+            ringPaint.color = withAlpha(liveColor, 74)
+            ringPaint.strokeWidth = dp(0.9f)
+            canvas.drawCircle(cx, cy, dp(5.05f), ringPaint)
 
-            dotPaint.color = roseRed
-            canvas.drawCircle(cx, cy, dp(3.45f), dotPaint)
+            dotPaint.color = liveColor
+            canvas.drawCircle(cx, cy, dp(3.35f), dotPaint)
         } else {
-            glowPaint.color = withAlpha(roseRed, 38)
+            glowPaint.color = withAlpha(liveColor, 34)
             canvas.drawCircle(cx, cy, dp(4.8f), glowPaint)
 
-            ringPaint.color = withAlpha(roseRed, 48)
-            canvas.drawCircle(cx, cy, dp(8.5f), ringPaint)
+            ringPaint.color = withAlpha(liveColor, 48)
+            ringPaint.strokeWidth = dp(1.05f)
+            canvas.drawCircle(cx, cy, dp(8.4f), ringPaint)
 
-            dotPaint.color = roseRed
-            canvas.drawCircle(cx, cy, dp(3.45f), dotPaint)
+            dotPaint.color = liveColor
+            canvas.drawCircle(cx, cy, dp(3.35f), dotPaint)
         }
+    }
+
+    private fun drawWave(canvas: Canvas, cx: Float, cy: Float, wavePhase: Float) {
+        val eased = 1f - (1f - wavePhase) * (1f - wavePhase)
+        val radius = dp(5.6f + eased * 6.6f)
+        val alpha = ((1f - wavePhase) * 72f).toInt().coerceIn(0, 72)
+        ringPaint.color = withAlpha(liveColor, alpha)
+        ringPaint.strokeWidth = dp(1.05f - 0.25f * wavePhase)
+        canvas.drawCircle(cx, cy, radius, ringPaint)
     }
 
     private fun withAlpha(color: Int, alpha: Int): Int =
