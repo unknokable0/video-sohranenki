@@ -5999,11 +5999,13 @@ class MainActivity : AppCompatActivity() {
         val file = File(path)
         if (!file.exists()) return
 
+        val sourceBounds = source?.let { view ->
+            Rect().takeIf { rect -> view.getGlobalVisibleRect(rect) && !rect.isEmpty }
+        }
         val dialog = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
         val frame = FrameLayout(this).apply {
             setBackgroundColor(Color.BLACK)
             isClickable = true
-            setOnClickListener { dialog.dismiss() }
         }
         val image = ImageView(this).apply {
             scaleType = ImageView.ScaleType.FIT_CENTER
@@ -6016,17 +6018,69 @@ class MainActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         )
+
+        var closing = false
+        fun closeAnimated() {
+            if (closing) return
+            closing = true
+            SohrHaptics.tap(image)
+
+            if (!settings.animations || sourceBounds == null || image.width <= 0 || image.height <= 0) {
+                dialog.dismiss()
+                return
+            }
+
+            val location = IntArray(2)
+            image.getLocationOnScreen(location)
+            val centerX = location[0] + image.width / 2f
+            val centerY = location[1] + image.height / 2f
+            val sourceCenterX = sourceBounds.exactCenterX()
+            val sourceCenterY = sourceBounds.exactCenterY()
+            val scaleX = (sourceBounds.width().toFloat() / image.width.coerceAtLeast(1)).coerceIn(0.12f, 1f)
+            val scaleY = (sourceBounds.height().toFloat() / image.height.coerceAtLeast(1)).coerceIn(0.12f, 1f)
+
+            image.animate().cancel()
+            image.pivotX = image.width / 2f
+            image.pivotY = image.height / 2f
+            image.animate()
+                .scaleX(scaleX)
+                .scaleY(scaleY)
+                .translationX(sourceCenterX - centerX)
+                .translationY(sourceCenterY - centerY)
+                .alpha(0.25f)
+                .setDuration(SohrMotion.HERO)
+                .setInterpolator(SohrMotion.smooth())
+                .withEndAction { dialog.dismiss() }
+                .start()
+        }
+
+        frame.setOnClickListener { closeAnimated() }
+        image.setOnClickListener { closeAnimated() }
         dialog.setContentView(frame)
         dialog.setOnShowListener {
-            if (settings.animations) {
-                image.alpha = 0f
-                image.scaleX = 0.96f
-                image.scaleY = 0.96f
+            image.post {
+                if (!settings.animations || sourceBounds == null || image.width <= 0 || image.height <= 0) {
+                    image.alpha = 1f
+                    return@post
+                }
+                val location = IntArray(2)
+                image.getLocationOnScreen(location)
+                val centerX = location[0] + image.width / 2f
+                val centerY = location[1] + image.height / 2f
+                image.pivotX = image.width / 2f
+                image.pivotY = image.height / 2f
+                image.scaleX = (sourceBounds.width().toFloat() / image.width.coerceAtLeast(1)).coerceIn(0.12f, 1f)
+                image.scaleY = (sourceBounds.height().toFloat() / image.height.coerceAtLeast(1)).coerceIn(0.12f, 1f)
+                image.translationX = sourceBounds.exactCenterX() - centerX
+                image.translationY = sourceBounds.exactCenterY() - centerY
+                image.alpha = 0.55f
                 image.animate()
-                    .alpha(1f)
                     .scaleX(1f)
                     .scaleY(1f)
-                    .setDuration(SohrMotion.NORMAL)
+                    .translationX(0f)
+                    .translationY(0f)
+                    .alpha(1f)
+                    .setDuration(SohrMotion.HERO)
                     .setInterpolator(SohrMotion.smooth())
                     .start()
             }
