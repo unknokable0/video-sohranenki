@@ -74,7 +74,6 @@ class TwitchPlayerScreen(
     private var qualities: List<String> = emptyList()
     private var currentQuality = ""
     private var manualQualityChosen = false
-    private var qualityGuardUntil = SystemClock.elapsedRealtime() + 7_000L
     private var lastBestQualityApplyAt = 0L
     private var lastPersistAt = 0L
     private var gestureDownX = 0f
@@ -568,7 +567,9 @@ class TwitchPlayerScreen(
         }
         totalTime.text = formatMs(durationMs)
         remainingTime.text = remainingTimeLabel(currentMs, durationMs)
-        qualityButton.text = qualityLabel(currentQuality.ifBlank { "auto" })
+        qualityButton.text =
+            if (!manualQualityChosen && bestAvailableQuality() != null) "Лучшее"
+            else qualityLabel(currentQuality.ifBlank { "auto" })
         activity.window.decorView.keepScreenOn = !paused
     }
 
@@ -605,7 +606,6 @@ class TwitchPlayerScreen(
 
     private fun enforceBestStartupQuality() {
         if (!ready || manualQualityChosen) return
-        if (SystemClock.elapsedRealtime() > qualityGuardUntil) return
 
         val best = bestAvailableQuality() ?: return
         val now = SystemClock.elapsedRealtime()
@@ -615,7 +615,7 @@ class TwitchPlayerScreen(
         if (
             !currentQuality.equals(best, ignoreCase = true) &&
             (currentQuality.equals("auto", ignoreCase = true) || currentRank < bestRank) &&
-            now - lastBestQualityApplyAt >= 650L
+            now - lastBestQualityApplyAt >= 1_000L
         ) {
             lastBestQualityApplyAt = now
             runJs("window.sohr&&window.sohr.setQuality(${JSONObject.quote(best)})")
@@ -668,9 +668,13 @@ class TwitchPlayerScreen(
                 }
         }
 
-        val selected = choices.indexOfFirst {
-            it.raw.equals(currentQuality, ignoreCase = true)
-        }.coerceAtLeast(0)
+        val selected = if (!manualQualityChosen && best != null) {
+            0
+        } else {
+            choices.indexOfFirst {
+                it.raw.equals(currentQuality, ignoreCase = true)
+            }.coerceAtLeast(0)
+        }
 
         ModernDialogs.showChoices(
             activity,
@@ -680,10 +684,10 @@ class TwitchPlayerScreen(
             selected
         ) { which ->
             val choice = choices.getOrNull(which) ?: return@showChoices
-            manualQualityChosen = true
+            manualQualityChosen = which != 0
             runJs("window.sohr&&window.sohr.setQuality(${JSONObject.quote(choice.raw)})")
             currentQuality = choice.raw
-            qualityButton.text = qualityLabel(choice.raw)
+            qualityButton.text = if (which == 0) "Лучшее" else qualityLabel(choice.raw)
         }
     }
 
@@ -895,13 +899,14 @@ class TwitchPlayerScreen(
     }
 
     private fun normalPlayerLayoutParams(): LinearLayout.LayoutParams {
-        val horizontalMargins = dp(20)
+        val horizontalMargins = dp(40)
         val availableWidth =
-            (activity.resources.displayMetrics.widthPixels - horizontalMargins).coerceAtLeast(dp(240))
+            (activity.resources.displayMetrics.widthPixels - horizontalMargins)
+                .coerceAtLeast(dp(240))
         val height = (availableWidth * 9f / 16f).toInt()
         return LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, height).apply {
-            marginStart = dp(10)
-            marginEnd = dp(10)
+            marginStart = dp(20)
+            marginEnd = dp(20)
             topMargin = 0
         }
     }
