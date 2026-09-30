@@ -116,8 +116,8 @@ class LoadingWaveView(
         if (width <= 0 || height <= 0 || length <= 0f) return
 
         val minDp = minOf(width, height) / resources.displayMetrics.density
-        val baseStroke = (minDp * 0.082f).coerceIn(4.2f, 7.2f)
-        val activeStroke = (minDp * 0.108f).coerceIn(5.6f, 9.2f)
+        val baseStroke = (minDp * 0.0615f).coerceIn(3.15f, 5.4f)
+        val activeStroke = (minDp * 0.081f).coerceIn(4.2f, 6.9f)
 
         basePaint.color = withAlpha(color, 104)
         basePaint.strokeWidth = dp(baseStroke)
