@@ -104,6 +104,11 @@ class TwitchLivePlayerScreen(
     private var muted = false
     private var qualitySelection = 0
     private var fullscreen = false
+    private var pipMode = false
+    private var pipHost: FrameLayout? = null
+    private var pipOriginalParent: ViewGroup? = null
+    private var pipOriginalIndex = -1
+    private var pipOriginalLayoutParams: ViewGroup.LayoutParams? = null
     private var exiting = false
     private var destroyed = false
     private var controlsVisible = true
@@ -1676,6 +1681,92 @@ class TwitchLivePlayerScreen(
         if (fullscreen) setFullscreenMode(false)
     }
 
+    fun isPlayingForPictureInPicture(): Boolean =
+        !destroyed && !exiting && player?.isPlaying == true
+
+    fun prepareForPictureInPicture(): Boolean {
+        if (destroyed || exiting) return false
+        if (pipMode) return true
+
+        if (fullscreen) {
+            setFullscreenMode(false)
+        }
+
+        val parent = playerCard.parent as? ViewGroup ?: return false
+        pipOriginalParent = parent
+        pipOriginalIndex = parent.indexOfChild(playerCard)
+        pipOriginalLayoutParams = playerCard.layoutParams
+
+        parent.removeView(playerCard)
+
+        val activityContent = activity.findViewById<ViewGroup>(android.R.id.content)
+        val host = FrameLayout(activity).apply {
+            setBackgroundColor(Color.BLACK)
+            clipChildren = true
+            clipToPadding = true
+            elevation = dp(220).toFloat()
+        }
+        activityContent.addView(
+            host,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        root.visibility = View.INVISIBLE
+        host.addView(
+            playerCard,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                Gravity.CENTER
+            )
+        )
+
+        pipHost = host
+        pipMode = true
+        controlsOverlay.visibility = View.GONE
+        audioToggle.visibility = View.GONE
+        latencyPill.visibility = View.GONE
+        playerCard.background = null
+        playerCard.clipToOutline = false
+        return true
+    }
+
+    fun restoreFromPictureInPicture() {
+        if (!pipMode) return
+
+        val host = pipHost
+        runCatching { host?.removeView(playerCard) }
+        runCatching { (host?.parent as? ViewGroup)?.removeView(host) }
+
+        val parent = pipOriginalParent
+        if (parent != null && playerCard.parent == null) {
+            val params = pipOriginalLayoutParams
+                ?: LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    (activity.resources.displayMetrics.widthPixels * 9f / 16f).toInt()
+                )
+            val index = pipOriginalIndex.coerceIn(0, parent.childCount)
+            parent.addView(playerCard, index, params)
+        }
+
+        pipHost = null
+        pipOriginalParent = null
+        pipOriginalIndex = -1
+        pipOriginalLayoutParams = null
+        pipMode = false
+
+        root.visibility = View.VISIBLE
+        audioToggle.visibility = View.VISIBLE
+        latencyPill.visibility = View.VISIBLE
+        playerCard.background = rounded(Color.BLACK, 18)
+        playerCard.clipToOutline = true
+        showControls(autoHide = player?.isPlaying == true)
+        restoreInlineLayoutAfterFullscreen()
+    }
+
     fun prepareForExit() {
         if (destroyed || exiting) return
         exiting = true
@@ -1748,6 +1839,7 @@ class TwitchLivePlayerScreen(
 
     fun destroy() {
         if (destroyed) return
+        runCatching { if (pipMode || pipHost != null) restoreFromPictureInPicture() }
         destroyed = true
         exiting = true
         handler.removeCallbacksAndMessages(null)
