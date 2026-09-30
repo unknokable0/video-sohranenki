@@ -2584,9 +2584,9 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(bg)
             setPadding(0, 0, 0, dp(16))
-            if (sectionTransitionDirection != 0 && settings.animations) {
-                alpha = 0.92f
-            }
+        }
+        if (sectionTransitionDirection != 0 && settings.animations) {
+            body.alpha = 0.92f
         }
         scroll.addView(
             body,
