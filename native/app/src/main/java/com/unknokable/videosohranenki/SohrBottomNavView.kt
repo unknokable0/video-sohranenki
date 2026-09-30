@@ -206,7 +206,7 @@ class SohrBottomNavView(
             val from = indicator.translationX
             val to = target * slot
             indicatorAnimator = ValueAnimator.ofFloat(from, to).apply {
-                duration = SohrMotion.NORMAL
+                duration = 145L
                 interpolator = smoothInterpolator
                 addUpdateListener { indicator.translationX = it.animatedValue as Float }
                 start()
@@ -314,7 +314,7 @@ class SohrBottomNavView(
             }
             indicator.animate()
                 .scaleY(1f)
-                .setDuration(SohrMotion.NORMAL)
+                .setDuration(145L)
                 .setInterpolator(smoothInterpolator)
                 .start()
         } else {
