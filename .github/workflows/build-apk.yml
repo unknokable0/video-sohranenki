@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.6.8: remaining time, YouTube-like gestures and portrait restore
+# SOHR 6.6.9: best Twitch quality and unclipped choice dialogs
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.6.8 version
+      - name: Assign SOHR 6.6.9 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=660008" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.6.8" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=660009" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.6.9" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -656,7 +656,7 @@ jobs:
                   raise SystemExit(f"SOHR 6.6.8 external-link icon regression: {required}")
 
           for required in [
-              '"6.6.8" -> listOf(',
+              '"6.6.9" -> listOf(',
               't2x2LiveAccent = Color.parseColor("#E5484D")',
               "TwitchCategoryTracker",
               "formatCategoryDuration",
@@ -827,6 +827,30 @@ jobs:
           ]:
               if required not in twitch_embed:
                   raise SystemExit(f"SOHR 6.6.7 Twitch source-quality regression: {required}")
+
+          for required in [
+              "private fun bestAvailableQuality(): String?",
+              "private fun enforceBestStartupQuality()",
+              "manualQualityChosen = true",
+              '"Лучшее доступное  •  ${qualityLabel(best)}"',
+              '"Авто  •  адаптивное качество"',
+              "qualityGuardUntil = SystemClock.elapsedRealtime() + 7_000L"
+          ]:
+              if required not in twitch_player:
+                  raise SystemExit(f"SOHR 6.6.9 Twitch startup-quality regression: {required}")
+
+          dialogs = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/ModernDialogs.kt"
+          ).read_text(encoding="utf-8")
+          for required in [
+              "val compactLandscape =",
+              "val choiceMinHeight = if (compactLandscape) 46 else 50",
+              "clipToPadding = false",
+              "val visibleRows = if (compactLandscape) 3 else 5",
+              "clipToOutline = true"
+          ]:
+              if required not in dialogs:
+                  raise SystemExit(f"SOHR 6.6.9 choice-dialog clipping regression: {required}")
 
           live_pulse = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/LivePulseView.kt"
@@ -1416,7 +1440,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.6.8 • обычный плеер и Twitch VOD показывают Осталось до конца • fullscreen автоматически возвращает телефон в портрет • двойной тап ±10 сек, горизонтальная перемотка, удержание 2×, pinch fit/fill и свайпы fullscreen/mini работают без регулировки громкости • Android PiP теперь показывает именно видео для Telegram, Twitch VOD и Twitch live, а не уменьшенный интерфейс SOHR • игра из истории T2x2 открывает Google-поиск по названию игры + игра • ссылка получила ровную отдельную кнопку • прогресс следует выбранной теме • включены исправления 6.6.7: таймлайн T2x2 без обрезания, интервалы с–до, плавный Back из сборников и Source-качество Twitch"
+            "notes": "SOHR 6.6.9 • Twitch VOD при открытии принудительно выбирает Source/Оригинал или самый высокий реальный поток вместо случайного низкого Auto • Auto оставлен отдельным ручным адаптивным режимом • окно выбора качества и другие choice-диалоги больше не режут нижнюю строку в landscape: компактные строки, целые видимые элементы, нижний inset и корректное скругление • сохранены Осталось до конца, YouTube-подобные жесты без свайпа громкости, автопортрет после fullscreen, video-only PiP, themed progress, Google-поиск игр T2x2 и плавный Back из сборников"
           }
           EOF
           cat update.json
