@@ -121,6 +121,8 @@ class MainActivity : AppCompatActivity() {
     private var t2x2WatchJob: kotlinx.coroutines.Job? = null
     private var t2x2LiveSlot: FrameLayout? = null
     private var lastT2x2Live: TwitchLiveStream? = null
+    private lateinit var twitchCategoryTracker: TwitchCategoryTracker
+    private var lastT2x2Timeline: TwitchCategoryTimeline? = null
     private var lastT2x2LiveCheckedAt = 0L
     private var lastT2x2LiveUnavailable = false
     private val t2x2LiveCacheMs = 20_000L
@@ -248,6 +250,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         settings = AppSettings(this)
+        twitchCategoryTracker = TwitchCategoryTracker(this)
+        lastT2x2Timeline = twitchCategoryTracker.timeline()
         openUpdateFromNotification =
             intent?.getBooleanExtra(SohrBackgroundCheckWorker.EXTRA_OPEN_UPDATE, false) == true
         streakTracker = StreakTracker(this)
@@ -3751,8 +3755,9 @@ class MainActivity : AppCompatActivity() {
             tag = fallbackSummary
             textSize = 11.8f
             includeFontPadding = false
-            maxLines = 1
+            maxLines = 2
             ellipsize = android.text.TextUtils.TruncateAt.END
+            setLineSpacing(0f, 1.05f)
             setTextColor(muted)
             setPadding(0, dp(6), 0, 0)
         }
@@ -3770,6 +3775,7 @@ class MainActivity : AppCompatActivity() {
             background = roundedBg(palette.surfaceAlt, 16)
         }
         val liveDot = LivePulseView(this).apply {
+            setLiveColor(purple)
             setState(lastT2x2Live != null, settings.animations)
         }
         val liveText = TextView(this).apply {
@@ -3797,7 +3803,7 @@ class MainActivity : AppCompatActivity() {
             card,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(92)
+                dp(108)
             ).apply {
                 marginStart = dp(16)
                 marginEnd = dp(16)
@@ -3815,22 +3821,52 @@ class MainActivity : AppCompatActivity() {
         val label = todayLiveStatusView ?: return
         val dot = todayLiveDot
         val isLive = live != null
+        dot?.setLiveColor(purple)
         dot?.setState(isLive, settings.animations)
-        if (isLive) {
+
+        if (isLive && live != null) {
+            val timeline = lastT2x2Timeline
+                ?.takeIf { it.streamStartedAt == live.startedAt }
+                ?: twitchCategoryTracker.observe(live).also { lastT2x2Timeline = it }
+
             label.text = "T2x2 • в сети"
-            label.setTextColor(Color.parseColor("#FF4458"))
-            val title = live?.title
-                ?.replace("\r\n", " ")
-                ?.replace("\n", " ")
-                ?.trim()
-                ?.take(42)
-                .orEmpty()
-                .ifBlank { "T2x2 в эфире" }
-            todaySummaryView?.text = "Эфир • " + liveElapsedLabel(live?.startedAt)
+            label.setTextColor(purple)
+
+            val current = timeline.current
+            val previous = timeline.previous
+            val firstLine = buildString {
+                append(current?.gameName?.takeIf { it.isNotBlank() } ?: live.gameName.ifBlank { "Без категории" })
+                current?.let {
+                    append(" • ")
+                    append(formatCategoryDuration(it.elapsedMs()))
+                }
+            }
+            val secondLine = buildString {
+                append("Эфир ")
+                append(liveElapsedLabel(live.startedAt))
+                if (previous != null) {
+                    append(" • до этого ")
+                    append(previous.gameName)
+                    append(" ")
+                    append(formatCategoryDuration(previous.elapsedMs()))
+                }
+            }
+            todaySummaryView?.text = firstLine + "\n" + secondLine
         } else {
             label.text = "T2x2 • не в сети"
             label.setTextColor(muted)
             todaySummaryView?.text = todaySummaryView?.tag as? String ?: "SOHR"
+        }
+    }
+
+    private fun formatCategoryDuration(durationMs: Long): String {
+        val totalMinutes = (durationMs.coerceAtLeast(0L) / 60_000L).coerceAtLeast(0L)
+        val hours = totalMinutes / 60L
+        val minutes = totalMinutes % 60L
+        return when {
+            hours > 0L -> "$hours ч $minutes мин"
+            totalMinutes > 0L -> "$totalMinutes мин"
+            else -> "<1 мин"
         }
     }
 
@@ -4762,7 +4798,12 @@ class MainActivity : AppCompatActivity() {
                 lastT2x2LiveUnavailable = false
                 lastT2x2LiveCheckedAt = System.currentTimeMillis()
 
-                if (live != null) maybeNotifyT2x2Live(live)
+                if (live != null) {
+                    lastT2x2Timeline = twitchCategoryTracker.observe(live)
+                    maybeNotifyT2x2Live(live)
+                } else {
+                    lastT2x2Timeline = twitchCategoryTracker.markOffline()
+                }
                 updateTodayLiveSummary(live)
                 slot?.takeIf { it.isAttachedToWindow }
                     ?.let { renderT2x2Live(it, live) }
@@ -4823,6 +4864,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val pulse = LivePulseView(this).apply {
+            setLiveColor(purple)
             setState(live != null, settings.animations)
         }
         card.addView(
@@ -4847,11 +4889,12 @@ class MainActivity : AppCompatActivity() {
         })
 
         val status = TextView(this).apply {
-            textSize = 11.4f
+            textSize = 11.2f
             includeFontPadding = false
-            maxLines = 1
+            maxLines = 2
             ellipsize = android.text.TextUtils.TruncateAt.END
-            setPadding(0, dp(5), 0, 0)
+            setLineSpacing(0f, 1.03f)
+            setPadding(0, dp(4), 0, 0)
         }
 
         fun updateStatus() {
@@ -4861,14 +4904,23 @@ class MainActivity : AppCompatActivity() {
                     else "Не в сети"
                 status.setTextColor(muted)
             } else {
+                val timeline = lastT2x2Timeline
+                    ?.takeIf { it.streamStartedAt == live.startedAt }
+                    ?: twitchCategoryTracker.observe(live).also { lastT2x2Timeline = it }
+                val current = timeline.current
                 status.text = buildString {
-                    append("В сети • ")
+                    append(current?.gameName?.takeIf { it.isNotBlank() } ?: live.gameName.ifBlank { "Без категории" })
+                    current?.let {
+                        append(" • ")
+                        append(formatCategoryDuration(it.elapsedMs()))
+                    }
+                    append("\nЭфир ")
                     append(formatLiveDuration(live.startedAt))
                     append(" • ")
                     append(formatViewerCountCompact(live.viewerCount))
                     append(" зр.")
                 }
-                status.setTextColor(Color.parseColor("#43D18D"))
+                status.setTextColor(muted)
             }
         }
         updateStatus()
@@ -4923,7 +4975,7 @@ class MainActivity : AppCompatActivity() {
             card,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(72),
+                dp(84),
                 Gravity.CENTER
             )
         )
@@ -5132,7 +5184,12 @@ class MainActivity : AppCompatActivity() {
                         lastT2x2Live = live
                         lastT2x2LiveUnavailable = false
                         lastT2x2LiveCheckedAt = System.currentTimeMillis()
-                        if (live != null) maybeNotifyT2x2Live(live)
+                        if (live != null) {
+                            lastT2x2Timeline = twitchCategoryTracker.observe(live)
+                            maybeNotifyT2x2Live(live)
+                        } else {
+                            lastT2x2Timeline = twitchCategoryTracker.markOffline()
+                        }
                         updateTodayLiveSummary(live)
 
                         t2x2LiveSlot
