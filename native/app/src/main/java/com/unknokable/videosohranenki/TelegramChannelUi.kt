@@ -415,7 +415,7 @@ object TelegramChannelUi {
         val searchInput = EditText(activity).apply {
             hint = "Поиск в канале"
             textSize = 14f
-            singleLine = true
+            setSingleLine(true)
             setTextColor(palette.text)
             setHintTextColor(palette.muted)
             background = rounded(palette.surfaceAlt, 18)
