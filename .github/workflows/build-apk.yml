@@ -661,7 +661,7 @@ jobs:
               "private fun animateTodayLiveExpandedChildren(",
               "private fun formatT2x2SegmentRange(",
               "private fun openTwitchGameSearch(",
-              'contentDescription = "Открыть ${segment.gameName} в Twitch"',
+              'contentDescription = "Найти ${segment.gameName} в браузере"',
               '"ИСТОРИЯ ЭФИРА"',
               'R.drawable.ic_action_open',
               'tag = "t2x2_timeline_row"',
@@ -708,7 +708,8 @@ jobs:
               'return "ост. " + formatMs(remaining)',
               "onSwipeUp = {",
               "if (!fullscreen) onFullscreen(true)",
-              "onSwipeDown = {"
+              "onSwipeDown = {",
+              "fullscreenButton.setImageResource(R.drawable.ic_fullscreen_exit)"
           ]:
               if required not in player_screen:
                   raise SystemExit(f"SOHR 6.6.8 native player regression: {required}")
