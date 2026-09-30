@@ -202,8 +202,7 @@ object TwitchVodResolver {
 
             val lower = line.lowercase()
             val muted =
-                "-unmuted." in lower ||
-                    "-muted." in lower ||
+                ("-muted." in lower && "-unmuted." !in lower) ||
                     "index-muted" in lower
 
             if (muted) {
