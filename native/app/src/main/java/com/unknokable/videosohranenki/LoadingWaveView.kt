@@ -116,10 +116,12 @@ class LoadingWaveView(
         if (width <= 0 || height <= 0 || length <= 0f) return
 
         val minDp = minOf(width, height) / resources.displayMetrics.density
-        val baseStroke = (minDp * 0.0615f).coerceIn(3.15f, 5.4f)
-        val activeStroke = (minDp * 0.081f).coerceIn(4.2f, 6.9f)
+        // About 25% thinner than the previous version: still clearly visible,
+        // but lighter and more premium without a neon-heavy outline.
+        val baseStroke = (minDp * 0.046f).coerceIn(2.4f, 4.05f)
+        val activeStroke = (minDp * 0.061f).coerceIn(3.2f, 5.2f)
 
-        basePaint.color = withAlpha(color, 104)
+        basePaint.color = withAlpha(color, 86)
         basePaint.strokeWidth = dp(baseStroke)
         canvas.drawPath(outlinePath, basePaint)
 
@@ -135,7 +137,7 @@ class LoadingWaveView(
             measure.getSegment(0f, end - length, segmentPath, true)
         }
 
-        segmentPaint.color = withAlpha(color, 238)
+        segmentPaint.color = withAlpha(color, 224)
         segmentPaint.strokeWidth = dp(activeStroke)
         canvas.drawPath(segmentPath, segmentPaint)
     }
