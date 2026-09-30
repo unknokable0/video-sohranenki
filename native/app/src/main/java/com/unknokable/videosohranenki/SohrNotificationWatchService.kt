@@ -156,9 +156,18 @@ class SohrNotificationWatchService : Service() {
         val token = settings.twitchAccessToken?.trim().orEmpty()
         if (clientId.isBlank() || token.isBlank()) return
 
-        val live = runCatching {
+        val liveResult = runCatching {
             TwitchApi.loadLiveStream(clientId, token, "t2x2")
-        }.getOrNull() ?: return
+        }
+        if (liveResult.isFailure) return
+
+        val live = liveResult.getOrNull()
+        val categoryTracker = TwitchCategoryTracker(applicationContext)
+        if (live == null) {
+            categoryTracker.markOffline()
+            return
+        }
+        categoryTracker.observe(live)
 
         if (live.startedAt.isBlank() || !canNotify()) return
 
