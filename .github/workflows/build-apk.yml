@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.6.9: best Twitch quality and unclipped choice dialogs
+# SOHR 6.6.10: true highest-bitrate defaults and whole-row quality dialogs
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.6.9 version
+      - name: Assign SOHR 6.6.10 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=660009" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.6.9" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=660010" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.6.10" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -656,7 +656,7 @@ jobs:
                   raise SystemExit(f"SOHR 6.6.8 external-link icon regression: {required}")
 
           for required in [
-              '"6.6.9" -> listOf(',
+              '"6.6.10" -> listOf(',
               't2x2LiveAccent = Color.parseColor("#E5484D")',
               "TwitchCategoryTracker",
               "formatCategoryDuration",
@@ -831,13 +831,16 @@ jobs:
           for required in [
               "private fun bestAvailableQuality(): String?",
               "private fun enforceBestStartupQuality()",
-              "manualQualityChosen = true",
+              "manualQualityChosen = which != 0",
               '"Лучшее доступное  •  ${qualityLabel(best)}"',
               '"Авто  •  адаптивное качество"',
-              "qualityGuardUntil = SystemClock.elapsedRealtime() + 7_000L"
+              "now - lastBestQualityApplyAt >= 1_000L",
+              'if (!manualQualityChosen && bestAvailableQuality() != null) "Лучшее"'
           ]:
               if required not in twitch_player:
-                  raise SystemExit(f"SOHR 6.6.9 Twitch startup-quality regression: {required}")
+                  raise SystemExit(f"SOHR 6.6.10 Twitch best-quality lock regression: {required}")
+          if "qualityGuardUntil" in twitch_player:
+              raise SystemExit("SOHR 6.6.10 regression: Twitch best-quality lock is time-limited again")
 
           dialogs = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/ModernDialogs.kt"
@@ -847,10 +850,13 @@ jobs:
               "val choiceMinHeight = if (compactLandscape) 46 else 50",
               "clipToPadding = false",
               "val visibleRows = if (compactLandscape) 3 else 5",
+              "val wholeRowsCap = visibleRows * rowSlot + dp(context, 10)",
+              "val targetHeight = if (compactLandscape)",
+              "minOf(naturalHeight, wholeRowsCap)",
               "clipToOutline = true"
           ]:
               if required not in dialogs:
-                  raise SystemExit(f"SOHR 6.6.9 choice-dialog clipping regression: {required}")
+                  raise SystemExit(f"SOHR 6.6.10 choice-dialog whole-row regression: {required}")
 
           live_pulse = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/LivePulseView.kt"
@@ -1392,6 +1398,17 @@ jobs:
           if "BitmapFactory.decodeFile" in player:
               raise SystemExit("Synchronous thumbnail decoding regression")
 
+          for required in [
+              ".setForceHighestSupportedBitrate(true)",
+              '"Лучшее • максимальный битрейт"',
+              '"Авто • адаптивное качество"',
+              ".setForceHighestSupportedBitrate(false)"
+          ]:
+              if required not in player:
+                  raise SystemExit(f"SOHR 6.6.10 Media3 highest-bitrate regression: {required}")
+          if '"Авто • лучшее доступное"' in player:
+              raise SystemExit("SOHR 6.6.10 regression: adaptive Auto is mislabeled as best")
+
           twitch_player = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/TwitchPlayerScreen.kt"
           ).read_text(encoding="utf-8")
@@ -1440,7 +1457,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.6.9 • Twitch VOD при открытии принудительно выбирает Source/Оригинал или самый высокий реальный поток вместо случайного низкого Auto • Auto оставлен отдельным ручным адаптивным режимом • окно выбора качества и другие choice-диалоги больше не режут нижнюю строку в landscape: компактные строки, целые видимые элементы, нижний inset и корректное скругление • сохранены Осталось до конца, YouTube-подобные жесты без свайпа громкости, автопортрет после fullscreen, video-only PiP, themed progress, Google-поиск игр T2x2 и плавный Back из сборников"
+            "notes": "SOHR 6.6.10 • режим Лучшее в Media3 теперь реально форсит максимальный поддерживаемый битрейт, а Auto вынесен в отдельный адаптивный режим • Twitch VOD удерживает Source/максимальный поток весь сеанс и больше не откатывается в Auto после первых секунд • окно качества в landscape показывает только целые строки без обрезанного нижнего пункта • inline Twitch-плеер стал компактнее при сохранённом 16:9 • сохранены Осталось, жесты без свайпа громкости, автопортрет, video-only PiP, themed progress, Google-поиск игр и плавный Back"
           }
           EOF
           cat update.json
