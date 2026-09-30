@@ -552,6 +552,7 @@ class PlayerScreen(
         seekBar = SohrTimeBar(activity, palette.accent).apply {
             listener = object : SohrTimeBar.Listener {
                 override fun onScrubStart(positionMs: Long) {
+                    markPlayerInteraction()
                     dragging = true
                     player.setScrubbingModeEnabled(true)
                     showPreview()
@@ -567,6 +568,8 @@ class PlayerScreen(
                 override fun onFineScrubMode(enabled: Boolean, positionMs: Long, fraction: Float) {
                     fineScrubMode = enabled
                     if (enabled) {
+                        markPlayerInteraction()
+                        SohrHaptics.select(seekBar)
                         showFilmstrip()
                         requestFilmstrip(positionMs)
                     } else {
@@ -2359,7 +2362,11 @@ class PlayerScreen(
         handler.postDelayed({
             updateProgress()
             scheduleProgress()
-        }, if (player.isPlaying) 250L else 850L)
+        }, when {
+            !player.isPlaying -> 850L
+            SystemClock.elapsedRealtime() > interactionBoostUntilElapsed -> 500L
+            else -> 250L
+        })
     }
 
     private fun updateProgress() {
