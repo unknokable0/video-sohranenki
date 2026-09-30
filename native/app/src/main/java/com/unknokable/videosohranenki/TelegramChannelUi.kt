@@ -353,7 +353,7 @@ object TelegramChannelUi {
             if (!channel.avatarPath.isNullOrBlank()) {
                 load(channel.avatarPath) {
                     transformations(CircleCropTransformation())
-                    crossfade(settings.animations)
+                    crossfade(false)
                 }
             }
         }
@@ -598,6 +598,17 @@ object TelegramChannelUi {
             }
         }
 
+        val needsInitialPosition =
+            unreadDividerView != null ||
+                initialScrollY > 0 ||
+                posts.isNotEmpty()
+        if (needsInitialPosition) {
+            // Hide only the scrollable message area for the first layout pass.
+            // This prevents the visible top -> bottom jump while the header
+            // remains stable and immediately visible.
+            scroll.alpha = 0f
+        }
+
         content.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         page.addView(
             content,
@@ -751,6 +762,19 @@ object TelegramChannelUi {
                 initialScrollY > 0 -> scroll.scrollTo(0, initialScrollY)
                 posts.isNotEmpty() -> scroll.scrollTo(0, scroll.getChildAt(0)?.height ?: 0)
             }
+
+            if (scroll.alpha < 1f) {
+                if (settings.animations) {
+                    scroll.animate().cancel()
+                    scroll.animate()
+                        .alpha(1f)
+                        .setDuration(110L)
+                        .setInterpolator(SohrMotion.smooth())
+                        .start()
+                } else {
+                    scroll.alpha = 1f
+                }
+            }
         }
 
         return TelegramChannelRender(page, messagesHost, scroll)
@@ -807,7 +831,7 @@ object TelegramChannelUi {
                         ImageView(activity).apply {
                             scaleType = ImageView.ScaleType.CENTER_CROP
                             if (!item.previewPath.isNullOrBlank()) {
-                                load(item.previewPath) { crossfade(true) }
+                                load(item.previewPath) { crossfade(false) }
                             }
                         },
                         FrameLayout.LayoutParams(
@@ -1008,7 +1032,7 @@ object TelegramChannelUi {
                         else ImageView.ScaleType.CENTER_CROP
                     adjustViewBounds = post.kind == "photo"
                     if (!post.previewPath.isNullOrBlank()) {
-                        load(post.previewPath) { crossfade(settings.animations) }
+                        load(post.previewPath) { crossfade(false) }
                     }
                 }
                 preview.addView(image, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
