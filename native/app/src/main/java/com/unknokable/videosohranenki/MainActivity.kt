@@ -4116,15 +4116,27 @@ class MainActivity : AppCompatActivity() {
                 )
 
                 val rail = FrameLayout(this)
-                rail.addView(
-                    View(this).apply {
-                        setBackgroundColor(palette.stroke)
-                        alpha = if (index == recent.lastIndex) 0f else 0.55f
-                    },
-                    FrameLayout.LayoutParams(dp(1), dp(42), Gravity.CENTER_HORIZONTAL).apply {
-                        topMargin = dp(21)
-                    }
-                )
+                val lineParams = when {
+                    recent.size <= 1 -> null
+                    index == 0 -> FrameLayout.LayoutParams(
+                        dp(1), dp(21), Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                    ).apply { topMargin = dp(21) }
+                    index == recent.lastIndex -> FrameLayout.LayoutParams(
+                        dp(1), dp(21), Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                    )
+                    else -> FrameLayout.LayoutParams(
+                        dp(1), dp(42), Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                    )
+                }
+                if (lineParams != null) {
+                    rail.addView(
+                        View(this).apply {
+                            setBackgroundColor(palette.stroke)
+                            alpha = 0.55f
+                        },
+                        lineParams
+                    )
+                }
                 rail.addView(
                     View(this).apply {
                         background = roundedBg(
