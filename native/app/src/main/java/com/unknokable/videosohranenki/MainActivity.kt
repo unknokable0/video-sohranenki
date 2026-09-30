@@ -3997,18 +3997,18 @@ class MainActivity : AppCompatActivity() {
         return "$start → $end"
     }
 
-    private fun openTwitchGameSearch(gameName: String) {
+    private fun openGameSearch(gameName: String) {
         if (gameName.isBlank()) return
         val uri = Uri.Builder()
             .scheme("https")
-            .authority("www.twitch.tv")
+            .authority("www.google.com")
             .appendPath("search")
-            .appendQueryParameter("term", gameName)
+            .appendQueryParameter("q", "$gameName игра")
             .build()
         runCatching {
             startActivity(Intent(Intent.ACTION_VIEW, uri))
         }.onFailure {
-            Toast.makeText(this, "Не удалось открыть Twitch", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Не удалось открыть поиск", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -4177,11 +4177,11 @@ class MainActivity : AppCompatActivity() {
                     gravity = Gravity.CENTER_VERTICAL
                     isClickable = true
                     isFocusable = true
-                    contentDescription = "Открыть ${segment.gameName} в Twitch"
+                    contentDescription = "Найти ${segment.gameName} в браузере"
                     setOnClickListener {
                         SohrHaptics.tap(this)
                         animatePress(this)
-                        openTwitchGameSearch(segment.gameName)
+                        openGameSearch(segment.gameName)
                     }
                 }
                 gameLink.addView(
@@ -8842,9 +8842,17 @@ class MainActivity : AppCompatActivity() {
                     ?: false
 
             fullScreen = actual
+            requestedOrientation =
+                if (actual) {
+                    android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                } else {
+                    android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                }
             applySystemBars(actual)
         } catch (_: Throwable) {
             fullScreen = false
+            requestedOrientation =
+                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
             runCatching { playerScreen?.exitFullscreen() }
             runCatching { twitchPlayerScreen?.exitFullscreen() }
             runCatching { twitchLivePlayerScreen?.exitFullscreen() }
