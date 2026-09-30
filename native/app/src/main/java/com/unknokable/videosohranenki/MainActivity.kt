@@ -4077,9 +4077,10 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 row.addView(View(this).apply {
-                    background = oval(
+                    background = roundedBg(
                         if (index == 0 && segment.endedAtMs == null) purple
-                        else palette.stroke
+                        else palette.stroke,
+                        99
                     )
                 }, LinearLayout.LayoutParams(dp(6), dp(6)).apply {
                     marginEnd = dp(9)
