@@ -108,6 +108,10 @@ class PlayerScreen(
     private lateinit var endOverlay: LinearLayout
     private lateinit var miniBar: LinearLayout
     private lateinit var miniVideoHost: FrameLayout
+    private lateinit var miniPlayPause: ImageButton
+    private lateinit var miniRemainingTime: TextView
+    private lateinit var miniProgressTrack: FrameLayout
+    private lateinit var miniProgressFill: View
     private var miniMode = false
     private var gestureOverlay: PlayerGestureOverlay? = null
     private val autoHideControls = Runnable { if (player.isPlaying && !dragging) hideOverlay() }
@@ -332,7 +336,7 @@ class PlayerScreen(
         nextVideosBlock = buildNextVideosBlock()
         root.addView(nextVideosBlock)
         miniBar = buildMiniPlayer()
-        root.addView(miniBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(76)))
+        root.addView(miniBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(88)))
 
         previewBubble = buildSeekPreview()
         playerCard.addView(
@@ -364,6 +368,11 @@ class PlayerScreen(
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (!isPlaying) markPlayerInteraction()
                 updatePlayIcon()
+                if (::miniPlayPause.isInitialized) {
+                    miniPlayPause.setImageResource(
+                        if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play
+                    )
+                }
                 root.keepScreenOn = isPlaying
                 if (isPlaying && ::endOverlay.isInitialized) endOverlay.visibility = View.GONE
                 if (isPlaying) {
@@ -619,8 +628,8 @@ class PlayerScreen(
             includeFontPadding = false
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
-            background = rounded("#38221A30", 10)
-            setPadding(dp(7), 0, dp(7), 0)
+            background = roundedInt(withAlpha(palette.accent, 48), 10)
+            setPadding(dp(8), 0, dp(8), 0)
         }
         val spacer = View(activity)
 
@@ -1865,37 +1874,65 @@ class PlayerScreen(
     }
 
     private fun buildMiniPlayer(): LinearLayout = LinearLayout(activity).apply {
-        orientation = LinearLayout.HORIZONTAL
+        orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(8), dp(4), dp(8), dp(4))
-        background = roundedInt(palette.surface, 18)
+        setPadding(dp(8), dp(6), dp(8), dp(6))
+        background = GradientDrawable().apply {
+            setColor(palette.surface)
+            setStroke(dp(1), palette.stroke)
+            cornerRadius = dp(20).toFloat()
+        }
         visibility = View.GONE
-        elevation = dp(12).toFloat()
+        elevation = dp(14).toFloat()
+
+        val row = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
 
         miniVideoHost = FrameLayout(activity).apply {
             setBackgroundColor(Color.BLACK)
+            background = rounded("#000000", 13)
+            clipToOutline = true
+            isClickable = true
+            setOnClickListener { exitMiniPlayer() }
         }
-        addView(miniVideoHost, LinearLayout.LayoutParams(dp(112), dp(63)))
+        row.addView(miniVideoHost, LinearLayout.LayoutParams(dp(118), dp(66)))
 
-        addView(
+        val copy = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(10), 0, dp(8), 0)
+            isClickable = true
+            setOnClickListener { exitMiniPlayer() }
+        }
+        copy.addView(
             TextView(activity).apply {
                 text = cleanTitle(item.title)
-                textSize = 13f
-                maxLines = 2
+                textSize = 12.7f
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                includeFontPadding = false
                 setTypeface(typeface, Typeface.BOLD)
                 setTextColor(palette.text)
-                setPadding(dp(10), 0, dp(8), 0)
-                setOnClickListener { exitMiniPlayer() }
-            },
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            }
         )
+        miniRemainingTime = TextView(activity).apply {
+            text = remainingTimeLabel(player.currentPosition, resolvedDurationMs())
+            textSize = 10.2f
+            maxLines = 1
+            includeFontPadding = false
+            setTextColor(palette.muted)
+            setPadding(0, dp(4), 0, 0)
+        }
+        copy.addView(miniRemainingTime)
+        row.addView(copy, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
-        val miniPlayPause = ImageButton(activity).apply {
+        miniPlayPause = ImageButton(activity).apply {
             setImageResource(if (player.isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
-            imageTintList =
-                android.content.res.ColorStateList.valueOf(palette.text)
+            imageTintList = android.content.res.ColorStateList.valueOf(palette.text)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(11), dp(11), dp(11), dp(11))
+            setPadding(dp(10), dp(10), dp(10), dp(10))
             background = roundedInt(palette.surfaceAlt, 18)
             contentDescription = "Пауза или воспроизведение"
             setOnClickListener {
@@ -1904,16 +1941,15 @@ class PlayerScreen(
                 pulse(this)
             }
         }
-        addView(miniPlayPause, LinearLayout.LayoutParams(dp(48), dp(48)).apply {
-            marginEnd = dp(6)
+        row.addView(miniPlayPause, LinearLayout.LayoutParams(dp(42), dp(42)).apply {
+            marginEnd = dp(5)
         })
 
         val close = ImageButton(activity).apply {
             setImageResource(R.drawable.ic_close)
-            imageTintList =
-                android.content.res.ColorStateList.valueOf(palette.muted)
+            imageTintList = android.content.res.ColorStateList.valueOf(palette.muted)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(11), dp(11), dp(11), dp(11))
+            setPadding(dp(10), dp(10), dp(10), dp(10))
             background = roundedInt(palette.surfaceAlt, 18)
             contentDescription = "Закрыть мини-плеер"
             setOnClickListener {
@@ -1922,36 +1958,78 @@ class PlayerScreen(
                 onBack()
             }
         }
-        addView(close, LinearLayout.LayoutParams(dp(48), dp(48)))
+        row.addView(close, LinearLayout.LayoutParams(dp(42), dp(42)))
 
-        setOnClickListener { exitMiniPlayer() }
+        addView(row, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            0,
+            1f
+        ))
+
+        miniProgressTrack = FrameLayout(activity).apply {
+            background = roundedInt(palette.stroke, 99)
+        }
+        miniProgressFill = View(activity).apply {
+            background = roundedInt(palette.accent, 99)
+        }
+        miniProgressTrack.addView(
+            miniProgressFill,
+            FrameLayout.LayoutParams(0, dp(2), Gravity.START or Gravity.CENTER_VERTICAL)
+        )
+        addView(
+            miniProgressTrack,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(2)
+            ).apply {
+                marginStart = dp(4)
+                marginEnd = dp(4)
+            }
+        )
+
         setOnTouchListener(object : View.OnTouchListener {
-            var x = 0f
+            var downX = 0f
+            var dragging = false
 
             override fun onTouch(v: View, e: MotionEvent): Boolean {
                 when (e.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
-                        x = e.x
+                        downX = e.x
+                        dragging = false
                         return true
                     }
                     MotionEvent.ACTION_MOVE -> {
-                        v.translationX = e.x - x
-                        v.alpha =
-                            (1f - kotlin.math.abs(v.translationX) / v.width)
-                                .coerceIn(.25f, 1f)
+                        val dx = e.x - downX
+                        if (kotlin.math.abs(dx) > dp(10)) dragging = true
+                        if (dragging) {
+                            v.translationX = dx
+                            v.alpha =
+                                (1f - kotlin.math.abs(v.translationX) / v.width)
+                                    .coerceIn(.30f, 1f)
+                        }
                         return true
                     }
                     MotionEvent.ACTION_UP -> {
-                        if (kotlin.math.abs(v.translationX) > v.width * .35f) {
+                        if (dragging && kotlin.math.abs(v.translationX) > v.width * .35f) {
                             player.pause()
                             onBack()
                         } else {
                             v.animate()
                                 .translationX(0f)
                                 .alpha(1f)
-                                .setDuration(220L)
+                                .setDuration(if (settings.animations) 190L else 0L)
+                                .setInterpolator(SohrMotion.smooth())
                                 .start()
+                            if (!dragging) exitMiniPlayer()
                         }
+                        return true
+                    }
+                    MotionEvent.ACTION_CANCEL -> {
+                        v.animate()
+                            .translationX(0f)
+                            .alpha(1f)
+                            .setDuration(140L)
+                            .start()
                         return true
                     }
                 }
@@ -1965,7 +2043,20 @@ class PlayerScreen(
         header.visibility=View.GONE; details.visibility=View.GONE; socialActionsRow.visibility=View.GONE; actionsRow.visibility=View.GONE; nextVideosBlock.visibility=View.GONE; overlay.visibility=View.GONE
         (playerView.parent as? ViewGroup)?.removeView(playerView); miniVideoHost.removeAllViews(); miniVideoHost.addView(playerView,FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.MATCH_PARENT)); playerCard.visibility=View.GONE
         root.setBackgroundColor(Color.TRANSPARENT)
-        root.gravity=Gravity.BOTTOM; miniBar.alpha=0f; miniBar.translationY=dp(76).toFloat(); miniBar.visibility=View.VISIBLE; miniBar.animate().alpha(1f).translationY(0f).setDuration(if(settings.animations)260L else 0L).start()
+        root.gravity=Gravity.BOTTOM
+        miniBar.alpha=0f
+        miniBar.translationY=dp(18).toFloat()
+        miniBar.scaleX=0.985f
+        miniBar.scaleY=0.985f
+        miniBar.visibility=View.VISIBLE
+        miniBar.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(if(settings.animations)220L else 0L)
+            .setInterpolator(SohrMotion.smooth())
+            .start()
         onMiniModeChanged?.invoke(true)
     }
 
@@ -2039,6 +2130,8 @@ class PlayerScreen(
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         )
+        host.elevation = dp(200).toFloat()
+        root.visibility = View.INVISIBLE
         host.addView(
             playerCard,
             FrameLayout.LayoutParams(
@@ -2080,6 +2173,7 @@ class PlayerScreen(
         pipOriginalIndex = -1
         pipOriginalLayoutParams = null
         pipMode = false
+        root.visibility = View.VISIBLE
         playerCard.clipToOutline = true
         playerCard.background = rounded("#000000", 18)
         showOverlay()
@@ -2152,6 +2246,14 @@ class PlayerScreen(
 
         fullscreenTransition = true
         try {
+            if (activity.resources.configuration.smallestScreenWidthDp < 600) {
+                activity.requestedOrientation =
+                    if (enabled) {
+                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                    } else {
+                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                    }
+            }
             if (enabled) {
                 if (fullscreen) {
                     showOverlay()
@@ -2434,6 +2536,25 @@ class PlayerScreen(
             }
         }
         currentTime.text = formatMs(player.currentPosition)
+        if (::miniRemainingTime.isInitialized) {
+            miniRemainingTime.text = remainingTimeLabel(
+                player.currentPosition,
+                resolvedDurationMs()
+            )
+        }
+        if (::miniProgressTrack.isInitialized && ::miniProgressFill.isInitialized) {
+            val duration = resolvedDurationMs().coerceAtLeast(1L)
+            val fraction = (player.currentPosition.toFloat() / duration).coerceIn(0f, 1f)
+            miniProgressTrack.post {
+                val width = miniProgressTrack.width
+                if (width > 0) {
+                    miniProgressFill.layoutParams = miniProgressFill.layoutParams.apply {
+                        this.width = (width * fraction).toInt().coerceAtLeast(0)
+                    }
+                    miniProgressFill.requestLayout()
+                }
+            }
+        }
         persistPlaybackPosition()
         updatePlayIcon()
     }
@@ -2660,7 +2781,7 @@ class PlayerScreen(
 
     private fun remainingTimeLabel(positionMs: Long, durationMs: Long): String {
         val remaining = (durationMs - positionMs).coerceAtLeast(0L)
-        return "ост. " + formatMs(remaining)
+        return "До конца " + formatMs(remaining)
     }
 
     private fun formatMs(ms: Long): String {
@@ -2671,6 +2792,9 @@ class PlayerScreen(
         val s = total % 60
         return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
     }
+
+    private fun withAlpha(color: Int, alpha: Int): Int =
+        (color and 0x00FFFFFF) or (alpha.coerceIn(0, 255) shl 24)
 
     private fun rounded(color: String, radiusDp: Int): GradientDrawable =
         GradientDrawable().apply {
