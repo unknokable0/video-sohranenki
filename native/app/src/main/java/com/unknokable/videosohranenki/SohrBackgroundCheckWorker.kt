@@ -128,7 +128,7 @@ class SohrBackgroundCheckWorker(
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_EVENT)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
 
         applicationContext
@@ -177,8 +177,10 @@ class SohrBackgroundCheckWorker(
 
         private const val UNIQUE_WORK = "sohr_background_checks"
         private const val UNIQUE_IMMEDIATE_WORK = "sohr_background_check_now"
-        private const val UNIQUE_FAST_WORK_2 = "sohr_background_check_2m"
-        private const val UNIQUE_FAST_WORK_5 = "sohr_background_check_5m"
+        private const val UNIQUE_FAST_WORK_1 = "sohr_background_check_1m_v2"
+        private const val UNIQUE_FAST_WORK_3 = "sohr_background_check_3m_v2"
+        private const val UNIQUE_FAST_WORK_5 = "sohr_background_check_5m_v2"
+        private const val UNIQUE_FAST_WORK_10 = "sohr_background_check_10m_v2"
         private const val RUNTIME_PREFS = "sohr_runtime"
         private const val KEY_LAST_UPDATE_NOTIFICATION = "last_update_notified_code"
         private const val KEY_LAST_T2X2_NOTIFICATION = "last_t2x2_notified_started_at"
@@ -207,26 +209,24 @@ class SohrBackgroundCheckWorker(
                     .build()
             )
 
-            // WorkManager periodic work is limited to 15 minutes. Add two
-            // lightweight one-shot checks after scheduling so update/LIVE
-            // notifications are discovered noticeably earlier without keeping
-            // a permanent foreground service alive.
-            manager.enqueueUniqueWork(
-                UNIQUE_FAST_WORK_2,
-                ExistingWorkPolicy.REPLACE,
-                OneTimeWorkRequestBuilder<SohrBackgroundCheckWorker>()
-                    .setInitialDelay(2, TimeUnit.MINUTES)
-                    .setConstraints(constraints)
-                    .build()
-            )
-            manager.enqueueUniqueWork(
-                UNIQUE_FAST_WORK_5,
-                ExistingWorkPolicy.REPLACE,
-                OneTimeWorkRequestBuilder<SohrBackgroundCheckWorker>()
-                    .setInitialDelay(5, TimeUnit.MINUTES)
-                    .setConstraints(constraints)
-                    .build()
-            )
+            // Periodic WorkManager has a 15-minute platform minimum.
+            // Add lightweight early checks too, so background notifications
+            // are discovered much sooner without a permanent foreground service.
+            listOf(
+                UNIQUE_FAST_WORK_1 to 1L,
+                UNIQUE_FAST_WORK_3 to 3L,
+                UNIQUE_FAST_WORK_5 to 5L,
+                UNIQUE_FAST_WORK_10 to 10L
+            ).forEach { (name, delayMinutes) ->
+                manager.enqueueUniqueWork(
+                    name,
+                    ExistingWorkPolicy.REPLACE,
+                    OneTimeWorkRequestBuilder<SohrBackgroundCheckWorker>()
+                        .setInitialDelay(delayMinutes, TimeUnit.MINUTES)
+                        .setConstraints(constraints)
+                        .build()
+                )
+            }
 
             val request = PeriodicWorkRequestBuilder<SohrBackgroundCheckWorker>(
                 15,
