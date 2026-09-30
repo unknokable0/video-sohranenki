@@ -762,7 +762,8 @@ object TelegramChannelUi {
         settings: AppSettings,
         posts: List<TelegramChannelPost>,
         onVideo: (TelegramChannelPost, View) -> Unit,
-        onPhoto: (TelegramChannelPost, View) -> Unit
+        onPhoto: (TelegramChannelPost, View) -> Unit,
+        onReact: ((TelegramChannelPost, String) -> Unit)? = null
     ): View {
         val palette = settings.palette()
         val card = LinearLayout(activity).apply {
@@ -889,21 +890,19 @@ object TelegramChannelUi {
             })
         }
 
-        val reactionCount = posts.sumOf { it.reactionCount.coerceAtLeast(0) }
-        if (reactionCount > 0) {
-            card.addView(TextView(activity).apply {
-                text = "♥ " + compact(reactionCount)
-                textSize = 12f
-                gravity = Gravity.CENTER
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(palette.text)
-                background = rounded(palette.surfaceAlt, 14)
-                includeFontPadding = false
-                setPadding(dp(activity, 10), dp(activity, 5), dp(activity, 10), dp(activity, 5))
-            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = dp(activity, 9)
-                marginStart = dp(activity, 4)
-            })
+        val reactionSource = posts.firstOrNull { it.reactions.isNotEmpty() } ?: posts.first()
+        buildReactionRow(activity, settings, reactionSource, onReact)?.let { reactions ->
+            card.addView(
+                reactions,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = dp(activity, 9)
+                    marginStart = dp(activity, 4)
+                    marginEnd = dp(activity, 4)
+                }
+            )
         }
 
         val last = posts.last()
@@ -951,7 +950,8 @@ object TelegramChannelUi {
         post: TelegramChannelPost,
         onVideo: (TelegramChannelPost, View) -> Unit,
         onPhoto: (TelegramChannelPost, View) -> Unit,
-        onVoice: (TelegramChannelPost, View) -> Unit
+        onVoice: (TelegramChannelPost, View) -> Unit,
+        onReact: ((TelegramChannelPost, String) -> Unit)? = null
     ): View {
         val palette = settings.palette()
         val card = LinearLayout(activity).apply {
@@ -1110,19 +1110,14 @@ object TelegramChannelUi {
             })
         }
 
-        if (post.reactionCount > 0) {
-            card.addView(TextView(activity).apply {
-                text = "♥ " + compact(post.reactionCount)
-                textSize = 12f
-                gravity = Gravity.CENTER
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(palette.text)
-                background = rounded(palette.surfaceAlt, 14)
-                includeFontPadding = false
-                setPadding(dp(activity, 10), dp(activity, 5), dp(activity, 10), dp(activity, 5))
-            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = dp(activity, 9)
-            })
+        buildReactionRow(activity, settings, post, onReact)?.let { reactions ->
+            card.addView(
+                reactions,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(activity, 9) }
+            )
         }
 
         val footer = LinearLayout(activity).apply {
@@ -1159,6 +1154,210 @@ object TelegramChannelUi {
         card.addView(footer)
 
         return card
+    }
+
+    private fun buildReactionRow(
+        activity: Activity,
+        settings: AppSettings,
+        post: TelegramChannelPost,
+        onReact: ((TelegramChannelPost, String) -> Unit)?
+    ): View? {
+        if (post.reactions.isEmpty() && onReact == null) return null
+        val palette = settings.palette()
+        val row = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        post.reactions.take(5).forEach { reaction ->
+            row.addView(
+                TextView(activity).apply {
+                    text = reaction.emoji + "  " + compact(reaction.totalCount)
+                    textSize = 12f
+                    gravity = Gravity.CENTER
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(if (reaction.chosen) Color.WHITE else palette.text)
+                    background = rounded(
+                        if (reaction.chosen) palette.accent else palette.surfaceAlt,
+                        15
+                    )
+                    includeFontPadding = false
+                    setPadding(dp(activity, 10), dp(activity, 6), dp(activity, 10), dp(activity, 6))
+                    isClickable = onReact != null
+                    isFocusable = onReact != null
+                    setOnClickListener {
+                        SohrMotion.press(this, settings.animations)
+                        onReact?.invoke(post, reaction.emoji)
+                    }
+                },
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    dp(activity, 32)
+                ).apply { marginEnd = dp(activity, 6) }
+            )
+        }
+
+        if (onReact != null) {
+            row.addView(
+                ImageButton(activity).apply {
+                    setImageResource(R.drawable.ic_action_reaction)
+                    imageTintList = ColorStateList.valueOf(palette.muted)
+                    scaleType = ImageView.ScaleType.CENTER_INSIDE
+                    background = rounded(palette.surfaceAlt, 16)
+                    setPadding(dp(activity, 8), dp(activity, 8), dp(activity, 8), dp(activity, 8))
+                    contentDescription = "Добавить реакцию"
+                    setOnClickListener {
+                        SohrMotion.press(this, settings.animations)
+                        showReactionPicker(activity, settings, post, onReact)
+                    }
+                },
+                LinearLayout.LayoutParams(dp(activity, 36), dp(activity, 36))
+            )
+        }
+        return row
+    }
+
+    private fun showReactionPicker(
+        activity: Activity,
+        settings: AppSettings,
+        post: TelegramChannelPost,
+        onReact: (TelegramChannelPost, String) -> Unit
+    ) {
+        val palette = settings.palette()
+        val dialog = BottomSheetDialog(activity)
+        val box = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(activity, 16), dp(activity, 14), dp(activity, 16), dp(activity, 20))
+            background = rounded(palette.surface, 24)
+        }
+        box.addView(TextView(activity).apply {
+            text = "Реакция"
+            textSize = 17f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(palette.text)
+            includeFontPadding = false
+            setPadding(dp(activity, 2), 0, 0, dp(activity, 12))
+        })
+        val row = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        listOf("👍", "❤", "🔥", "😂", "🎉").forEach { emoji ->
+            row.addView(
+                TextView(activity).apply {
+                    text = emoji
+                    textSize = 22f
+                    gravity = Gravity.CENTER
+                    background = rounded(palette.surfaceAlt, 18)
+                    isClickable = true
+                    isFocusable = true
+                    setOnClickListener {
+                        SohrHaptics.select(this)
+                        onReact(post, emoji)
+                        dialog.dismiss()
+                    }
+                },
+                LinearLayout.LayoutParams(0, dp(activity, 52), 1f).apply {
+                    marginEnd = dp(activity, 6)
+                }
+            )
+        }
+        box.addView(row)
+        dialog.setContentView(box)
+        dialog.show()
+    }
+
+    private fun showPostActions(
+        activity: Activity,
+        settings: AppSettings,
+        channel: TelegramChannelSummary,
+        post: TelegramChannelPost,
+        onDownload: ((TelegramChannelPost) -> Unit)?,
+        onReact: ((TelegramChannelPost, String) -> Unit)?
+    ) {
+        val palette = settings.palette()
+        val dialog = BottomSheetDialog(activity)
+        val sheet = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(activity, 12), dp(activity, 10), dp(activity, 12), dp(activity, 16))
+            background = rounded(palette.surface, 24)
+        }
+
+        fun action(icon: Int, title: String, onClick: () -> Unit) {
+            sheet.addView(
+                LinearLayout(activity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    minimumHeight = dp(activity, 52)
+                    setPadding(dp(activity, 10), 0, dp(activity, 10), 0)
+                    background = rounded(palette.surfaceAlt, 16)
+                    isClickable = true
+                    isFocusable = true
+                    addView(ImageView(activity).apply {
+                        setImageResource(icon)
+                        imageTintList = ColorStateList.valueOf(palette.text)
+                        scaleType = ImageView.ScaleType.CENTER_INSIDE
+                    }, LinearLayout.LayoutParams(dp(activity, 24), dp(activity, 24)).apply {
+                        marginEnd = dp(activity, 12)
+                    })
+                    addView(TextView(activity).apply {
+                        text = title
+                        textSize = 14f
+                        setTypeface(typeface, Typeface.BOLD)
+                        setTextColor(palette.text)
+                        includeFontPadding = false
+                    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                    setOnClickListener {
+                        SohrMotion.press(this, settings.animations)
+                        onClick()
+                        dialog.dismiss()
+                    }
+                },
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(activity, 52)).apply {
+                    bottomMargin = dp(activity, 6)
+                }
+            )
+        }
+
+        if (post.text.isNotBlank()) {
+            action(R.drawable.ic_action_copy, "Копировать текст") {
+                copyText(activity, post.text)
+            }
+        }
+        action(R.drawable.ic_action_share, "Поделиться") {
+            val link = postLink(channel, post)
+            val value = listOf(post.text.takeIf { it.isNotBlank() }, link).filterNotNull().joinToString("\n\n")
+            activity.startActivity(
+                Intent.createChooser(
+                    Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, value)
+                    },
+                    "Поделиться"
+                )
+            )
+        }
+        action(R.drawable.ic_action_open, "Открыть оригинал") {
+            activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(postLink(channel, post))))
+        }
+        if (onDownload != null && post.fileId != null && post.fileSize > 0L) {
+            action(R.drawable.ic_action_download, "Скачать") {
+                onDownload(post)
+            }
+        }
+        if (onReact != null) {
+            action(R.drawable.ic_action_reaction, "Добавить реакцию") {
+                showReactionPicker(activity, settings, post, onReact)
+            }
+        }
+
+        dialog.setContentView(sheet)
+        dialog.show()
+    }
+
+    private fun postLink(channel: TelegramChannelSummary, post: TelegramChannelPost): String {
+        val publicId = (post.message.id shr 20).takeIf { it > 0L } ?: post.message.id
+        return "https://t.me/${channel.username}/$publicId"
     }
 
     private fun newMessagesDivider(activity: Activity, accent: Int): View =
