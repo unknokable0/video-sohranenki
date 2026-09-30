@@ -993,7 +993,7 @@ jobs:
                   raise SystemExit(f"SOHR 6.3.0 fine-scrub regression: {required}")
           for required in [
               'background = rounded("#360A0810", 10)',
-              "LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(22))",
+              "LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48))",
               'playPause = iconButton(R.drawable.ic_play, "#A30B0A0F", 58)',
               "SohrTimeBar(activity, palette.accent)",
               "bottomMargin = dp(7)"
