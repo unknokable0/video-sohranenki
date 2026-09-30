@@ -11,7 +11,7 @@ import android.view.View
 import kotlin.math.roundToLong
 
 /** Lightweight YouTube-like timeline: played + buffered + scrubber with a larger touch target. */
-class SohrTimeBar(context: Context, accentColor: Int = Color.rgb(255, 0, 51)) : View(context) {
+class SohrTimeBar(context: Context, accentColor: Int) : View(context) {
     interface Listener {
         fun onScrubStart(positionMs: Long)
         fun onScrubMove(positionMs: Long, fraction: Float)
