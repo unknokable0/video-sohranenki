@@ -302,7 +302,7 @@ class TwitchPlayerScreen(
             background = rounded(Color.parseColor("#14111B"), 16)
         }
 
-        seekBar = SohrTimeBar(activity).apply {
+        seekBar = SohrTimeBar(activity, palette.accent).apply {
             listener = object : SohrTimeBar.Listener {
                 override fun onScrubStart(positionMs: Long) {
                     dragging = true
