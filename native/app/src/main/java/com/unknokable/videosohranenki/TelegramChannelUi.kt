@@ -4,12 +4,16 @@ import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
+import android.text.Editable
 import android.text.SpannableString
 import android.text.Spanned
+import android.text.TextWatcher
 import android.text.method.LinkMovementMethod
 import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
@@ -20,6 +24,7 @@ import android.text.util.Linkify
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
@@ -28,6 +33,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.core.widget.NestedScrollView
 import coil.load
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import coil.transform.CircleCropTransformation
 import org.drinkless.tdlib.TdApi
 import java.time.Instant
@@ -300,11 +306,15 @@ object TelegramChannelUi {
         loading: Boolean,
         canLoadOlder: Boolean,
         unreadCountAtOpen: Int = 0,
+        initialScrollY: Int = 0,
+        onScrollYChanged: (Int) -> Unit = {},
         onBack: () -> Unit,
         onLoadOlder: () -> Unit,
         onVideo: (TelegramChannelPost, View) -> Unit,
         onPhoto: (TelegramChannelPost, View) -> Unit,
-        onVoice: (TelegramChannelPost, View) -> Unit
+        onVoice: (TelegramChannelPost, View) -> Unit,
+        onDownload: ((TelegramChannelPost) -> Unit)? = null,
+        onReact: ((TelegramChannelPost, String) -> Unit)? = null
     ): TelegramChannelRender {
         val palette = settings.palette()
         val page = FrameLayout(activity).apply {
@@ -318,21 +328,21 @@ object TelegramChannelUi {
         val header = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(activity, 12), dp(activity, 8), dp(activity, 14), dp(activity, 8))
+            setPadding(dp(activity, 12), dp(activity, 8), dp(activity, 10), dp(activity, 8))
             setBackgroundColor(palette.background)
         }
         val back = ImageButton(activity).apply {
             setImageResource(R.drawable.ic_back)
             imageTintList = ColorStateList.valueOf(palette.text)
-            background = rounded(palette.surfaceAlt, 20)
-            setPadding(dp(activity, 11), dp(activity, 11), dp(activity, 11), dp(activity, 11))
+            background = rounded(palette.surfaceAlt, 22)
+            setPadding(dp(activity, 12), dp(activity, 12), dp(activity, 12), dp(activity, 12))
             contentDescription = "Назад"
             setOnClickListener {
                 SohrMotion.press(this, settings.animations)
                 onBack()
             }
         }
-        header.addView(back, LinearLayout.LayoutParams(dp(activity, 44), dp(activity, 44)).apply {
+        header.addView(back, LinearLayout.LayoutParams(dp(activity, 48), dp(activity, 48)).apply {
             marginEnd = dp(activity, 10)
         })
 
@@ -343,11 +353,11 @@ object TelegramChannelUi {
             if (!channel.avatarPath.isNullOrBlank()) {
                 load(channel.avatarPath) {
                     transformations(CircleCropTransformation())
-                    crossfade(true)
+                    crossfade(settings.animations)
                 }
             }
         }
-        header.addView(avatar, LinearLayout.LayoutParams(dp(activity, 42), dp(activity, 42)).apply {
+        header.addView(avatar, LinearLayout.LayoutParams(dp(activity, 44), dp(activity, 44)).apply {
             marginEnd = dp(activity, 10)
         })
 
@@ -375,18 +385,55 @@ object TelegramChannelUi {
         }
         titleBlock.addView(titleLine)
         titleBlock.addView(TextView(activity).apply {
-            text = if (channel.subscriberCount > 0) {
-                subscriberLabel(channel.subscriberCount)
-            } else {
-                "@${channel.username}"
-            }
+            text = if (channel.subscriberCount > 0) subscriberLabel(channel.subscriberCount)
+            else "@${channel.username}"
             textSize = 11f
             setTextColor(palette.muted)
             includeFontPadding = false
             setPadding(0, dp(activity, 3), 0, 0)
         })
         header.addView(titleBlock, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        content.addView(header, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(activity, 60)))
+
+        val searchButton = ImageButton(activity).apply {
+            setImageResource(R.drawable.ic_search)
+            imageTintList = ColorStateList.valueOf(palette.text)
+            background = rounded(palette.surfaceAlt, 22)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(activity, 12), dp(activity, 12), dp(activity, 12), dp(activity, 12))
+            contentDescription = "Поиск по каналу"
+        }
+        header.addView(searchButton, LinearLayout.LayoutParams(dp(activity, 48), dp(activity, 48)))
+        content.addView(header, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(activity, 64)))
+
+        val searchBar = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            visibility = View.GONE
+            alpha = 0f
+            setPadding(dp(activity, 12), 0, dp(activity, 12), dp(activity, 8))
+        }
+        val searchInput = EditText(activity).apply {
+            hint = "Поиск в канале"
+            textSize = 14f
+            singleLine = true
+            setTextColor(palette.text)
+            setHintTextColor(palette.muted)
+            background = rounded(palette.surfaceAlt, 18)
+            setPadding(dp(activity, 14), 0, dp(activity, 14), 0)
+        }
+        val searchCount = TextView(activity).apply {
+            textSize = 11.5f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(palette.muted)
+            includeFontPadding = false
+            minWidth = dp(activity, 58)
+        }
+        searchBar.addView(searchInput, LinearLayout.LayoutParams(0, dp(activity, 44), 1f).apply {
+            marginEnd = dp(activity, 8)
+        })
+        searchBar.addView(searchCount, LinearLayout.LayoutParams(dp(activity, 64), dp(activity, 44)))
+        content.addView(searchBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         val scroll = NestedScrollView(activity).apply {
             isFillViewport = true
@@ -407,11 +454,12 @@ object TelegramChannelUi {
                 setTypeface(typeface, Typeface.BOLD)
                 setTextColor(palette.accent)
                 background = rounded(palette.surfaceAlt, 16)
+                minimumHeight = dp(activity, 48)
                 setOnClickListener {
                     SohrMotion.press(this, settings.animations)
                     onLoadOlder()
                 }
-            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(activity, 42)).apply {
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(activity, 48)).apply {
                 bottomMargin = dp(activity, 10)
             })
         }
@@ -420,6 +468,10 @@ object TelegramChannelUi {
             orientation = LinearLayout.VERTICAL
         }
         body.addView(messagesHost)
+
+        val renderedCards = mutableListOf<Pair<View, List<TelegramChannelPost>>>()
+        val dayHeaders = mutableListOf<View>()
+        var unreadDividerView: View? = null
 
         if (loading && posts.isEmpty()) {
             repeat(4) {
@@ -444,11 +496,8 @@ object TelegramChannelUi {
         } else {
             var lastDayKey = ""
             val unreadStartIndex =
-                if (unreadCountAtOpen > 0) {
-                    (posts.size - unreadCountAtOpen).coerceIn(0, posts.size)
-                } else {
-                    -1
-                }
+                if (unreadCountAtOpen > 0) (posts.size - unreadCountAtOpen).coerceIn(0, posts.size)
+                else -1
 
             var index = 0
             while (index < posts.size) {
@@ -468,17 +517,19 @@ object TelegramChannelUi {
                 val currentDayKey = dayKey(first.message.date)
 
                 if (currentDayKey != lastDayKey) {
+                    val dayView = TextView(activity).apply {
+                        text = dayLabel(first.message.date)
+                        textSize = 12f
+                        gravity = Gravity.CENTER
+                        setTypeface(typeface, Typeface.BOLD)
+                        setTextColor(palette.text)
+                        background = rounded(palette.surfaceAlt, 13)
+                        includeFontPadding = false
+                        setPadding(dp(activity, 12), dp(activity, 5), dp(activity, 12), dp(activity, 5))
+                    }
+                    dayHeaders += dayView
                     messagesHost.addView(
-                        TextView(activity).apply {
-                            text = dayLabel(first.message.date)
-                            textSize = 12f
-                            gravity = Gravity.CENTER
-                            setTypeface(typeface, Typeface.BOLD)
-                            setTextColor(palette.text)
-                            background = rounded(palette.surfaceAlt, 13)
-                            includeFontPadding = false
-                            setPadding(dp(activity, 12), dp(activity, 5), dp(activity, 12), dp(activity, 5))
-                        },
+                        dayView,
                         LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                             gravity = Gravity.CENTER_HORIZONTAL
                             topMargin = if (index == 0) 0 else dp(activity, 5)
@@ -488,12 +539,11 @@ object TelegramChannelUi {
                     lastDayKey = currentDayKey
                 }
 
-                if (
-                    unreadStartIndex >= 0 &&
-                    unreadStartIndex in index until endExclusive
-                ) {
+                if (unreadStartIndex >= 0 && unreadStartIndex in index until endExclusive) {
+                    val divider = newMessagesDivider(activity, palette.accent)
+                    unreadDividerView = divider
                     messagesHost.addView(
-                        newMessagesDivider(activity, palette.accent),
+                        divider,
                         LinearLayout.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.WRAP_CONTENT
@@ -506,10 +556,25 @@ object TelegramChannelUi {
 
                 val card =
                     if (group.size > 1 && albumId != 0L) {
-                        buildAlbumCard(activity, settings, group, onVideo, onPhoto)
+                        buildAlbumCard(activity, settings, group, onVideo, onPhoto, onReact)
                     } else {
-                        buildPostCard(activity, settings, first, onVideo, onPhoto, onVoice)
+                        buildPostCard(activity, settings, first, onVideo, onPhoto, onVoice, onReact)
                     }
+
+                card.setOnLongClickListener {
+                    SohrHaptics.longPress(card)
+                    showPostActions(
+                        activity = activity,
+                        settings = settings,
+                        channel = channel,
+                        post = first,
+                        onDownload = onDownload,
+                        onReact = onReact
+                    )
+                    true
+                }
+
+                renderedCards += card to group
 
                 if (settings.animations) {
                     card.alpha = 0f
@@ -543,12 +608,12 @@ object TelegramChannelUi {
             )
         )
 
-        val jumpToLatest = TextView(activity).apply {
-            text = "↓"
-            textSize = 22f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(Color.WHITE)
+        val jumpToLatest = ImageButton(activity).apply {
+            setImageResource(R.drawable.ic_chevron_right)
+            rotation = 90f
+            imageTintList = ColorStateList.valueOf(Color.WHITE)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(activity, 13), dp(activity, 13), dp(activity, 13), dp(activity, 13))
             background = oval(palette.accent)
             visibility = View.GONE
             alpha = 0f
@@ -563,17 +628,85 @@ object TelegramChannelUi {
         }
         page.addView(
             jumpToLatest,
-            FrameLayout.LayoutParams(dp(activity, 48), dp(activity, 48), Gravity.END or Gravity.BOTTOM).apply {
+            FrameLayout.LayoutParams(dp(activity, 52), dp(activity, 52), Gravity.END or Gravity.BOTTOM).apply {
                 marginEnd = dp(activity, 16)
                 bottomMargin = dp(activity, 18)
             }
         )
 
+        fun applySearch(rawQuery: String) {
+            val query = rawQuery.trim().lowercase(Locale.getDefault())
+            if (query.isBlank()) {
+                renderedCards.forEach { (view, _) -> view.visibility = View.VISIBLE }
+                dayHeaders.forEach { it.visibility = View.VISIBLE }
+                unreadDividerView?.visibility = View.VISIBLE
+                searchCount.text = ""
+                return
+            }
+            dayHeaders.forEach { it.visibility = View.GONE }
+            unreadDividerView?.visibility = View.GONE
+            var matches = 0
+            renderedCards.forEach { (view, group) ->
+                val hit = group.any { post ->
+                    post.text.lowercase(Locale.getDefault()).contains(query) ||
+                        post.kind.lowercase(Locale.getDefault()).contains(query)
+                }
+                view.visibility = if (hit) View.VISIBLE else View.GONE
+                if (hit) matches += group.size
+            }
+            searchCount.text = if (matches > 0) "$matches найдено" else "Нет"
+            scroll.post { scroll.smoothScrollTo(0, 0) }
+        }
+
+        searchInput.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(value: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(value: CharSequence?, start: Int, before: Int, count: Int) {
+                applySearch(value?.toString().orEmpty())
+            }
+            override fun afterTextChanged(value: Editable?) = Unit
+        })
+
+        searchButton.setOnClickListener {
+            SohrMotion.press(searchButton, settings.animations)
+            val open = searchBar.visibility != View.VISIBLE
+            if (open) {
+                searchBar.visibility = View.VISIBLE
+                searchBar.translationY = -dp(activity, 5).toFloat()
+                searchBar.alpha = 0f
+                searchBar.animate()
+                    .alpha(1f)
+                    .translationY(0f)
+                    .setDuration(if (settings.animations) SohrMotion.NORMAL else 0L)
+                    .setInterpolator(SohrMotion.smooth())
+                    .withEndAction {
+                        searchInput.requestFocus()
+                        val imm = activity.getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+                        imm?.showSoftInput(searchInput, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+                    }
+                    .start()
+            } else {
+                searchInput.setText("")
+                searchInput.clearFocus()
+                val imm = activity.getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+                imm?.hideSoftInputFromWindow(searchInput.windowToken, 0)
+                searchBar.animate()
+                    .alpha(0f)
+                    .translationY(-dp(activity, 5).toFloat())
+                    .setDuration(if (settings.animations) SohrMotion.FAST else 0L)
+                    .withEndAction {
+                        searchBar.visibility = View.GONE
+                        searchBar.translationY = 0f
+                    }
+                    .start()
+            }
+        }
+
         scroll.setOnScrollChangeListener(
             NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
+                onScrollYChanged(scrollY)
                 val child = scroll.getChildAt(0)
                 val remaining = ((child?.height ?: 0) - (scrollY + scroll.height)).coerceAtLeast(0)
-                val shouldShow = remaining > dp(activity, 420)
+                val shouldShow = remaining > dp(activity, 420) && searchBar.visibility != View.VISIBLE
                 if (shouldShow && jumpToLatest.visibility != View.VISIBLE) {
                     jumpToLatest.visibility = View.VISIBLE
                     if (settings.animations) {
@@ -609,6 +742,17 @@ object TelegramChannelUi {
                 }
             }
         )
+
+        scroll.post {
+            when {
+                unreadDividerView != null && unreadCountAtOpen > 0 -> {
+                    val y = (unreadDividerView?.top ?: 0) - dp(activity, 84)
+                    scroll.scrollTo(0, y.coerceAtLeast(0))
+                }
+                initialScrollY > 0 -> scroll.scrollTo(0, initialScrollY)
+                posts.isNotEmpty() -> scroll.scrollTo(0, scroll.getChildAt(0)?.height ?: 0)
+            }
+        }
 
         return TelegramChannelRender(page, messagesHost, scroll)
     }
