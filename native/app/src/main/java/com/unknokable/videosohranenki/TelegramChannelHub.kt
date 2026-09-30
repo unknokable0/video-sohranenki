@@ -60,11 +60,15 @@ class TelegramChannelHub(
     }
 
     private val summaries = linkedMapOf<Long, TelegramChannelSummary>()
+    private val postsByChatId = linkedMapOf<Long, List<TelegramChannelPost>>()
     private val usernameByChatId = linkedMapOf<Long, String>()
 
     fun isTracked(chatId: Long): Boolean = usernameByChatId.containsKey(chatId)
 
     fun cachedSummary(chatId: Long): TelegramChannelSummary? = summaries[chatId]
+
+    fun cachedPosts(chatId: Long): List<TelegramChannelPost> =
+        postsByChatId[chatId].orEmpty()
 
     fun cachedChannels(): List<TelegramChannelSummary> =
         summaries.values.sortedWith(
@@ -139,17 +143,33 @@ class TelegramChannelHub(
         val history = client.send(
             TdApi.GetChatHistory(chatId, fromMessageId, 0, safeLimit, false)
         )
-        history.messages
+        val loaded = history.messages
             .mapNotNull { message ->
                 runCatching { toPost(message) }.getOrNull()
             }
             .sortedWith(compareBy<TelegramChannelPost> { it.message.date }.thenBy { it.message.id })
+
+        if (fromMessageId == 0L) {
+            postsByChatId[chatId] = loaded
+        } else if (loaded.isNotEmpty()) {
+            postsByChatId[chatId] = (loaded + postsByChatId[chatId].orEmpty())
+                .distinctBy { it.message.id }
+                .sortedWith(compareBy<TelegramChannelPost> { it.message.date }.thenBy { it.message.id })
+                .takeLast(160)
+        }
+        loaded
     }
 
     suspend fun absorbNewMessage(message: TdApi.Message): TelegramChannelPost? = withContext(Dispatchers.IO) {
         if (!isTracked(message.chatId)) return@withContext null
 
         val post = runCatching { toPost(message) }.getOrNull()
+        if (post != null) {
+            postsByChatId[message.chatId] = (postsByChatId[message.chatId].orEmpty() + post)
+                .distinctBy { it.message.id }
+                .sortedWith(compareBy<TelegramChannelPost> { it.message.date }.thenBy { it.message.id })
+                .takeLast(160)
+        }
         val old = summaries[message.chatId]
         if (old != null) {
             summaries[message.chatId] = old.copy(
