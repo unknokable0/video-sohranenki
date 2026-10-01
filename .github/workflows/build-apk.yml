@@ -806,13 +806,22 @@ jobs:
 
           for required in [
               "class YouTubePlayerScreen(",
-              '"https://www.youtube.com/embed/',
-              '"enablejsapi", "1"',
-              "override fun onShowCustomView",
+              "YouTube is used only as the playback engine",
+              '"controls:0"',
+              '"disablekb:1"',
+              '"fs:0"',
+              "SOHR.onProgress(",
+              "private fun buildControlsInto(",
+              "SohrTimeBar(activity, palette.accent)",
+              "showFeedback(if (forward) \"+10 сек\" else \"−10 сек\")",
+              "window.sohrSetRate && window.sohrSetRate(2.0)",
+              "fun enterFullscreen()",
               "fun exitFullscreen()"
           ]:
               if required not in youtube_player:
-                  raise SystemExit(f"SOHR 6.7.0 YouTube player regression: {required}")
+                  raise SystemExit(f"SOHR 6.7.0 native YouTube player regression: {required}")
+          if "override fun onShowCustomView" in youtube_player:
+              raise SystemExit("SOHR 6.7.0 regression: visible stock YouTube fullscreen controls returned")
 
           for required in [
               '2 -> "YouTube • каналы и новые видео"',
@@ -1616,7 +1625,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.7.0 • карточка Twitch muted стала компактной и больше не растягивается на экран • muted-участки используют активный цвет темы SOHR • перемотка получила настоящий fine scrub: увод пальца вверх замедляет движение и фиксирует позицию по секундам • вкладка Лента переделана под YouTube-каналы WT2X2 и Берлога T2x2 с авами, страницами каналов и общей лентой новых видео • похожие повторы между каналами скрываются автоматически • YouTube-видео открываются внутри SOHR через официальный embedded player"
+            "notes": "SOHR 6.7.0 • карточка Twitch muted стала компактной и больше не растягивается на экран • muted-участки используют активный цвет темы SOHR • перемотка получила настоящий fine scrub: увод пальца вверх замедляет движение и фиксирует позицию по секундам • вкладка Лента переделана под YouTube-каналы WT2X2 и Берлога T2x2 с авами, страницами каналов и общей лентой новых видео • похожие повторы между каналами скрываются автоматически • YouTube controls скрыты: видео открывается с интерфейсом SOHR — собственные play/pause, themed-таймлайн, Осталось, fullscreen, double tap ±10, long-press 2× и точная перемотка"
           }
           EOF
           cat update.json
