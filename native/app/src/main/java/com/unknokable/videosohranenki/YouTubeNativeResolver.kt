@@ -87,11 +87,13 @@ object YouTubeNativeResolver {
             return YouTubeNetworkException()
         }
 
-        val combined = generateSequence<Throwable?>(error) { it.cause }
-            .filterNotNull()
-            .mapNotNull { it.message }
-            .joinToString(" ")
-            .lowercase(Locale.ROOT)
+        val messages = mutableListOf<String>()
+        var cause: Throwable? = error
+        while (cause != null) {
+            cause.message?.takeIf { it.isNotBlank() }?.let(messages::add)
+            cause = cause.cause
+        }
+        val combined = messages.joinToString(" ").lowercase(Locale.ROOT)
 
         return when {
             "age-restricted" in combined ||
