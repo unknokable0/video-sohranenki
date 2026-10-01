@@ -81,11 +81,11 @@ object YouTubeNativeResolver {
 
 private class SohrExtractorDownloader : Downloader() {
     override fun execute(request: Request): Response {
-        val connection = (URL(request.url).openConnection() as HttpURLConnection).apply {
+        val connection = (URL(request.url()).openConnection() as HttpURLConnection).apply {
             connectTimeout = 15_000
             readTimeout = 20_000
             instanceFollowRedirects = true
-            requestMethod = request.httpMethod
+            requestMethod = request.httpMethod()
             useCaches = false
             setRequestProperty(
                 "User-Agent",
@@ -94,7 +94,7 @@ private class SohrExtractorDownloader : Downloader() {
             )
             setRequestProperty("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.7")
 
-            request.headers.forEach { (name, values) ->
+            request.headers().forEach { (name, values) ->
                 values.forEachIndexed { index, value ->
                     if (index == 0) {
                         setRequestProperty(name, value)
@@ -106,7 +106,7 @@ private class SohrExtractorDownloader : Downloader() {
         }
 
         try {
-            request.dataToSend?.let { body ->
+            request.dataToSend()?.let { body ->
                 connection.doOutput = true
                 connection.outputStream.use { it.write(body) }
             }
