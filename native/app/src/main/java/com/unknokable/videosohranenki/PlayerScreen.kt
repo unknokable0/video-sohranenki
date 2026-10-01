@@ -334,12 +334,10 @@ class PlayerScreen(
             playerCard.addView(
                 twitchMutedNotice,
                 FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
                 ).apply {
-                    leftMargin = dp(12)
-                    rightMargin = dp(12)
                     bottomMargin = dp(58)
                 }
             )
@@ -591,12 +589,12 @@ class PlayerScreen(
         copy.addView(twitchMutedNoticeText)
         box.addView(
             copy,
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            LinearLayout.LayoutParams(dp(164), ViewGroup.LayoutParams.WRAP_CONTENT)
         )
 
         twitchMutedSkip = TextView(activity).apply {
             text = "Пропустить"
-            textSize = 10.7f
+            textSize = 10.5f
             gravity = Gravity.CENTER
             includeFontPadding = false
             setTypeface(typeface, Typeface.BOLD)
@@ -645,8 +643,8 @@ class PlayerScreen(
                 twitchMutedLegend.text =
                     when (ranges.size) {
                         0 -> ""
-                        1 -> "Жёлтый участок — звук вырезан Twitch"
-                        else -> "Жёлтые участки — звук вырезан Twitch • ${ranges.size}"
+                        1 -> "Выделенный участок — звук вырезан Twitch"
+                        else -> "Выделенные участки — звук вырезан Twitch • ${ranges.size}"
                     }
             }
             updateTwitchMutedUi()
@@ -679,9 +677,8 @@ class PlayerScreen(
 
         val remaining = (range.endMs - position).coerceAtLeast(0L)
         twitchMutedNoticeText.text =
-            "Авторские права • без звука ещё ${formatMs(remaining)}"
-        twitchMutedSkip.text =
-            if (remaining >= 1_000L) "Пропустить ${formatMs(remaining)}" else "Пропустить"
+            "Авторские права · ещё ${formatMs(remaining)}"
+        twitchMutedSkip.text = "Пропустить"
 
         if (twitchMutedNoticeVisible) return
         twitchMutedNoticeVisible = true
@@ -788,12 +785,12 @@ class PlayerScreen(
 
         if (isTwitchVod) {
             twitchMutedLegend = TextView(activity).apply {
-                text = "Жёлтые участки — звук вырезан Twitch"
-                textSize = 9.5f
+                text = "Выделенные участки — звук вырезан Twitch"
+                textSize = 9.4f
                 includeFontPadding = false
                 gravity = Gravity.CENTER_VERTICAL
                 setTypeface(typeface, Typeface.BOLD)
-                setTextColor(Color.rgb(236, 185, 82))
+                setTextColor(palette.accent)
                 setPadding(dp(7), 0, dp(7), 0)
                 background = rounded("#241D1912", 10)
                 visibility = View.GONE
