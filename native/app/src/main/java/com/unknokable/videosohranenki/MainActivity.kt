@@ -9074,11 +9074,15 @@ class MainActivity : AppCompatActivity() {
             playerScreen?.setFullscreenMode(enabled)
             twitchPlayerScreen?.setFullscreenMode(enabled)
             twitchLivePlayerScreen?.setFullscreenMode(enabled)
+            if (!enabled && youtubePlayerScreen?.isFullscreen == true) {
+                youtubePlayerScreen?.exitFullscreen()
+            }
 
             val actual =
                 playerScreen?.isFullscreen
                     ?: twitchPlayerScreen?.isFullscreen
                     ?: twitchLivePlayerScreen?.isFullscreen
+                    ?: youtubePlayerScreen?.isFullscreen
                     ?: false
 
             fullScreen = actual
@@ -9096,6 +9100,7 @@ class MainActivity : AppCompatActivity() {
             runCatching { playerScreen?.exitFullscreen() }
             runCatching { twitchPlayerScreen?.exitFullscreen() }
             runCatching { twitchLivePlayerScreen?.exitFullscreen() }
+            runCatching { youtubePlayerScreen?.exitFullscreen() }
             runCatching { applySystemBars(false) }
         }
     }
@@ -9108,7 +9113,7 @@ class MainActivity : AppCompatActivity() {
             "Вкладка Лента больше не является каталогом Telegram-каналов: она переделана под YouTube-каналы WT2X2 и Берлога T2x2.",
             "SOHR сам получает данные каналов и свежие ролики, показывает аватар, название и handle, а нажатие на канал открывает отдельную страницу его видео внутри приложения.",
             "Общая YouTube-лента скрывает вероятные повторы между каналами по video ID и похожести заголовка/описания в близкий период.",
-            "YouTube-видео открываются внутри SOHR через официальный embedded YouTube player с поддержкой штатного fullscreen; системный Back возвращает из канала обратно в Ленту."
+            "YouTube-видео визуально воспроизводятся через полноценный SOHR-плеер: YouTube controls скрыты, а управление отрисовывает SOHR — свой play/pause, themed-таймлайн, Осталось, fullscreen, double tap ±10, long-press 2× и точный scrub; системный Back возвращает из канала обратно в Ленту."
         ).joinToString(" • ")
         "6.6.15" -> listOf(
             "Исправлена главная причина, почему muted-участки Twitch не были видны: Twitch VOD в приложении фактически открывается через основной native PlayerScreen, и теперь логика авторских ограничений подключена именно к нему.",
