@@ -748,6 +748,9 @@ jobs:
               if required not in twitch_player:
                   raise SystemExit(f"SOHR 6.6.14 Twitch drag/muted UX regression: {required}")
 
+          time_bar = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/SohrTimeBar.kt"
+          ).read_text(encoding="utf-8")
           for required in [
               "private val mutedBackdropPaint",
               "their exact start/end points are obvious",
