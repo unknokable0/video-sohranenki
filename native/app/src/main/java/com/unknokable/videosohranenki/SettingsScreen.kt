@@ -144,33 +144,8 @@ class SettingsScreen(
             )
         )
 
-        if (settings.animations) {
-            val ease = SohrMotion.smooth()
-            val visibleCount = root.childCount.coerceAtMost(10)
-            for (index in 0 until visibleCount) {
-                val child = root.getChildAt(index)
-                child.animate().cancel()
-                child.alpha = 0f
-                child.translationY = dp(8).toFloat()
-                child.scaleX = 0.997f
-                child.scaleY = 0.997f
-            }
-
-            root.post {
-                for (index in 0 until visibleCount) {
-                    val child = root.getChildAt(index)
-                    child.animate()
-                        .alpha(1f)
-                        .translationY(0f)
-                        .scaleX(1f)
-                        .scaleY(1f)
-                        .setStartDelay((index * 22L).coerceAtMost(150L))
-                        .setDuration(230L)
-                        .setInterpolator(ease)
-                        .start()
-                }
-            }
-        }
+        // The primary shell already animates Settings in/out. A second staggered
+        // animation here caused visible jumps when returning from dialogs or applying appearance.
 
         return frameRoot
     }
