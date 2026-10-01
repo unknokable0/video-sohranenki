@@ -98,6 +98,12 @@ class MainActivity : AppCompatActivity() {
     private var playerReturnView: View? = null
     private var twitchPlayerScreen: TwitchPlayerScreen? = null
     private var twitchLivePlayerScreen: TwitchLivePlayerScreen? = null
+    private var youtubePlayerScreen: YouTubePlayerScreen? = null
+    private var youtubeChannels: List<YouTubeChannelSummary> = emptyList()
+    private var youtubeFeedVideos: List<YouTubeFeedVideo> = emptyList()
+    private var youtubeFeedLoading = false
+    private var youtubeFeedJob: kotlinx.coroutines.Job? = null
+    private var openYouTubeChannelSummary: YouTubeChannelSummary? = null
     private var currentStreamingItem: VideoItem? = null
     private lateinit var settings: AppSettings
     private lateinit var streakTracker: StreakTracker
@@ -588,7 +594,8 @@ class MainActivity : AppCompatActivity() {
             isPlayerScreen ||
             playerScreen != null ||
             twitchPlayerScreen != null ||
-            twitchLivePlayerScreen != null
+            twitchLivePlayerScreen != null ||
+            youtubePlayerScreen != null
 
         if (!hasPlayer) return false
         if (playerBackInProgress) return true
@@ -596,12 +603,14 @@ class MainActivity : AppCompatActivity() {
         val playerActuallyFullscreen =
             playerScreen?.isFullscreen == true ||
             twitchPlayerScreen?.isFullscreen == true ||
-            twitchLivePlayerScreen?.isFullscreen == true
+            twitchLivePlayerScreen?.isFullscreen == true ||
+            youtubePlayerScreen?.isFullscreen == true
 
         if (playerActuallyFullscreen) {
             if (playerScreen?.dismissFullscreenSettingsIfOpen() == true) return true
 
             when {
+                youtubePlayerScreen?.isFullscreen == true -> youtubePlayerScreen?.exitFullscreen()
                 twitchLivePlayerScreen?.isFullscreen == true -> twitchLivePlayerScreen?.exitFullscreen()
                 twitchPlayerScreen?.isFullscreen == true -> twitchPlayerScreen?.exitFullscreen()
                 playerScreen?.isFullscreen == true -> playerScreen?.exitFullscreen()
@@ -637,6 +646,7 @@ class MainActivity : AppCompatActivity() {
         playerReturnView = null
         val outgoingTwitchPlayer = twitchPlayerScreen
         val outgoingTwitchLivePlayer = twitchLivePlayerScreen
+        val outgoingYouTubePlayer = youtubePlayerScreen
 
         outgoingPlayer?.flushPlaybackPosition()
         outgoingTwitchLivePlayer?.prepareForExit()
@@ -644,6 +654,7 @@ class MainActivity : AppCompatActivity() {
         playerScreen = null
         twitchPlayerScreen = null
         twitchLivePlayerScreen = null
+        youtubePlayerScreen = null
         isPlayerScreen = false
         pendingRootSlide = -1
         suppressNextContentAnimation = true
@@ -672,6 +683,7 @@ class MainActivity : AppCompatActivity() {
                 outgoingPlayer?.destroy()
                 outgoingTwitchPlayer?.destroy()
                 outgoingTwitchLivePlayer?.destroy()
+                outgoingYouTubePlayer?.destroy()
                 currentStreamingItem?.let { streamed -> streamServer?.release(streamed) }
                 currentStreamingItem = null
             } finally {
@@ -2833,7 +2845,7 @@ class MainActivity : AppCompatActivity() {
         header.addView(
             TextView(this).apply {
                 text = when (videoSection) {
-                    2 -> "Telegram-каналы • Лента"
+                    2 -> "YouTube • каналы и новые видео"
                     3 -> sourceName + " • " + watchedVideos.size + " просмотрено"
                     else -> sourceName + " • " + regularVideos.size + " не просмотрено"
                 }
@@ -2930,7 +2942,7 @@ class MainActivity : AppCompatActivity() {
                 )
             }
 
-            if (section == 2) {
+            if (section == 2 && false) {
                 val badge = TextView(this).apply {
                     textSize = 9.8f
                     gravity = Gravity.CENTER
@@ -3087,23 +3099,26 @@ class MainActivity : AppCompatActivity() {
         }
         body.addView(contentHost)
 
-        if (videoSection == 2 && !settings.guestMode) {
+        if (videoSection == 2) {
             searchButton.visibility = View.GONE
             contentHost.addView(
-                TelegramChannelUi.buildDirectory(
+                YouTubeFeedUi.buildDirectory(
                     activity = this,
                     settings = settings,
-                    channels = telegramChannels,
-                    loading = telegramChannelsLoading,
-                    onOpen = { channel, source -> openTelegramChannel(channel, source) }
+                    channels = youtubeChannels,
+                    videos = youtubeFeedVideos,
+                    loading = youtubeFeedLoading,
+                    onOpenChannel = { channel, _ -> openYouTubeChannelScreen(channel) },
+                    onOpenVideo = { video, _ -> openYouTubeVideo(video) },
+                    onRefresh = { loadYouTubeFeed(force = true) }
                 )
             )
 
             replaceRoot(withBottomNav(page, SohrTab.VIDEOS))
             root.postDelayed({ consumeUpdateNotificationIntent() }, 220L)
 
-            if (!telegramChannelsLoading && telegramChannels.isEmpty()) {
-                refreshTelegramChannels(silent = true)
+            if (!youtubeFeedLoading && (youtubeChannels.isEmpty() || youtubeFeedVideos.isEmpty())) {
+                loadYouTubeFeed(force = false)
             }
             return
         }
@@ -6320,6 +6335,89 @@ class MainActivity : AppCompatActivity() {
                 )
             }
         }
+    }
+
+    private fun loadYouTubeFeed(force: Boolean = false) {
+        if (youtubeFeedJob?.isActive == true) return
+        if (!force && youtubeChannels.isNotEmpty() && youtubeFeedVideos.isNotEmpty()) return
+
+        youtubeFeedLoading = true
+        if (videoSection == 2 && auxiliaryScreen == null) {
+            suppressNextRootAnimation = true
+            showFeed(currentVideos)
+        }
+
+        youtubeFeedJob = lifecycleScope.launch {
+            val snapshot = runCatching {
+                withContext(Dispatchers.IO) { YouTubeFeedRepository.loadAll() }
+            }.getOrElse {
+                YouTubeFeedSnapshot(youtubeChannels, youtubeFeedVideos)
+            }
+
+            youtubeChannels = snapshot.channels
+            youtubeFeedVideos = snapshot.videos
+            youtubeFeedLoading = false
+            youtubeFeedJob = null
+
+            if (videoSection == 2 && auxiliaryScreen == null && !isFinishing) {
+                suppressNextRootAnimation = true
+                showFeed(currentVideos)
+            }
+        }
+    }
+
+    private fun openYouTubeChannelScreen(channel: YouTubeChannelSummary) {
+        stopInlinePreview()
+        auxiliaryScreen = "youtube_channel"
+        openYouTubeChannelSummary = channel
+        pendingRootSlide = 1
+
+        val content = YouTubeFeedUi.buildChannel(
+            activity = this,
+            settings = settings,
+            channel = channel,
+            onBack = {
+                auxiliaryScreen = null
+                openYouTubeChannelSummary = null
+                videoSection = 2
+                pendingRootSlide = -1
+                showFeed(currentVideos)
+            },
+            onOpenVideo = { video, _ -> openYouTubeVideo(video) }
+        )
+        replaceRoot(withBottomNav(content, SohrTab.VIDEOS))
+    }
+
+    private fun openYouTubeVideo(video: YouTubeFeedVideo) {
+        stopInlinePreview()
+        fullScreen = false
+        playerReturnView = capturePlayerReturnView()
+
+        playerScreen?.destroy()
+        playerScreen = null
+        twitchPlayerScreen?.destroy()
+        twitchPlayerScreen = null
+        twitchLivePlayerScreen?.destroy()
+        twitchLivePlayerScreen = null
+        youtubePlayerScreen?.destroy()
+        youtubePlayerScreen = null
+
+        isSettingsScreen = false
+        isAccountScreen = false
+        isStreakScreen = false
+        isPlayerScreen = true
+
+        youtubePlayerScreen = YouTubePlayerScreen(
+            activity = this,
+            video = video,
+            palette = palette,
+            animationsEnabled = settings.animations,
+            onBack = { closeCurrentPlayerScreen() },
+            onFullscreen = { setFullscreen(it) }
+        )
+
+        pendingRootSlide = 1
+        replaceRoot(youtubePlayerScreen!!.root)
     }
 
     private fun refreshTelegramChannels(silent: Boolean = false) {
