@@ -23,8 +23,12 @@ jobs:
       TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
       TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
       TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
-      SOHR_BUILD_NUMBER: 699999
-      SOHR_VERSION_NAME: preview
+      SOHR_KEYSTORE_B64: ${{ secrets.SOHR_KEYSTORE_B64 }}
+      SOHR_KEYSTORE_PASSWORD: ${{ secrets.SOHR_KEYSTORE_PASSWORD }}
+      SOHR_KEY_ALIAS: ${{ secrets.SOHR_KEY_ALIAS }}
+      SOHR_KEY_PASSWORD: ${{ secrets.SOHR_KEY_PASSWORD }}
+      SOHR_BUILD_NUMBER: 670002
+      SOHR_VERSION_NAME: 6.7.2-preview
 
     steps:
       - name: Checkout preview branch
@@ -41,22 +45,29 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Compile preview APK
+      - name: Compile signed release preview APK
         shell: bash
         run: |
           set -euo pipefail
-          gradle -p native :app:assembleDebug --no-daemon --stacktrace
+          : "${SOHR_KEYSTORE_B64:?SOHR release keystore is required}"
+          : "${SOHR_KEYSTORE_PASSWORD:?SOHR keystore password is required}"
+          : "${SOHR_KEY_ALIAS:?SOHR key alias is required}"
+          : "${SOHR_KEY_PASSWORD:?SOHR key password is required}"
+
+          printf '%s' "$SOHR_KEYSTORE_B64" | base64 --decode > "$GITHUB_WORKSPACE/native/sohr-release.jks"
+          SOHR_KEYSTORE_PATH="$GITHUB_WORKSPACE/native/sohr-release.jks"           SOHR_KEYSTORE_PASSWORD="$SOHR_KEYSTORE_PASSWORD"           SOHR_KEY_ALIAS="$SOHR_KEY_ALIAS"           SOHR_KEY_PASSWORD="$SOHR_KEY_PASSWORD"             gradle -p native :app:assembleRelease --no-daemon --stacktrace
 
       - name: Verify preview APK
         shell: bash
         run: |
           set -euo pipefail
-          APK="native/app/build/outputs/apk/debug/app-debug.apk"
+          APK="native/app/build/outputs/apk/release/app-release.apk"
           test -f "$APK"
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           "$AAPT" dump badging "$APK" | tee /tmp/sohr-preview-badging.txt
           grep -q "package: name='com.unknokable.videosohranenki'" /tmp/sohr-preview-badging.txt
+          grep -q "versionName='6.7.2-preview'" /tmp/sohr-preview-badging.txt
           grep -q "launchable-activity: name='com.unknokable.videosohranenki.MainActivity'" /tmp/sohr-preview-badging.txt
 
       - name: Preview verified
-        run: echo "SOHR preview compiles. Nothing was published to the updater channel."
+        run: echo "SOHR 6.7.2 release preview compiles and is signed. Nothing was published to the updater channel."
