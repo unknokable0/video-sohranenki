@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.6.14: hard-block drag seeking and clearer Twitch muted-range UX
+# SOHR 6.6.15: wire Twitch muted ranges into the actual native VOD player
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.6.14 version
+      - name: Assign SOHR 6.6.15 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=660014" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.6.14" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=660015" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.6.15" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -730,13 +730,32 @@ jobs:
           if "horizontalThreshold" in twitch_player and "seekBy(if (dx > 0f)" in twitch_player:
               raise SystemExit("SOHR 6.6.13 regression: Twitch horizontal swipe seeking returned")
           if '"-unmuted." in lower ||' in twitch_resolver:
-              raise SystemExit("SOHR 6.6.14 regression: unmuted HLS segments marked as muted")
+              raise SystemExit("SOHR 6.6.15 regression: unmuted HLS segments marked as muted")
           for required in [
               '("-muted." in lower && "-unmuted." !in lower)',
-              '"index-muted" in lower'
+              '"index-muted" in lower',
+              "suspend fun resolveMutedSegmentsFromMaster(",
+              "Reuse the exact HLS master URL"
           ]:
               if required not in twitch_resolver:
-                  raise SystemExit(f"SOHR 6.6.14 muted detection regression: {required}")
+                  raise SystemExit(f"SOHR 6.6.15 muted detection regression: {required}")
+
+          for required in [
+              "private val twitchVideoId: String? = null",
+              "private var twitchMutedRanges: List<TwitchMutedRange>",
+              "private fun buildTwitchMutedNotice()",
+              "private fun loadTwitchMutedRanges()",
+              "private fun updateTwitchMutedUi()",
+              "TwitchVodResolver.resolveMutedSegmentsFromMaster(mediaUrl)",
+              'text = "Звук вырезан Twitch"',
+              '"Жёлтые участки — звук вырезан Twitch"',
+              "seekBar.setMutedRanges("
+          ]:
+              if required not in player_screen:
+                  raise SystemExit(f"SOHR 6.6.15 active native Twitch muted UI regression: {required}")
+
+          if "twitchVideoId = videoId" not in sohr_main:
+              raise SystemExit("SOHR 6.6.15 regression: Twitch VOD does not enable native muted-range mode")
 
           for required in [
               "Own the entire gesture stream",
@@ -1550,7 +1569,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.6.14 • горизонтальный drag по самому Twitch-видео теперь полностью перехватывается SOHR и не попадает во встроенный плеер • перемотка остаётся только через таймлайн, кнопки и двойной тап ±10 секунд • copyright-muted участки Twitch выделяются заметными жёлтыми сегментами прямо на основной полосе времени • при наличии таких участков показывается понятная подпись, а во время muted-интервала — карточка с оставшимся временем и кнопкой Пропустить • unmuted HLS-сегменты не считаются авторскими ограничениями"
+            "notes": "SOHR 6.6.15 • исправлен реальный путь Twitch VOD: muted-интервалы теперь подключены к основному native PlayerScreen, который используется на экране Запись стрима T2x2 • логика включается только для Twitch-видео • muted-участки берутся из того же HLS master URL, который воспроизводит плеер, и выделяются жёлтыми сегментами прямо на таймлайне • при входе в такой участок появляется карточка Звук вырезан Twitch с оставшимся временем и кнопкой Пропустить • Telegram и обычные видео не получают этот интерфейс • горизонтальный drag по видео по-прежнему не перематывает запись"
           }
           EOF
           cat update.json
