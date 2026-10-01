@@ -2979,16 +2979,10 @@ class PlayerScreen(
     }
 
     private fun buildMeta(): String =
-        when (item.source) {
-            "twitch" ->
-                listOf(formatMs(item.durationSeconds * 1000L), "Twitch", "@t2x2")
-                    .joinToString(" • ")
-            "youtube" ->
-                listOf(formatMs(item.durationSeconds * 1000L), "YouTube")
-                    .joinToString(" • ")
-            else ->
-                listOf(formatMs(item.durationSeconds * 1000L), buildSize(), "@t2x2_video")
-                    .joinToString(" • ")
+        if (item.source == "twitch") {
+            listOf(formatMs(item.durationSeconds * 1000L), "Twitch", "@t2x2").joinToString(" • ")
+        } else {
+            listOf(formatMs(item.durationSeconds * 1000L), buildSize(), "@t2x2_video").joinToString(" • ")
         }
 
     private fun buildSize(): String {
