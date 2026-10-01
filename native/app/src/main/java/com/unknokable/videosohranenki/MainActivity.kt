@@ -4422,7 +4422,7 @@ class MainActivity : AppCompatActivity() {
                 ?: twitchCategoryTracker.observe(live).also { lastT2x2Timeline = it }
 
             label.text = "T2x2 • в сети"
-            label.setTextColor(text)
+            label.setTextColor(this@MainActivity.text)
 
             val current = timeline.current
             val previous = timeline.previous
@@ -6548,7 +6548,7 @@ class MainActivity : AppCompatActivity() {
             textSize = 23f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
-            setTextColor(text)
+            setTextColor(this@MainActivity.text)
         }
         content.addView(
             titleView,
@@ -6633,7 +6633,7 @@ class MainActivity : AppCompatActivity() {
             textSize = 14f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
-            setTextColor(text)
+            setTextColor(this@MainActivity.text)
             background = roundedBg(palette.surfaceAlt, 16)
             isClickable = true
             isFocusable = true
