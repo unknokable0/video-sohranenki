@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.7.4: native YouTube playback error hardening
+# SOHR 6.7.5: stable centered dialogs + YouTube fallback hardening
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.7.4 version
+      - name: Assign SOHR 6.7.5 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=670004" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.7.4" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=670005" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.7.5" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -862,13 +862,17 @@ jobs:
               '"Если требуется подтверждение возраста, SOHR не обходит такую проверку."',
               '"Повторить"',
               '"YouTube требует вход"',
+              '"YouTube не отдал поток"',
               '"Открыть в YouTube"',
+              "firstResolve",
+              "delay(320L)",
               "YouTubeAgeRestrictedException",
               "YouTubeSignInRequiredException",
+              "YouTubeUnavailableException",
               "YouTubeNetworkException"
           ]:
               if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.7.4 YouTube error UX regression: {required}")
+                  raise SystemExit(f"SOHR 6.7.5 YouTube fallback UX regression: {required}")
 
           for required in [
               '2 -> "YouTube • каналы и новые видео"',
@@ -1625,11 +1629,15 @@ jobs:
               raise SystemExit("Appearance palette readability regression")
           for required in [
               "box.visibility = View.INVISIBLE",
-              "box.postDelayed({",
-              "if (!dialog.isShowing) return@postDelayed"
+              "setGravity(Gravity.CENTER)",
+              "android.view.ViewTreeObserver.OnPreDrawListener",
+              "stablePasses >= 1",
+              "decor.alpha = 1f"
           ]:
               if required not in dialogs:
-                  raise SystemExit(f"SOHR 6.7.4 dialog stability regression: {required}")
+                  raise SystemExit(f"SOHR 6.7.5 centered-dialog stability regression: {required}")
+          if "box.postDelayed({" in dialogs:
+              raise SystemExit("SOHR 6.7.5 regression: timed dialog reveal returned")
           if "LinearLayout.LayoutParams(dp(context, 38), dp(context, 4))" in dialogs:
               raise SystemExit("Legacy dialog top handle regression")
 
@@ -1695,7 +1703,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.7.4 • исправлен запуск обычных YouTube-видео с раздельными video/audio потоками через нативный Media3-плеер SOHR • добавлен MergingMediaSource без WebView и iframe • уточнена классификация ошибок входа YouTube, чтобы anti-bot/login-required не путался с возрастным ограничением • экран ограничения доступа больше не показывает ложный значок 18+ и предлагает открыть ролик в YouTube, если сам YouTube требует подтверждение доступа • остальные возможности ленты и автообновления сохранены"
+            "notes": "SOHR 6.7.5 • окна Оформление, Что нового и остальные ModernDialogs теперь становятся видимыми только после стабильного измерения и сразу строго по центру без телепорта сверху • убран таймер показа диалога, вместо него используется стабильный pre-draw layout • для обычных временных ошибок YouTube SOHR автоматически делает безопасную повторную попытку получения потока • если YouTube всё равно не выдаёт поток, экран показывает понятные кнопки Повторить и Открыть в YouTube вместо тупой общей ошибки • проверки входа и возраста YouTube не обходятся • нативный video+audio Media3-плеер для доступных роликов сохранён"
           }
           EOF
           cat update.json
