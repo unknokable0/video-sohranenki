@@ -859,7 +859,7 @@ jobs:
 
           for required in [
               "private fun showYouTubePlaybackError(",
-              '"SOHR не обходит такие ограничения."',
+              '"Если требуется подтверждение возраста, SOHR не обходит такую проверку."',
               '"Повторить"',
               '"YouTube требует вход"',
               '"Открыть в YouTube"',
