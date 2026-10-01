@@ -237,7 +237,8 @@ class YouTubePlayerScreen(
                   playsinline:1,
                   rel:0,
                   iv_load_policy:3,
-                  modestbranding:1
+                  modestbranding:1,
+                  origin:'https://www.youtube.com'
                 },
                 events:{
                   onReady:function(e){ try{e.target.playVideo();}catch(_){} }
@@ -781,10 +782,10 @@ class YouTubePlayerScreen(
 
     fun destroy() {
         if (destroyed) return
-        destroyed = true
         handler.removeCallbacksAndMessages(null)
         root.keepScreenOn = false
         runCatching { if (fullscreen || fullscreenHost != null) setFullscreenMode(false) }
+        destroyed = true
         webView.stopLoading()
         webView.loadUrl("about:blank")
         webView.webChromeClient = null
