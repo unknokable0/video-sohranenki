@@ -104,9 +104,28 @@ object TwitchVodResolver {
         videoId: String,
         connectTimeoutMs: Int = 8_000,
         readTimeoutMs: Int = 12_000
+    ): List<TwitchMutedRange> {
+        val masterUrl = resolve(videoId, connectTimeoutMs, readTimeoutMs)
+        return resolveMutedSegmentsFromMaster(
+            masterUrl = masterUrl,
+            connectTimeoutMs = connectTimeoutMs,
+            readTimeoutMs = readTimeoutMs
+        )
+    }
+
+    suspend fun resolveMutedSegmentsFromMaster(
+        masterUrl: String,
+        connectTimeoutMs: Int = 8_000,
+        readTimeoutMs: Int = 12_000
     ): List<TwitchMutedRange> = withContext(Dispatchers.IO) {
         runCatching {
-            val masterUrl = resolve(videoId, connectTimeoutMs, readTimeoutMs)
+            if (!masterUrl.startsWith("https://", ignoreCase = true)) {
+                return@runCatching emptyList()
+            }
+
+            // Reuse the exact HLS master URL that the native Twitch VOD player
+            // is already playing. This keeps muted-range detection tied to the
+            // same VOD/session instead of resolving a second playback token.
             val master = fetchPlaylistText(masterUrl, connectTimeoutMs, readTimeoutMs)
             if (master.isBlank()) return@runCatching emptyList()
 
