@@ -6536,6 +6536,7 @@ class MainActivity : AppCompatActivity() {
                     activity = this@MainActivity,
                     item = item,
                     mediaUrl = resolved.mediaUrl,
+                    secondaryAudioUrl = resolved.secondaryAudioUrl,
                     previewDataSourceFactory = null,
                     settings = settings,
                     startPositionMs = resumePositionMs,
@@ -6603,16 +6604,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         val badge = TextView(this).apply {
-            text = when {
-                ageRestricted -> "18+"
-                signInRequired -> "YT"
-                else -> "!"
-            }
-            textSize = when {
-                ageRestricted -> 16f
-                signInRequired -> 15f
-                else -> 24f
-            }
+            text = if (ageRestricted || signInRequired) "YT" else "!"
+            textSize = if (ageRestricted || signInRequired) 15f else 24f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(purple)
@@ -6627,7 +6620,7 @@ class MainActivity : AppCompatActivity() {
 
         val titleView = TextView(this).apply {
             text = when {
-                ageRestricted -> "Видео недоступно"
+                ageRestricted -> "Нужен доступ YouTube"
                 signInRequired -> "YouTube требует вход"
                 else -> "Не удалось открыть видео"
             }
@@ -6647,8 +6640,8 @@ class MainActivity : AppCompatActivity() {
         val descriptionView = TextView(this).apply {
             text = when (error) {
                 is YouTubeAgeRestrictedException ->
-                    "У этого ролика есть возрастное ограничение YouTube. " +
-                        "SOHR не обходит такие ограничения."
+                    "YouTube требует подтверждение доступа к этому ролику. " +
+                        "Если требуется подтверждение возраста, SOHR не обходит такую проверку."
                 is YouTubeSignInRequiredException ->
                     "Это не ошибка 18+. YouTube не отдаёт этот ролик анонимному " +
                         "нативному плееру. Если вы уже вошли в YouTube, ролик можно открыть там."
@@ -6691,9 +6684,9 @@ class MainActivity : AppCompatActivity() {
             }
         )
 
-        if (retryable || signInRequired) {
+        if (retryable || signInRequired || ageRestricted) {
             val primary = TextView(this).apply {
-                text = if (signInRequired) "Открыть в YouTube" else "Повторить"
+                text = if (signInRequired || ageRestricted) "Открыть в YouTube" else "Повторить"
                 textSize = 14f
                 gravity = Gravity.CENTER
                 setTypeface(typeface, Typeface.BOLD)
@@ -6703,7 +6696,7 @@ class MainActivity : AppCompatActivity() {
                 isFocusable = true
                 setOnClickListener {
                     animatePress(this)
-                    if (signInRequired) {
+                    if (signInRequired || ageRestricted) {
                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(video.watchUrl))
                         runCatching { startActivity(intent) }.onFailure {
                             Toast.makeText(
@@ -6748,7 +6741,7 @@ class MainActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(48)
             ).apply {
-                topMargin = dp(if (retryable || signInRequired) 10 else 18)
+                topMargin = dp(if (retryable || signInRequired || ageRestricted) 10 else 18)
             }
         )
 
