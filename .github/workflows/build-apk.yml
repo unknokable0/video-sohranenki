@@ -806,9 +806,9 @@ jobs:
 
           for required in [
               "class YouTubePlayerScreen(",
-              '"controls:0"',
-              '"disablekb:1"',
-              '"fs:0"',
+              "controls:0",
+              "disablekb:1",
+              "fs:0",
               "function sohrPlay()",
               "function sohrPause()",
               "function sohrSeek(ms)",
