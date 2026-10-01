@@ -98,7 +98,7 @@ class MainActivity : AppCompatActivity() {
     private var playerReturnView: View? = null
     private var twitchPlayerScreen: TwitchPlayerScreen? = null
     private var twitchLivePlayerScreen: TwitchLivePlayerScreen? = null
-    private var youtubePlayerScreen: YouTubePlayerScreen? = null
+    private var youtubeResolveJob: kotlinx.coroutines.Job? = null
     private var youtubeChannels: List<YouTubeChannelSummary> = emptyList()
     private var youtubeFeedVideos: List<YouTubeFeedVideo> = emptyList()
     private var youtubeFeedLoading = false
@@ -603,8 +603,7 @@ class MainActivity : AppCompatActivity() {
             isPlayerScreen ||
             playerScreen != null ||
             twitchPlayerScreen != null ||
-            twitchLivePlayerScreen != null ||
-            youtubePlayerScreen != null
+            twitchLivePlayerScreen != null
 
         if (!hasPlayer) return false
         if (playerBackInProgress) return true
@@ -612,14 +611,12 @@ class MainActivity : AppCompatActivity() {
         val playerActuallyFullscreen =
             playerScreen?.isFullscreen == true ||
             twitchPlayerScreen?.isFullscreen == true ||
-            twitchLivePlayerScreen?.isFullscreen == true ||
-            youtubePlayerScreen?.isFullscreen == true
+            twitchLivePlayerScreen?.isFullscreen == true
 
         if (playerActuallyFullscreen) {
             if (playerScreen?.dismissFullscreenSettingsIfOpen() == true) return true
 
             when {
-                youtubePlayerScreen?.isFullscreen == true -> youtubePlayerScreen?.exitFullscreen()
                 twitchLivePlayerScreen?.isFullscreen == true -> twitchLivePlayerScreen?.exitFullscreen()
                 twitchPlayerScreen?.isFullscreen == true -> twitchPlayerScreen?.exitFullscreen()
                 playerScreen?.isFullscreen == true -> playerScreen?.exitFullscreen()
@@ -635,6 +632,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         playerBackInProgress = true
+        youtubeResolveJob?.cancel()
+        youtubeResolveJob = null
 
         val outgoingPlayer = playerScreen
         if (outgoingPlayer?.isMiniMode == true) {
@@ -655,7 +654,6 @@ class MainActivity : AppCompatActivity() {
         playerReturnView = null
         val outgoingTwitchPlayer = twitchPlayerScreen
         val outgoingTwitchLivePlayer = twitchLivePlayerScreen
-        val outgoingYouTubePlayer = youtubePlayerScreen
 
         outgoingPlayer?.flushPlaybackPosition()
         outgoingTwitchLivePlayer?.prepareForExit()
@@ -663,7 +661,6 @@ class MainActivity : AppCompatActivity() {
         playerScreen = null
         twitchPlayerScreen = null
         twitchLivePlayerScreen = null
-        youtubePlayerScreen = null
         isPlayerScreen = false
         pendingRootSlide = -1
         suppressNextContentAnimation = true
@@ -692,7 +689,6 @@ class MainActivity : AppCompatActivity() {
                 outgoingPlayer?.destroy()
                 outgoingTwitchPlayer?.destroy()
                 outgoingTwitchLivePlayer?.destroy()
-                outgoingYouTubePlayer?.destroy()
                 currentStreamingItem?.let { streamed -> streamServer?.release(streamed) }
                 currentStreamingItem = null
             } finally {
@@ -4426,7 +4422,7 @@ class MainActivity : AppCompatActivity() {
                 ?: twitchCategoryTracker.observe(live).also { lastT2x2Timeline = it }
 
             label.text = "T2x2 • в сети"
-            label.setTextColor(text)
+            label.setTextColor(this@MainActivity.text)
 
             val current = timeline.current
             val previous = timeline.previous
@@ -6400,33 +6396,271 @@ class MainActivity : AppCompatActivity() {
     private fun openYouTubeVideo(video: YouTubeFeedVideo) {
         stopInlinePreview()
         fullScreen = false
-        playerReturnView = capturePlayerReturnView()
+        val returnView = capturePlayerReturnView()
+        playerReturnView = returnView
 
+        youtubeResolveJob?.cancel()
+        youtubeResolveJob = null
         playerScreen?.destroy()
         playerScreen = null
         twitchPlayerScreen?.destroy()
         twitchPlayerScreen = null
         twitchLivePlayerScreen?.destroy()
         twitchLivePlayerScreen = null
-        youtubePlayerScreen?.destroy()
-        youtubePlayerScreen = null
+        currentStreamingItem?.let { streamed -> streamServer?.release(streamed) }
+        currentStreamingItem = null
 
         isSettingsScreen = false
         isAccountScreen = false
         isStreakScreen = false
         isPlayerScreen = true
 
-        youtubePlayerScreen = YouTubePlayerScreen(
-            activity = this,
-            video = video,
-            palette = palette,
-            animationsEnabled = settings.animations,
-            onBack = { closeCurrentPlayerScreen() },
-            onFullscreen = { setFullscreen(it) }
-        )
+        val loadingPage = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(bg)
+
+            val mark = buildBrandLoadingMark(54)
+            val label = TextView(this@MainActivity).apply {
+                text = "Открываем видео…"
+                textSize = 14f
+                gravity = Gravity.CENTER
+                setTextColor(muted)
+                setPadding(0, dp(14), 0, 0)
+            }
+            addView(mark, LinearLayout.LayoutParams(dp(54), dp(54)))
+            addView(label)
+        }
 
         pendingRootSlide = 1
-        replaceRoot(youtubePlayerScreen!!.root)
+        replaceRoot(loadingPage)
+
+        youtubeResolveJob = lifecycleScope.launch {
+            val resolved = runCatching {
+                YouTubeNativeResolver.resolve(video)
+            }.getOrElse { error ->
+                youtubeResolveJob = null
+                showYouTubePlaybackError(video, error, returnView)
+                return@launch
+            }
+
+            if (!isActive || !isPlayerScreen) return@launch
+
+            val item = video.toVideoItem().copy(
+                title = resolved.title,
+                durationSeconds = resolved.durationSeconds,
+                mimeType = "video/*",
+                thumbnailUrl = resolved.thumbnailUrl
+            )
+            val resumePositionMs = settings.playbackPosition(item.messageId)
+
+            val createdPlayer = runCatching {
+                PlayerScreen(
+                    activity = this@MainActivity,
+                    item = item,
+                    mediaUrl = resolved.mediaUrl,
+                    previewDataSourceFactory = null,
+                    settings = settings,
+                    startPositionMs = resumePositionMs,
+                    onBack = { closeCurrentPlayerScreen() },
+                    onFullscreen = { setFullscreen(it) },
+                    onPlaybackStarted = {
+                        settings.markPlayed(item.messageId)
+                        streakTracker.markWatched()
+                    },
+                    onMiniModeChanged = { enabled -> handlePlayerMiniMode(enabled) }
+                )
+            }.getOrElse { error ->
+                youtubeResolveJob = null
+                isPlayerScreen = false
+                playerReturnView = null
+                pendingRootSlide = -1
+                if (returnView != null) {
+                    replaceRoot(returnView)
+                } else {
+                    videoSection = 2
+                    showFeed(currentVideos)
+                }
+                showMessage(
+                    "Не удалось открыть видео",
+                    error.message ?: "Нативный SOHR-плеер не смог запустить поток."
+                )
+                return@launch
+            }
+
+            youtubeResolveJob = null
+            if (!isPlayerScreen) {
+                createdPlayer.destroy()
+                return@launch
+            }
+
+            playerScreen = createdPlayer
+            pendingRootSlide = 1
+            replaceRoot(createdPlayer.root)
+        }
+    }
+
+    private fun showYouTubePlaybackError(
+        video: YouTubeFeedVideo,
+        error: Throwable,
+        returnView: View?
+    ) {
+        youtubeResolveJob = null
+        isPlayerScreen = true
+        playerReturnView = returnView
+        pendingRootSlide = 0
+        fullScreen = false
+        setFullscreen(false)
+
+        val ageRestricted = error is YouTubeAgeRestrictedException
+        val retryable = error is YouTubeNetworkException
+
+        val page = FrameLayout(this).apply {
+            setBackgroundColor(bg)
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(24), dp(28), dp(24), dp(28))
+        }
+
+        val badge = TextView(this).apply {
+            text = if (ageRestricted) "18+" else "!"
+            textSize = if (ageRestricted) 16f else 24f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(purple)
+            background = roundedBg(palette.surfaceAlt, 22)
+        }
+        content.addView(
+            badge,
+            LinearLayout.LayoutParams(dp(58), dp(58)).apply {
+                bottomMargin = dp(20)
+            }
+        )
+
+        val titleView = TextView(this).apply {
+            text = if (ageRestricted) {
+                "Видео недоступно"
+            } else {
+                "Не удалось открыть видео"
+            }
+            textSize = 23f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+        }
+        content.addView(
+            titleView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        val descriptionView = TextView(this).apply {
+            text = when (error) {
+                is YouTubeAgeRestrictedException ->
+                    "У этого ролика есть возрастное ограничение YouTube. " +
+                        "SOHR не обходит такие ограничения."
+                is YouTubeNetworkException ->
+                    "Не получилось связаться с YouTube. Проверьте подключение и повторите попытку."
+                else ->
+                    "Этот ролик сейчас нельзя воспроизвести через нативный SOHR-плеер."
+            }
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setTextColor(muted)
+            setLineSpacing(0f, 1.12f)
+            setPadding(0, dp(10), 0, 0)
+        }
+        content.addView(
+            descriptionView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        val videoLabel = TextView(this).apply {
+            text = video.title
+            textSize = 12f
+            gravity = Gravity.CENTER
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            setTextColor(Color.argb(115, 255, 255, 255))
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            background = roundedBg(panel, 14)
+        }
+        content.addView(
+            videoLabel,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dp(22)
+            }
+        )
+
+        if (retryable) {
+            val retry = TextView(this).apply {
+                text = "Повторить"
+                textSize = 14f
+                gravity = Gravity.CENTER
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(Color.WHITE)
+                background = roundedBg(purple, 16)
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    animatePress(this)
+                    openYouTubeVideo(video)
+                }
+            }
+            content.addView(
+                retry,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dp(48)
+                ).apply {
+                    topMargin = dp(18)
+                }
+            )
+        }
+
+        val back = TextView(this).apply {
+            text = "Назад к ленте"
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+            background = roundedBg(palette.surfaceAlt, 16)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                animatePress(this)
+                closeCurrentPlayerScreen()
+            }
+        }
+        content.addView(
+            back,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(48)
+            ).apply {
+                topMargin = dp(if (retryable) 10 else 18)
+            }
+        )
+
+        page.addView(
+            content,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER
+            )
+        )
+        replaceRoot(page)
     }
 
     private fun refreshTelegramChannels(silent: Boolean = false) {
@@ -9074,15 +9308,10 @@ class MainActivity : AppCompatActivity() {
             playerScreen?.setFullscreenMode(enabled)
             twitchPlayerScreen?.setFullscreenMode(enabled)
             twitchLivePlayerScreen?.setFullscreenMode(enabled)
-            if (!enabled && youtubePlayerScreen?.isFullscreen == true) {
-                youtubePlayerScreen?.exitFullscreen()
-            }
-
             val actual =
                 playerScreen?.isFullscreen
                     ?: twitchPlayerScreen?.isFullscreen
                     ?: twitchLivePlayerScreen?.isFullscreen
-                    ?: youtubePlayerScreen?.isFullscreen
                     ?: false
 
             fullScreen = actual
@@ -9100,12 +9329,21 @@ class MainActivity : AppCompatActivity() {
             runCatching { playerScreen?.exitFullscreen() }
             runCatching { twitchPlayerScreen?.exitFullscreen() }
             runCatching { twitchLivePlayerScreen?.exitFullscreen() }
-            runCatching { youtubePlayerScreen?.exitFullscreen() }
             runCatching { applySystemBars(false) }
         }
     }
 
     private fun fallbackReleaseNotes(version: String): String = when (version) {
+        "6.7.2" -> listOf(
+            "Исправлена обработка ошибок YouTube в нативном SOHR-плеере.",
+            "Возрастные ограничения YouTube больше не показывают сырой английский текст: вместо этого открывается аккуратный экран SOHR без попыток обхода ограничения.",
+            "Сетевые ошибки получили понятный экран с кнопкой Повторить, а обычные доступные ролики по-прежнему открываются через нативный Media3 PlayerScreen без WebView и iframe."
+        ).joinToString(" • ")
+        "6.7.1" -> listOf(
+            "YouTube-видео больше не открываются через WebView или iframe: SOHR получает прямой медиапоток и передаёт его обычному нативному Media3-плееру.",
+            "YouTube теперь использует тот же интерфейс PlayerScreen, что и остальные видео SOHR: собственные кнопки, таймлайн, fullscreen, жесты, скорость, точная перемотка, PiP и сохранение позиции.",
+            "Экран ожидания при открытии ролика выполнен в стиле SOHR, а при недоступном прямом потоке приложение корректно возвращается в Ленту без скрытого запуска официального YouTube-плеера."
+        ).joinToString(" • ")
         "6.7.0" -> listOf(
             "Twitch muted-карточка стала компактной: она больше не растягивается на весь экран, показывает короткий текст Авторские права · ещё время и отдельную кнопку Пропустить.",
             "Muted-участки на таймлайне теперь используют активный цвет темы SOHR вместо фиксированного жёлтого, сохраняя более толстое выделение для заметности.",

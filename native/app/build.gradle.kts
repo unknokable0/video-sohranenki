@@ -50,7 +50,7 @@ android {
 }
 
 dependencies {
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.5")
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.core:core-splashscreen:1.2.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
@@ -60,9 +60,11 @@ dependencies {
     implementation("com.google.android.material:material:1.13.0")
     implementation("androidx.media3:media3-exoplayer:1.11.1")
     implementation("androidx.media3:media3-exoplayer-hls:1.11.1")
+    implementation("androidx.media3:media3-exoplayer-dash:1.11.1")
     implementation("androidx.media3:media3-ui:1.11.1")
     implementation("androidx.media3:media3-session:1.11.1")
     implementation("io.coil-kt:coil:2.7.0")
+    implementation("com.github.teamnewpipe:NewPipeExtractor:v0.26.5")
     implementation("com.googlecode.libphonenumber:libphonenumber:8.13.55")
     implementation("org.nanohttpd:nanohttpd:2.3.1")
     implementation("io.github.tdlib-android:core:0.1.1")

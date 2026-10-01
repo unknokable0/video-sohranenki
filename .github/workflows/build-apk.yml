@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.7.0: themed Twitch muted UX, fine scrubbing, and YouTube feed
+# SOHR 6.7.2: native YouTube playback error hardening
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.7.0 version
+      - name: Assign SOHR 6.7.2 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=670000" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.7.0" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=670002" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.7.2" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -725,8 +725,8 @@ jobs:
           youtube_feed_ui = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/YouTubeFeedUi.kt"
           ).read_text(encoding="utf-8")
-          youtube_player = Path(
-              "native/app/src/main/java/com/unknokable/videosohranenki/YouTubePlayerScreen.kt"
+          youtube_resolver = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/YouTubeNativeResolver.kt"
           ).read_text(encoding="utf-8")
 
           if "dragScrubActive" in gesture_overlay or "YouTube-style horizontal scrub" in gesture_overlay:
@@ -805,33 +805,53 @@ jobs:
                   raise SystemExit(f"SOHR 6.7.0 YouTube UI regression: {required}")
 
           for required in [
-              "class YouTubePlayerScreen(",
-              "controls:0",
-              "disablekb:1",
-              "fs:0",
-              "function sohrPlay()",
-              "function sohrPause()",
-              "function sohrSeek(ms)",
-              "function sohrRate(rate)",
-              "function sohrSnapshot()",
-              "private fun buildOverlay()",
-              "SohrTimeBar(activity, palette.accent)",
-              '"Точная перемотка • по секундам"',
-              'showSeekFeedback(if (forward) "+10 сек" else "−10 сек")',
-              "setPlaybackRate(2.0)",
-              "private fun setFullscreenMode(enabled: Boolean)",
-              "fun exitFullscreen()"
+              "object YouTubeNativeResolver",
+              "StreamInfo.getInfo(video.watchUrl)",
+              "NewPipe.init(",
+              "info.videoStreams",
+              "!it.isVideoOnly",
+              "info.hlsUrl",
+              "info.dashMpdUrl",
+              "SohrExtractorDownloader",
+              "YouTubeAgeRestrictedException",
+              "YouTubeNetworkException",
+              "cannot be watched anonymously",
+              "mapFailure(error)"
           ]:
-              if required not in youtube_player:
-                  raise SystemExit(f"SOHR 6.7.0 custom YouTube player regression: {required}")
+              if required not in youtube_resolver:
+                  raise SystemExit(f"SOHR 6.7.1 native YouTube resolver regression: {required}")
           for forbidden in [
-              "override fun onShowCustomView",
-              "customViewCallback",
-              '"Открыть"',
-              '"Видео воспроизводится через официальный YouTube-плеер внутри SOHR"'
+              "WebView",
+              "iframe",
+              "youtube.com/iframe_api",
+              "YT.Player"
           ]:
-              if forbidden in youtube_player:
-                  raise SystemExit(f"SOHR 6.7.0 regression: stock YouTube UI returned: {forbidden}")
+              if forbidden in youtube_resolver:
+                  raise SystemExit(f"SOHR 6.7.1 regression: embedded YouTube player returned: {forbidden}")
+
+          youtube_open_section = sohr_main.split(
+              "private fun openYouTubeVideo(video: YouTubeFeedVideo)", 1
+          )[1].split("\n    private fun ", 1)[0]
+          for forbidden in [
+              "YouTubePlayerScreen",
+              "youtubePlayerScreen",
+              "WebView",
+              "iframe",
+              "youtube.com/iframe_api"
+          ]:
+              if forbidden in youtube_open_section:
+                  raise SystemExit(f"SOHR 6.7.1 regression: legacy YouTube embed wiring returned: {forbidden}")
+          for required in [
+              "YouTubeNativeResolver.resolve(video)",
+              "mediaUrl = resolved.mediaUrl",
+              "PlayerScreen(",
+              'mimeType = "video/*"',
+              "showYouTubePlaybackError(video, error, returnView)",
+              '"SOHR не обходит такие ограничения."',
+              '"Повторить"'
+          ]:
+              if required not in youtube_open_section:
+                  raise SystemExit(f"SOHR 6.7.1 native Media3 YouTube wiring regression: {required}")
 
           for required in [
               '2 -> "YouTube • каналы и новые видео"',
@@ -1635,7 +1655,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.7.0 • карточка Twitch muted стала компактной и больше не растягивается на экран • muted-участки используют активный цвет темы SOHR • перемотка получила настоящий fine scrub: увод пальца вверх замедляет движение и фиксирует позицию по секундам • вкладка Лента переделана под YouTube-каналы WT2X2 и Берлога T2x2 с авами, страницами каналов и общей лентой новых видео • похожие повторы между каналами скрываются автоматически • YouTube controls скрыты: видео открывается с интерфейсом SOHR — собственные play/pause, themed-таймлайн, Осталось, fullscreen, double tap ±10, long-press 2× и точная перемотка"
+            "notes": "SOHR 6.7.2 • исправлена обработка ошибок нативного YouTube-плеера • age-restricted ролики больше не показывают сырой английский текст и не запускают обход ограничений — вместо этого отображается аккуратный экран SOHR • сетевые ошибки получили кнопку Повторить • обычные доступные ролики продолжают открываться через нативный Media3 PlayerScreen без WebView и iframe"
           }
           EOF
           cat update.json
