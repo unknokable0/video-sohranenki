@@ -22,7 +22,7 @@ data class YouTubeNativeSource(
 
 /**
  * Resolves YouTube watch pages into a direct media stream and hands that
- * stream to SOHR's normal Media3 PlayerScreen. No WebView or iframe is used.
+ * stream to SOHR's normal native Media3 PlayerScreen.
  */
 object YouTubeNativeResolver {
     @Volatile
