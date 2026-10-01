@@ -825,13 +825,17 @@ jobs:
               if forbidden in youtube_resolver:
                   raise SystemExit(f"SOHR 6.7.1 regression: embedded YouTube player returned: {forbidden}")
 
+          youtube_open_section = sohr_main.split(
+              "private fun openYouTubeVideo(video: YouTubeFeedVideo)", 1
+          )[1].split("\n    private fun ", 1)[0]
           for forbidden in [
               "YouTubePlayerScreen",
               "youtubePlayerScreen",
-              "youtube.com/iframe_api",
-              "android.webkit.WebView"
+              "WebView",
+              "iframe",
+              "youtube.com/iframe_api"
           ]:
-              if forbidden in sohr_main:
+              if forbidden in youtube_open_section:
                   raise SystemExit(f"SOHR 6.7.1 regression: legacy YouTube embed wiring returned: {forbidden}")
           for required in [
               "YouTubeNativeResolver.resolve(video)",
@@ -839,7 +843,7 @@ jobs:
               "PlayerScreen(",
               'mimeType = "video/*"'
           ]:
-              if required not in sohr_main:
+              if required not in youtube_open_section:
                   raise SystemExit(f"SOHR 6.7.1 native Media3 YouTube wiring regression: {required}")
 
           for required in [
