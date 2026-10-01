@@ -846,12 +846,20 @@ jobs:
               "mediaUrl = resolved.mediaUrl",
               "PlayerScreen(",
               'mimeType = "video/*"',
-              "showYouTubePlaybackError(video, error, returnView)",
-              '"SOHR не обходит такие ограничения."',
-              '"Повторить"'
+              "showYouTubePlaybackError(video, error, returnView)"
           ]:
               if required not in youtube_open_section:
-                  raise SystemExit(f"SOHR 6.7.1 native Media3 YouTube wiring regression: {required}")
+                  raise SystemExit(f"SOHR 6.7.2 native Media3 YouTube wiring regression: {required}")
+
+          for required in [
+              "private fun showYouTubePlaybackError(",
+              '"SOHR не обходит такие ограничения."',
+              '"Повторить"',
+              "YouTubeAgeRestrictedException",
+              "YouTubeNetworkException"
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.7.2 YouTube error UX regression: {required}")
 
           for required in [
               '2 -> "YouTube • каналы и новые видео"',
