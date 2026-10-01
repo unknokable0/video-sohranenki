@@ -64,6 +64,7 @@ class TwitchPlayerScreen(
     private lateinit var copyrightNotice: LinearLayout
     private lateinit var copyrightNoticeText: TextView
     private lateinit var copyrightSkip: TextView
+    private lateinit var mutedLegend: TextView
 
     private var customView: View? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
@@ -272,6 +273,9 @@ class TwitchPlayerScreen(
                     gestureDownX = event.x
                     gestureDownY = event.y
                     gestureConsumed = false
+                    // Own the entire gesture stream so the embedded Twitch page
+                    // never receives a drag that could change the playback time.
+                    return@setOnTouchListener true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = event.x - gestureDownX
@@ -318,10 +322,14 @@ class TwitchPlayerScreen(
                     }
                     gestureLastTapAt = now
                     gestureLastTapX = event.x
+                    return@setOnTouchListener true
                 }
-                MotionEvent.ACTION_CANCEL -> gestureConsumed = false
+                MotionEvent.ACTION_CANCEL -> {
+                    gestureConsumed = false
+                    return@setOnTouchListener true
+                }
             }
-            false
+            true
         }
         webView.webChromeClient = object : WebChromeClient() {
             override fun onShowCustomView(view: View, callback: CustomViewCallback) {
@@ -382,7 +390,7 @@ class TwitchPlayerScreen(
         }
 
         copy.addView(TextView(activity).apply {
-            text = "Звук заглушён Twitch"
+            text = "Звук вырезан Twitch"
             textSize = 11.8f
             includeFontPadding = false
             setTypeface(typeface, Typeface.BOLD)
@@ -446,6 +454,15 @@ class TwitchPlayerScreen(
                     range.startMs..range.endMs
                 }
             )
+            if (::mutedLegend.isInitialized) {
+                mutedLegend.visibility = if (ranges.isEmpty()) View.GONE else View.VISIBLE
+                mutedLegend.text =
+                    if (ranges.size == 1) {
+                        "Жёлтый участок — звук вырезан Twitch"
+                    } else {
+                        "Жёлтые участки — звук вырезан Twitch • ${ranges.size}"
+                    }
+            }
             updateCopyrightNotice()
         }
     }
@@ -480,7 +497,7 @@ class TwitchPlayerScreen(
 
         val mutedRemaining = (range.endMs - currentMs).coerceAtLeast(0L)
         copyrightNoticeText.text =
-            "Авторские права • осталось ${formatMs(mutedRemaining)}"
+            "Авторские права • без звука ещё ${formatMs(mutedRemaining)}"
         copyrightSkip.text =
             if (mutedRemaining >= 1_000L) "Пропустить ${formatMs(mutedRemaining)}" else "Пропустить"
 
@@ -531,10 +548,28 @@ class TwitchPlayerScreen(
                 }
             }
         }
+        mutedLegend = TextView(activity).apply {
+            text = "Жёлтые участки — звук вырезан Twitch"
+            textSize = 9.6f
+            includeFontPadding = false
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.rgb(236, 185, 82))
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(7), 0, dp(7), 0)
+            background = rounded(Color.parseColor("#241D1912"), 10)
+            visibility = View.GONE
+        }
+        box.addView(
+            mutedLegend,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(22)).apply {
+                bottomMargin = dp(1)
+            }
+        )
+
         seekBar.setProgress(currentMs, durationMs, bufferedMs)
         box.addView(
             seekBar,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(24))
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(26))
         )
 
         val times = LinearLayout(activity).apply {
