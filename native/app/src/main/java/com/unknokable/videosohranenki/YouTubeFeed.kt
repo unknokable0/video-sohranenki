@@ -3,14 +3,18 @@ package com.unknokable.videosohranenki
 import android.util.Xml
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import org.xmlpull.v1.XmlPullParser
 import java.io.StringReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.time.Instant
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.abs
 
 data class YouTubeFeedVideo(
@@ -21,7 +25,8 @@ data class YouTubeFeedVideo(
     val thumbnailUrl: String,
     val channelId: String,
     val channelTitle: String,
-    val handle: String
+    val handle: String,
+    val durationSeconds: Int = 0
 ) {
     val watchUrl: String get() = "https://www.youtube.com/watch?v=$videoId"
 
@@ -29,7 +34,7 @@ data class YouTubeFeedVideo(
         messageId = stableMessageId(videoId),
         title = title,
         date = publishedAt.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
-        durationSeconds = 0,
+        durationSeconds = durationSeconds,
         fileId = 0,
         fileSize = 0L,
         mimeType = "text/html",
@@ -67,6 +72,9 @@ object YouTubeFeedRepository {
         Source("@beerloga_t2x2", "https://www.youtube.com/@beerloga_t2x2", "Берлога T2x2")
     )
 
+    private val durationCache = ConcurrentHashMap<String, Int>()
+    private val durationGate = Semaphore(4)
+
     suspend fun loadAll(): YouTubeFeedSnapshot = coroutineScope {
         val channels = sources.map { source ->
             async(Dispatchers.IO) { loadChannel(source) }
@@ -103,7 +111,7 @@ object YouTubeFeedRepository {
         )?.let(::decodeHtml).orEmpty()
 
         val feed = fetchText("https://www.youtube.com/feeds/videos.xml?channel_id=$channelId")
-        val videos = parseFeed(feed, channelId, title, source.handle)
+        val videos = enrichDurations(parseFeed(feed, channelId, title, source.handle))
 
         YouTubeChannelSummary(channelId, source.handle, title, avatar, source.url, videos)
     }
@@ -166,6 +174,44 @@ object YouTubeFeedRepository {
             parser.next()
         }
         return result.sortedByDescending { it.publishedAt }.take(30)
+    }
+
+    private suspend fun enrichDurations(
+        videos: List<YouTubeFeedVideo>
+    ): List<YouTubeFeedVideo> = coroutineScope {
+        videos.map { video ->
+            async(Dispatchers.IO) {
+                val cached = durationCache[video.videoId]
+                val duration = cached ?: durationGate.withPermit {
+                    loadDurationSeconds(video.videoId)
+                }.also { resolved ->
+                    if (resolved > 0) durationCache[video.videoId] = resolved
+                }
+                video.copy(durationSeconds = duration)
+            }
+        }.awaitAll()
+    }
+
+    private fun loadDurationSeconds(videoId: String): Int {
+        val page = runCatching {
+            fetchText("https://www.youtube.com/watch?v=$videoId&hl=ru&gl=PL")
+        }.getOrNull() ?: return 0
+
+        val seconds = firstGroup(
+            page,
+            Regex("\"lengthSeconds\":\"(\\d+)\"")
+        )?.toLongOrNull()
+        if (seconds != null) {
+            return seconds.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+        }
+
+        val approxMs = firstGroup(
+            page,
+            Regex("\"approxDurationMs\":\"(\\d+)\"")
+        )?.toLongOrNull()
+        return ((approxMs ?: 0L) / 1000L)
+            .coerceIn(0L, Int.MAX_VALUE.toLong())
+            .toInt()
     }
 
     private fun deduplicate(input: List<YouTubeFeedVideo>): List<YouTubeFeedVideo> {

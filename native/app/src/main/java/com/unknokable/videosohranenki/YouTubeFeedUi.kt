@@ -42,7 +42,7 @@ object YouTubeFeedUi {
             setPadding(dp(activity, 2), 0, dp(activity, 2), dp(activity, 8))
         }
         channelHeader.addView(TextView(activity).apply {
-            text = "YouTube-каналы"
+            text = "Каналы"
             textSize = 17.5f
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(palette.text)
@@ -108,7 +108,7 @@ object YouTubeFeedUi {
             text = if (videos.isEmpty() && loading) {
                 "Собираем свежие ролики…"
             } else {
-                "Повторы между каналами скрываются автоматически"
+                "Автообновление включено • повторы скрываются автоматически"
             }
             textSize = 11.5f
             setTextColor(palette.muted)
@@ -326,57 +326,124 @@ object YouTubeFeedUi {
         val palette = settings.palette()
         val card = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            background = rounded(palette.surfaceAlt, 20)
+            background = rounded(palette.surfaceAlt, 22)
             clipToOutline = true
             isClickable = true
             isFocusable = true
+            setPadding(dp(activity, 6), dp(activity, 6), dp(activity, 6), dp(activity, 4))
         }
 
-        val width = (activity.resources.displayMetrics.widthPixels - dp(activity, 24)).coerceAtLeast(dp(activity, 240))
+        val width = (activity.resources.displayMetrics.widthPixels - dp(activity, 36))
+            .coerceAtLeast(dp(activity, 240))
         val thumbHeight = (width * 9f / 16f).toInt()
-        card.addView(ImageView(activity).apply {
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            setBackgroundColor(Color.BLACK)
-            load(video.thumbnailUrl) { crossfade(settings.animations) }
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, thumbHeight))
+
+        val thumbnailHolder = FrameLayout(activity).apply {
+            background = rounded(Color.BLACK, 18)
+            clipToOutline = true
+        }
+        thumbnailHolder.addView(
+            ImageView(activity).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                setBackgroundColor(Color.BLACK)
+                load(video.thumbnailUrl) {
+                    crossfade(settings.animations)
+                }
+            },
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        if (video.durationSeconds > 0) {
+            thumbnailHolder.addView(
+                TextView(activity).apply {
+                    text = formatDuration(video.durationSeconds)
+                    textSize = 11f
+                    gravity = Gravity.CENTER
+                    includeFontPadding = false
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(Color.WHITE)
+                    setPadding(
+                        dp(activity, 7),
+                        dp(activity, 3),
+                        dp(activity, 7),
+                        dp(activity, 3)
+                    )
+                    background = rounded(Color.parseColor("#C70A0910"), 8)
+                },
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.END or Gravity.BOTTOM
+                ).apply {
+                    marginEnd = dp(activity, 8)
+                    bottomMargin = dp(activity, 8)
+                }
+            )
+        }
+
+        card.addView(
+            thumbnailHolder,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                thumbHeight
+            )
+        )
 
         val metaRow = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.TOP
-            setPadding(dp(activity, 11), dp(activity, 10), dp(activity, 11), dp(activity, 12))
+            setPadding(
+                dp(activity, 7),
+                dp(activity, 10),
+                dp(activity, 7),
+                dp(activity, 9)
+            )
         }
-        metaRow.addView(ImageView(activity).apply {
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            background = oval(palette.surface)
-            clipToOutline = true
-            if (avatarUrl.isNotBlank()) {
-                load(avatarUrl) {
-                    transformations(CircleCropTransformation())
-                    crossfade(false)
+        metaRow.addView(
+            ImageView(activity).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                background = oval(palette.surface)
+                clipToOutline = true
+                if (avatarUrl.isNotBlank()) {
+                    load(avatarUrl) {
+                        transformations(CircleCropTransformation())
+                        crossfade(false)
+                    }
                 }
+            },
+            LinearLayout.LayoutParams(dp(activity, 38), dp(activity, 38)).apply {
+                marginEnd = dp(activity, 10)
             }
-        }, LinearLayout.LayoutParams(dp(activity, 36), dp(activity, 36)).apply {
-            marginEnd = dp(activity, 10)
-        })
+        )
 
-        val textBox = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        val textBox = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+        }
         textBox.addView(TextView(activity).apply {
             text = video.title
-            textSize = 14f
+            textSize = 14.2f
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(palette.text)
             maxLines = 2
             ellipsize = android.text.TextUtils.TruncateAt.END
             includeFontPadding = false
+            setLineSpacing(0f, 1.04f)
         })
         textBox.addView(TextView(activity).apply {
-            text = video.handle + " • " + relativeTime(video.publishedAt)
-            textSize = 11f
+            text = video.channelTitle + " • " + relativeTime(video.publishedAt)
+            textSize = 11.2f
             setTextColor(palette.muted)
             includeFontPadding = false
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
             setPadding(0, dp(activity, 5), 0, 0)
         })
-        metaRow.addView(textBox, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        metaRow.addView(
+            textBox,
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        )
         card.addView(metaRow)
 
         card.setOnClickListener {
@@ -408,18 +475,34 @@ object YouTubeFeedUi {
 
     private fun relativeTime(epochSeconds: Long): String {
         if (epochSeconds <= 0L) return "недавно"
-        return DateUtils.getRelativeTimeSpanString(
-            epochSeconds * 1000L,
-            System.currentTimeMillis(),
-            DateUtils.MINUTE_IN_MILLIS,
-            DateUtils.FORMAT_ABBREV_RELATIVE
-        ).toString()
+        val age = ((System.currentTimeMillis() / 1000L) - epochSeconds).coerceAtLeast(0L)
+        return when {
+            age < 60L -> "только что"
+            age < 60L * 60L -> "${age / 60L} мин назад"
+            age < 24L * 60L * 60L -> "${age / 3600L} ч назад"
+            age < 30L * 24L * 60L * 60L -> "${age / 86400L} дн назад"
+            age < 365L * 24L * 60L * 60L -> "${age / (30L * 86400L)} мес назад"
+            else -> "${age / (365L * 86400L)} г назад"
+        }
+    }
+
+    private fun formatDuration(totalSeconds: Int): String {
+        val safe = totalSeconds.coerceAtLeast(0)
+        val hours = safe / 3600
+        val minutes = (safe % 3600) / 60
+        val seconds = safe % 60
+        return if (hours > 0) {
+            "%d:%02d:%02d".format(hours, minutes, seconds)
+        } else {
+            "%d:%02d".format(minutes, seconds)
+        }
     }
 
     private fun rounded(color: Int, radiusDp: Int): GradientDrawable =
         GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = radiusDp.toFloat()
+            cornerRadius = radiusDp *
+                android.content.res.Resources.getSystem().displayMetrics.density
             setColor(color)
         }
 

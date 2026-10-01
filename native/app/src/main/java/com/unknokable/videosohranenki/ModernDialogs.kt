@@ -787,6 +787,16 @@ object ModernDialogs {
         dialog.setContentView(box)
         dialog.setCanceledOnTouchOutside(false)
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+
+        // Keep the card hidden while ScrollView max-height listeners settle.
+        // Previously the dialog became visible first and then changed height,
+        // which looked like a one-frame jump in Appearance / release notes.
+        box.visibility = View.INVISIBLE
+        box.alpha = 0f
+        box.scaleX = 0.985f
+        box.scaleY = 0.985f
+        box.translationY = dp(context, 6).toFloat()
+
         dialog.show()
 
         dialog.window?.apply {
@@ -802,18 +812,19 @@ object ModernDialogs {
             )
         }
 
-        box.alpha = 0f
-        box.scaleX = 0.975f
-        box.scaleY = 0.975f
-        box.translationY = dp(context, 10).toFloat()
-        box.animate()
-            .alpha(1f)
-            .scaleX(1f)
-            .scaleY(1f)
-            .translationY(0f)
-            .setDuration(190L)
-            .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
-            .start()
+        box.postDelayed({
+            if (!dialog.isShowing) return@postDelayed
+            box.visibility = View.VISIBLE
+            box.animate().cancel()
+            box.animate()
+                .alpha(1f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .translationY(0f)
+                .setDuration(170L)
+                .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+                .start()
+        }, 32L)
     }
 
     private fun compactButton(

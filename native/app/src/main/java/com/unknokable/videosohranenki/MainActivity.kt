@@ -103,6 +103,8 @@ class MainActivity : AppCompatActivity() {
     private var youtubeFeedVideos: List<YouTubeFeedVideo> = emptyList()
     private var youtubeFeedLoading = false
     private var youtubeFeedJob: kotlinx.coroutines.Job? = null
+    private var youtubeFeedAutoRefreshJob: kotlinx.coroutines.Job? = null
+    private var lastYoutubeFeedRefreshAt = 0L
     private var openYouTubeChannelSummary: YouTubeChannelSummary? = null
     private var currentStreamingItem: VideoItem? = null
     private lateinit var settings: AppSettings
@@ -174,6 +176,7 @@ class MainActivity : AppCompatActivity() {
     private var feedRefreshCompletedFlash = false
     private var feedAutoRefreshJob: kotlinx.coroutines.Job? = null
     private var lastFeedAutoRefreshAt = 0L
+    private var pendingFeedScrollRestoreY: Int? = null
     private val telegramAutoRefreshIntervalMs = 15_000L
     private val twitchAutoRefreshIntervalMs = 180_000L
     private var startupUpdateCheckDone = false
@@ -578,7 +581,7 @@ class MainActivity : AppCompatActivity() {
 
                 if (settings.videoSource == "twitch") {
                     if (twitchLoadJob?.isActive != true) {
-                        loadTwitchVideos(inPlace = true)
+                        loadTwitchVideos(inPlace = true, quiet = true)
                     }
                     while (isActive && twitchLoadJob?.isActive == true) {
                         delay(250L)
@@ -2371,7 +2374,7 @@ class MainActivity : AppCompatActivity() {
             else if (!inPlace) reloadRequested = true
             return
         }
-        if (inPlace && visibleTelegram) setFeedRefreshLoading(true)
+        if (inPlace && visibleTelegram && !quiet) setFeedRefreshLoading(true)
         loadJob = lifecycleScope.launch {
             if (!inPlace && visibleTelegram && !onboardingActive) {
                 withContext(Dispatchers.Main) { showFeedSkeleton("Обновляем медиатеку…") }
@@ -2453,11 +2456,15 @@ class MainActivity : AppCompatActivity() {
                         return@withContext
                     }
                     if (inPlace && !changed) {
-                        setFeedRefreshLoading(false)
+                        if (!quiet) setFeedRefreshLoading(false)
                     } else {
                         currentDay = null
                         feedRefreshCompletedFlash = inPlace && !quiet
-                        if (inPlace) suppressNextRootAnimation = true
+                        if (inPlace) {
+                            suppressNextRootAnimation = true
+                            suppressNextContentAnimation = true
+                            if (quiet) rememberFeedScrollPosition()
+                        }
                         showFeed(preparedVideos)
                     }
                 }
@@ -2465,7 +2472,7 @@ class MainActivity : AppCompatActivity() {
                 withContext(Dispatchers.Main) {
                     if (settings.videoSource != "telegram") return@withContext
                     if (inPlace) {
-                        setFeedRefreshLoading(false)
+                        if (!quiet) setFeedRefreshLoading(false)
                         if (!quiet) {
                             Toast.makeText(
                                 this@MainActivity,
@@ -2481,6 +2488,49 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
+        }
+    }
+
+    private fun scheduleYouTubeFeedAutoRefresh(delayMs: Long = 45_000L) {
+        if (youtubeFeedAutoRefreshJob?.isActive == true) return
+
+        youtubeFeedAutoRefreshJob = lifecycleScope.launch {
+            if (delayMs > 0L) delay(delayMs)
+            while (isActive) {
+                if (
+                    videoSection != 2 ||
+                    auxiliaryScreen != null ||
+                    isPlayerScreen ||
+                    isSettingsScreen ||
+                    isAccountScreen ||
+                    isStreakScreen
+                ) {
+                    delay(1_000L)
+                    continue
+                }
+
+                loadYouTubeFeed(force = true, quiet = true)
+                while (isActive && youtubeFeedJob?.isActive == true) {
+                    delay(250L)
+                }
+                delay(60_000L)
+            }
+        }
+    }
+
+    private fun rememberFeedScrollPosition() {
+        root.findViewWithTag<NestedScrollView>("sohr_feed_scroll")
+            ?.scrollY
+            ?.let { pendingFeedScrollRestoreY = it }
+    }
+
+    private fun restoreFeedScrollPosition(scroll: NestedScrollView) {
+        val requested = pendingFeedScrollRestoreY ?: return
+        pendingFeedScrollRestoreY = null
+        scroll.post {
+            val child = scroll.getChildAt(0)
+            val maxScroll = ((child?.height ?: 0) - scroll.height).coerceAtLeast(0)
+            scroll.scrollTo(0, requested.coerceIn(0, maxScroll))
         }
     }
 
@@ -2739,6 +2789,7 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(bg)
         }
         val scroll = NestedScrollView(this).apply {
+            tag = "sohr_feed_scroll"
             isFillViewport = true
             overScrollMode = View.OVER_SCROLL_NEVER
             setBackgroundColor(bg)
@@ -3120,11 +3171,18 @@ class MainActivity : AppCompatActivity() {
             )
 
             replaceRoot(withBottomNav(page, SohrTab.VIDEOS))
+            restoreFeedScrollPosition(scroll)
             root.postDelayed({ consumeUpdateNotificationIntent() }, 220L)
 
             if (!youtubeFeedLoading && (youtubeChannels.isEmpty() || youtubeFeedVideos.isEmpty())) {
                 loadYouTubeFeed(force = false)
+            } else if (
+                !youtubeFeedLoading &&
+                System.currentTimeMillis() - lastYoutubeFeedRefreshAt > 15_000L
+            ) {
+                loadYouTubeFeed(force = true, quiet = true)
             }
+            scheduleYouTubeFeedAutoRefresh()
             return
         }
 
@@ -3560,6 +3618,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         replaceRoot(withBottomNav(page, SohrTab.VIDEOS))
+        restoreFeedScrollPosition(scroll)
         root.postDelayed({ consumeUpdateNotificationIntent() }, 220L)
     }
 
@@ -6342,13 +6401,19 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadYouTubeFeed(force: Boolean = false) {
+    private fun loadYouTubeFeed(
+        force: Boolean = false,
+        quiet: Boolean = false
+    ) {
         if (youtubeFeedJob?.isActive == true) return
-        if (!force && youtubeChannels.isNotEmpty() && youtubeFeedVideos.isNotEmpty()) return
 
-        youtubeFeedLoading = true
-        if (videoSection == 2 && auxiliaryScreen == null) {
+        val hadContent = youtubeChannels.isNotEmpty() && youtubeFeedVideos.isNotEmpty()
+        if (!force && hadContent) return
+
+        youtubeFeedLoading = !quiet && !hadContent
+        if (youtubeFeedLoading && videoSection == 2 && auxiliaryScreen == null) {
             suppressNextRootAnimation = true
+            suppressNextContentAnimation = true
             showFeed(currentVideos)
         }
 
@@ -6359,13 +6424,25 @@ class MainActivity : AppCompatActivity() {
                 YouTubeFeedSnapshot(youtubeChannels, youtubeFeedVideos)
             }
 
+            val changed =
+                snapshot.channels != youtubeChannels ||
+                    snapshot.videos != youtubeFeedVideos
+
             youtubeChannels = snapshot.channels
             youtubeFeedVideos = snapshot.videos
             youtubeFeedLoading = false
             youtubeFeedJob = null
+            lastYoutubeFeedRefreshAt = System.currentTimeMillis()
 
-            if (videoSection == 2 && auxiliaryScreen == null && !isFinishing) {
+            if (
+                videoSection == 2 &&
+                auxiliaryScreen == null &&
+                !isFinishing &&
+                (!hadContent || changed)
+            ) {
+                if (hadContent) rememberFeedScrollPosition()
                 suppressNextRootAnimation = true
+                suppressNextContentAnimation = true
                 showFeed(currentVideos)
             }
         }
@@ -6513,6 +6590,7 @@ class MainActivity : AppCompatActivity() {
         setFullscreen(false)
 
         val ageRestricted = error is YouTubeAgeRestrictedException
+        val signInRequired = error is YouTubeSignInRequiredException
         val retryable = error is YouTubeNetworkException
 
         val page = FrameLayout(this).apply {
@@ -6525,8 +6603,16 @@ class MainActivity : AppCompatActivity() {
         }
 
         val badge = TextView(this).apply {
-            text = if (ageRestricted) "18+" else "!"
-            textSize = if (ageRestricted) 16f else 24f
+            text = when {
+                ageRestricted -> "18+"
+                signInRequired -> "YT"
+                else -> "!"
+            }
+            textSize = when {
+                ageRestricted -> 16f
+                signInRequired -> 15f
+                else -> 24f
+            }
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(purple)
@@ -6540,10 +6626,10 @@ class MainActivity : AppCompatActivity() {
         )
 
         val titleView = TextView(this).apply {
-            text = if (ageRestricted) {
-                "Видео недоступно"
-            } else {
-                "Не удалось открыть видео"
+            text = when {
+                ageRestricted -> "Видео недоступно"
+                signInRequired -> "YouTube требует вход"
+                else -> "Не удалось открыть видео"
             }
             textSize = 23f
             gravity = Gravity.CENTER
@@ -6563,6 +6649,9 @@ class MainActivity : AppCompatActivity() {
                 is YouTubeAgeRestrictedException ->
                     "У этого ролика есть возрастное ограничение YouTube. " +
                         "SOHR не обходит такие ограничения."
+                is YouTubeSignInRequiredException ->
+                    "Это не ошибка 18+. YouTube не отдаёт этот ролик анонимному " +
+                        "нативному плееру. Если вы уже вошли в YouTube, ролик можно открыть там."
                 is YouTubeNetworkException ->
                     "Не получилось связаться с YouTube. Проверьте подключение и повторите попытку."
                 else ->
@@ -6588,9 +6677,9 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             maxLines = 2
             ellipsize = android.text.TextUtils.TruncateAt.END
-            setTextColor(Color.argb(115, 255, 255, 255))
+            setTextColor(Color.argb(145, 255, 255, 255))
             setPadding(dp(12), dp(12), dp(12), dp(12))
-            background = roundedBg(panel, 14)
+            background = roundedBg(panel, 16)
         }
         content.addView(
             videoLabel,
@@ -6602,23 +6691,34 @@ class MainActivity : AppCompatActivity() {
             }
         )
 
-        if (retryable) {
-            val retry = TextView(this).apply {
-                text = "Повторить"
+        if (retryable || signInRequired) {
+            val primary = TextView(this).apply {
+                text = if (signInRequired) "Открыть в YouTube" else "Повторить"
                 textSize = 14f
                 gravity = Gravity.CENTER
                 setTypeface(typeface, Typeface.BOLD)
                 setTextColor(Color.WHITE)
-                background = roundedBg(purple, 16)
+                background = roundedBg(purple, 18)
                 isClickable = true
                 isFocusable = true
                 setOnClickListener {
                     animatePress(this)
-                    openYouTubeVideo(video)
+                    if (signInRequired) {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(video.watchUrl))
+                        runCatching { startActivity(intent) }.onFailure {
+                            Toast.makeText(
+                                this@MainActivity,
+                                "Не удалось открыть YouTube",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    } else {
+                        openYouTubeVideo(video)
+                    }
                 }
             }
             content.addView(
-                retry,
+                primary,
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     dp(48)
@@ -6634,7 +6734,7 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(this@MainActivity.text)
-            background = roundedBg(palette.surfaceAlt, 16)
+            background = roundedBg(palette.surfaceAlt, 18)
             isClickable = true
             isFocusable = true
             setOnClickListener {
@@ -6648,7 +6748,7 @@ class MainActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(48)
             ).apply {
-                topMargin = dp(if (retryable) 10 else 18)
+                topMargin = dp(if (retryable || signInRequired) 10 else 18)
             }
         )
 
@@ -7299,7 +7399,7 @@ class MainActivity : AppCompatActivity() {
         return raw.take(140)
     }
 
-    private fun loadTwitchVideos(inPlace: Boolean = false) {
+    private fun loadTwitchVideos(inPlace: Boolean = false, quiet: Boolean = false) {
         val clientId = BuildConfig.TWITCH_CLIENT_ID.trim()
         if (clientId.isBlank()) {
             showMessage("Twitch ещё не подключён", "В сборке отсутствует Twitch Client ID.")
@@ -7312,16 +7412,16 @@ class MainActivity : AppCompatActivity() {
             return
         }
         if (twitchLoadJob?.isActive == true) {
-            if (inPlace) feedRefreshLabel?.text = "Уже проверяем…"
+            if (inPlace && !quiet) feedRefreshLabel?.text = "Уже проверяем…"
             return
         }
         if (!canAttemptTwitchNetwork()) {
-            if (inPlace) {
+            if (inPlace && !quiet) {
                 setFeedRefreshLoading(false, "Нет сети")
                 feedRefreshButton?.postDelayed({
                     setFeedRefreshLoading(false, "Проверить новые")
                 }, 1_500L)
-            } else {
+            } else if (!inPlace) {
                 showMessage(
                     "Нет подключения к Twitch",
                     "Проверьте интернет и попробуйте ещё раз."
@@ -7329,18 +7429,32 @@ class MainActivity : AppCompatActivity() {
             }
             return
         }
-        if (inPlace) setFeedRefreshLoading(true) else showFeedSkeleton("Загружаем Twitch…")
+        if (inPlace) {
+            if (!quiet) setFeedRefreshLoading(true)
+        } else {
+            showFeedSkeleton("Загружаем Twitch…")
+        }
         twitchLoadJob = lifecycleScope.launch {
             try {
                 val twitchLogin = TwitchApi.validateToken(clientId, token)
                 settings.twitchLogin = twitchLogin.takeIf { it.isNotBlank() }
                 val videos = TwitchApi.loadArchives(clientId, token, "t2x2", 7)
+                val changed = twitchVideos != videos
                 twitchVideos = videos
+                if (settings.videoSource != "twitch") return@launch
                 currentVideos = videos
-                currentDay = null
-                feedRefreshCompletedFlash = inPlace
-                if (inPlace) suppressNextRootAnimation = true
-                showFeed(videos)
+                if (inPlace && !changed) {
+                    if (!quiet) setFeedRefreshLoading(false)
+                } else {
+                    currentDay = null
+                    feedRefreshCompletedFlash = inPlace && !quiet
+                    if (inPlace) {
+                        suppressNextRootAnimation = true
+                        suppressNextContentAnimation = true
+                        if (quiet) rememberFeedScrollPosition()
+                    }
+                    showFeed(videos)
+                }
                 if (pendingTwitchWelcome) {
                     pendingTwitchWelcome = false
                     root.postDelayed({
@@ -7363,7 +7477,7 @@ class MainActivity : AppCompatActivity() {
                         settings.twitchRefreshToken = refreshed.refreshToken ?: refreshToken
                         settings.twitchLogin = null
                         twitchLoadJob = null
-                        loadTwitchVideos(inPlace = inPlace)
+                        loadTwitchVideos(inPlace = inPlace, quiet = quiet)
                         return@launch
                     } catch (_: Exception) {
                         // Fall through to a fresh Device Code login.
@@ -7377,12 +7491,12 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 val networkFailure = isTwitchNetworkFailure(e)
                 if (networkFailure) markTwitchNetworkFailure()
-                if (inPlace) {
+                if (inPlace && !quiet) {
                     setFeedRefreshLoading(false, if (networkFailure) "Нет сети" else "Ошибка")
                     feedRefreshButton?.postDelayed({
                         setFeedRefreshLoading(false, "Проверить новые")
                     }, 1_500L)
-                } else {
+                } else if (!inPlace) {
                     showMessage(
                         if (networkFailure) "Нет подключения к Twitch" else "Не удалось загрузить Twitch",
                         friendlyTwitchFailure(e)

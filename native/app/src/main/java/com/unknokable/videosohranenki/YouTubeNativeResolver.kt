@@ -29,6 +29,10 @@ class YouTubeAgeRestrictedException : YouTubeNativeResolveException(
     "Этот ролик имеет возрастное ограничение YouTube."
 )
 
+class YouTubeSignInRequiredException : YouTubeNativeResolveException(
+    "YouTube требует вход для этого ролика."
+)
+
 class YouTubeUnavailableException : YouTubeNativeResolveException(
     "Этот ролик сейчас недоступен для воспроизведения в SOHR."
 )
@@ -98,10 +102,15 @@ object YouTubeNativeResolver {
         return when {
             "age-restricted" in combined ||
                 "age restricted" in combined ||
-                "cannot be watched anonymously" in combined ||
                 "confirm your age" in combined ||
                 "sign in to confirm your age" in combined ->
                     YouTubeAgeRestrictedException()
+
+            "cannot be watched anonymously" in combined ||
+                "sign in to confirm you're not a bot" in combined ||
+                "sign in to confirm you’re not a bot" in combined ||
+                "login required" in combined ->
+                    YouTubeSignInRequiredException()
 
             "private video" in combined ||
                 "video unavailable" in combined ||
