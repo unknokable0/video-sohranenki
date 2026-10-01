@@ -1112,14 +1112,17 @@ jobs:
           for required in ["previewModeSelector", '"Wi‑Fi"', '"Всегда"', '"Выкл"']:
               if required not in settings_screen:
                   raise SystemExit(f"SOHR 6.2 preview-setting regression: {required}")
-          for required in [
+          if "The primary shell already animates Settings in/out" not in settings_screen:
+              raise SystemExit("SOHR 6.7.3 stable Settings motion marker missing")
+          for forbidden in [
               "val visibleCount = root.childCount.coerceAtMost(10)",
               "child.translationY = dp(8).toFloat()",
-              ".setStartDelay((index * 22L).coerceAtMost(150L))",
-              ".setDuration(230L)"
+              ".setStartDelay((index * 22L).coerceAtMost(150L))"
           ]:
-              if required not in settings_screen:
-                  raise SystemExit(f"SOHR 6.6.11 Settings entrance regression: {required}")
+              if forbidden in settings_screen:
+                  raise SystemExit(
+                      f"SOHR 6.7.3 regression: duplicate Settings entrance motion returned: {forbidden}"
+                  )
 
           app_settings = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/AppSettings.kt"
