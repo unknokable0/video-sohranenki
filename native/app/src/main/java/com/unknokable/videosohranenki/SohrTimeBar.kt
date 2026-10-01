@@ -27,6 +27,8 @@ class SohrTimeBar(context: Context, accentColor: Int) : View(context) {
     private var scrubPositionMs = 0L
     private var touchStartY = 0f
     private var fineScrub = false
+    private var fineScrubAnchorX = 0f
+    private var fineScrubAnchorMs = 0L
     private var chapterPositionsMs: List<Long> = emptyList()
     private var mutedRangesMs: List<LongRange> = emptyList()
     private var lastScrubChapterIndex = -1
@@ -34,10 +36,15 @@ class SohrTimeBar(context: Context, accentColor: Int) : View(context) {
         color = Color.argb(205, 255, 255, 255)
     }
     private val mutedBackdropPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(82, 236, 185, 82)
+        color = Color.argb(
+            82,
+            Color.red(accentColor),
+            Color.green(accentColor),
+            Color.blue(accentColor)
+        )
     }
     private val mutedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.rgb(236, 185, 82)
+        color = accentColor
     }
 
     private val density = resources.displayMetrics.density
@@ -75,6 +82,17 @@ class SohrTimeBar(context: Context, accentColor: Int) : View(context) {
         if (durationMs <= 0L) return 0L
         val fraction = (x / width.coerceAtLeast(1)).coerceIn(0f, 1f)
         return (durationMs * fraction).roundToLong()
+    }
+
+    private fun finePositionFor(x: Float): Long {
+        if (durationMs <= 0L) return 0L
+        val msPerPixel = durationMs.toDouble() / width.coerceAtLeast(1).toDouble()
+        val slowedDeltaMs = ((x - fineScrubAnchorX) * msPerPixel * 0.12).roundToLong()
+        val raw = (fineScrubAnchorMs + slowedDeltaMs).coerceIn(0L, durationMs)
+        // Fine mode is intentionally snapped to whole seconds. On multi-hour
+        // VODs this makes one-second targeting practical instead of requiring
+        // sub-pixel finger movement.
+        return ((raw + 500L) / 1_000L * 1_000L).coerceIn(0L, durationMs)
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -162,6 +180,8 @@ class SohrTimeBar(context: Context, accentColor: Int) : View(context) {
                 touchStartY = event.y
                 fineScrub = false
                 scrubPositionMs = positionFor(event.x)
+                fineScrubAnchorX = event.x
+                fineScrubAnchorMs = scrubPositionMs
                 lastScrubChapterIndex = chapterPositionsMs.indexOfLast { it <= scrubPositionMs }
                 listener?.onScrubStart(scrubPositionMs)
                 listener?.onScrubMove(scrubPositionMs, fractionFor(scrubPositionMs))
@@ -169,34 +189,38 @@ class SohrTimeBar(context: Context, accentColor: Int) : View(context) {
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
-                scrubPositionMs = positionFor(event.x)
+                val nextFine = touchStartY - event.y > dp(28f)
+                if (nextFine != fineScrub) {
+                    if (nextFine) {
+                        fineScrubAnchorX = event.x
+                        fineScrubAnchorMs = scrubPositionMs
+                    }
+                    fineScrub = nextFine
+                    performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                }
+
+                scrubPositionMs =
+                    if (fineScrub) finePositionFor(event.x)
+                    else positionFor(event.x)
+
                 val chapterIndex = chapterPositionsMs.indexOfLast { it <= scrubPositionMs }
                 if (chapterIndex >= 0 && chapterIndex != lastScrubChapterIndex) {
                     lastScrubChapterIndex = chapterIndex
                     performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                 }
-                val nextFine = touchStartY - event.y > dp(28f)
-                if (nextFine != fineScrub) {
-                    fineScrub = nextFine
-                    listener?.onFineScrubMode(
-                        fineScrub,
-                        scrubPositionMs,
-                        fractionFor(scrubPositionMs)
-                    )
-                } else if (fineScrub) {
-                    listener?.onFineScrubMode(
-                        true,
-                        scrubPositionMs,
-                        fractionFor(scrubPositionMs)
-                    )
-                }
+
+                listener?.onFineScrubMode(
+                    fineScrub,
+                    scrubPositionMs,
+                    fractionFor(scrubPositionMs)
+                )
                 listener?.onScrubMove(scrubPositionMs, fractionFor(scrubPositionMs))
                 invalidate()
                 return true
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 val canceled = event.actionMasked == MotionEvent.ACTION_CANCEL
-                if (!canceled) scrubPositionMs = positionFor(event.x)
+                if (!canceled && !fineScrub) scrubPositionMs = positionFor(event.x)
                 positionMs = if (canceled) positionMs else scrubPositionMs
                 if (fineScrub) {
                     listener?.onFineScrubMode(
