@@ -65,6 +65,7 @@ class PlayerScreen(
     private val mediaUrl: String,
     private val previewDataSourceFactory: (() -> MediaDataSource)?,
     private val settings: AppSettings,
+    private val twitchVideoId: String? = null,
     private val startPositionMs: Long = 0L,
     private val nextItem: VideoItem? = null,
     private val queueItems: List<VideoItem> = emptyList(),
@@ -96,6 +97,10 @@ class PlayerScreen(
     private lateinit var speedBadge: TextView
     private lateinit var seekFeedback: TextView
     private lateinit var bufferingLoader: LoadingWaveView
+    private lateinit var twitchMutedNotice: LinearLayout
+    private lateinit var twitchMutedNoticeText: TextView
+    private lateinit var twitchMutedSkip: TextView
+    private lateinit var twitchMutedLegend: TextView
     private lateinit var actionsRow: LinearLayout
     private lateinit var socialActionsRow: LinearLayout
     private lateinit var nextVideosBlock: LinearLayout
@@ -116,6 +121,7 @@ class PlayerScreen(
     private var gestureOverlay: PlayerGestureOverlay? = null
     private val autoHideControls = Runnable { if (player.isPlaying && !dragging) hideOverlay() }
     private val previewScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val twitchMutedScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val previewMutex = Mutex()
     private var previewRetriever: MediaMetadataRetriever? = null
     private var previewDataSource: MediaDataSource? = null
@@ -161,6 +167,11 @@ class PlayerScreen(
     private var speedActionButton: TextView? = null
     private var interactionBoostUntilElapsed = SystemClock.elapsedRealtime() + 4_000L
     private var lastChapterIndex = -1
+    private var twitchMutedRanges: List<TwitchMutedRange> = emptyList()
+    private var activeTwitchMutedRange: TwitchMutedRange? = null
+    private var twitchMutedNoticeVisible = false
+    private val isTwitchVod: Boolean
+        get() = item.source == "twitch" && !twitchVideoId.isNullOrBlank()
 
     private data class Chapter(
         val positionMs: Long,
@@ -318,6 +329,22 @@ class PlayerScreen(
             )
         )
 
+        if (isTwitchVod) {
+            twitchMutedNotice = buildTwitchMutedNotice()
+            playerCard.addView(
+                twitchMutedNotice,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                ).apply {
+                    leftMargin = dp(12)
+                    rightMargin = dp(12)
+                    bottomMargin = dp(58)
+                }
+            )
+        }
+
         val width = activity.resources.displayMetrics.widthPixels
         val playerMargin = dp(16)
         val playerWidth = (width - playerMargin * 2).coerceAtLeast(dp(240))
@@ -443,6 +470,7 @@ class PlayerScreen(
         })
 
         installGestures()
+        if (isTwitchVod) loadTwitchMutedRanges()
         scheduleProgress()
     }
 
@@ -530,6 +558,152 @@ class PlayerScreen(
         return row
     }
 
+    private fun buildTwitchMutedNotice(): LinearLayout {
+        val box = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(11), dp(8), dp(8), dp(8))
+            background = rounded("#E817151D", 15)
+            visibility = View.GONE
+            alpha = 0f
+            translationY = dp(6).toFloat()
+            elevation = dp(8).toFloat()
+        }
+
+        val copy = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        copy.addView(TextView(activity).apply {
+            text = "Звук вырезан Twitch"
+            textSize = 11.8f
+            includeFontPadding = false
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+        })
+
+        twitchMutedNoticeText = TextView(activity).apply {
+            text = "Авторские права"
+            textSize = 9.7f
+            includeFontPadding = false
+            setTextColor(Color.parseColor("#C9CAD2"))
+            setPadding(0, dp(3), 0, 0)
+        }
+        copy.addView(twitchMutedNoticeText)
+        box.addView(
+            copy,
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        )
+
+        twitchMutedSkip = TextView(activity).apply {
+            text = "Пропустить"
+            textSize = 10.7f
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            background = roundedInt(palette.accent, 13)
+            setPadding(dp(10), 0, dp(10), 0)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                val range = activeTwitchMutedRange ?: return@setOnClickListener
+                pulse(this)
+                val target = (range.endMs + 250L).coerceAtMost(resolvedDurationMs())
+                player.seekTo(target)
+                currentTime.text = formatMs(target)
+                remainingTime.text = remainingTimeLabel(target, resolvedDurationMs())
+                showTransientIndicator("Участок без звука пропущен")
+                updateTwitchMutedUi()
+            }
+        }
+        box.addView(
+            twitchMutedSkip,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                dp(32)
+            ).apply {
+                marginStart = dp(10)
+            }
+        )
+        return box
+    }
+
+    private fun loadTwitchMutedRanges() {
+        if (!isTwitchVod) return
+        twitchMutedScope.launch {
+            val ranges = TwitchVodResolver.resolveMutedSegmentsFromMaster(mediaUrl)
+            if (destroyed) return@launch
+
+            twitchMutedRanges = ranges
+            seekBar.setMutedRanges(
+                ranges.map { range -> range.startMs..range.endMs }
+            )
+
+            if (::twitchMutedLegend.isInitialized) {
+                twitchMutedLegend.visibility =
+                    if (ranges.isEmpty()) View.GONE else View.VISIBLE
+                twitchMutedLegend.text =
+                    when (ranges.size) {
+                        0 -> ""
+                        1 -> "Жёлтый участок — звук вырезан Twitch"
+                        else -> "Жёлтые участки — звук вырезан Twitch • ${ranges.size}"
+                    }
+            }
+            updateTwitchMutedUi()
+        }
+    }
+
+    private fun updateTwitchMutedUi() {
+        if (!isTwitchVod || !::twitchMutedNotice.isInitialized) return
+
+        val position = player.currentPosition.coerceAtLeast(0L)
+        val range = twitchMutedRanges.firstOrNull {
+            position >= it.startMs && position < it.endMs
+        }
+        activeTwitchMutedRange = range
+
+        if (range == null) {
+            if (!twitchMutedNoticeVisible) return
+            twitchMutedNoticeVisible = false
+            twitchMutedNotice.animate().cancel()
+            twitchMutedNotice.animate()
+                .alpha(0f)
+                .translationY(dp(5).toFloat())
+                .setDuration(if (settings.animations) 130L else 0L)
+                .withEndAction {
+                    twitchMutedNotice.visibility = View.GONE
+                }
+                .start()
+            return
+        }
+
+        val remaining = (range.endMs - position).coerceAtLeast(0L)
+        twitchMutedNoticeText.text =
+            "Авторские права • без звука ещё ${formatMs(remaining)}"
+        twitchMutedSkip.text =
+            if (remaining >= 1_000L) "Пропустить ${formatMs(remaining)}" else "Пропустить"
+
+        if (twitchMutedNoticeVisible) return
+        twitchMutedNoticeVisible = true
+        twitchMutedNotice.visibility = View.VISIBLE
+        twitchMutedNotice.animate().cancel()
+        showOverlay()
+
+        if (settings.animations) {
+            twitchMutedNotice.alpha = 0f
+            twitchMutedNotice.translationY = dp(6).toFloat()
+            twitchMutedNotice.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setDuration(170L)
+                .setInterpolator(SohrMotion.smooth())
+                .start()
+        } else {
+            twitchMutedNotice.alpha = 1f
+            twitchMutedNotice.translationY = 0f
+        }
+    }
+
     private fun buildOverlay(): FrameLayout {
         val frame = FrameLayout(activity).apply {
             setBackgroundColor(Color.parseColor("#12000000"))
@@ -610,6 +784,29 @@ class PlayerScreen(
                 }
             }
             setChapters(chapters.map { it.positionMs })
+        }
+
+        if (isTwitchVod) {
+            twitchMutedLegend = TextView(activity).apply {
+                text = "Жёлтые участки — звук вырезан Twitch"
+                textSize = 9.5f
+                includeFontPadding = false
+                gravity = Gravity.CENTER_VERTICAL
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(Color.rgb(236, 185, 82))
+                setPadding(dp(7), 0, dp(7), 0)
+                background = rounded("#241D1912", 10)
+                visibility = View.GONE
+            }
+            bottom.addView(
+                twitchMutedLegend,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dp(21)
+                ).apply {
+                    bottomMargin = dp(1)
+                }
+            )
         }
 
         val times = LinearLayout(activity).apply {
@@ -2446,6 +2643,7 @@ class PlayerScreen(
         previewJob?.cancel()
         filmstripJob?.cancel()
         previewScope.cancel()
+        twitchMutedScope.cancel()
         previewImage.setImageDrawable(null)
         previewCache.values.toSet().forEach { bitmap -> if (!bitmap.isRecycled) bitmap.recycle() }
         previewCache.clear()
@@ -2572,6 +2770,7 @@ class PlayerScreen(
         }
         persistPlaybackPosition()
         updatePlayIcon()
+        updateTwitchMutedUi()
     }
 
     private fun resolvedDurationMs(): Long {
