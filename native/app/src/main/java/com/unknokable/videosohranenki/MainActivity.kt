@@ -369,6 +369,15 @@ class MainActivity : AppCompatActivity() {
                     return
                 }
 
+                if (auxiliaryScreen == "youtube_channel") {
+                    auxiliaryScreen = null
+                    openYouTubeChannelSummary = null
+                    videoSection = 2
+                    pendingRootSlide = -1
+                    showFeed(currentVideos)
+                    return
+                }
+
                 if (auxiliaryScreen != null) {
                     auxiliaryScreen = null
                     pendingRootSlide = -1
@@ -9092,6 +9101,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun fallbackReleaseNotes(version: String): String = when (version) {
+        "6.7.0" -> listOf(
+            "Twitch muted-карточка стала компактной: она больше не растягивается на весь экран, показывает короткий текст Авторские права · ещё время и отдельную кнопку Пропустить.",
+            "Muted-участки на таймлайне теперь используют активный цвет темы SOHR вместо фиксированного жёлтого, сохраняя более толстое выделение для заметности.",
+            "Точная перемотка переделана по YouTube-принципу: обычный drag быстро перемещает по ролику, а если увести палец вверх, включается замедленный fine scrub с фиксацией по секундам.",
+            "Вкладка Лента больше не является каталогом Telegram-каналов: она переделана под YouTube-каналы WT2X2 и Берлога T2x2.",
+            "SOHR сам получает данные каналов и свежие ролики, показывает аватар, название и handle, а нажатие на канал открывает отдельную страницу его видео внутри приложения.",
+            "Общая YouTube-лента скрывает вероятные повторы между каналами по video ID и похожести заголовка/описания в близкий период.",
+            "YouTube-видео открываются внутри SOHR через официальный embedded YouTube player с поддержкой штатного fullscreen; системный Back возвращает из канала обратно в Ленту."
+        ).joinToString(" • ")
         "6.6.15" -> listOf(
             "Исправлена главная причина, почему muted-участки Twitch не были видны: Twitch VOD в приложении фактически открывается через основной native PlayerScreen, и теперь логика авторских ограничений подключена именно к нему.",
             "Muted-интервалы загружаются только для видео из Twitch-раздела и используют тот же HLS master URL, который прямо сейчас воспроизводит плеер.",
