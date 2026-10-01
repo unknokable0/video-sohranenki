@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.7.2: native YouTube playback error hardening
+# SOHR 6.7.3: native YouTube playback error hardening
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.7.2 version
+      - name: Assign SOHR 6.7.3 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=670002" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.7.2" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=670003" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.7.3" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -798,8 +798,10 @@ jobs:
           for required in [
               "fun buildDirectory(",
               "fun buildChannel(",
-              '"Повторы между каналами скрываются автоматически"',
-              "videoCard("
+              '"Автообновление включено • повторы скрываются автоматически"',
+              "videoCard(",
+              "formatDuration(video.durationSeconds)",
+              "cornerRadius = radiusDp *"
           ]:
               if required not in youtube_feed_ui:
                   raise SystemExit(f"SOHR 6.7.0 YouTube UI regression: {required}")
@@ -814,6 +816,7 @@ jobs:
               "info.dashMpdUrl",
               "SohrExtractorDownloader",
               "YouTubeAgeRestrictedException",
+              "YouTubeSignInRequiredException",
               "YouTubeNetworkException",
               "cannot be watched anonymously",
               "mapFailure(error)"
@@ -849,17 +852,20 @@ jobs:
               "showYouTubePlaybackError(video, error, returnView)"
           ]:
               if required not in youtube_open_section:
-                  raise SystemExit(f"SOHR 6.7.2 native Media3 YouTube wiring regression: {required}")
+                  raise SystemExit(f"SOHR 6.7.3 native Media3 YouTube wiring regression: {required}")
 
           for required in [
               "private fun showYouTubePlaybackError(",
               '"SOHR не обходит такие ограничения."',
               '"Повторить"',
+              '"YouTube требует вход"',
+              '"Открыть в YouTube"',
               "YouTubeAgeRestrictedException",
+              "YouTubeSignInRequiredException",
               "YouTubeNetworkException"
           ]:
               if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.7.2 YouTube error UX regression: {required}")
+                  raise SystemExit(f"SOHR 6.7.3 YouTube error UX regression: {required}")
 
           for required in [
               '2 -> "YouTube • каналы и новые видео"',
@@ -867,7 +873,11 @@ jobs:
               "private fun loadYouTubeFeed(",
               "private fun openYouTubeChannelScreen(",
               "private fun openYouTubeVideo(",
-              'auxiliaryScreen == "youtube_channel"'
+              'auxiliaryScreen == "youtube_channel"',
+              "private fun scheduleYouTubeFeedAutoRefresh(",
+              "loadYouTubeFeed(force = true, quiet = true)",
+              'tag = "sohr_feed_scroll"',
+              "rememberFeedScrollPosition()"
           ]:
               if required not in sohr_main:
                   raise SystemExit(f"SOHR 6.7.0 YouTube wiring regression: {required}")
@@ -1598,6 +1608,13 @@ jobs:
           ).read_text(encoding="utf-8")
           if "chunked(3)" not in dialogs or "dp(context, 96)" not in dialogs:
               raise SystemExit("Appearance palette readability regression")
+          for required in [
+              "box.visibility = View.INVISIBLE",
+              "box.postDelayed({",
+              "if (!dialog.isShowing) return@postDelayed"
+          ]:
+              if required not in dialogs:
+                  raise SystemExit(f"SOHR 6.7.3 dialog stability regression: {required}")
           if "LinearLayout.LayoutParams(dp(context, 38), dp(context, 4))" in dialogs:
               raise SystemExit("Legacy dialog top handle regression")
 
@@ -1663,7 +1680,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.7.2 • исправлена обработка ошибок нативного YouTube-плеера • age-restricted ролики больше не показывают сырой английский текст и не запускают обход ограничений — вместо этого отображается аккуратный экран SOHR • сетевые ошибки получили кнопку Повторить • обычные доступные ролики продолжают открываться через нативный Media3 PlayerScreen без WebView и iframe"
+            "notes": "SOHR 6.7.3 • исправлено ложное 18+: требование входа YouTube теперь определяется отдельно • карточки Ленты показывают длительность и время публикации в стиле YouTube • скругления исправлены под плотность экрана и лучше совпадают со стилем SOHR • YouTube-лента автоматически проверяет новые видео без заметной перезагрузки • фоновые Telegram/Twitch обновления больше не крутят индикатор возле поиска и не дёргают экран • позиция прокрутки сохраняется • окна Оформление и Что нового появляются после стабилизации размера без скачка"
           }
           EOF
           cat update.json
