@@ -6145,6 +6145,7 @@ class MainActivity : AppCompatActivity() {
                     mediaUrl = hlsUrl,
                     previewDataSourceFactory = null,
                     settings = settings,
+                    twitchVideoId = videoId,
                     startPositionMs = resumePositionMs,
                     nextItem = nextItem,
                     onPlayNext = { next -> openPlayer(next) },
