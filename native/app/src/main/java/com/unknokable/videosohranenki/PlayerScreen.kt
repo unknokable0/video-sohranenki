@@ -43,6 +43,9 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.SeekParameters
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.core.graphics.drawable.toBitmap
@@ -63,6 +66,7 @@ class PlayerScreen(
     private val activity: Activity,
     private val item: VideoItem,
     private val mediaUrl: String,
+    private val secondaryAudioUrl: String? = null,
     private val previewDataSourceFactory: (() -> MediaDataSource)?,
     private val settings: AppSettings,
     private val twitchVideoId: String? = null,
@@ -386,7 +390,7 @@ class PlayerScreen(
 
         player.setSeekParameters(SeekParameters.CLOSEST_SYNC)
         playerView.player = player
-        player.setMediaItem(mediaSessionBridge.mediaItem)
+        player.setMediaSource(buildPlaybackMediaSource())
         if (startPositionMs > 0) player.seekTo(startPositionMs)
         player.repeatMode = Player.REPEAT_MODE_OFF
         player.playbackParameters = PlaybackParameters(speed)
@@ -472,6 +476,14 @@ class PlayerScreen(
         scheduleProgress()
     }
 
+    private fun buildPlaybackMediaSource(): MediaSource {
+        val factory = DefaultMediaSourceFactory(activity)
+        val primary = factory.createMediaSource(mediaSessionBridge.mediaItem)
+        val audioUrl = secondaryAudioUrl?.takeIf { it.isNotBlank() } ?: return primary
+        val audio = factory.createMediaSource(MediaItem.fromUri(audioUrl))
+        return MergingMediaSource(primary, audio)
+    }
+
     private fun recoverFromPlaybackError(error: androidx.media3.common.PlaybackException) {
         handler.removeCallbacks(showBufferingRunnable)
         if (destroyed) return
@@ -500,7 +512,7 @@ class PlayerScreen(
             runCatching {
                 player.stop()
                 player.clearMediaItems()
-                player.setMediaItem(mediaSessionBridge.mediaItem)
+                player.setMediaSource(buildPlaybackMediaSource())
                 if (resumeAt > 0L) player.seekTo(resumeAt)
                 player.playbackParameters = PlaybackParameters(speed)
                 player.playWhenReady = true
@@ -1486,6 +1498,14 @@ class PlayerScreen(
     }
 
     private fun enqueueDownload() {
+        if (!secondaryAudioUrl.isNullOrBlank() && item.source == "youtube") {
+            Toast.makeText(
+                activity,
+                "Для этого YouTube-видео доступен просмотр, но не отдельная загрузка",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
         if (onDownloadRequested != null) {
             onDownloadRequested.invoke(item)
             return
