@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.6.13: safe gestures and accurate Twitch muted ranges
+# SOHR 6.6.14: hard-block drag seeking and clearer Twitch muted-range UX
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.6.13 version
+      - name: Assign SOHR 6.6.14 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=660013" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.6.13" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=660014" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.6.14" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -730,13 +730,31 @@ jobs:
           if "horizontalThreshold" in twitch_player and "seekBy(if (dx > 0f)" in twitch_player:
               raise SystemExit("SOHR 6.6.13 regression: Twitch horizontal swipe seeking returned")
           if '"-unmuted." in lower ||' in twitch_resolver:
-              raise SystemExit("SOHR 6.6.13 regression: unmuted HLS segments marked as muted")
+              raise SystemExit("SOHR 6.6.14 regression: unmuted HLS segments marked as muted")
           for required in [
               '("-muted." in lower && "-unmuted." !in lower)',
               '"index-muted" in lower'
           ]:
               if required not in twitch_resolver:
-                  raise SystemExit(f"SOHR 6.6.13 muted detection regression: {required}")
+                  raise SystemExit(f"SOHR 6.6.14 muted detection regression: {required}")
+
+          for required in [
+              "Own the entire gesture stream",
+              "return@setOnTouchListener true",
+              "private lateinit var mutedLegend: TextView",
+              '"Жёлтые участки — звук вырезан Twitch"',
+              "mutedLegend.visibility = if (ranges.isEmpty()) View.GONE else View.VISIBLE"
+          ]:
+              if required not in twitch_player:
+                  raise SystemExit(f"SOHR 6.6.14 Twitch drag/muted UX regression: {required}")
+
+          for required in [
+              "private val mutedBackdropPaint",
+              "their exact start/end points are obvious",
+              "centerY - haloH / 2f"
+          ]:
+              if required not in time_bar:
+                  raise SystemExit(f"SOHR 6.6.14 muted timeline regression: {required}")
 
           twitch_live_player = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/TwitchLivePlayerScreen.kt"
@@ -787,7 +805,7 @@ jobs:
               "private fun buildCopyrightNotice()",
               "private fun loadMutedRanges()",
               "private fun updateCopyrightNotice()",
-              '"Звук заглушён Twitch"',
+              '"Звук вырезан Twitch"',
               '"Пропустить',
               "TwitchVodResolver.resolveMutedSegments(videoId)"
           ]:
