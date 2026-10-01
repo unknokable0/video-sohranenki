@@ -104,6 +104,7 @@ class MainActivity : AppCompatActivity() {
     private var youtubeFeedLoading = false
     private var youtubeFeedJob: kotlinx.coroutines.Job? = null
     private var youtubeFeedAutoRefreshJob: kotlinx.coroutines.Job? = null
+    private var lastYoutubeFeedRefreshAt = 0L
     private var openYouTubeChannelSummary: YouTubeChannelSummary? = null
     private var currentStreamingItem: VideoItem? = null
     private lateinit var settings: AppSettings
@@ -3175,6 +3176,11 @@ class MainActivity : AppCompatActivity() {
 
             if (!youtubeFeedLoading && (youtubeChannels.isEmpty() || youtubeFeedVideos.isEmpty())) {
                 loadYouTubeFeed(force = false)
+            } else if (
+                !youtubeFeedLoading &&
+                System.currentTimeMillis() - lastYoutubeFeedRefreshAt > 15_000L
+            ) {
+                loadYouTubeFeed(force = true, quiet = true)
             }
             scheduleYouTubeFeedAutoRefresh()
             return
@@ -6426,6 +6432,7 @@ class MainActivity : AppCompatActivity() {
             youtubeFeedVideos = snapshot.videos
             youtubeFeedLoading = false
             youtubeFeedJob = null
+            lastYoutubeFeedRefreshAt = System.currentTimeMillis()
 
             if (
                 videoSection == 2 &&
