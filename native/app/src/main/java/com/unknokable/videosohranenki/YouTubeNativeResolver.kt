@@ -8,6 +8,7 @@ import org.schabi.newpipe.extractor.downloader.Request
 import org.schabi.newpipe.extractor.downloader.Response
 import org.schabi.newpipe.extractor.localization.ContentCountry
 import org.schabi.newpipe.extractor.localization.Localization
+import org.schabi.newpipe.extractor.stream.AudioStream
 import org.schabi.newpipe.extractor.stream.StreamInfo
 import org.schabi.newpipe.extractor.stream.VideoStream
 import java.net.HttpURLConnection
@@ -18,6 +19,7 @@ import java.util.Locale
 
 data class YouTubeNativeSource(
     val mediaUrl: String,
+    val secondaryAudioUrl: String? = null,
     val durationSeconds: Int,
     val title: String,
     val thumbnailUrl: String?
@@ -63,20 +65,69 @@ object YouTubeNativeResolver {
             val progressive = info.videoStreams
                 .asSequence()
                 .filter { it.isUrl && !it.isVideoOnly }
-                .filter { it.content.startsWith("https://") || it.content.startsWith("http://") }
+                .filter { isDirectHttpUrl(it.content) }
                 .sortedWith(
                     compareByDescending<VideoStream> { it.height }
                         .thenByDescending { it.bitrate }
                 )
                 .firstOrNull()
 
-            val mediaUrl = progressive?.content
-                ?: info.hlsUrl.takeIf(::isDirectHttpUrl)
-                ?: info.dashMpdUrl.takeIf(::isDirectHttpUrl)
-                ?: throw YouTubeUnavailableException()
+            val splitVideo = info.videoStreams
+                .asSequence()
+                .filter { it.isUrl && it.isVideoOnly }
+                .filter { isDirectHttpUrl(it.content) }
+                .sortedWith(
+                    compareByDescending<VideoStream> {
+                        when {
+                            it.height in 1..1080 -> 2
+                            it.height > 1080 -> 1
+                            else -> 0
+                        }
+                    }
+                        .thenByDescending { if (it.height in 1..1080) it.height else 0 }
+                        .thenByDescending { it.bitrate }
+                )
+                .firstOrNull()
+
+            val splitAudio = info.audioStreams
+                .asSequence()
+                .filter { it.isUrl }
+                .filter { isDirectHttpUrl(it.content) }
+                .sortedWith(
+                    compareByDescending<AudioStream> { it.averageBitrate }
+                        .thenByDescending { it.bitrate }
+                )
+                .firstOrNull()
+
+            val hls = info.hlsUrl.takeIf(::isDirectHttpUrl)
+            val dash = info.dashMpdUrl.takeIf(::isDirectHttpUrl)
+
+            val mediaUrl: String
+            val secondaryAudioUrl: String?
+
+            when {
+                progressive != null -> {
+                    mediaUrl = progressive.content
+                    secondaryAudioUrl = null
+                }
+                hls != null -> {
+                    mediaUrl = hls
+                    secondaryAudioUrl = null
+                }
+                dash != null -> {
+                    mediaUrl = dash
+                    secondaryAudioUrl = null
+                }
+                splitVideo != null && splitAudio != null -> {
+                    mediaUrl = splitVideo.content
+                    secondaryAudioUrl = splitAudio.content
+                }
+                else -> throw YouTubeUnavailableException()
+            }
 
             YouTubeNativeSource(
                 mediaUrl = mediaUrl,
+                secondaryAudioUrl = secondaryAudioUrl,
                 durationSeconds = info.duration
                     .coerceIn(0L, Int.MAX_VALUE.toLong())
                     .toInt(),
@@ -91,26 +142,32 @@ object YouTubeNativeResolver {
             return YouTubeNetworkException()
         }
 
+        val exceptionNames = mutableListOf<String>()
         val messages = mutableListOf<String>()
         var cause: Throwable? = error
         while (cause != null) {
+            exceptionNames += cause.javaClass.simpleName
             cause.message?.takeIf { it.isNotBlank() }?.let(messages::add)
             cause = cause.cause
         }
+
+        val classChain = exceptionNames.joinToString(" ").lowercase(Locale.ROOT)
         val combined = messages.joinToString(" ").lowercase(Locale.ROOT)
 
         return when {
+            "signinconfirmnotbot" in classChain ||
+                "loginrequired" in classChain ||
+                "cannot be watched anonymously" in combined ||
+                "sign in to confirm you're not a bot" in combined ||
+                "sign in to confirm you’re not a bot" in combined ||
+                "login required" in combined ->
+                    YouTubeSignInRequiredException()
+
             "age-restricted" in combined ||
                 "age restricted" in combined ||
                 "confirm your age" in combined ||
                 "sign in to confirm your age" in combined ->
                     YouTubeAgeRestrictedException()
-
-            "cannot be watched anonymously" in combined ||
-                "sign in to confirm you're not a bot" in combined ||
-                "sign in to confirm you’re not a bot" in combined ||
-                "login required" in combined ->
-                    YouTubeSignInRequiredException()
 
             "private video" in combined ||
                 "video unavailable" in combined ||
