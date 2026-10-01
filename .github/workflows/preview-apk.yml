@@ -2,7 +2,7 @@ name: SOHR Preview Build
 
 on:
   push:
-    branches: [sohr-preview, sohr-preview-673]
+    branches: [sohr-preview]
     paths:
       - "native/**"
       - ".github/workflows/preview-apk.yml"
