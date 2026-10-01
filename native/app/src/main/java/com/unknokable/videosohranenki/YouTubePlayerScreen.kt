@@ -1,6 +1,7 @@
 package com.unknokable.videosohranenki
 
 import android.app.Activity
+import android.content.pm.ActivityInfo
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
@@ -13,7 +14,7 @@ import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
-import android.webkit.JavascriptInterface
+import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -21,15 +22,9 @@ import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
+import org.json.JSONTokener
 import kotlin.math.abs
-import kotlin.math.roundToLong
 
-/**
- * SOHR-native YouTube viewing screen.
- *
- * YouTube is used only as the playback engine. Its controls are disabled and
- * all visible playback UI belongs to SOHR.
- */
 class YouTubePlayerScreen(
     private val activity: Activity,
     private val video: YouTubeFeedVideo,
@@ -41,49 +36,59 @@ class YouTubePlayerScreen(
     val root = FrameLayout(activity)
 
     private val handler = Handler(Looper.getMainLooper())
-    private val content = LinearLayout(activity)
+    private val page = LinearLayout(activity)
     private val playerCard = FrameLayout(activity)
     private val webView = WebView(activity)
-    private val controlsOverlay = FrameLayout(activity)
-    private val gestureLayer = View(activity)
-
+    private val overlay = FrameLayout(activity)
+    private val gestureSurface = View(activity)
     private lateinit var playPause: ImageButton
     private lateinit var seekBar: SohrTimeBar
     private lateinit var currentTime: TextView
     private lateinit var totalTime: TextView
     private lateinit var remainingTime: TextView
     private lateinit var fullscreenButton: ImageButton
-    private lateinit var feedback: TextView
-    private lateinit var fineScrubHint: TextView
+    private lateinit var seekFeedback: TextView
+    private lateinit var fineLabel: TextView
 
-    private var fullscreen = false
     private var destroyed = false
+    private var fullscreen = false
+    private var fullscreenHost: FrameLayout? = null
+    private var playerCardOriginalIndex = -1
+    private var playerCardOriginalParams: LinearLayout.LayoutParams? = null
+    private var controlsVisible = true
+    private var dragging = false
     private var ready = false
     private var playing = false
-    private var durationMs = 0L
     private var currentMs = 0L
+    private var durationMs = 0L
     private var bufferedMs = 0L
-    private var dragging = false
-    private var controlsVisible = true
-    private var temporarySpeed = false
 
-    private var downX = 0f
-    private var downY = 0f
-    private var downAt = 0L
-    private var moved = false
+    private var touchDownX = 0f
+    private var touchDownY = 0f
+    private var touchDownAt = 0L
+    private var touchMoved = false
     private var lastTapAt = 0L
     private var lastTapX = 0f
+    private var longPressActive = false
 
     private val autoHide = Runnable {
-        if (playing && !dragging) setControlsVisible(false)
+        if (playing && !dragging) hideControls()
     }
 
-    private val longPress = Runnable {
-        if (destroyed || moved || !playing) return@Runnable
-        temporarySpeed = true
-        gestureLayer.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-        js("window.sohrSetRate && window.sohrSetRate(2.0)")
-        showFeedback("2×")
+    private val progressPoll = object : Runnable {
+        override fun run() {
+            if (destroyed) return
+            pollYouTubeState()
+            handler.postDelayed(this, 350L)
+        }
+    }
+
+    private val longPressRunnable = Runnable {
+        if (touchMoved || destroyed) return@Runnable
+        longPressActive = true
+        gestureSurface.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        setPlaybackRate(2.0)
+        showSeekFeedback("2×")
     }
 
     val isFullscreen: Boolean
@@ -91,30 +96,100 @@ class YouTubePlayerScreen(
 
     init {
         root.setBackgroundColor(palette.background)
-        content.orientation = LinearLayout.VERTICAL
-        content.setBackgroundColor(palette.background)
+        page.orientation = LinearLayout.VERTICAL
+        page.setBackgroundColor(palette.background)
 
-        content.addView(buildHeader())
-        configurePlayerCard()
-        content.addView(playerCard, normalPlayerLayoutParams())
-        content.addView(buildDetails())
+        page.addView(buildHeader())
 
-        root.addView(
-            content,
+        playerCard.setBackgroundColor(Color.BLACK)
+        playerCard.background = rounded(Color.BLACK, 18)
+        playerCard.clipToOutline = true
+
+        configureWebView()
+        playerCard.addView(
+            webView,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         )
 
-        loadYouTubeEngine()
+        playerCard.addView(
+            gestureSurface,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+        installGestures()
+
+        buildOverlay()
+        playerCard.addView(
+            overlay,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        seekFeedback = TextView(activity).apply {
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            setPadding(dp(14), dp(9), dp(14), dp(9))
+            background = rounded(Color.parseColor("#D91A1720"), 14)
+            visibility = View.GONE
+            alpha = 0f
+            elevation = dp(10).toFloat()
+        }
+        playerCard.addView(
+            seekFeedback,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER
+            )
+        )
+
+        val screenWidth = activity.resources.displayMetrics.widthPixels
+        val side = dp(16)
+        val playerWidth = (screenWidth - side * 2).coerceAtLeast(dp(240))
+        page.addView(
+            playerCard,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                (playerWidth * 9f / 16f).toInt()
+            ).apply {
+                marginStart = side
+                marginEnd = side
+                topMargin = dp(2)
+            }
+        )
+
+        page.addView(buildDetails())
+
+        root.addView(
+            page,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        webView.loadDataWithBaseURL(
+            "https://www.youtube.com/",
+            playerHtml(video.videoId),
+            "text/html",
+            "UTF-8",
+            null
+        )
+
+        handler.post(progressPoll)
+        showControls()
     }
 
-    private fun configurePlayerCard() {
-        playerCard.setBackgroundColor(Color.BLACK)
-        playerCard.background = rounded(Color.BLACK, 18)
-        playerCard.clipToOutline = true
-
+    private fun configureWebView() {
         webView.setBackgroundColor(Color.BLACK)
         webView.isVerticalScrollBarEnabled = false
         webView.isHorizontalScrollBarEnabled = false
@@ -127,107 +202,147 @@ class YouTubePlayerScreen(
             loadWithOverviewMode = true
             cacheMode = WebSettings.LOAD_DEFAULT
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            builtInZoomControls = false
+            displayZoomControls = false
         }
-        webView.addJavascriptInterface(YouTubeBridge(), "SOHR")
-        webView.webViewClient = object : WebViewClient() {}
-
-        playerCard.addView(
-            webView,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        )
-
-        gestureLayer.setBackgroundColor(Color.TRANSPARENT)
-        gestureLayer.isClickable = true
-        gestureLayer.isFocusable = true
-        gestureLayer.setOnTouchListener { v, event -> handlePlayerGesture(v, event) }
-        playerCard.addView(
-            gestureLayer,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        )
-
-        controlsOverlay.setBackgroundColor(Color.parseColor("#18000000"))
-        playerCard.addView(
-            controlsOverlay,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        )
-        buildControlsInto(controlsOverlay)
+        webView.webViewClient = WebViewClient()
+        webView.webChromeClient = WebChromeClient()
     }
 
-    private fun buildControlsInto(frame: FrameLayout) {
-        playPause = ImageButton(activity).apply {
-            setImageResource(R.drawable.ic_play)
-            imageTintList = ColorStateList.valueOf(Color.WHITE)
-            scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(13), dp(13), dp(13), dp(13))
-            background = rounded(Color.parseColor("#A3121019"), 25)
-            contentDescription = "Воспроизведение"
+    private fun playerHtml(videoId: String): String = """
+        <!doctype html>
+        <html>
+        <head>
+          <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+          <style>
+            html,body,#player{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden}
+            iframe{width:100%!important;height:100%!important;border:0!important}
+          </style>
+        </head>
+        <body>
+          <div id="player"></div>
+          <script src="https://www.youtube.com/iframe_api"></script>
+          <script>
+            var player = null;
+            function onYouTubeIframeAPIReady(){
+              player = new YT.Player('player',{
+                videoId:'$videoId',
+                width:'100%',
+                height:'100%',
+                playerVars:{
+                  autoplay:1,
+                  controls:0,
+                  disablekb:1,
+                  fs:0,
+                  playsinline:1,
+                  rel:0,
+                  iv_load_policy:3,
+                  modestbranding:1
+                },
+                events:{
+                  onReady:function(e){ try{e.target.playVideo();}catch(_){} }
+                }
+              });
+            }
+            function sohrPlay(){ try{player.playVideo();}catch(_){} }
+            function sohrPause(){ try{player.pauseVideo();}catch(_){} }
+            function sohrSeek(ms){ try{player.seekTo(Math.max(0,ms/1000),true);}catch(_){} }
+            function sohrRate(rate){ try{player.setPlaybackRate(rate);}catch(_){} }
+            function sohrSnapshot(){
+              try{
+                if(!player || !player.getDuration) return '';
+                var d = Number(player.getDuration()||0);
+                var c = Number(player.getCurrentTime()||0);
+                var s = Number(player.getPlayerState()||-1);
+                var b = Number(player.getVideoLoadedFraction()||0);
+                return [c,d,s,b].join('|');
+              }catch(_){ return ''; }
+            }
+          </script>
+        </body>
+        </html>
+    """.trimIndent()
+
+    private fun buildHeader(): LinearLayout =
+        LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(5), dp(14), dp(5))
+            setBackgroundColor(palette.background)
+
+            addView(iconButton(R.drawable.ic_back, 36).apply {
+                setOnClickListener {
+                    SohrMotion.press(this, animationsEnabled)
+                    onBack()
+                }
+            }, LinearLayout.LayoutParams(dp(44), dp(44)))
+
+            addView(TextView(activity).apply {
+                text = video.title
+                textSize = 13.5f
+                gravity = Gravity.CENTER
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                includeFontPadding = false
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(palette.text)
+                setPadding(dp(10), 0, dp(10), 0)
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+            addView(View(activity), LinearLayout.LayoutParams(dp(44), dp(44)))
+        }
+
+    private fun buildOverlay() {
+        overlay.setBackgroundColor(Color.parseColor("#12000000"))
+
+        val center = LinearLayout(activity).apply {
+            gravity = Gravity.CENTER
+        }
+        playPause = iconButton(R.drawable.ic_play, 44).apply {
+            background = rounded(Color.parseColor("#96100E16"), 22)
             setOnClickListener {
-                if (!ready) return@setOnClickListener
-                SohrMotion.press(this, animationsEnabled)
-                if (playing) pause() else play()
                 showControls()
+                if (playing) pause() else play()
+                SohrMotion.press(this, animationsEnabled)
             }
         }
-        frame.addView(
-            playPause,
-            FrameLayout.LayoutParams(dp(50), dp(50), Gravity.CENTER)
-        )
-
-        feedback = TextView(activity).apply {
-            textSize = 13f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            background = rounded(Color.parseColor("#C616131E"), 16)
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-            visibility = View.GONE
-            alpha = 0f
-        }
-        frame.addView(
-            feedback,
+        center.addView(playPause, LinearLayout.LayoutParams(dp(50), dp(50)))
+        overlay.addView(
+            center,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.CENTER
-            ).apply {
-                topMargin = dp(78)
-            }
+            )
         )
 
-        fineScrubHint = TextView(activity).apply {
-            text = "Точная перемотка"
-            textSize = 10.5f
+        fineLabel = TextView(activity).apply {
+            text = "Точная перемотка • по секундам"
+            textSize = 10f
             gravity = Gravity.CENTER
+            includeFontPadding = false
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
             background = rounded(withAlpha(palette.accent, 190), 12)
-            setPadding(dp(9), dp(5), dp(9), dp(5))
+            setPadding(dp(10), 0, dp(10), 0)
             visibility = View.GONE
+            alpha = 0f
         }
-        frame.addView(
-            fineScrubHint,
+        overlay.addView(
+            fineLabel,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                dp(27),
+                Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
             ).apply {
-                topMargin = dp(10)
+                bottomMargin = dp(54)
             }
         )
 
         val bottom = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(5), dp(2), dp(5), dp(3))
-            background = rounded(Color.parseColor("#52100D17"), 10)
+            setPadding(dp(4), 0, dp(4), 0)
+            background = rounded(Color.parseColor("#260A0810"), 8)
         }
 
         seekBar = SohrTimeBar(activity, palette.accent).apply {
@@ -240,18 +355,18 @@ class YouTubePlayerScreen(
 
                 override fun onScrubMove(positionMs: Long, fraction: Float) {
                     currentTime.text = formatMs(positionMs)
-                    remainingTime.text = remainingLabel(positionMs)
-                    fineScrubHint.text = "Точная перемотка • " + formatMs(positionMs)
+                    remainingTime.text = remainingLabel(positionMs, durationMs)
                 }
 
                 override fun onFineScrubMode(enabled: Boolean, positionMs: Long, fraction: Float) {
-                    fineScrubHint.visibility = if (enabled) View.VISIBLE else View.GONE
-                    if (enabled) fineScrubHint.text = "Точная перемотка • " + formatMs(positionMs)
+                    if (enabled) showFineLabel() else hideFineLabel()
+                    currentTime.text = formatMs(positionMs)
+                    remainingTime.text = remainingLabel(positionMs, durationMs)
                 }
 
                 override fun onScrubStop(positionMs: Long, canceled: Boolean) {
                     dragging = false
-                    fineScrubHint.visibility = View.GONE
+                    hideFineLabel()
                     if (!canceled) seekTo(positionMs)
                     scheduleAutoHide()
                 }
@@ -263,8 +378,15 @@ class YouTubePlayerScreen(
             gravity = Gravity.CENTER_VERTICAL
         }
 
-        currentTime = timeLabel("0:00")
-        totalTime = timeLabel("0:00")
+        currentTime = timeLabel("0:00").apply {
+            minWidth = dp(34)
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+        }
+        totalTime = timeLabel("0:00").apply {
+            minWidth = dp(38)
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            setPadding(dp(4), 0, dp(5), 0)
+        }
         remainingTime = TextView(activity).apply {
             text = "Осталось 0:00"
             textSize = 9.6f
@@ -272,44 +394,36 @@ class YouTubePlayerScreen(
             includeFontPadding = false
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
-            background = rounded(withAlpha(palette.accent, 58), 10)
+            background = rounded(withAlpha(palette.accent, 48), 10)
             setPadding(dp(8), 0, dp(8), 0)
         }
 
-        fullscreenButton = ImageButton(activity).apply {
-            setImageResource(R.drawable.ic_fullscreen)
-            imageTintList = ColorStateList.valueOf(Color.WHITE)
-            scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(7), dp(7), dp(7), dp(7))
-            background = rounded(Color.parseColor("#44221A30"), 10)
+        fullscreenButton = iconButton(R.drawable.ic_fullscreen, 28).apply {
             contentDescription = "Полный экран"
+            background = rounded(Color.parseColor("#44221A30"), 10)
             setOnClickListener {
                 SohrMotion.press(this, animationsEnabled)
-                if (fullscreen) exitFullscreen() else enterFullscreen()
+                setFullscreenMode(!fullscreen)
             }
         }
 
-        times.addView(currentTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(31)))
-        times.addView(TextView(activity).apply {
-            text = "/"
-            textSize = 10f
-            setTextColor(Color.parseColor("#B7B6C0"))
-            gravity = Gravity.CENTER
-        }, LinearLayout.LayoutParams(dp(12), dp(31)))
-        times.addView(totalTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(31)))
+        times.addView(currentTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)))
+        times.addView(totalTime, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)).apply {
+            marginStart = dp(4)
+        })
         times.addView(
             remainingTime,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(24)).apply {
-                marginStart = dp(7)
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(25)).apply {
+                marginStart = dp(5)
             }
         )
         times.addView(View(activity), LinearLayout.LayoutParams(0, 1, 1f))
-        times.addView(fullscreenButton, LinearLayout.LayoutParams(dp(34), dp(31)))
+        times.addView(fullscreenButton, LinearLayout.LayoutParams(dp(36), dp(32)))
 
         bottom.addView(seekBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(22)))
         bottom.addView(times)
 
-        frame.addView(
+        overlay.addView(
             bottom,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -318,234 +432,10 @@ class YouTubePlayerScreen(
             ).apply {
                 leftMargin = dp(7)
                 rightMargin = dp(7)
-                bottomMargin = dp(5)
+                bottomMargin = dp(4)
             }
         )
     }
-
-    private fun loadYouTubeEngine() {
-        val safeVideoId = video.videoId.replace(Regex("[^A-Za-z0-9_-]"), "")
-        val html = """
-            <!doctype html>
-            <html>
-            <head>
-              <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-              <style>
-                html,body,#player{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden}
-                iframe{width:100%!important;height:100%!important;border:0!important;pointer-events:none!important}
-              </style>
-            </head>
-            <body>
-              <div id="player"></div>
-              <script src="https://www.youtube.com/iframe_api"></script>
-              <script>
-                var p=null;
-                var poll=null;
-                function emit(){
-                  if(!p || !p.getDuration) return;
-                  try{
-                    SOHR.onProgress(
-                      p.getCurrentTime()||0,
-                      p.getDuration()||0,
-                      p.getVideoLoadedFraction()||0,
-                      p.getPlayerState()||0,
-                      p.getPlaybackRate()||1
-                    );
-                  }catch(e){}
-                }
-                function onYouTubeIframeAPIReady(){
-                  p=new YT.Player('player',{
-                    videoId:'$safeVideoId',
-                    playerVars:{
-                      autoplay:1,
-                      controls:0,
-                      disablekb:1,
-                      fs:0,
-                      playsinline:1,
-                      rel:0,
-                      iv_load_policy:3,
-                      modestbranding:1
-                    },
-                    events:{
-                      onReady:function(){ SOHR.onReady(p.getDuration()||0); p.playVideo(); emit(); },
-                      onStateChange:function(){ emit(); },
-                      onError:function(e){ SOHR.onError(e.data||0); }
-                    }
-                  });
-                  poll=setInterval(emit,250);
-                }
-                window.sohrPlay=function(){ if(p) p.playVideo(); }
-                window.sohrPause=function(){ if(p) p.pauseVideo(); }
-                window.sohrSeek=function(ms){ if(p) p.seekTo(Math.max(0,ms/1000),true); }
-                window.sohrSetRate=function(rate){ if(p) p.setPlaybackRate(rate); }
-              </script>
-            </body>
-            </html>
-        """.trimIndent()
-
-        webView.loadDataWithBaseURL(
-            "https://www.youtube.com",
-            html,
-            "text/html",
-            "UTF-8",
-            null
-        )
-    }
-
-    private inner class YouTubeBridge {
-        @JavascriptInterface
-        fun onReady(durationSeconds: Double) {
-            activity.runOnUiThread {
-                if (destroyed) return@runOnUiThread
-                ready = true
-                durationMs = (durationSeconds * 1000.0).roundToLong().coerceAtLeast(0L)
-                totalTime.text = formatMs(durationMs)
-                remainingTime.text = remainingLabel(currentMs)
-                seekBar.setProgress(currentMs, durationMs, bufferedMs)
-                showControls()
-            }
-        }
-
-        @JavascriptInterface
-        fun onProgress(
-            currentSeconds: Double,
-            durationSeconds: Double,
-            loadedFraction: Double,
-            state: Int,
-            playbackRate: Double
-        ) {
-            activity.runOnUiThread {
-                if (destroyed) return@runOnUiThread
-                currentMs = (currentSeconds * 1000.0).roundToLong().coerceAtLeast(0L)
-                durationMs = (durationSeconds * 1000.0).roundToLong().coerceAtLeast(durationMs)
-                bufferedMs = (durationMs * loadedFraction.coerceIn(0.0, 1.0)).roundToLong()
-                playing = state == 1
-
-                if (!dragging) {
-                    currentTime.text = formatMs(currentMs)
-                    remainingTime.text = remainingLabel(currentMs)
-                    seekBar.setProgress(currentMs, durationMs, bufferedMs)
-                }
-                totalTime.text = formatMs(durationMs)
-                updatePlayIcon()
-                if (playing && controlsVisible) scheduleAutoHide()
-            }
-        }
-
-        @JavascriptInterface
-        fun onError(code: Int) {
-            activity.runOnUiThread {
-                if (!destroyed) showFeedback("Не удалось запустить видео")
-            }
-        }
-    }
-
-    private fun handlePlayerGesture(v: View, event: MotionEvent): Boolean {
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                downX = event.x
-                downY = event.y
-                downAt = SystemClock.uptimeMillis()
-                moved = false
-                v.postDelayed(longPress, 420L)
-                return true
-            }
-            MotionEvent.ACTION_MOVE -> {
-                val dx = event.x - downX
-                val dy = event.y - downY
-                if (abs(dx) > dp(18).toFloat() || abs(dy) > dp(18).toFloat()) {
-                    moved = true
-                    v.removeCallbacks(longPress)
-                }
-                return true
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                v.removeCallbacks(longPress)
-                if (temporarySpeed) {
-                    temporarySpeed = false
-                    js("window.sohrSetRate && window.sohrSetRate(1.0)")
-                    feedback.visibility = View.GONE
-                }
-                if (event.actionMasked == MotionEvent.ACTION_CANCEL) return true
-
-                val dx = event.x - downX
-                val dy = event.y - downY
-
-                if (abs(dy) > dp(86) && abs(dy) > abs(dx) * 1.25f) {
-                    if (dy < 0f && !fullscreen) enterFullscreen()
-                    else if (dy > 0f && fullscreen) exitFullscreen()
-                    return true
-                }
-
-                if (!moved && SystemClock.uptimeMillis() - downAt < 420L) {
-                    val now = SystemClock.uptimeMillis()
-                    if (
-                        now - lastTapAt <= 320L &&
-                        abs(event.x - lastTapX) < playerCard.width * 0.35f
-                    ) {
-                        lastTapAt = 0L
-                        val forward = event.x >= playerCard.width / 2f
-                        val target = (currentMs + if (forward) 10_000L else -10_000L)
-                            .coerceIn(0L, durationMs.coerceAtLeast(1L))
-                        seekTo(target)
-                        gestureLayer.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                        showFeedback(if (forward) "+10 сек" else "−10 сек")
-                    } else {
-                        lastTapAt = now
-                        lastTapX = event.x
-                        handler.postDelayed({
-                            if (lastTapAt == now) {
-                                lastTapAt = 0L
-                                if (controlsVisible) setControlsVisible(false) else showControls()
-                            }
-                        }, 320L)
-                    }
-                }
-                return true
-            }
-        }
-        return true
-    }
-
-    private fun buildHeader(): LinearLayout =
-        LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-
-            addView(ImageButton(activity).apply {
-                setImageResource(R.drawable.ic_back)
-                imageTintList = ColorStateList.valueOf(palette.text)
-                background = rounded(palette.surfaceAlt, 22)
-                setPadding(dp(11), dp(11), dp(11), dp(11))
-                contentDescription = "Назад"
-                setOnClickListener {
-                    SohrMotion.press(this, animationsEnabled)
-                    onBack()
-                }
-            }, LinearLayout.LayoutParams(dp(44), dp(44)).apply {
-                marginEnd = dp(10)
-            })
-
-            val titleBox = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
-            titleBox.addView(TextView(activity).apply {
-                text = video.channelTitle
-                textSize = 15.5f
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(palette.text)
-                maxLines = 1
-                ellipsize = android.text.TextUtils.TruncateAt.END
-                includeFontPadding = false
-            })
-            titleBox.addView(TextView(activity).apply {
-                text = video.handle
-                textSize = 11f
-                setTextColor(palette.muted)
-                includeFontPadding = false
-                setPadding(0, dp(2), 0, 0)
-            })
-            addView(titleBox, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        }
 
     private fun buildDetails(): LinearLayout =
         LinearLayout(activity).apply {
@@ -569,175 +459,371 @@ class YouTubePlayerScreen(
                 includeFontPadding = false
                 setPadding(0, dp(7), 0, 0)
             })
+
+            addView(TextView(activity).apply {
+                text = "SOHR Player"
+                textSize = 10.5f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(palette.accent)
+                includeFontPadding = false
+                setPadding(0, dp(9), 0, 0)
+            })
         }
 
-    fun enterFullscreen() {
-        if (fullscreen || destroyed) return
-        fullscreen = true
-        content.removeView(playerCard)
-        content.visibility = View.GONE
-        root.addView(
-            playerCard,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        )
-        playerCard.clipToOutline = false
-        fullscreenButton.setImageResource(R.drawable.ic_fullscreen_exit)
-        onFullscreen(true)
-        showControls()
+    private fun installGestures() {
+        gestureSurface.isClickable = true
+        gestureSurface.isFocusable = true
+        gestureSurface.setOnTouchListener { v, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    touchDownX = event.x
+                    touchDownY = event.y
+                    touchDownAt = SystemClock.uptimeMillis()
+                    touchMoved = false
+                    longPressActive = false
+                    v.postDelayed(longPressRunnable, 430L)
+                    true
+                }
+
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.x - touchDownX
+                    val dy = event.y - touchDownY
+                    if (abs(dx) > dp(18) || abs(dy) > dp(18)) {
+                        touchMoved = true
+                        if (!longPressActive) v.removeCallbacks(longPressRunnable)
+                    }
+                    // Horizontal drag over the video never seeks.
+                    true
+                }
+
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    v.removeCallbacks(longPressRunnable)
+
+                    if (longPressActive) {
+                        longPressActive = false
+                        setPlaybackRate(1.0)
+                        scheduleAutoHide()
+                        return@setOnTouchListener true
+                    }
+
+                    if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                        return@setOnTouchListener true
+                    }
+
+                    val dx = event.x - touchDownX
+                    val dy = event.y - touchDownY
+                    if (abs(dy) > dp(86) && abs(dy) > abs(dx) * 1.25f) {
+                        if (dy < 0 && !fullscreen) setFullscreenMode(true)
+                        else if (dy > 0 && fullscreen) setFullscreenMode(false)
+                        return@setOnTouchListener true
+                    }
+
+                    if (!touchMoved && SystemClock.uptimeMillis() - touchDownAt < 430L) {
+                        val now = SystemClock.uptimeMillis()
+                        if (now - lastTapAt <= 320L && abs(event.x - lastTapX) < playerCard.width * 0.35f) {
+                            lastTapAt = 0L
+                            val forward = event.x >= playerCard.width / 2f
+                            seekBy(if (forward) 10_000L else -10_000L)
+                            v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            showSeekFeedback(if (forward) "+10 сек" else "−10 сек")
+                        } else {
+                            lastTapAt = now
+                            lastTapX = event.x
+                            handler.postDelayed({
+                                if (lastTapAt == now && !destroyed) {
+                                    lastTapAt = 0L
+                                    if (controlsVisible) hideControls() else showControls()
+                                }
+                            }, 320L)
+                        }
+                    }
+                    true
+                }
+
+                else -> true
+            }
+        }
     }
 
-    fun exitFullscreen() {
-        if (!fullscreen || destroyed) return
-        root.removeView(playerCard)
-        content.visibility = View.VISIBLE
-        content.addView(playerCard, 1, normalPlayerLayoutParams())
-        playerCard.clipToOutline = true
-        fullscreen = false
-        fullscreenButton.setImageResource(R.drawable.ic_fullscreen)
-        onFullscreen(false)
-        showControls()
-    }
+    private fun pollYouTubeState() {
+        webView.evaluateJavascript("window.sohrSnapshot ? window.sohrSnapshot() : ''") { raw ->
+            if (destroyed) return@evaluateJavascript
+            val decoded = runCatching { JSONTokener(raw).nextValue() as? String }
+                .getOrNull()
+                .orEmpty()
+            val parts = decoded.split('|')
+            if (parts.size < 4) return@evaluateJavascript
 
-    private fun normalPlayerLayoutParams(): LinearLayout.LayoutParams {
-        val width = activity.resources.displayMetrics.widthPixels
-        val side = dp(16)
-        val playerWidth = (width - side * 2).coerceAtLeast(dp(240))
-        return LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            (playerWidth * 9f / 16f).toInt()
-        ).apply {
-            marginStart = side
-            marginEnd = side
-            topMargin = dp(4)
+            val currentSeconds = parts[0].toDoubleOrNull() ?: return@evaluateJavascript
+            val durationSeconds = parts[1].toDoubleOrNull() ?: 0.0
+            val state = parts[2].toIntOrNull() ?: -1
+            val loadedFraction = parts[3].toDoubleOrNull()?.coerceIn(0.0, 1.0) ?: 0.0
+
+            currentMs = (currentSeconds * 1000.0).toLong().coerceAtLeast(0L)
+            durationMs = (durationSeconds * 1000.0).toLong().coerceAtLeast(0L)
+            bufferedMs = (durationMs * loadedFraction).toLong().coerceIn(0L, durationMs.coerceAtLeast(0L))
+            ready = durationMs > 0L
+            playing = state == 1
+
+            root.keepScreenOn = playing
+            playPause.setImageResource(if (playing) R.drawable.ic_pause else R.drawable.ic_play)
+
+            if (!dragging && ready) {
+                seekBar.setProgress(currentMs, durationMs, bufferedMs)
+                currentTime.text = formatMs(currentMs)
+                totalTime.text = formatMs(durationMs)
+                remainingTime.text = remainingLabel(currentMs, durationMs)
+            }
+            if (playing) scheduleAutoHide() else handler.removeCallbacks(autoHide)
         }
     }
 
     private fun play() {
-        js("window.sohrPlay && window.sohrPlay()")
-    }
-
-    private fun pause() {
-        js("window.sohrPause && window.sohrPause()")
-    }
-
-    private fun seekTo(positionMs: Long) {
-        val safe = positionMs.coerceIn(0L, durationMs.coerceAtLeast(1L))
-        currentMs = safe
-        currentTime.text = formatMs(safe)
-        remainingTime.text = remainingLabel(safe)
-        seekBar.setProgress(safe, durationMs, bufferedMs)
-        js("window.sohrSeek && window.sohrSeek($safe)")
+        webView.evaluateJavascript("if(window.sohrPlay){sohrPlay();}", null)
         showControls()
     }
 
-    private fun js(script: String) {
-        if (destroyed) return
-        webView.evaluateJavascript(script, null)
+    private fun pause() {
+        webView.evaluateJavascript("if(window.sohrPause){sohrPause();}", null)
+        showControls()
     }
 
-    private fun updatePlayIcon() {
-        playPause.setImageResource(if (playing) R.drawable.ic_pause else R.drawable.ic_play)
+    private fun seekTo(positionMs: Long) {
+        val target = positionMs.coerceIn(0L, durationMs.coerceAtLeast(0L))
+        currentMs = target
+        webView.evaluateJavascript("if(window.sohrSeek){sohrSeek($target);}", null)
+        seekBar.setProgress(target, durationMs, bufferedMs)
+        currentTime.text = formatMs(target)
+        remainingTime.text = remainingLabel(target, durationMs)
+        showControls()
+    }
+
+    private fun seekBy(deltaMs: Long) {
+        if (!ready) return
+        seekTo((currentMs + deltaMs).coerceIn(0L, durationMs))
+    }
+
+    private fun setPlaybackRate(rate: Double) {
+        webView.evaluateJavascript("if(window.sohrRate){sohrRate($rate);}", null)
     }
 
     private fun showControls() {
-        setControlsVisible(true)
+        handler.removeCallbacks(autoHide)
+        controlsVisible = true
+        overlay.visibility = View.VISIBLE
+        overlay.animate().cancel()
+        if (animationsEnabled) {
+            overlay.alpha = overlay.alpha.coerceAtLeast(0f)
+            overlay.animate()
+                .alpha(1f)
+                .setDuration(130L)
+                .setInterpolator(SohrMotion.smooth())
+                .start()
+        } else {
+            overlay.alpha = 1f
+        }
         scheduleAutoHide()
     }
 
-    private fun setControlsVisible(visible: Boolean) {
-        controlsVisible = visible
+    private fun hideControls() {
+        if (dragging || !playing) return
         handler.removeCallbacks(autoHide)
-        controlsOverlay.animate().cancel()
+        controlsVisible = false
+        overlay.animate().cancel()
         if (animationsEnabled) {
-            controlsOverlay.animate()
-                .alpha(if (visible) 1f else 0f)
-                .setDuration(if (visible) 130L else 170L)
-                .withStartAction {
-                    if (visible) controlsOverlay.visibility = View.VISIBLE
-                }
+            overlay.animate()
+                .alpha(0f)
+                .setDuration(150L)
+                .setInterpolator(SohrMotion.smooth())
                 .withEndAction {
-                    if (!visible) controlsOverlay.visibility = View.INVISIBLE
+                    if (!controlsVisible) overlay.visibility = View.GONE
                 }
                 .start()
         } else {
-            controlsOverlay.alpha = if (visible) 1f else 0f
-            controlsOverlay.visibility = if (visible) View.VISIBLE else View.INVISIBLE
+            overlay.alpha = 0f
+            overlay.visibility = View.GONE
         }
     }
 
     private fun scheduleAutoHide() {
         handler.removeCallbacks(autoHide)
-        if (playing && !dragging) handler.postDelayed(autoHide, 2600L)
+        if (playing && !dragging) handler.postDelayed(autoHide, 2_200L)
     }
 
-    private fun showFeedback(text: String) {
-        feedback.animate().cancel()
-        feedback.text = text
-        feedback.visibility = View.VISIBLE
-        feedback.alpha = 1f
-        handler.postDelayed({
-            if (!destroyed) {
-                feedback.animate()
-                    .alpha(0f)
-                    .setDuration(130L)
-                    .withEndAction { feedback.visibility = View.GONE }
-                    .start()
+    private fun showFineLabel() {
+        fineLabel.visibility = View.VISIBLE
+        fineLabel.animate().cancel()
+        fineLabel.alpha = 0f
+        fineLabel.translationY = dp(4).toFloat()
+        fineLabel.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .setDuration(if (animationsEnabled) 120L else 0L)
+            .start()
+    }
+
+    private fun hideFineLabel() {
+        if (fineLabel.visibility != View.VISIBLE) return
+        fineLabel.animate().cancel()
+        fineLabel.animate()
+            .alpha(0f)
+            .translationY(dp(3).toFloat())
+            .setDuration(if (animationsEnabled) 90L else 0L)
+            .withEndAction { fineLabel.visibility = View.GONE }
+            .start()
+    }
+
+    private fun showSeekFeedback(text: String) {
+        seekFeedback.text = text
+        seekFeedback.visibility = View.VISIBLE
+        seekFeedback.animate().cancel()
+        seekFeedback.alpha = 0f
+        seekFeedback.scaleX = 0.94f
+        seekFeedback.scaleY = 0.94f
+        seekFeedback.animate()
+            .alpha(1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(if (animationsEnabled) 110L else 0L)
+            .withEndAction {
+                handler.postDelayed({
+                    if (destroyed) return@postDelayed
+                    seekFeedback.animate()
+                        .alpha(0f)
+                        .setDuration(if (animationsEnabled) 130L else 0L)
+                        .withEndAction { seekFeedback.visibility = View.GONE }
+                        .start()
+                }, 420L)
             }
-        }, 700L)
+            .start()
     }
 
-    private fun timeLabel(value: String): TextView =
-        TextView(activity).apply {
-            text = value
-            textSize = 10.5f
-            gravity = Gravity.CENTER_VERTICAL
-            includeFontPadding = false
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(Color.WHITE)
+    fun exitFullscreen() {
+        setFullscreenMode(false)
+    }
+
+    private fun setFullscreenMode(enabled: Boolean) {
+        if (enabled == fullscreen || destroyed) return
+
+        if (activity.resources.configuration.smallestScreenWidthDp < 600) {
+            activity.requestedOrientation =
+                if (enabled) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
 
-    private fun remainingLabel(position: Long): String {
-        val remaining = (durationMs - position).coerceAtLeast(0L)
-        return "Осталось " + formatMs(remaining)
-    }
+        if (enabled) {
+            playerCardOriginalIndex = page.indexOfChild(playerCard).takeIf { it >= 0 } ?: 1
+            playerCardOriginalParams =
+                (playerCard.layoutParams as? LinearLayout.LayoutParams)?.let { LinearLayout.LayoutParams(it) }
 
-    private fun formatMs(ms: Long): String {
-        val total = (ms.coerceAtLeast(0L) / 1000L)
-        val h = total / 3600L
-        val m = (total % 3600L) / 60L
-        val s = total % 60L
-        return if (h > 0L) "$h:%02d:%02d".format(m, s) else "$m:%02d".format(s)
+            (playerCard.parent as? ViewGroup)?.removeView(playerCard)
+            val host = FrameLayout(activity).apply {
+                setBackgroundColor(Color.BLACK)
+                elevation = dp(100).toFloat()
+            }
+            val contentRoot = activity.findViewById<ViewGroup>(android.R.id.content)
+            contentRoot.addView(
+                host,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
+            host.addView(
+                playerCard,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
+            fullscreenHost = host
+            fullscreen = true
+            fullscreenButton.setImageResource(R.drawable.ic_fullscreen_exit)
+            fullscreenButton.contentDescription = "Выйти из полного экрана"
+            playerCard.clipToOutline = false
+            playerCard.background = rounded(Color.BLACK, 0)
+            onFullscreen(true)
+            showControls()
+        } else {
+            val host = fullscreenHost
+            runCatching { host?.removeView(playerCard) }
+            runCatching { (host?.parent as? ViewGroup)?.removeView(host) }
+
+            if (playerCard.parent == null) {
+                val width = activity.resources.displayMetrics.widthPixels
+                val params = playerCardOriginalParams
+                    ?: LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ((width - dp(32)) * 9f / 16f).toInt()
+                    ).apply {
+                        marginStart = dp(16)
+                        marginEnd = dp(16)
+                    }
+                page.addView(
+                    playerCard,
+                    playerCardOriginalIndex.coerceIn(0, page.childCount),
+                    params
+                )
+            }
+
+            fullscreenHost = null
+            playerCardOriginalIndex = -1
+            playerCardOriginalParams = null
+            fullscreen = false
+            fullscreenButton.setImageResource(R.drawable.ic_fullscreen)
+            fullscreenButton.contentDescription = "Полный экран"
+            playerCard.clipToOutline = true
+            playerCard.background = rounded(Color.BLACK, 18)
+            onFullscreen(false)
+            showControls()
+        }
     }
 
     fun destroy() {
         if (destroyed) return
         destroyed = true
         handler.removeCallbacksAndMessages(null)
-        if (fullscreen) {
-            runCatching {
-                root.removeView(playerCard)
-                content.visibility = View.VISIBLE
-                content.addView(playerCard, 1, normalPlayerLayoutParams())
-            }
-            fullscreen = false
-            onFullscreen(false)
-        }
-        webView.removeJavascriptInterface("SOHR")
+        root.keepScreenOn = false
+        runCatching { if (fullscreen || fullscreenHost != null) setFullscreenMode(false) }
         webView.stopLoading()
         webView.loadUrl("about:blank")
+        webView.webChromeClient = null
         webView.webViewClient = WebViewClient()
         webView.destroy()
     }
 
-    private fun rounded(color: Int, radiusDp: Int): GradientDrawable =
-        GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = dp(radiusDp).toFloat()
-            setColor(color)
+    private fun iconButton(icon: Int, sizeDp: Int): ImageButton =
+        ImageButton(activity).apply {
+            setImageResource(icon)
+            imageTintList = ColorStateList.valueOf(Color.WHITE)
+            scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp((sizeDp * 0.24f).toInt()), dp((sizeDp * 0.24f).toInt()), dp((sizeDp * 0.24f).toInt()), dp((sizeDp * 0.24f).toInt()))
+            background = rounded(palette.surfaceAlt, sizeDp / 2)
         }
+
+    private fun timeLabel(value: String): TextView =
+        TextView(activity).apply {
+            text = value
+            textSize = 10.5f
+            includeFontPadding = false
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+        }
+
+    private fun remainingLabel(positionMs: Long, totalMs: Long): String =
+        "Осталось " + formatMs((totalMs - positionMs).coerceAtLeast(0L))
+
+    private fun formatMs(value: Long): String {
+        val total = (value.coerceAtLeast(0L) / 1000L)
+        val hours = total / 3600L
+        val minutes = (total % 3600L) / 60L
+        val seconds = total % 60L
+        return if (hours > 0L) {
+            "$hours:%02d:%02d".format(minutes, seconds)
+        } else {
+            "%d:%02d".format(minutes, seconds)
+        }
+    }
 
     private fun withAlpha(color: Int, alpha: Int): Int =
         Color.argb(
@@ -746,6 +832,13 @@ class YouTubePlayerScreen(
             Color.green(color),
             Color.blue(color)
         )
+
+    private fun rounded(color: Int, radiusDp: Int): GradientDrawable =
+        GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dp(radiusDp).toFloat()
+            setColor(color)
+        }
 
     private fun dp(value: Int): Int =
         (value * activity.resources.displayMetrics.density).toInt()
