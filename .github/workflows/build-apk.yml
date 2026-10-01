@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.6.15: wire Twitch muted ranges into the actual native VOD player
+# SOHR 6.7.0: themed Twitch muted UX, fine scrubbing, and YouTube feed
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.6.15 version
+      - name: Assign SOHR 6.7.0 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=660015" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.6.15" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=670000" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.7.0" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -724,6 +724,15 @@ jobs:
           twitch_resolver = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/TwitchVodResolver.kt"
           ).read_text(encoding="utf-8")
+          youtube_feed = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/YouTubeFeed.kt"
+          ).read_text(encoding="utf-8")
+          youtube_feed_ui = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/YouTubeFeedUi.kt"
+          ).read_text(encoding="utf-8")
+          youtube_player = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/YouTubePlayerScreen.kt"
+          ).read_text(encoding="utf-8")
 
           if "dragScrubActive" in gesture_overlay or "YouTube-style horizontal scrub" in gesture_overlay:
               raise SystemExit("SOHR 6.6.13 regression: direct drag seeking returned")
@@ -748,7 +757,7 @@ jobs:
               "private fun updateTwitchMutedUi()",
               "TwitchVodResolver.resolveMutedSegmentsFromMaster(mediaUrl)",
               'text = "Звук вырезан Twitch"',
-              '"Жёлтые участки — звук вырезан Twitch"',
+              '"Выделенные участки — звук вырезан Twitch"',
               "seekBar.setMutedRanges("
           ]:
               if required not in player_screen:
@@ -772,11 +781,54 @@ jobs:
           ).read_text(encoding="utf-8")
           for required in [
               "private val mutedBackdropPaint",
-              "their exact start/end points are obvious",
-              "centerY - haloH / 2f"
+              "color = accentColor",
+              "private fun finePositionFor(x: Float): Long",
+              "* msPerPixel * 0.12",
+              "whole seconds",
+              "if (!canceled && !fineScrub)"
           ]:
               if required not in time_bar:
-                  raise SystemExit(f"SOHR 6.6.14 muted timeline regression: {required}")
+                  raise SystemExit(f"SOHR 6.7.0 themed muted/fine scrub regression: {required}")
+
+          for required in [
+              'Source("@wt2x2"',
+              'Source("@beerloga_t2x2"',
+              "private fun deduplicate(",
+              "titleScore >= 0.72",
+              "YouTubeFeedSnapshot"
+          ]:
+              if required not in youtube_feed:
+                  raise SystemExit(f"SOHR 6.7.0 YouTube feed regression: {required}")
+
+          for required in [
+              "fun buildDirectory(",
+              "fun buildChannel(",
+              '"Повторы между каналами скрываются автоматически"',
+              "videoCard("
+          ]:
+              if required not in youtube_feed_ui:
+                  raise SystemExit(f"SOHR 6.7.0 YouTube UI regression: {required}")
+
+          for required in [
+              "class YouTubePlayerScreen(",
+              '"https://www.youtube.com/embed/',
+              '"enablejsapi", "1"',
+              "override fun onShowCustomView",
+              "fun exitFullscreen()"
+          ]:
+              if required not in youtube_player:
+                  raise SystemExit(f"SOHR 6.7.0 YouTube player regression: {required}")
+
+          for required in [
+              '2 -> "YouTube • каналы и новые видео"',
+              "YouTubeFeedUi.buildDirectory(",
+              "private fun loadYouTubeFeed(",
+              "private fun openYouTubeChannelScreen(",
+              "private fun openYouTubeVideo(",
+              'auxiliaryScreen == "youtube_channel"'
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.7.0 YouTube wiring regression: {required}")
 
           twitch_live_player = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/TwitchLivePlayerScreen.kt"
@@ -1569,7 +1621,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.6.15 • исправлен реальный путь Twitch VOD: muted-интервалы теперь подключены к основному native PlayerScreen, который используется на экране Запись стрима T2x2 • логика включается только для Twitch-видео • muted-участки берутся из того же HLS master URL, который воспроизводит плеер, и выделяются жёлтыми сегментами прямо на таймлайне • при входе в такой участок появляется карточка Звук вырезан Twitch с оставшимся временем и кнопкой Пропустить • Telegram и обычные видео не получают этот интерфейс • горизонтальный drag по видео по-прежнему не перематывает запись"
+            "notes": "SOHR 6.7.0 • карточка Twitch muted стала компактной и больше не растягивается на экран • muted-участки используют активный цвет темы SOHR • перемотка получила настоящий fine scrub: увод пальца вверх замедляет движение и фиксирует позицию по секундам • вкладка Лента переделана под YouTube-каналы WT2X2 и Берлога T2x2 с авами, страницами каналов и общей лентой новых видео • похожие повторы между каналами скрываются автоматически • YouTube-видео открываются внутри SOHR через официальный embedded player"
           }
           EOF
           cat update.json
