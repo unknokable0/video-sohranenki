@@ -524,16 +524,11 @@ jobs:
               if forbidden in channel_ui or forbidden in sohr_main:
                   raise SystemExit(f"SOHR 6.6.1 reaction control returned: {forbidden}")
 
-          for required in [
-              '2 -> "Telegram-каналы • Лента"',
-              'if (videoSection == 2 && !settings.guestMode)',
-              'if (!silent && videoSection == 2 && auxiliaryScreen == null)',
-              '"6.4.2" -> listOf('
-          ]:
-              if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.4.2 Telegram feed mode/link polish regression: {required}")
-          if 'videoSection == 2 && settings.videoSource == "telegram"' in sohr_main:
-              raise SystemExit("SOHR 6.4.2 regression: Telegram channel feed became source-dependent again")
+          # SOHR 6.7.0 intentionally replaces the old Telegram channel
+          # directory in videoSection == 2 with the YouTube feed. Keep the
+          # historical 6.4.2 notes, but do not require the removed UI route.
+          if '"6.4.2" -> listOf(' not in sohr_main:
+              raise SystemExit("SOHR release-note history regression: 6.4.2 notes missing")
 
           for required in [
               "telegramUnreadBadgeView",
