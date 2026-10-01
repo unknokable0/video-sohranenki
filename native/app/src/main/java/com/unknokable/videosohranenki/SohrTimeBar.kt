@@ -33,8 +33,11 @@ class SohrTimeBar(context: Context, accentColor: Int) : View(context) {
     private val chapterPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.argb(205, 255, 255, 255)
     }
+    private val mutedBackdropPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(82, 236, 185, 82)
+    }
     private val mutedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.rgb(201, 158, 88)
+        color = Color.rgb(236, 185, 82)
     }
 
     private val density = resources.displayMetrics.density
@@ -100,17 +103,28 @@ class SohrTimeBar(context: Context, accentColor: Int) : View(context) {
             canvas.drawRoundRect(rect, radius, radius, playedPaint)
         }
         if (durationMs > 0L && mutedRangesMs.isNotEmpty()) {
-            val bandH = dp(if (scrubbing) 2.6f else 2.0f)
-            val bandY = centerY - dp(5.0f)
+            // Copyright-muted Twitch ranges sit directly on the timeline so
+            // their exact start/end points are obvious before playback reaches them.
+            val haloH = dp(if (scrubbing) 6.0f else 5.0f)
+            val bandH = dp(if (scrubbing) 3.6f else 3.0f)
             mutedRangesMs.forEach { range ->
                 val left = width * fractionFor(range.first)
                 val right = width * fractionFor(range.last)
                 if (right > left) {
                     canvas.drawRoundRect(
                         left,
-                        bandY - bandH / 2f,
+                        centerY - haloH / 2f,
                         right,
-                        bandY + bandH / 2f,
+                        centerY + haloH / 2f,
+                        haloH / 2f,
+                        haloH / 2f,
+                        mutedBackdropPaint
+                    )
+                    canvas.drawRoundRect(
+                        left,
+                        centerY - bandH / 2f,
+                        right,
+                        centerY + bandH / 2f,
                         bandH / 2f,
                         bandH / 2f,
                         mutedPaint
