@@ -17,7 +17,7 @@ import kotlin.math.floor
 import kotlin.math.sin
 
 class SohrIntroArtworkView(context: Context) : View(context) {
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
@@ -30,7 +30,7 @@ class SohrIntroArtworkView(context: Context) : View(context) {
     private var ambient = 0f
 
     private val animator = ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = 4_800L
+        duration = 5_200L
         repeatCount = ValueAnimator.INFINITE
         interpolator = LinearInterpolator()
         addUpdateListener {
@@ -51,8 +51,8 @@ class SohrIntroArtworkView(context: Context) : View(context) {
     }
 
     override fun onDetachedFromWindow() {
-        super.onDetachedFromWindow()
         animator.cancel()
+        super.onDetachedFromWindow()
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -61,35 +61,36 @@ class SohrIntroArtworkView(context: Context) : View(context) {
 
         val base = floor(pageProgress).toInt().coerceIn(0, 4)
         val next = (base + 1).coerceAtMost(4)
-        val t = (pageProgress - base).coerceIn(0f, 1f)
+        val t = smooth((pageProgress - base).coerceIn(0f, 1f))
 
         val cx = width / 2f
         val cy = height / 2f
 
         if (base == next) {
             drawScene(canvas, base, cx, cy, 1f, 0f, 1f, p)
-        } else {
-            drawScene(
-                canvas,
-                base,
-                cx,
-                cy,
-                1f - smooth(t),
-                -dp(18f) * smooth(t),
-                1f - 0.06f * smooth(t),
-                p
-            )
-            drawScene(
-                canvas,
-                next,
-                cx,
-                cy,
-                smooth(t),
-                dp(18f) * (1f - smooth(t)),
-                0.92f + 0.08f * smooth(t),
-                p
-            )
+            return
         }
+
+        drawScene(
+            canvas,
+            base,
+            cx,
+            cy,
+            1f - t,
+            -dp(20f) * t,
+            1f - 0.035f * t,
+            p
+        )
+        drawScene(
+            canvas,
+            next,
+            cx,
+            cy,
+            t,
+            dp(20f) * (1f - t),
+            0.965f + 0.035f * t,
+            p
+        )
     }
 
     private fun drawScene(
@@ -100,23 +101,20 @@ class SohrIntroArtworkView(context: Context) : View(context) {
         alpha: Float,
         translateX: Float,
         scale: Float,
-        palette: ThemePalette
+        p: ThemePalette
     ) {
-        if (alpha <= 0.001f) return
-        paint.alpha = 255
-        stroke.alpha = 255
+        if (alpha <= 0.002f) return
 
         canvas.save()
-        canvas.translate(cx + translateX, cy)
-        canvas.scale(scale, scale)
-        canvas.translate(-cx, -cy)
+        canvas.translate(translateX, 0f)
+        canvas.scale(scale, scale, cx, cy)
 
         when (page) {
-            0 -> drawCloud(canvas, cx, cy, alpha, palette)
-            1 -> drawFeed(canvas, cx, cy, alpha, palette)
-            2 -> drawWatch(canvas, cx, cy, alpha, palette)
-            3 -> drawStreak(canvas, cx, cy, alpha, palette)
-            else -> drawCustomize(canvas, cx, cy, alpha, palette)
+            0 -> drawCloud(canvas, cx, cy, alpha, p)
+            1 -> drawFeed(canvas, cx, cy, alpha, p)
+            2 -> drawPlayer(canvas, cx, cy, alpha, p)
+            3 -> drawStreak(canvas, cx, cy, alpha, p)
+            else -> drawCustomize(canvas, cx, cy, alpha, p)
         }
 
         canvas.restore()
@@ -129,49 +127,79 @@ class SohrIntroArtworkView(context: Context) : View(context) {
         alpha: Float,
         p: ThemePalette
     ) {
-        val accent2 = ColorUtils.blendARGB(p.accent, Color.WHITE, 0.22f)
-        val accent3 = ColorUtils.blendARGB(p.accent, Color.CYAN, 0.18f)
-
-        val w = dp(224f)
-        val h = dp(132f)
-        val left = cx - w / 2f
-        val top = cy - h / 2f + dp(4f)
-
-        path.reset()
-        path.moveTo(left + dp(47f), top + h)
-        path.cubicTo(left + dp(18f), top + h, left + dp(5f), top + dp(102f), left + dp(19f), top + dp(78f))
-        path.cubicTo(left + dp(28f), top + dp(62f), left + dp(44f), top + dp(55f), left + dp(64f), top + dp(56f))
-        path.cubicTo(left + dp(76f), top + dp(21f), left + dp(108f), top + dp(6f), left + dp(140f), top + dp(23f))
-        path.cubicTo(left + dp(157f), top + dp(32f), left + dp(168f), top + dp(45f), left + dp(171f), top + dp(61f))
-        path.cubicTo(left + dp(206f), top + dp(60f), left + dp(224f), top + dp(77f), left + dp(224f), top + dp(96f))
-        path.cubicTo(left + dp(224f), top + dp(117f), left + dp(207f), top + h, left + dp(183f), top + h)
-        path.close()
-
-        paint.style = Paint.Style.FILL
-        paint.shader = LinearGradient(
-            left, top, left + w, top + h,
-            intArrayOf(accent3, p.accent, accent2),
-            floatArrayOf(0f, 0.55f, 1f),
+        val y = cy + dp(8f)
+        val gradient = LinearGradient(
+            cx - dp(115f),
+            y - dp(62f),
+            cx + dp(115f),
+            y + dp(58f),
+            ColorUtils.blendARGB(p.accent, Color.rgb(94, 167, 255), 0.34f),
+            ColorUtils.blendARGB(p.accent, Color.rgb(182, 91, 255), 0.16f),
             Shader.TileMode.CLAMP
         )
-        paint.alpha = (255 * alpha).toInt()
-        canvas.drawPath(path, paint)
-        paint.shader = null
-        paint.alpha = 255
 
-        stroke.color = Color.WHITE
-        stroke.strokeWidth = dp(5.5f)
-        stroke.alpha = (238 * alpha).toInt()
+        fill.shader = gradient
+        fill.alpha = (255 * alpha).toInt().coerceIn(0, 255)
+
+        canvas.drawCircle(cx - dp(62f), y + dp(5f), dp(49f), fill)
+        canvas.drawCircle(cx + dp(58f), y + dp(7f), dp(47f), fill)
+        canvas.drawCircle(cx, y - dp(35f), dp(66f), fill)
+        canvas.drawRoundRect(
+            RectF(
+                cx - dp(105f),
+                y - dp(12f),
+                cx + dp(105f),
+                y + dp(57f)
+            ),
+            dp(34f),
+            dp(34f),
+            fill
+        )
+        fill.shader = null
+        fill.alpha = 255
+
+        val pulse =
+            0.5f + 0.5f * sin((ambient * PI * 2).toFloat())
+
         path.reset()
-        path.moveTo(cx - dp(58f), cy + dp(10f))
-        path.cubicTo(cx - dp(34f), cy - dp(22f), cx - dp(1f), cy - dp(25f), cx + dp(19f), cy - dp(6f))
-        path.cubicTo(cx + dp(35f), cy + dp(9f), cx + dp(30f), cy + dp(27f), cx + dp(10f), cy + dp(34f))
-        path.cubicTo(cx - dp(10f), cy + dp(41f), cx - dp(37f), cy + dp(31f), cx - dp(49f), cy + dp(17f))
-        canvas.drawPath(path, stroke)
+        path.moveTo(cx - dp(13f), y - dp(34f))
+        path.lineTo(cx + dp(29f), y - dp(9f))
+        path.lineTo(cx - dp(13f), y + dp(16f))
+        path.close()
+        fill.color = ColorUtils.setAlphaComponent(
+            Color.WHITE,
+            (245 * alpha).toInt().coerceIn(0, 255)
+        )
+        canvas.drawPath(path, fill)
 
-        val pulse = 0.5f + 0.5f * sin((ambient * PI * 2).toFloat())
-        paint.color = ColorUtils.setAlphaComponent(Color.WHITE, ((50 + 35 * pulse) * alpha).toInt().coerceIn(0, 255))
-        canvas.drawCircle(cx + dp(73f), cy - dp(43f), dp(5.5f + 1.5f * pulse), paint)
+        stroke.strokeWidth = dp(3.6f)
+        stroke.color = ColorUtils.setAlphaComponent(
+            Color.WHITE,
+            (150 * alpha).toInt().coerceIn(0, 255)
+        )
+        canvas.drawArc(
+            RectF(
+                cx - dp(45f),
+                y - dp(61f),
+                cx + dp(45f),
+                y + dp(28f)
+            ),
+            205f,
+            110f + pulse * 16f,
+            false,
+            stroke
+        )
+
+        fill.color = ColorUtils.setAlphaComponent(
+            p.text,
+            (72 * alpha).toInt().coerceIn(0, 255)
+        )
+        canvas.drawCircle(
+            cx + dp(106f),
+            y - dp(65f),
+            dp(7f + pulse),
+            fill
+        )
     }
 
     private fun drawFeed(
@@ -181,11 +209,39 @@ class SohrIntroArtworkView(context: Context) : View(context) {
         alpha: Float,
         p: ThemePalette
     ) {
-        val float = sin((ambient * PI * 2).toFloat()) * dp(3f)
+        val float =
+            sin((ambient * PI * 2).toFloat()) * dp(2.5f)
 
-        drawFeedCard(canvas, cx - dp(66f), cy - dp(57f) + float, dp(132f), dp(88f), -6f, alpha * 0.68f, p, true)
-        drawFeedCard(canvas, cx + dp(54f), cy - dp(38f) - float * 0.6f, dp(146f), dp(96f), 7f, alpha * 0.72f, p, true)
-        drawFeedCard(canvas, cx, cy + dp(25f), dp(190f), dp(118f), 0f, alpha, p, false)
+        drawFeedCard(
+            canvas,
+            cx - dp(60f),
+            cy - dp(45f) + float,
+            dp(132f),
+            dp(84f),
+            -5f,
+            alpha * 0.55f,
+            p
+        )
+        drawFeedCard(
+            canvas,
+            cx + dp(58f),
+            cy - dp(35f) - float,
+            dp(136f),
+            dp(88f),
+            5f,
+            alpha * 0.62f,
+            p
+        )
+        drawFeedCard(
+            canvas,
+            cx,
+            cy + dp(32f),
+            dp(196f),
+            dp(116f),
+            0f,
+            alpha,
+            p
+        )
     }
 
     private fun drawFeedCard(
@@ -196,105 +252,193 @@ class SohrIntroArtworkView(context: Context) : View(context) {
         h: Float,
         rotation: Float,
         alpha: Float,
-        p: ThemePalette,
-        compact: Boolean
+        p: ThemePalette
     ) {
         canvas.save()
         canvas.rotate(rotation, cx, cy)
 
-        val rect = RectF(cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f)
-        paint.style = Paint.Style.FILL
-        paint.color = ColorUtils.setAlphaComponent(p.surfaceAlt, (255 * alpha).toInt().coerceIn(0, 255))
-        canvas.drawRoundRect(rect, dp(18f), dp(18f), paint)
+        val rect =
+            RectF(cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f)
+
+        fill.color = ColorUtils.setAlphaComponent(
+            p.surfaceAlt,
+            (245 * alpha).toInt().coerceIn(0, 255)
+        )
+        canvas.drawRoundRect(rect, dp(18f), dp(18f), fill)
 
         val thumb = RectF(
-            rect.left + dp(10f),
-            rect.top + dp(10f),
-            rect.right - dp(10f),
-            rect.top + h * if (compact) 0.60f else 0.62f
+            rect.left + dp(9f),
+            rect.top + dp(9f),
+            rect.right - dp(9f),
+            rect.top + h * 0.61f
         )
-        paint.shader = LinearGradient(
-            thumb.left, thumb.top, thumb.right, thumb.bottom,
-            ColorUtils.blendARGB(p.accent, Color.CYAN, 0.22f),
-            p.accent,
+        fill.shader = LinearGradient(
+            thumb.left,
+            thumb.top,
+            thumb.right,
+            thumb.bottom,
+            ColorUtils.blendARGB(p.accent, Color.CYAN, 0.27f),
+            ColorUtils.blendARGB(p.accent, Color.BLUE, 0.12f),
             Shader.TileMode.CLAMP
         )
-        paint.alpha = (235 * alpha).toInt().coerceIn(0, 255)
-        canvas.drawRoundRect(thumb, dp(12f), dp(12f), paint)
-        paint.shader = null
-        paint.alpha = 255
+        fill.alpha = (245 * alpha).toInt().coerceIn(0, 255)
+        canvas.drawRoundRect(thumb, dp(11f), dp(11f), fill)
+        fill.shader = null
+        fill.alpha = 255
 
-        paint.color = ColorUtils.setAlphaComponent(p.text, (205 * alpha).toInt().coerceIn(0, 255))
+        fill.color = ColorUtils.setAlphaComponent(
+            p.text,
+            (205 * alpha).toInt().coerceIn(0, 255)
+        )
         canvas.drawRoundRect(
-            RectF(rect.left + dp(12f), thumb.bottom + dp(9f), rect.right - dp(if (compact) 32f else 48f), thumb.bottom + dp(14f)),
-            dp(3f), dp(3f), paint
+            RectF(
+                rect.left + dp(12f),
+                thumb.bottom + dp(9f),
+                rect.right - dp(40f),
+                thumb.bottom + dp(14f)
+            ),
+            dp(3f),
+            dp(3f),
+            fill
         )
 
-        paint.color = ColorUtils.setAlphaComponent(p.muted, (125 * alpha).toInt().coerceIn(0, 255))
+        fill.color = ColorUtils.setAlphaComponent(
+            p.muted,
+            (118 * alpha).toInt().coerceIn(0, 255)
+        )
         canvas.drawRoundRect(
-            RectF(rect.left + dp(12f), thumb.bottom + dp(20f), rect.right - dp(if (compact) 50f else 72f), thumb.bottom + dp(24f)),
-            dp(2f), dp(2f), paint
+            RectF(
+                rect.left + dp(12f),
+                thumb.bottom + dp(20f),
+                rect.right - dp(68f),
+                thumb.bottom + dp(24f)
+            ),
+            dp(2f),
+            dp(2f),
+            fill
         )
 
         canvas.restore()
     }
 
-    private fun drawWatch(
+    private fun drawPlayer(
         canvas: Canvas,
         cx: Float,
         cy: Float,
         alpha: Float,
         p: ThemePalette
     ) {
-        val rect = RectF(cx - dp(112f), cy - dp(72f), cx + dp(112f), cy + dp(64f))
+        val rect = RectF(
+            cx - dp(112f),
+            cy - dp(70f),
+            cx + dp(112f),
+            cy + dp(56f)
+        )
 
-        paint.style = Paint.Style.FILL
-        paint.color = ColorUtils.setAlphaComponent(p.surfaceAlt, (255 * alpha).toInt().coerceIn(0, 255))
-        canvas.drawRoundRect(rect, dp(24f), dp(24f), paint)
-
-        val screen = RectF(rect.left + dp(10f), rect.top + dp(10f), rect.right - dp(10f), rect.bottom - dp(30f))
-        paint.shader = LinearGradient(
-            screen.left, screen.top, screen.right, screen.bottom,
+        fill.shader = LinearGradient(
+            rect.left,
+            rect.top,
+            rect.right,
+            rect.bottom,
             ColorUtils.blendARGB(p.accent, Color.BLUE, 0.18f),
-            ColorUtils.blendARGB(p.accent, Color.CYAN, 0.15f),
+            ColorUtils.blendARGB(p.accent, Color.CYAN, 0.18f),
             Shader.TileMode.CLAMP
         )
-        paint.alpha = (240 * alpha).toInt().coerceIn(0, 255)
-        canvas.drawRoundRect(screen, dp(17f), dp(17f), paint)
-        paint.shader = null
-        paint.alpha = 255
+        fill.alpha = (248 * alpha).toInt().coerceIn(0, 255)
+        canvas.drawRoundRect(rect, dp(24f), dp(24f), fill)
+        fill.shader = null
+        fill.alpha = 255
 
-        path.reset()
-        path.moveTo(cx - dp(11f), cy - dp(26f))
-        path.lineTo(cx + dp(24f), cy - dp(6f))
-        path.lineTo(cx - dp(11f), cy + dp(14f))
-        path.close()
-        paint.color = ColorUtils.setAlphaComponent(Color.WHITE, (245 * alpha).toInt().coerceIn(0, 255))
-        canvas.drawPath(path, paint)
-
-        val lineY = rect.bottom - dp(17f)
-        paint.color = ColorUtils.setAlphaComponent(p.muted, (85 * alpha).toInt().coerceIn(0, 255))
-        canvas.drawRoundRect(RectF(rect.left + dp(16f), lineY, rect.right - dp(16f), lineY + dp(4f)), dp(2f), dp(2f), paint)
-
-        val progress = 0.42f + 0.08f * sin((ambient * PI * 2).toFloat())
-        paint.color = ColorUtils.setAlphaComponent(p.accent, (240 * alpha).toInt().coerceIn(0, 255))
-        canvas.drawRoundRect(
-            RectF(rect.left + dp(16f), lineY, rect.left + dp(16f) + (rect.width() - dp(32f)) * progress, lineY + dp(4f)),
-            dp(2f), dp(2f), paint
+        fill.color = ColorUtils.setAlphaComponent(
+            Color.WHITE,
+            (242 * alpha).toInt().coerceIn(0, 255)
         )
-        canvas.drawCircle(rect.left + dp(16f) + (rect.width() - dp(32f)) * progress, lineY + dp(2f), dp(5f), paint)
+        path.reset()
+        path.moveTo(cx - dp(12f), cy - dp(30f))
+        path.lineTo(cx + dp(26f), cy - dp(7f))
+        path.lineTo(cx - dp(12f), cy + dp(16f))
+        path.close()
+        canvas.drawPath(path, fill)
 
-        stroke.color = ColorUtils.setAlphaComponent(Color.WHITE, (220 * alpha).toInt().coerceIn(0, 255))
-        stroke.strokeWidth = dp(3f)
-        path.reset()
-        path.moveTo(cx + dp(75f), cy - dp(62f))
-        path.lineTo(cx + dp(96f), cy - dp(62f))
-        path.lineTo(cx + dp(96f), cy - dp(41f))
-        canvas.drawPath(path, stroke)
-        path.reset()
-        path.moveTo(cx + dp(96f), cy - dp(62f))
-        path.lineTo(cx + dp(72f), cy - dp(38f))
-        canvas.drawPath(path, stroke)
+        val lineY = rect.bottom + dp(19f)
+        stroke.strokeWidth = dp(5f)
+        stroke.color = ColorUtils.setAlphaComponent(
+            p.surfaceAlt,
+            (255 * alpha).toInt().coerceIn(0, 255)
+        )
+        canvas.drawLine(
+            rect.left + dp(9f),
+            lineY,
+            rect.right - dp(9f),
+            lineY,
+            stroke
+        )
+
+        val progress =
+            0.38f + 0.10f * (
+                0.5f + 0.5f * sin((ambient * PI * 2).toFloat())
+            )
+        val progressX =
+            rect.left + dp(9f) +
+                (rect.width() - dp(18f)) * progress
+
+        stroke.color = ColorUtils.setAlphaComponent(
+            p.accent,
+            (250 * alpha).toInt().coerceIn(0, 255)
+        )
+        canvas.drawLine(
+            rect.left + dp(9f),
+            lineY,
+            progressX,
+            lineY,
+            stroke
+        )
+        fill.color = ColorUtils.setAlphaComponent(
+            p.accent,
+            (255 * alpha).toInt().coerceIn(0, 255)
+        )
+        canvas.drawCircle(progressX, lineY, dp(7f), fill)
+
+        drawControlDot(
+            canvas,
+            cx - dp(72f),
+            cy + dp(96f),
+            alpha,
+            p
+        )
+        drawControlDot(
+            canvas,
+            cx,
+            cy + dp(96f),
+            alpha,
+            p
+        )
+        drawControlDot(
+            canvas,
+            cx + dp(72f),
+            cy + dp(96f),
+            alpha,
+            p
+        )
+    }
+
+    private fun drawControlDot(
+        canvas: Canvas,
+        x: Float,
+        y: Float,
+        alpha: Float,
+        p: ThemePalette
+    ) {
+        fill.color = ColorUtils.setAlphaComponent(
+            p.surfaceAlt,
+            (255 * alpha).toInt().coerceIn(0, 255)
+        )
+        canvas.drawCircle(x, y, dp(15f), fill)
+        fill.color = ColorUtils.setAlphaComponent(
+            p.accent,
+            (235 * alpha).toInt().coerceIn(0, 255)
+        )
+        canvas.drawCircle(x, y, dp(5f), fill)
     }
 
     private fun drawStreak(
@@ -304,46 +448,90 @@ class SohrIntroArtworkView(context: Context) : View(context) {
         alpha: Float,
         p: ThemePalette
     ) {
-        val y = cy + dp(22f)
-        val spacing = dp(34f)
-        val startX = cx - spacing * 2f
+        val ringRadius = dp(74f)
+        stroke.strokeWidth = dp(14f)
+        stroke.color = ColorUtils.setAlphaComponent(
+            p.surfaceAlt,
+            (255 * alpha).toInt().coerceIn(0, 255)
+        )
+        canvas.drawCircle(cx, cy - dp(18f), ringRadius, stroke)
 
-        for (i in 0..4) {
-            val phase = ((ambient + i * 0.12f) % 1f)
-            val lift = if (i == 2) dp(5f) * sin((phase * PI * 2).toFloat()) else 0f
-            paint.color = ColorUtils.setAlphaComponent(
-                if (i <= 2) p.accent else p.surfaceAlt,
-                (255 * alpha).toInt().coerceIn(0, 255)
+        val sweep =
+            265f + 24f * (
+                0.5f + 0.5f * sin((ambient * PI * 2).toFloat())
             )
-            canvas.drawCircle(startX + spacing * i, y - lift, dp(if (i == 2) 10f else 8f), paint)
-        }
+        stroke.color = ColorUtils.setAlphaComponent(
+            p.accent,
+            (248 * alpha).toInt().coerceIn(0, 255)
+        )
+        canvas.drawArc(
+            RectF(
+                cx - ringRadius,
+                cy - dp(18f) - ringRadius,
+                cx + ringRadius,
+                cy - dp(18f) + ringRadius
+            ),
+            -90f,
+            sweep,
+            false,
+            stroke
+        )
 
+        val fy = cy - dp(17f)
         path.reset()
-        path.moveTo(cx, cy - dp(82f))
-        path.cubicTo(cx - dp(44f), cy - dp(64f), cx - dp(67f), cy - dp(32f), cx - dp(60f), cy + dp(3f))
-        path.cubicTo(cx - dp(52f), cy + dp(42f), cx - dp(21f), cy + dp(63f), cx, cy + dp(74f))
-        path.cubicTo(cx + dp(21f), cy + dp(63f), cx + dp(52f), cy + dp(42f), cx + dp(60f), cy + dp(3f))
-        path.cubicTo(cx + dp(67f), cy - dp(32f), cx + dp(44f), cy - dp(64f), cx, cy - dp(82f))
+        path.moveTo(cx + dp(2f), fy - dp(47f))
+        path.cubicTo(
+            cx - dp(28f),
+            fy - dp(18f),
+            cx - dp(28f),
+            fy + dp(17f),
+            cx,
+            fy + dp(37f)
+        )
+        path.cubicTo(
+            cx + dp(29f),
+            fy + dp(17f),
+            cx + dp(31f),
+            fy - dp(19f),
+            cx + dp(2f),
+            fy - dp(47f)
+        )
         path.close()
 
-        paint.shader = LinearGradient(
-            cx, cy - dp(82f), cx, cy + dp(74f),
-            ColorUtils.blendARGB(p.accent, Color.WHITE, 0.10f),
+        fill.shader = LinearGradient(
+            cx,
+            fy - dp(47f),
+            cx,
+            fy + dp(37f),
+            ColorUtils.blendARGB(p.accent, Color.WHITE, 0.18f),
             p.accent,
             Shader.TileMode.CLAMP
         )
-        paint.alpha = (235 * alpha).toInt().coerceIn(0, 255)
-        canvas.drawPath(path, paint)
-        paint.shader = null
-        paint.alpha = 255
+        fill.alpha = (250 * alpha).toInt().coerceIn(0, 255)
+        canvas.drawPath(path, fill)
+        fill.shader = null
+        fill.alpha = 255
 
-        path.reset()
-        path.moveTo(cx + dp(2f), cy - dp(34f))
-        path.cubicTo(cx - dp(25f), cy - dp(8f), cx - dp(21f), cy + dp(22f), cx + dp(2f), cy + dp(30f))
-        path.cubicTo(cx + dp(26f), cy + dp(21f), cx + dp(27f), cy - dp(8f), cx + dp(2f), cy - dp(34f))
-        path.close()
-        paint.color = ColorUtils.setAlphaComponent(Color.WHITE, (245 * alpha).toInt().coerceIn(0, 255))
-        canvas.drawPath(path, paint)
+        fill.color = ColorUtils.setAlphaComponent(
+            Color.WHITE,
+            (245 * alpha).toInt().coerceIn(0, 255)
+        )
+        canvas.drawCircle(cx, fy + dp(12f), dp(8f), fill)
+
+        val startX = cx - dp(72f)
+        val dayY = cy + dp(90f)
+        for (i in 0 until 7) {
+            fill.color = ColorUtils.setAlphaComponent(
+                if (i < 5) p.accent else p.surfaceAlt,
+                (255 * alpha).toInt().coerceIn(0, 255)
+            )
+            canvas.drawCircle(
+                startX + i * dp(24f),
+                dayY,
+                dp(if (i == 4) 7f else 5f),
+                fill
+            )
+        }
     }
 
     private fun drawCustomize(
@@ -353,40 +541,64 @@ class SohrIntroArtworkView(context: Context) : View(context) {
         alpha: Float,
         p: ThemePalette
     ) {
-        val ys = listOf(cy - dp(55f), cy, cy + dp(55f))
-        val knobs = listOf(0.31f, 0.70f, 0.46f)
+        val top = cy - dp(70f)
+        val widths = listOf(0.32f, 0.68f, 0.46f)
 
-        for (i in ys.indices) {
-            val y = ys[i]
+        for (i in 0..2) {
+            val y = top + i * dp(52f)
             val left = cx - dp(102f)
             val right = cx + dp(102f)
 
             stroke.strokeWidth = dp(6f)
-            stroke.color = ColorUtils.setAlphaComponent(p.surfaceAlt, (255 * alpha).toInt().coerceIn(0, 255))
+            stroke.color = ColorUtils.setAlphaComponent(
+                p.surfaceAlt,
+                (255 * alpha).toInt().coerceIn(0, 255)
+            )
             canvas.drawLine(left, y, right, y, stroke)
 
-            val wobble = sin(((ambient + i * 0.16f) * PI * 2).toFloat()) * dp(3f)
-            val x = left + (right - left) * knobs[i] + wobble
+            val wobble =
+                sin(((ambient + i * 0.15f) * PI * 2).toFloat()) *
+                    dp(2.5f)
+            val knobX =
+                left + (right - left) * widths[i] + wobble
 
-            stroke.color = ColorUtils.setAlphaComponent(p.accent, (245 * alpha).toInt().coerceIn(0, 255))
-            canvas.drawLine(left, y, x, y, stroke)
+            stroke.color = ColorUtils.setAlphaComponent(
+                p.accent,
+                (245 * alpha).toInt().coerceIn(0, 255)
+            )
+            canvas.drawLine(left, y, knobX, y, stroke)
 
-            paint.color = ColorUtils.setAlphaComponent(p.accent, (255 * alpha).toInt().coerceIn(0, 255))
-            canvas.drawCircle(x, y, dp(13f), paint)
+            fill.color = ColorUtils.setAlphaComponent(
+                p.accent,
+                (255 * alpha).toInt().coerceIn(0, 255)
+            )
+            canvas.drawCircle(knobX, y, dp(12f), fill)
 
-            paint.color = ColorUtils.setAlphaComponent(Color.WHITE, (245 * alpha).toInt().coerceIn(0, 255))
-            canvas.drawCircle(x, y, dp(5f), paint)
+            fill.color = ColorUtils.setAlphaComponent(
+                Color.WHITE,
+                (245 * alpha).toInt().coerceIn(0, 255)
+            )
+            canvas.drawCircle(knobX, y, dp(4.5f), fill)
         }
 
-        val swatchY = cy + dp(98f)
+        val paletteY = cy + dp(92f)
         val colors = listOf(
-            ColorUtils.blendARGB(p.accent, Color.CYAN, 0.25f),
+            ColorUtils.blendARGB(p.accent, Color.BLUE, 0.35f),
             p.accent,
-            ColorUtils.blendARGB(p.accent, Color.MAGENTA, 0.20f)
+            ColorUtils.blendARGB(p.accent, Color.MAGENTA, 0.24f)
         )
-        colors.forEachIndexed { i, color ->
-            paint.color = ColorUtils.setAlphaComponent(color, (245 * alpha).toInt().coerceIn(0, 255))
-            canvas.drawCircle(cx + dp((i - 1) * 34f), swatchY, dp(10f), paint)
+
+        colors.forEachIndexed { index, color ->
+            fill.color = ColorUtils.setAlphaComponent(
+                color,
+                (255 * alpha).toInt().coerceIn(0, 255)
+            )
+            canvas.drawCircle(
+                cx + dp((index - 1) * 42f),
+                paletteY,
+                dp(if (index == 1) 15f else 13f),
+                fill
+            )
         }
     }
 

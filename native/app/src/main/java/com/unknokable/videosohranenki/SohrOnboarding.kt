@@ -127,11 +127,17 @@ class SohrOnboarding(
                 press(this)
                 val page = currentPage
                 val scroll = currentScroll
-                settings.lightTheme = !settings.lightTheme
-                build()
-                pager.setCurrentItem(page, false)
-                artwork.setPageProgress(scroll)
-                dots.setPageProgress(scroll)
+                SohrThemeTransition.reveal(
+                    host = root,
+                    anchor = this,
+                    enabled = settings.animations
+                ) {
+                    settings.lightTheme = !settings.lightTheme
+                    build()
+                    pager.setCurrentItem(page, false)
+                    artwork.setPageProgress(scroll)
+                    dots.setPageProgress(scroll)
+                }
             }
         }
         top.addView(themeButton, LinearLayout.LayoutParams(dp(40), dp(40)))
@@ -145,9 +151,9 @@ class SohrOnboarding(
             artwork,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(252)
+                dp(228)
             ).apply {
-                topMargin = dp(12)
+                topMargin = dp(14)
             }
         )
 
@@ -191,7 +197,7 @@ class SohrOnboarding(
             pager,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(154)
+                dp(166)
             )
         )
 
@@ -330,14 +336,14 @@ class SohrOnboarding(
                 title,
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(68)
+                    dp(72)
                 )
             )
             content.addView(
                 description,
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(78)
+                    dp(86)
                 )
             )
 

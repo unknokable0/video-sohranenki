@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.9.16 version
+      - name: Assign SOHR 6.9.17 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690016" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.16" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690017" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.17" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -775,6 +775,7 @@ jobs:
               "onPageScrolled(",
               "artwork.setPageProgress(progress)",
               "dots.setPageProgress(progress)",
+              "SohrThemeTransition.reveal(",
               "SohrIntroArtworkView(activity)",
               "SohrIntroDotsView(activity)",
               '"Добро пожаловать в SOHR"',
@@ -802,15 +803,16 @@ jobs:
               "class SohrIntroArtworkView",
               "drawCloud(",
               "drawFeed(",
-              "drawWatch(",
+              "drawPlayer(",
               "drawStreak(",
               "drawCustomize(",
               "pageProgress",
               "ValueAnimator.ofFloat(0f, 1f)",
-              "drawScene("
+              "drawScene(",
+              "for (i in 0 until 7)"
           ]:
               if required not in intro_artwork:
-                  raise SystemExit(f"SOHR 6.9.16 artwork renderer regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.17 artwork renderer regression: {required}")
           for required in [
               "class SohrIntroDotsView",
               "setPageProgress(",
@@ -850,17 +852,53 @@ jobs:
           if "showAccount()" in logout_section:
               raise SystemExit("SOHR 6.9.14 logout regression: logout returns to Account instead of fresh auth")
 
+          login_artwork = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/SohrLoginArtworkView.kt"
+          ).read_text(encoding="utf-8")
+          theme_transition = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/SohrThemeTransition.kt"
+          ).read_text(encoding="utf-8")
+          phone_login = sohr_main.split(
+              "private fun renderPhoneLogin(regions: List<PhoneCountry>)", 1
+          )[1].split("\n    private data class PhoneCountry", 1)[0]
           for required in [
               'text = "Вход в SOHR"',
-              "R.drawable.sohr_brand_logo",
-              "val themeButton = ImageView(this).apply",
-              "settings.lightTheme = !settings.lightTheme",
-              "heroIcon.animate()",
-              "country.translationY = dp(8).toFloat()",
-              "val artwork = FrameLayout(this).apply"
+              "SohrLoginArtworkView(this)",
+              'text = "Код страны"',
+              'hint = "+48"',
+              'text = "Номер телефона"',
+              'hint = "123 456 789"',
+              '"Код страны можно выбрать выше или ввести вручную, например +48."',
+              "SohrThemeTransition.reveal(",
+              "suppressNextRootAnimation = true"
           ]:
-              if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.9.14 auth visual regression: {required}")
+              if required not in phone_login:
+                  raise SystemExit(f"SOHR 6.9.17 auth clarity regression: {required}")
+          for forbidden in [
+              "R.drawable.sohr_brand_logo",
+              "heroHalo",
+              "heroIcon"
+          ]:
+              if forbidden in phone_login:
+                  raise SystemExit(f"SOHR 6.9.17 old login artwork returned: {forbidden}")
+          for required in [
+              "class SohrLoginArtworkView",
+              "drawTelegramBubble(",
+              "drawConnection(",
+              "drawSohrCloud(",
+              "ValueAnimator.ofFloat(0f, 1f)"
+          ]:
+              if required not in login_artwork:
+                  raise SystemExit(f"SOHR 6.9.17 login artwork regression: {required}")
+          for required in [
+              "object SohrThemeTransition",
+              "Bitmap.createBitmap(",
+              "PorterDuff.Mode.CLEAR",
+              "ValueAnimator.ofFloat(0f, maxRadius)",
+              "PathInterpolator(0.2f, 0f, 0f, 1f)"
+          ]:
+              if required not in theme_transition:
+                  raise SystemExit(f"SOHR 6.9.17 theme reveal regression: {required}")
           youtube_feed_repo = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/YouTubeFeed.kt"
           ).read_text(encoding="utf-8")
@@ -1746,7 +1784,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.16 • onboarding перестроен по той же архитектурной идее, что используется в IntroActivity Nekogram/Telegram: одна фиксированная зона иллюстрации всегда остаётся на одной высоте, а текст листается отдельно через ViewPager; onPageScrolled передаёт непрерывный offset в собственный SOHR renderer • все иллюстрации увеличены и полностью лишены круглых/прямоугольных рамок: облако SOHR, карточки Ленты, плеер, Streak и оформление рисуются как отдельные большие сцены • картинки плавно переходят друг в друга прямо за пальцем, а не пересоздаются после свайпа • точки тоже интерполируются непрерывно • добавлен лёгкий ambient-motion внутри сцен без вертикальных прыжков"
+            "notes": "SOHR 6.9.17 • первый запуск и вход выровнены как одна система: все onboarding-сцены используют одну геометрию и одинаковый визуальный центр; облако стало читаемым знаком SOHR с play-символом, Лента — аккуратными карточками, просмотр — чистым плеером без случайной стрелки, Streak — кольцом прогресса с огнём и 7 днями, оформление — ровными контролами • экран входа больше не использует квадратный bitmap-логотип и тяжёлую карточку: вместо него новая анимированная сцена Telegram → SOHR без рамки • ввод телефона разделён на понятные поля «Код страны» с примером +48 и «Номер телефона» с примером; страна остаётся отдельным выбором, а короткая подсказка объясняет ручной код • автофокус/всплывающая клавиатура при открытии убраны • переключение светлой/тёмной темы в onboarding и на входе теперь выполняется круговым reveal-переходом от кнопки темы"
           }
           EOF
           cat update.json
