@@ -4,9 +4,13 @@ import android.content.Context
 import android.net.Uri
 import com.zemer.cipher.CipherDeobfuscator
 import com.zemer.cipher.ZemerCipher
-import com.zemer.cipher.potoken.PoTokenGenerator
+import com.zemer.cipher.potoken.PoTokenResult
+import com.zemer.cipher.potoken.PoTokenWebView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import org.schabi.newpipe.extractor.NewPipe
@@ -42,6 +46,10 @@ class YouTubeSignInRequiredException : YouTubeNativeResolveException(
     "YouTube не подтвердил обычную сессию воспроизведения."
 )
 
+class YouTubeSessionInitException : YouTubeNativeResolveException(
+    "SOHR не смог подготовить защищённую YouTube-сессию."
+)
+
 class YouTubeUnavailableException : YouTubeNativeResolveException(
     "Этот ролик сейчас недоступен для воспроизведения в SOHR."
 )
@@ -59,7 +67,12 @@ object YouTubeNativeResolver {
     private var zemerInitialized = false
     private val zemerInitLock = Any()
 
-    private val poTokenGenerator by lazy { PoTokenGenerator() }
+    private val poTokenLock = Mutex()
+    private var poTokenWebView: PoTokenWebView? = null
+    private var poTokenSessionId: String? = null
+    private var poTokenSessionPot: String? = null
+    @Volatile
+    private var applicationContext: Context? = null
 
     private const val FALLBACK_WEB_API_KEY =
         "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
@@ -82,6 +95,7 @@ object YouTubeNativeResolver {
     private val bootstrapLock = Any()
 
     fun initialize(context: Context) {
+        applicationContext = context.applicationContext
         if (zemerInitialized) return
         synchronized(zemerInitLock) {
             if (zemerInitialized) return
@@ -212,14 +226,10 @@ object YouTubeNativeResolver {
 
     private suspend fun resolveWithPoToken(video: YouTubeFeedVideo): YouTubeNativeSource {
         val bootstrap = loadWebBootstrap()
-        val poTokens = runCatching {
-            poTokenGenerator.getWebClientPoToken(
-                videoId = video.videoId,
-                sessionId = bootstrap.visitorData
-            )
-        }.getOrElse {
-            throw YouTubeSignInRequiredException()
-        } ?: throw YouTubeSignInRequiredException()
+        val poTokens = createStablePoTokens(
+            videoId = video.videoId,
+            sessionId = bootstrap.visitorData
+        )
 
         val signatureTimestamp = runCatching {
             CipherDeobfuscator.signatureTimestamp()
@@ -347,6 +357,77 @@ object YouTubeNativeResolver {
 
         runCatching { CipherDeobfuscator.onStreamRejected() }
         throw YouTubeUnavailableException()
+    }
+
+    private suspend fun createStablePoTokens(
+        videoId: String,
+        sessionId: String
+    ): PoTokenResult {
+        var lastError: Throwable? = null
+
+        repeat(2) {
+            try {
+                return poTokenLock.withLock {
+                    val context = applicationContext ?: throw YouTubeSessionInitException()
+
+                    var generator = poTokenWebView
+                    val needsRecreate =
+                        generator == null ||
+                            generator.isExpired ||
+                            generator.isDead ||
+                            poTokenSessionId != sessionId ||
+                            poTokenSessionPot.isNullOrBlank()
+
+                    if (needsRecreate) {
+                        generator?.close()
+                        poTokenWebView = null
+                        poTokenSessionId = null
+                        poTokenSessionPot = null
+
+                        val fresh = withTimeout(50_000L) {
+                            PoTokenWebView.getNewPoTokenGenerator(context)
+                        }
+
+                        val sessionPot = try {
+                            withTimeout(20_000L) {
+                                fresh.generatePoToken(sessionId)
+                            }
+                        } catch (error: Throwable) {
+                            fresh.close()
+                            throw error
+                        }
+
+                        poTokenWebView = fresh
+                        poTokenSessionId = sessionId
+                        poTokenSessionPot = sessionPot
+                        generator = fresh
+                    }
+
+                    val activeGenerator = generator ?: throw YouTubeSessionInitException()
+                    val sessionPot = poTokenSessionPot ?: throw YouTubeSessionInitException()
+                    val videoPot = withTimeout(20_000L) {
+                        activeGenerator.generatePoToken(videoId)
+                    }
+
+                    PoTokenResult(
+                        playerRequestPoToken = sessionPot,
+                        streamingDataPoToken = videoPot
+                    )
+                }
+            } catch (error: Throwable) {
+                lastError = error
+                poTokenLock.withLock {
+                    poTokenWebView?.close()
+                    poTokenWebView = null
+                    poTokenSessionId = null
+                    poTokenSessionPot = null
+                }
+            }
+        }
+
+        val failure = YouTubeSessionInitException()
+        lastError?.let { runCatching { failure.initCause(it) } }
+        throw failure
     }
 
     private suspend fun resolveFirstFormatUrl(
