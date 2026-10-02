@@ -106,6 +106,9 @@ class MainActivity : AppCompatActivity() {
     private var youtubeDurationEnrichJob: kotlinx.coroutines.Job? = null
     private var youtubeFeedAutoRefreshJob: kotlinx.coroutines.Job? = null
     private var lastYoutubeFeedRefreshAt = 0L
+    private var lastYoutubeFeedAttemptAt = 0L
+    private var youtubeFeedInitialAttempted = false
+    private val youtubeFeedRetryCooldownMs = 30_000L
     private var openYouTubeChannelSummary: YouTubeChannelSummary? = null
     private var currentStreamingItem: VideoItem? = null
     private lateinit var settings: AppSettings
@@ -3145,6 +3148,7 @@ class MainActivity : AppCompatActivity() {
 
         val contentHost = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            tag = "sohr_video_section_content"
         }
         body.addView(contentHost)
 
@@ -3167,11 +3171,23 @@ class MainActivity : AppCompatActivity() {
             restoreFeedScrollPosition(scroll)
             root.postDelayed({ consumeUpdateNotificationIntent() }, 220L)
 
-            if (!youtubeFeedLoading && (youtubeChannels.isEmpty() || youtubeFeedVideos.isEmpty())) {
+            val youtubeNow = System.currentTimeMillis()
+            val youtubeHasAnyContent =
+                youtubeChannels.isNotEmpty() || youtubeFeedVideos.isNotEmpty()
+
+            if (
+                !youtubeFeedLoading &&
+                !youtubeHasAnyContent &&
+                (
+                    !youtubeFeedInitialAttempted ||
+                        youtubeNow - lastYoutubeFeedAttemptAt >= youtubeFeedRetryCooldownMs
+                )
+            ) {
                 loadYouTubeFeed(force = false)
             } else if (
                 !youtubeFeedLoading &&
-                System.currentTimeMillis() - lastYoutubeFeedRefreshAt > 15_000L
+                youtubeHasAnyContent &&
+                youtubeNow - lastYoutubeFeedRefreshAt > 45_000L
             ) {
                 loadYouTubeFeed(force = true, quiet = true)
             }
@@ -6403,6 +6419,18 @@ class MainActivity : AppCompatActivity() {
         val hadContent = youtubeChannels.isNotEmpty() || youtubeFeedVideos.isNotEmpty()
         if (!force && hadContent) return
 
+        val now = System.currentTimeMillis()
+        if (
+            !force &&
+            youtubeFeedInitialAttempted &&
+            !hadContent &&
+            now - lastYoutubeFeedAttemptAt < youtubeFeedRetryCooldownMs
+        ) {
+            return
+        }
+
+        youtubeFeedInitialAttempted = true
+        lastYoutubeFeedAttemptAt = now
         youtubeFeedLoading = !quiet && !hadContent
         if (youtubeFeedLoading && videoSection == 2 && auxiliaryScreen == null) {
             suppressNextRootAnimation = true
@@ -9195,7 +9223,9 @@ class MainActivity : AppCompatActivity() {
 
                 val telegramInterpolator = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
                 if (sectionCrossfade) {
-                    content.alpha = 0f
+                    // Keep the top SOHR/header/tabs visually stable. Only the section-specific
+                    // content below the tabs gets a lightweight entrance animation.
+                    content.alpha = 1f
                     content.translationX = 0f
                     content.translationY = 0f
                     content.scaleX = 1f
@@ -9203,21 +9233,40 @@ class MainActivity : AppCompatActivity() {
                     old.alpha = 1f
                     old.translationX = 0f
                     old.translationY = 0f
-                    content.animate()
-                        .alpha(1f)
-                        .setDuration(SohrMotion.NORMAL)
-                        .setInterpolator(SohrMotion.smooth())
-                        .withEndAction {
-                            old.animate().cancel()
-                            old.alpha = 1f
-                            old.translationX = 0f
-                            old.translationY = 0f
-                            content.alpha = 1f
-                            old.setLayerType(View.LAYER_TYPE_NONE, null)
-                            content.setLayerType(View.LAYER_TYPE_NONE, null)
-                            if (old.parent === host) host.removeView(old)
-                        }
-                        .start()
+
+                    val sectionBody = content.findViewWithTag<View>("sohr_video_section_content")
+                    if (sectionBody != null) {
+                        sectionBody.animate().cancel()
+                        sectionBody.alpha = 0f
+                        sectionBody.translationY = dp(7).toFloat()
+                        sectionBody.scaleX = 0.996f
+                        sectionBody.scaleY = 0.996f
+                        sectionBody.animate()
+                            .alpha(1f)
+                            .translationY(0f)
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .setDuration(220L)
+                            .setInterpolator(SohrMotion.smooth())
+                            .withEndAction {
+                                old.animate().cancel()
+                                old.alpha = 1f
+                                old.translationX = 0f
+                                old.translationY = 0f
+                                sectionBody.alpha = 1f
+                                sectionBody.translationY = 0f
+                                sectionBody.scaleX = 1f
+                                sectionBody.scaleY = 1f
+                                old.setLayerType(View.LAYER_TYPE_NONE, null)
+                                content.setLayerType(View.LAYER_TYPE_NONE, null)
+                                if (old.parent === host) host.removeView(old)
+                            }
+                            .start()
+                    } else {
+                        old.setLayerType(View.LAYER_TYPE_NONE, null)
+                        content.setLayerType(View.LAYER_TYPE_NONE, null)
+                        if (old.parent === host) host.removeView(old)
+                    }
                 } else if (primaryTabTransition) {
                     val direction = if (slide >= 0) 1f else -1f
                     val incomingOffset = dp(14).toFloat() * direction
