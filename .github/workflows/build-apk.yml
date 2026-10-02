@@ -865,7 +865,7 @@ jobs:
           for required in [
               "fun buildDirectory(",
               "fun buildChannel(",
-              '"Автообновление включено • повторы скрываются автоматически"',
+              '"Просмотр — в YouTube • список и каналы остаются в SOHR"',
               "videoCard(",
               "formatDuration(video.durationSeconds)",
               "cornerRadius = radiusDp *"
