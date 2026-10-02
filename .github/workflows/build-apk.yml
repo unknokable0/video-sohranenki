@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.9.10 version
+      - name: Assign SOHR 6.9.11 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690010" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.10" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690011" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.11" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -950,26 +950,44 @@ jobs:
           youtube_open_section = sohr_main.split(
               "private fun openYouTubeVideo(video: YouTubeFeedVideo)", 1
           )[1].split("\n    private fun ", 1)[0]
-          for forbidden in [
-              "YouTubePlayerScreen",
-              "youtubePlayerScreen",
-              "WebView",
-              "iframe",
-              "youtube.com/iframe_api"
-          ]:
-              if forbidden in youtube_open_section:
-                  raise SystemExit(f"SOHR 6.7.1 regression: legacy YouTube embed wiring returned: {forbidden}")
           for required in [
-              "YouTubeNativeResolver.resolve(video)",
-              "mediaUrl = resolved.mediaUrl",
-              "secondaryAudioUrl = resolved.secondaryAudioUrl",
-              "PlayerScreen(",
-              'mimeType = "video/*"',
-              "handleYouTubeNativeFailure(video, retryError, returnView)",
-              "handleYouTubeNativeFailure(video, firstError, returnView)"
+              "ModernDialogs.showConfirm(",
+              'title = "Открыть в YouTube?"',
+              'confirm = "Открыть YouTube"',
+              "launchYouTubeVideo(video)"
           ]:
               if required not in youtube_open_section:
-                  raise SystemExit(f"SOHR 6.9.0 native Media3-first YouTube wiring regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.11 external YouTube confirmation regression: {required}")
+          for forbidden in [
+              "YouTubeNativeResolver.resolve(video)",
+              "PlayerScreen(",
+              "openYouTubePlaybackFallback(",
+              "youtubePlaybackScreen"
+          ]:
+              if forbidden in youtube_open_section:
+                  raise SystemExit(f"SOHR 6.9.11 regression: feed video still starts internal YouTube playback: {forbidden}")
+
+          youtube_launch_section = sohr_main.split(
+              "private fun launchYouTubeVideo(video: YouTubeFeedVideo)", 1
+          )[1].split("\n    private fun ", 1)[0]
+          for required in [
+              '"https://www.youtube.com/watch?v="',
+              'setPackage("com.google.android.youtube")',
+              "Intent.ACTION_VIEW",
+              "Intent.CATEGORY_BROWSABLE",
+              "startActivity(youtubeIntent)",
+              "startActivity(genericIntent)"
+          ]:
+              if required not in youtube_launch_section:
+                  raise SystemExit(f"SOHR 6.9.11 YouTube launch regression: {required}")
+
+          for required in [
+              '"Просмотр — в YouTube • список и каналы остаются в SOHR"',
+              "R.drawable.ic_action_open",
+              'contentDescription = "Открывается в YouTube"'
+          ]:
+              if required not in youtube_feed_ui:
+                  raise SystemExit(f"SOHR 6.9.11 YouTube feed external-UX regression: {required}")
 
           for required in [
               "firstError is YouTubeSessionInitException",
@@ -1236,17 +1254,6 @@ jobs:
           ]:
               if required not in youtube_playback:
                   raise SystemExit(f"SOHR 6.9.10 local YouTube engine regression: {required}")
-
-          youtube_open_section = sohr_main.split(
-              "private fun openYouTubeVideo(", 1
-          )[1].split("\n    private fun configureYouTubeWebView", 1)[0]
-          for required in [
-              "YouTubeNativeResolver.resetPlaybackSession()",
-              "firstError is YouTubeSignInRequiredException",
-              "PlayerScreen("
-          ]:
-              if required not in youtube_open_section:
-                  raise SystemExit(f"SOHR 6.9.4 native retry regression: {required}")
 
           youtube_resolver = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/YouTubeNativeResolver.kt"
@@ -2240,7 +2247,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.10 • исправлен белый 404 внутри YouTube-плеера: playback-engine теперь полностью лежит внутри APK и загружается через loadDataWithBaseURL, поэтому GitHub Pages больше не нужен • WebView получает стабильный HTTPS Referer с app-id SOHR, а IFrame API явно получает origin/widget_referrer — это соответствует требованиям YouTube для Android WebView и предотвращает ошибку 153 • Media3/direct resolver остаётся первым путём, а при BotGuard/LOGIN_REQUIRED автоматически включается тот же SOHR-интерфейс с нашим таймлайном, play/pause, ±10 секунд, fullscreen и PiP"
+            "notes": "SOHR 6.9.11 • YouTube-видео из Ленты и экранов YouTube-каналов больше не запускают внутренний resolver/Media3/WebView: при нажатии SOHR показывает аккуратное подтверждение «Открыть в YouTube?» с названием ролика и каналом, после подтверждения открывает точный ролик в приложении YouTube • если приложение YouTube недоступно, используется системный обработчик ссылки/браузер • на карточках добавлен компактный внешний индикатор, а подпись Ленты заранее объясняет поведение • список, каналы, даты и навигация остаются внутри SOHR, поэтому BotGuard/404/age-gate больше не ломают саму Ленту"
           }
           EOF
           cat update.json

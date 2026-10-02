@@ -124,7 +124,7 @@ object YouTubeFeedUi {
             text = if (videos.isEmpty() && loading) {
                 "Собираем свежие ролики…"
             } else {
-                "Автообновление включено • повторы скрываются автоматически"
+                "Просмотр — в YouTube • список и каналы остаются в SOHR"
             }
             textSize = 11.5f
             setTextColor(palette.muted)
@@ -460,6 +460,27 @@ object YouTubeFeedUi {
             textBox,
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         )
+
+        metaRow.addView(
+            ImageView(activity).apply {
+                setImageResource(R.drawable.ic_action_open)
+                imageTintList = ColorStateList.valueOf(palette.accent)
+                background = rounded(palette.accentSoft, 13)
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+                setPadding(
+                    dp(activity, 7),
+                    dp(activity, 7),
+                    dp(activity, 7),
+                    dp(activity, 7)
+                )
+                contentDescription = "Открывается в YouTube"
+            },
+            LinearLayout.LayoutParams(dp(activity, 32), dp(activity, 32)).apply {
+                marginStart = dp(activity, 8)
+                topMargin = dp(activity, 1)
+            }
+        )
+
         card.addView(metaRow)
 
         card.setOnClickListener {

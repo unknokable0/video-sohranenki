@@ -6752,130 +6752,66 @@ class MainActivity : AppCompatActivity() {
 
     private fun openYouTubeVideo(video: YouTubeFeedVideo) {
         stopInlinePreview()
-        fullScreen = false
-        val returnView = capturePlayerReturnView()
-        playerReturnView = returnView
 
-        youtubeResolveJob?.cancel()
-        youtubeResolveJob = null
-        youtubePlaybackScreen?.destroy()
-        youtubePlaybackScreen = null
-        playerScreen?.destroy()
-        playerScreen = null
-        twitchPlayerScreen?.destroy()
-        twitchPlayerScreen = null
-        twitchLivePlayerScreen?.destroy()
-        twitchLivePlayerScreen = null
-        currentStreamingItem?.let { streamed -> streamServer?.release(streamed) }
-        currentStreamingItem = null
-
-        isSettingsScreen = false
-        isAccountScreen = false
-        isStreakScreen = false
-        isPlayerScreen = true
-
-        val loadingPage = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setBackgroundColor(bg)
-
-            val mark = buildBrandLoadingMark(54)
-            val label = TextView(this@MainActivity).apply {
-                text = "Открываем видео…"
-                textSize = 14f
-                gravity = Gravity.CENTER
-                setTextColor(muted)
-                setPadding(0, dp(14), 0, 0)
-            }
-            addView(mark, LinearLayout.LayoutParams(dp(54), dp(54)))
-            addView(label)
+        val title = video.title.trim().ifBlank { "YouTube-видео" }
+        val channel = video.channelTitle.trim()
+        val sourceLine = if (channel.isBlank()) {
+            "Видео откроется в приложении YouTube."
+        } else {
+            "$channel • видео откроется в приложении YouTube."
         }
 
-        pendingRootSlide = 1
-        replaceRoot(loadingPage)
+        ModernDialogs.showConfirm(
+            context = this,
+            palette = palette,
+            title = "Открыть в YouTube?",
+            message = "«$title»\n\n$sourceLine\nДля возврата в SOHR достаточно обычной кнопки «Назад».",
+            confirm = "Открыть YouTube"
+        ) {
+            launchYouTubeVideo(video)
+        }
+    }
 
-        youtubeResolveJob = lifecycleScope.launch {
-            val firstResolve = runCatching {
-                YouTubeNativeResolver.resolve(video)
-            }
-            val resolved = firstResolve.getOrElse { firstError ->
-                if (
-                    firstError is YouTubeNetworkException ||
-                    firstError is YouTubeUnavailableException ||
-                    firstError is YouTubeSessionInitException ||
-                    firstError is YouTubeSignInRequiredException
-                ) {
-                    runCatching { YouTubeNativeResolver.resetPlaybackSession() }
-                    delay(220L)
-                    runCatching {
-                        YouTubeNativeResolver.resolve(video)
-                    }.getOrElse { retryError ->
-                        youtubeResolveJob = null
-                        handleYouTubeNativeFailure(video, retryError, returnView)
-                        return@launch
-                    }
-                } else {
-                    youtubeResolveJob = null
-                    handleYouTubeNativeFailure(video, firstError, returnView)
-                    return@launch
-                }
-            }
-
-            if (!isActive || !isPlayerScreen) return@launch
-
-            val item = video.toVideoItem().copy(
-                title = resolved.title,
-                durationSeconds = resolved.durationSeconds,
-                mimeType = "video/*",
-                thumbnailUrl = resolved.thumbnailUrl
+    private fun launchYouTubeVideo(video: YouTubeFeedVideo) {
+        val videoId = video.videoId.trim()
+        if (!Regex("^[A-Za-z0-9_-]{6,20}$").matches(videoId)) {
+            showMessage(
+                "Не удалось открыть YouTube",
+                "У этого видео некорректная ссылка."
             )
-            val resumePositionMs = settings.playbackPosition(item.messageId)
-
-            val createdPlayer = runCatching {
-                PlayerScreen(
-                    activity = this@MainActivity,
-                    item = item,
-                    mediaUrl = resolved.mediaUrl,
-                    secondaryAudioUrl = resolved.secondaryAudioUrl,
-                    previewDataSourceFactory = null,
-                    settings = settings,
-                    startPositionMs = resumePositionMs,
-                    onBack = { closeCurrentPlayerScreen() },
-                    onFullscreen = { setFullscreen(it) },
-                    onPlaybackStarted = {
-                        settings.markPlayed(item.messageId)
-                        streakTracker.markWatched()
-                    },
-                    onMiniModeChanged = { enabled -> handlePlayerMiniMode(enabled) }
-                )
-            }.getOrElse { error ->
-                youtubeResolveJob = null
-                isPlayerScreen = false
-                playerReturnView = null
-                pendingRootSlide = -1
-                if (returnView != null) {
-                    replaceRoot(returnView)
-                } else {
-                    videoSection = 2
-                    showFeed(currentVideos)
-                }
-                showMessage(
-                    "Не удалось открыть видео",
-                    error.message ?: "Нативный SOHR-плеер не смог запустить поток."
-                )
-                return@launch
-            }
-
-            youtubeResolveJob = null
-            if (!isPlayerScreen) {
-                createdPlayer.destroy()
-                return@launch
-            }
-
-            playerScreen = createdPlayer
-            pendingRootSlide = 1
-            replaceRoot(createdPlayer.root)
+            return
         }
+
+        val watchUrl = Uri.parse(
+            "https://www.youtube.com/watch?v=" + Uri.encode(videoId)
+        )
+
+        val youtubeIntent = Intent(Intent.ACTION_VIEW, watchUrl).apply {
+            setPackage("com.google.android.youtube")
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+
+        val openedInYouTube = runCatching {
+            startActivity(youtubeIntent)
+            true
+        }.getOrDefault(false)
+
+        if (openedInYouTube) return
+
+        val genericIntent = Intent(Intent.ACTION_VIEW, watchUrl).apply {
+            addCategory(Intent.CATEGORY_BROWSABLE)
+        }
+        val openedBySystem = runCatching {
+            startActivity(genericIntent)
+            true
+        }.getOrDefault(false)
+
+        if (openedBySystem) return
+
+        showMessage(
+            "Не удалось открыть YouTube",
+            "Приложение YouTube или браузер недоступны."
+        )
     }
 
     private fun configureYouTubeWebView(webView: WebView) {
