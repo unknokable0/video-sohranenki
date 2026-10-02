@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.9.9 version
+      - name: Assign SOHR 6.9.10 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690009" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.9" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690010" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.10" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -1199,7 +1199,7 @@ jobs:
           youtube_playback = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/YouTubePlaybackScreen.kt"
           ).read_text(encoding="utf-8")
-          youtube_player_page = Path("docs/youtube-player/index.html").read_text(encoding="utf-8")
+          youtube_player_page = Path("native/app/src/main/assets/youtube_player.html").read_text(encoding="utf-8")
           for required in [
               "class YouTubePlaybackScreen(",
               "SohrTimeBar(activity, palette.accent)",
@@ -1217,13 +1217,25 @@ jobs:
               "controls:0",
               "disablekb:1",
               "playsinline:1",
+              'origin:"https://com.unknokable.videosohranenki"',
+              'widget_referrer:"https://com.unknokable.videosohranenki/"',
               "window.sohr",
               "getCurrentTime()",
               "getDuration()",
               "getVideoLoadedFraction()"
           ]:
               if required not in youtube_player_page:
-                  raise SystemExit(f"SOHR 6.9.9 YouTube engine page regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.10 YouTube engine page regression: {required}")
+
+          for required in [
+              'activity.assets',
+              'open("youtube_player.html")',
+              'webView.loadDataWithBaseURL(',
+              '"https://com.unknokable.videosohranenki/"',
+              'mediaPlaybackRequiresUserGesture = false'
+          ]:
+              if required not in youtube_playback:
+                  raise SystemExit(f"SOHR 6.9.10 local YouTube engine regression: {required}")
 
           youtube_open_section = sohr_main.split(
               "private fun openYouTubeVideo(", 1
@@ -2228,7 +2240,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.9 • YouTube больше не заканчивается экранами BotGuard/LOGIN_REQUIRED для обычных роликов: Media3/direct resolver остаётся первым путём, а при технической блокировке автоматически включается встроенный playback-engine под интерфейсом SOHR • пользователь остаётся внутри SOHR и управляет видео через наши контролы: play/pause, ±10 секунд, themed timeline, оставшееся время, качество, fullscreen и PiP • позиция сохраняется • настоящий возрастной gate и отсутствие сети не маскируются"
+            "notes": "SOHR 6.9.10 • исправлен белый 404 внутри YouTube-плеера: playback-engine теперь полностью лежит внутри APK и загружается через loadDataWithBaseURL, поэтому GitHub Pages больше не нужен • WebView получает стабильный HTTPS Referer с app-id SOHR, а IFrame API явно получает origin/widget_referrer — это соответствует требованиям YouTube для Android WebView и предотвращает ошибку 153 • Media3/direct resolver остаётся первым путём, а при BotGuard/LOGIN_REQUIRED автоматически включается тот же SOHR-интерфейс с нашим таймлайном, play/pause, ±10 секунд, fullscreen и PiP"
           }
           EOF
           cat update.json

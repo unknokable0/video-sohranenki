@@ -355,7 +355,7 @@ class YouTubePlaybackScreen(
     }
 
     private fun loadVideo() {
-        val baseUrl = Uri.parse("https://unknokable0.github.io/video-sohranenki/youtube-player/")
+        val baseUrl = Uri.parse("https://com.unknokable.videosohranenki/")
             .buildUpon()
             .appendQueryParameter("video", videoId)
             .appendQueryParameter("start", (startPositionMs / 1000L).coerceAtLeast(0L).toString())
@@ -374,7 +374,7 @@ class YouTubePlaybackScreen(
             baseUrl,
             html,
             "text/html",
-            "UTF-8",
+            null,
             baseUrl
         )
     }
