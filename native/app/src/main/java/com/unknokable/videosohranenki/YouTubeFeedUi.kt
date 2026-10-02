@@ -32,8 +32,10 @@ object YouTubeFeedUi {
         val palette = settings.palette()
         val root = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(activity, 12), dp(activity, 8), dp(activity, 12), dp(activity, 24))
+            setPadding(dp(activity, 12), dp(activity, 12), dp(activity, 12), dp(activity, 28))
             setBackgroundColor(Color.TRANSPARENT)
+            clipChildren = false
+            clipToPadding = false
         }
 
         val channelHeader = LinearLayout(activity).apply {
@@ -69,7 +71,15 @@ object YouTubeFeedUi {
 
         if (loading && channels.isEmpty()) {
             repeat(2) { index ->
-                root.addView(channelSkeleton(activity, palette, index))
+                root.addView(
+                    channelSkeleton(activity, palette, index),
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        dp(activity, 92)
+                    ).apply {
+                        if (index > 0) topMargin = dp(activity, 10)
+                    }
+                )
             }
         } else if (channels.isEmpty()) {
             root.addView(TextView(activity).apply {
@@ -95,7 +105,7 @@ object YouTubeFeedUi {
 
         val newHeader = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(activity, 2), dp(activity, 20), dp(activity, 2), dp(activity, 10))
+            setPadding(dp(activity, 2), dp(activity, 26), dp(activity, 2), dp(activity, 12))
         }
         newHeader.addView(TextView(activity).apply {
             text = "Новые видео"

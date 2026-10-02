@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.7.8: resilient native YouTube multi-client playback
+# SOHR 6.7.9: verified YouTube age fallback + clean feed loading layout
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.7.8 version
+      - name: Assign SOHR 6.7.9 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=670008" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.7.8" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=670009" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.7.9" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -905,6 +905,29 @@ jobs:
           ]:
               if forbidden in youtube_resolver:
                   raise SystemExit(f"SOHR 6.7.1 regression: embedded YouTube player returned: {forbidden}")
+
+          newpipe_resolve_section = youtube_resolver.split(
+              "val info = StreamInfo.getInfo(video.watchUrl)", 1
+          )[1].split("if (!zemerInitialized)", 1)[0]
+          if "YouTubeAgeRestrictedException" in newpipe_resolve_section:
+              raise SystemExit(
+                  "SOHR 6.7.9 regression: NewPipe age classification blocks the stronger PoToken fallback"
+              )
+          for required in [
+              "firstFailure = mapFailure(error)",
+              "resolveWithPoToken(video)"
+          ]:
+              if required not in youtube_resolver:
+                  raise SystemExit(f"SOHR 6.7.9 verified YouTube fallback regression: {required}")
+
+          for required in [
+              "dp(activity, 92)",
+              "if (index > 0) topMargin = dp(activity, 10)",
+              "setPadding(dp(activity, 2), dp(activity, 26), dp(activity, 2), dp(activity, 12))"
+          ]:
+              if required not in youtube_feed_ui:
+                  raise SystemExit(f"SOHR 6.7.9 YouTube feed loading layout regression: {required}")
+
 
           youtube_open_section = sohr_main.split(
               "private fun openYouTubeVideo(video: YouTubeFeedVideo)", 1
@@ -1826,7 +1849,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.7.8 • YouTube-воспроизведение усилено полноценным локальным BotGuard/PO Token fallback: NewPipe остаётся первым путём, а при anti-bot проверке SOHR получает свежий visitorData, генерирует session/video PO Token на устройстве, использует актуальный signature timestamp и расшифровывает signature/n через закреплённый zemer-cipher • прямые video+audio потоки по-прежнему открываются только в нативном Media3 PlayerScreen SOHR без YouTube WebView-плеера • перед отдачей поток проверяется range-запросом • возрастные ограничения AGE_CHECK_REQUIRED/AGE_VERIFICATION_REQUIRED остаются заблокированы и не обходятся • исправления мгновенных ModernDialogs из 6.7.7 сохранены"
+            "notes": "SOHR 6.7.9 • исправлена ложная ошибка «Видео ограничено YouTube»: ответ NewPipe больше не может преждевременно остановить воспроизведение, SOHR всегда даёт более надёжному BotGuard/PO Token /player пути проверить ролик и только его финальный ответ считается основанием для ограничения • настоящий возрастной gate YouTube по-прежнему не обходится • загрузка YouTube-ленты выровнена: skeleton-карточки получили фиксированную высоту и интервалы, блок «Новые видео» больше не прижимается к ним • нативный Media3 PlayerScreen, PO Token/cipher и предыдущие исправления сохранены"
           }
           EOF
           cat update.json
