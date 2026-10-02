@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.7.9: verified YouTube age fallback + clean feed loading layout
+# SOHR 6.7.10: resilient YouTube BotGuard/PoToken recovery
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.7.9 version
+      - name: Assign SOHR 6.7.10 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=670009" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.7.9" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=670010" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.7.10" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -919,6 +919,33 @@ jobs:
           ]:
               if required not in youtube_resolver:
                   raise SystemExit(f"SOHR 6.7.9 verified YouTube fallback regression: {required}")
+
+          for required in [
+              "class YouTubePoTokenException",
+              "repeat(2) { attempt ->",
+              "invalidatePoTokenSession()",
+              "poTokenGenerator = PoTokenGenerator()",
+              "playerRequestPoToken.isNotBlank()",
+              "streamingDataPoToken.isNotBlank()",
+              '"not a bot" in detail',
+              "YouTubePoTokenException()"
+          ]:
+              if required not in youtube_resolver:
+                  raise SystemExit(f"SOHR 6.7.10 PoToken recovery regression: {required}")
+
+          sign_in_mapping = youtube_resolver.split(
+              '"signinconfirmnotbot" in classChain', 1
+          )[1].split("YouTubeSignInRequiredException()", 1)[0]
+          if '"potoken" in classChain' in sign_in_mapping:
+              raise SystemExit("SOHR 6.7.10 regression: PoToken failure is still misreported as sign-in")
+
+          for required in [
+              'is YouTubePoTokenException -> "Не удалось подготовить YouTube"',
+              "SOHR дважды пересоздал BotGuard-сессию и PO Token"
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.7.10 precise YouTube error UI regression: {required}")
+
 
           for required in [
               "dp(activity, 92)",
@@ -1849,7 +1876,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.7.9 • исправлена ложная ошибка «Видео ограничено YouTube»: ответ NewPipe больше не может преждевременно остановить воспроизведение, SOHR всегда даёт более надёжному BotGuard/PO Token /player пути проверить ролик и только его финальный ответ считается основанием для ограничения • настоящий возрастной gate YouTube по-прежнему не обходится • загрузка YouTube-ленты выровнена: skeleton-карточки получили фиксированную высоту и интервалы, блок «Новые видео» больше не прижимается к ним • нативный Media3 PlayerScreen, PO Token/cipher и предыдущие исправления сохранены"
+            "notes": "SOHR 6.7.10 • усилено восстановление YouTube BotGuard/PO Token: при сбое защитной сессии SOHR автоматически очищает visitorData-кэш, пересоздаёт PoTokenGenerator/WebView и повторяет mint ещё раз до показа ошибки • локальный сбой BotGuard/PO Token больше не маскируется под «нужен аккаунт» — настоящий LOGIN_REQUIRED и ошибки токена разделены • anti-bot ответ сбрасывает токен-сессию перед следующим автоматическим retry • настоящие возрастные и аккаунтные ограничения YouTube не обходятся • исправления 6.7.9 для YouTube feed layout сохранены"
           }
           EOF
           cat update.json
