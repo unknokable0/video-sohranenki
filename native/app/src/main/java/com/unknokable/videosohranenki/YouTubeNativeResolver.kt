@@ -85,6 +85,8 @@ object YouTubeNativeResolver {
     private const val WEB_SAFARI_CLIENT_NAME = 1
     private const val WEB_EMBEDDED_CLIENT_VERSION = "2.20260708.00.00"
     private const val WEB_EMBEDDED_CLIENT_NAME = 56
+    private const val TV_CLIENT_VERSION = "7.20260707.07.00"
+    private const val TV_CLIENT_NAME = 7
     private const val TV_SIMPLY_CLIENT_VERSION = "1.0"
     private const val TV_SIMPLY_CLIENT_NAME = 75
     private const val BOOTSTRAP_TTL_MS = 3L * 60L * 60L * 1000L
@@ -104,6 +106,9 @@ object YouTubeNativeResolver {
     private const val WEB_EMBEDDED_USER_AGENT =
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
             "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15,gzip(gfe)"
+    private const val TV_USER_AGENT =
+        "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/25.lts.30.1034943-gold " +
+            "(unlike Gecko), Unknown_TV_Unknown_0/Unknown (Unknown, Unknown)"
     private const val TV_SIMPLY_USER_AGENT =
         "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/Version"
 
@@ -111,7 +116,9 @@ object YouTubeNativeResolver {
         val visitorData: String,
         val apiKey: String,
         val clientVersion: String,
-        val fetchedAtMs: Long
+        val fetchedAtMs: Long,
+        val cookies: MutableMap<String, String>,
+        @Volatile var warmedVideoId: String? = null
     )
 
     @Volatile
@@ -162,6 +169,14 @@ object YouTubeNativeResolver {
             }
 
             try {
+                return@withContext resolveWithTv(video)
+            } catch (error: Throwable) {
+                val mapped = mapFailure(error)
+                if (mapped is YouTubeAgeRestrictedException) throw mapped
+                failures += mapped
+            }
+
+            try {
                 return@withContext resolveWithVisionOs(video)
             } catch (error: Throwable) {
                 val mapped = mapFailure(error)
@@ -203,9 +218,10 @@ object YouTubeNativeResolver {
                 }
             }
 
+            val session = failures.firstOrNull { it is YouTubeSessionInitException }
             val signIn = failures.firstOrNull { it is YouTubeSignInRequiredException }
             val network = failures.firstOrNull { it is YouTubeNetworkException }
-            throw signIn ?: network ?: YouTubeUnavailableException()
+            throw session ?: signIn ?: network ?: YouTubeUnavailableException()
         }
 
     private fun sourceFromNewPipe(
@@ -287,8 +303,36 @@ object YouTubeNativeResolver {
         )
     }
 
+    private suspend fun resolveWithTv(video: YouTubeFeedVideo): YouTubeNativeSource {
+        val bootstrap = bootstrapFor(video)
+        val signatureTimestamp = runCatching {
+            CipherDeobfuscator.signatureTimestamp()
+        }.getOrNull()
+        val response = requestTvPlayer(
+            videoId = video.videoId,
+            bootstrap = bootstrap,
+            signatureTimestamp = signatureTimestamp
+        )
+        val playability = response.optJSONObject("playabilityStatus")
+        val status = playability?.optString("status").orEmpty()
+        val detail = playabilityDetail(playability)
+
+        if (isAgeRestrictedStatus(status, detail)) throw YouTubeAgeRestrictedException()
+        if (status != "OK") {
+            throw classifyPlayabilityFailure(status, detail)
+        }
+
+        return sourceFromPlayerResponse(
+            video = video,
+            response = response,
+            streamingPoToken = null,
+            userAgent = TV_USER_AGENT,
+            referer = "https://www.youtube.com/tv"
+        )
+    }
+
     private suspend fun resolveWithVisionOs(video: YouTubeFeedVideo): YouTubeNativeSource {
-        val bootstrap = loadWebBootstrap()
+        val bootstrap = bootstrapFor(video)
         val response = requestVisionOsPlayer(video.videoId, bootstrap)
         val playability = response.optJSONObject("playabilityStatus")
         val status = playability?.optString("status").orEmpty()
@@ -309,7 +353,7 @@ object YouTubeNativeResolver {
     }
 
     private suspend fun resolveWithWebEmbedded(video: YouTubeFeedVideo): YouTubeNativeSource {
-        val bootstrap = loadWebBootstrap()
+        val bootstrap = bootstrapFor(video)
         val response = requestWebEmbeddedPlayer(video.videoId, bootstrap)
         val playability = response.optJSONObject("playabilityStatus")
         val status = playability?.optString("status").orEmpty()
@@ -330,7 +374,7 @@ object YouTubeNativeResolver {
     }
 
     private suspend fun resolveWithWebSafariHls(video: YouTubeFeedVideo): YouTubeNativeSource {
-        val bootstrap = loadWebBootstrap()
+        val bootstrap = bootstrapFor(video)
         val response = requestWebSafariPlayer(video.videoId, bootstrap)
         val playability = response.optJSONObject("playabilityStatus")
         val status = playability?.optString("status").orEmpty()
@@ -359,7 +403,7 @@ object YouTubeNativeResolver {
     }
 
     private suspend fun resolveWithTvSimplyHls(video: YouTubeFeedVideo): YouTubeNativeSource {
-        val bootstrap = loadWebBootstrap()
+        val bootstrap = bootstrapFor(video)
         val response = requestTvSimplyPlayer(video.videoId, bootstrap)
         val playability = response.optJSONObject("playabilityStatus")
         val status = playability?.optString("status").orEmpty()
@@ -498,7 +542,7 @@ object YouTubeNativeResolver {
     }
 
     private suspend fun resolveWithPoToken(video: YouTubeFeedVideo): YouTubeNativeSource {
-        val bootstrap = loadWebBootstrap()
+        val bootstrap = bootstrapFor(video)
         val poTokens = createStablePoTokens(
             videoId = video.videoId,
             sessionId = bootstrap.visitorData
@@ -789,6 +833,32 @@ object YouTubeNativeResolver {
         )
     }
 
+    private fun requestTvPlayer(
+        videoId: String,
+        bootstrap: WebBootstrap,
+        signatureTimestamp: Int?
+    ): JSONObject {
+        val client = JSONObject()
+            .put("clientName", "TVHTML5")
+            .put("clientVersion", TV_CLIENT_VERSION)
+            .put("userAgent", TV_USER_AGENT)
+            .put("hl", "ru")
+            .put("gl", "PL")
+            .put("visitorData", bootstrap.visitorData)
+
+        return requestInnertubePlayer(
+            videoId = videoId,
+            bootstrap = bootstrap,
+            client = client,
+            clientNameId = TV_CLIENT_NAME,
+            clientVersion = TV_CLIENT_VERSION,
+            userAgent = TV_USER_AGENT,
+            origin = "https://www.youtube.com",
+            referer = "https://www.youtube.com/tv",
+            signatureTimestamp = signatureTimestamp
+        )
+    }
+
     private fun requestWebEmbeddedPlayer(
         videoId: String,
         bootstrap: WebBootstrap
@@ -871,7 +941,8 @@ object YouTubeNativeResolver {
         userAgent: String,
         origin: String,
         referer: String,
-        thirdPartyEmbedUrl: String? = null
+        thirdPartyEmbedUrl: String? = null,
+        signatureTimestamp: Int? = null
     ): JSONObject {
         val context = JSONObject().put("client", client)
         if (!thirdPartyEmbedUrl.isNullOrBlank()) {
@@ -886,6 +957,18 @@ object YouTubeNativeResolver {
             .put("videoId", videoId)
             .put("contentCheckOk", true)
             .put("racyCheckOk", true)
+
+        if (signatureTimestamp != null && signatureTimestamp > 0) {
+            body.put(
+                "playbackContext",
+                JSONObject().put(
+                    "contentPlaybackContext",
+                    JSONObject()
+                        .put("html5Preference", "HTML5_PREF_WANTS")
+                        .put("signatureTimestamp", signatureTimestamp)
+                )
+            )
+        }
 
         val endpoint =
             "https://www.youtube.com/youtubei/v1/player" +
@@ -909,6 +992,7 @@ object YouTubeNativeResolver {
             setRequestProperty("X-Goog-Visitor-Id", bootstrap.visitorData)
             setRequestProperty("X-YouTube-Client-Name", clientNameId.toString())
             setRequestProperty("X-YouTube-Client-Version", clientVersion)
+            guestCookieHeader(bootstrap)?.let { setRequestProperty("Cookie", it) }
         }
 
         try {
@@ -917,6 +1001,7 @@ object YouTubeNativeResolver {
             }
 
             val code = connection.responseCode
+            captureGuestCookies(connection, bootstrap.cookies)
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
             val raw = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
 
@@ -992,6 +1077,7 @@ object YouTubeNativeResolver {
             setRequestProperty("X-Goog-Visitor-Id", bootstrap.visitorData)
             setRequestProperty("X-YouTube-Client-Name", MWEB_CLIENT_NAME.toString())
             setRequestProperty("X-YouTube-Client-Version", MWEB_CLIENT_VERSION)
+            guestCookieHeader(bootstrap)?.let { setRequestProperty("Cookie", it) }
         }
 
         try {
@@ -1000,6 +1086,7 @@ object YouTubeNativeResolver {
             }
 
             val code = connection.responseCode
+            captureGuestCookies(connection, bootstrap.cookies)
             val stream = if (code in 200..299) {
                 connection.inputStream
             } else {
@@ -1032,9 +1119,15 @@ object YouTubeNativeResolver {
                 if (freshNow - cached.fetchedAtMs < BOOTSTRAP_TTL_MS) return cached
             }
 
+            val guestCookies = linkedMapOf(
+                "PREF" to "hl=ru&gl=PL&tz=Europe.Warsaw",
+                "SOCS" to "CAI",
+                "GPS" to "1"
+            )
             val page = fetchText(
                 "https://www.youtube.com/?hl=ru&gl=PL",
-                WEB_USER_AGENT
+                WEB_USER_AGENT,
+                guestCookies
             )
 
             val visitorData = firstGroup(
@@ -1063,8 +1156,76 @@ object YouTubeNativeResolver {
                 visitorData = visitorData,
                 apiKey = apiKey,
                 clientVersion = clientVersion,
-                fetchedAtMs = freshNow
+                fetchedAtMs = freshNow,
+                cookies = guestCookies
             ).also { cachedBootstrap = it }
+        }
+    }
+
+    private fun bootstrapFor(video: YouTubeFeedVideo): WebBootstrap {
+        val bootstrap = loadWebBootstrap()
+        warmGuestSession(video.videoId, bootstrap)
+        return bootstrap
+    }
+
+    private fun warmGuestSession(videoId: String, bootstrap: WebBootstrap) {
+        synchronized(bootstrap.cookies) {
+            if (bootstrap.warmedVideoId == videoId) return
+        }
+
+        // A real logged-out YouTube browser session receives more than visitorData.
+        // Visiting the watch/embed pages allows YouTube to issue YSC, rollout/YNID
+        // and short-lived ST-* cookies that are part of modern player requests.
+        runCatching {
+            fetchText(
+                "https://www.youtube.com/watch?v=$videoId&hl=ru&gl=PL",
+                WEB_USER_AGENT,
+                bootstrap.cookies
+            )
+        }
+        runCatching {
+            fetchText(
+                "https://www.youtube.com/embed/$videoId?html5=1",
+                WEB_EMBEDDED_USER_AGENT,
+                bootstrap.cookies
+            )
+        }
+
+        synchronized(bootstrap.cookies) {
+            bootstrap.warmedVideoId = videoId
+        }
+    }
+
+    private fun guestCookieHeader(bootstrap: WebBootstrap): String? =
+        synchronized(bootstrap.cookies) {
+            bootstrap.cookies
+                .filterValues { it.isNotBlank() }
+                .entries
+                .joinToString("; ") { (name, value) -> "$name=$value" }
+                .takeIf { it.isNotBlank() }
+        }
+
+    private fun captureGuestCookies(
+        connection: HttpURLConnection,
+        target: MutableMap<String, String>
+    ) {
+        val setCookies = connection.headerFields
+            .filterKeys { it?.equals("Set-Cookie", ignoreCase = true) == true }
+            .values
+            .flatten()
+
+        if (setCookies.isEmpty()) return
+
+        synchronized(target) {
+            setCookies.forEach { raw ->
+                val pair = raw.substringBefore(';')
+                val separator = pair.indexOf('=')
+                if (separator <= 0) return@forEach
+                val name = pair.substring(0, separator).trim()
+                val value = pair.substring(separator + 1).trim()
+                if (name.isBlank()) return@forEach
+                if (value.isBlank()) target.remove(name) else target[name] = value
+            }
         }
     }
 
@@ -1134,11 +1295,14 @@ object YouTubeNativeResolver {
         when {
             isAgeRestrictedStatus(status, detail) -> YouTubeAgeRestrictedException()
             isAntiBotStatus(detail) -> YouTubeSessionInitException()
+            "cannot be watched anonymously" in detail ||
+                "members-only" in detail ||
+                "members only" in detail ->
+                    YouTubeSignInRequiredException()
             status == "LOGIN_REQUIRED" ||
-                "cannot be watched anonymously" in detail ||
                 "login required" in detail ||
                 "sign in" in detail ->
-                    YouTubeSignInRequiredException()
+                    YouTubeSessionInitException()
             "private" in detail ||
                 "unavailable" in detail ||
                 "not available" in detail ->
@@ -1209,7 +1373,11 @@ object YouTubeNativeResolver {
             .replace("\\u002f", "/")
             .replace("\\/", "/")
 
-    private fun fetchText(url: String, userAgent: String): String {
+    private fun fetchText(
+        url: String,
+        userAgent: String,
+        cookies: MutableMap<String, String>? = null
+    ): String {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 10_000
             readTimeout = 12_000
@@ -1219,9 +1387,16 @@ object YouTubeNativeResolver {
             setRequestProperty("User-Agent", userAgent)
             setRequestProperty("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.7")
             setRequestProperty("Accept", "text/html,application/json;q=0.9,*/*;q=0.8")
+            if (cookies != null) {
+                val header = synchronized(cookies) {
+                    cookies.entries.joinToString("; ") { (name, value) -> "$name=$value" }
+                }
+                if (header.isNotBlank()) setRequestProperty("Cookie", header)
+            }
         }
         try {
             val code = connection.responseCode
+            if (cookies != null) captureGuestCookies(connection, cookies)
             if (code !in 200..299) {
                 if (code == 408 || code == 429 || code >= 500) {
                     throw YouTubeNetworkException()
