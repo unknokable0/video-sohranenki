@@ -1,5 +1,10 @@
 package com.unknokable.videosohranenki
 
+import android.content.Context
+import android.net.Uri
+import com.zemer.cipher.CipherDeobfuscator
+import com.zemer.cipher.ZemerCipher
+import com.zemer.cipher.potoken.PoTokenGenerator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -34,7 +39,7 @@ class YouTubeAgeRestrictedException : YouTubeNativeResolveException(
 )
 
 class YouTubeSignInRequiredException : YouTubeNativeResolveException(
-    "YouTube временно требует проверку сессии для этого ролика."
+    "YouTube не подтвердил обычную сессию воспроизведения."
 )
 
 class YouTubeUnavailableException : YouTubeNativeResolveException(
@@ -45,85 +50,80 @@ class YouTubeNetworkException : YouTubeNativeResolveException(
     "Не удалось связаться с YouTube. Проверьте интернет и попробуйте ещё раз."
 )
 
-/**
- * Resolves YouTube videos into direct media streams for SOHR's native Media3 PlayerScreen.
- *
- * Resolution order:
- * 1) NewPipeExtractor, which remains the normal path and handles most videos.
- * 2) Direct YouTube InnerTube client fallbacks that do not use YouTube's embedded player.
- *
- * SOHR deliberately does not use embedded-player age-gate workarounds. If YouTube reports
- * age verification/restriction, the resolver stops instead of trying clients that could
- * weaken that restriction.
- */
 object YouTubeNativeResolver {
     @Volatile
-    private var initialized = false
-    private val initLock = Any()
+    private var newPipeInitialized = false
+    private val newPipeInitLock = Any()
 
-    private const val INNERTUBE_API_KEY =
+    @Volatile
+    private var zemerInitialized = false
+    private val zemerInitLock = Any()
+
+    private val poTokenGenerator by lazy { PoTokenGenerator() }
+
+    private const val FALLBACK_WEB_API_KEY =
         "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
+    private const val FALLBACK_WEB_VERSION = "2.20260708.00.00"
+    private const val WEB_CLIENT_NAME = 1
+    private const val BOOTSTRAP_TTL_MS = 3L * 60L * 60L * 1000L
+    private const val WEB_USER_AGENT =
+        "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/141 Mobile Safari/537.36"
 
-    private data class InnerTubeClient(
-        val name: String,
-        val version: String,
-        val numericName: Int,
-        val userAgent: String,
-        val extraContext: JSONObject
+    private data class WebBootstrap(
+        val visitorData: String,
+        val apiKey: String,
+        val clientVersion: String,
+        val fetchedAtMs: Long
     )
 
-    // VISIONOS is currently the cleanest JS-less ordinary-playback fallback.
-    // TVHTML5 downgraded is retained as a second, conservative non-embedded attempt.
-    private val innerTubeClients = listOf(
-        InnerTubeClient(
-            name = "VISIONOS",
-            version = "1.02",
-            numericName = 101,
-            userAgent =
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) " +
-                    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
-            extraContext = JSONObject()
-                .put("deviceMake", "Apple")
-                .put("deviceModel", "RealityDevice17,1")
-                .put("osName", "visionOS")
-                .put("osVersion", "26.5.23O471")
-        ),
-        InnerTubeClient(
-            name = "TVHTML5",
-            version = "5.20260707",
-            numericName = 7,
-            userAgent = "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/Version",
-            extraContext = JSONObject()
-        )
-    )
+    @Volatile
+    private var cachedBootstrap: WebBootstrap? = null
+    private val bootstrapLock = Any()
+
+    fun initialize(context: Context) {
+        if (zemerInitialized) return
+        synchronized(zemerInitLock) {
+            if (zemerInitialized) return
+            ZemerCipher.initialize(
+                context = context.applicationContext,
+                debugLogging = false
+            )
+            zemerInitialized = true
+        }
+    }
 
     suspend fun resolve(video: YouTubeFeedVideo): YouTubeNativeSource =
         withContext(Dispatchers.IO) {
-            ensureInitialized()
+            ensureNewPipeInitialized()
 
-            var primaryFailure: YouTubeNativeResolveException? = null
+            var firstFailure: YouTubeNativeResolveException? = null
             try {
                 val info = StreamInfo.getInfo(video.watchUrl)
                 return@withContext sourceFromNewPipe(video, info)
             } catch (error: Throwable) {
                 val mapped = mapFailure(error)
                 if (mapped is YouTubeAgeRestrictedException) throw mapped
-                primaryFailure = mapped
+                firstFailure = mapped
+            }
+
+            if (!zemerInitialized) {
+                throw firstFailure ?: YouTubeUnavailableException()
             }
 
             try {
-                resolveViaInnerTube(video)
+                resolveWithPoToken(video)
             } catch (error: Throwable) {
                 val mapped = mapFailure(error)
                 if (mapped is YouTubeAgeRestrictedException) throw mapped
 
                 throw when {
                     mapped is YouTubeNetworkException &&
-                        primaryFailure is YouTubeNetworkException -> mapped
+                        firstFailure is YouTubeNetworkException -> mapped
                     mapped is YouTubeSignInRequiredException -> mapped
                     mapped is YouTubeUnavailableException &&
-                        primaryFailure is YouTubeSignInRequiredException ->
-                            primaryFailure ?: mapped
+                        firstFailure is YouTubeSignInRequiredException ->
+                            firstFailure ?: mapped
                     else -> mapped
                 }
             }
@@ -208,134 +208,221 @@ object YouTubeNativeResolver {
         )
     }
 
-    private fun resolveViaInnerTube(video: YouTubeFeedVideo): YouTubeNativeSource {
-        var lastFailure: YouTubeNativeResolveException = YouTubeUnavailableException()
+    private suspend fun resolveWithPoToken(video: YouTubeFeedVideo): YouTubeNativeSource {
+        val bootstrap = loadWebBootstrap()
+        val poTokens = runCatching {
+            poTokenGenerator.getWebClientPoToken(
+                videoId = video.videoId,
+                sessionId = bootstrap.visitorData
+            )
+        }.getOrElse {
+            throw YouTubeSignInRequiredException()
+        } ?: throw YouTubeSignInRequiredException()
 
-        for (client in innerTubeClients) {
-            val response = try {
-                requestInnerTubePlayer(video.videoId, client)
-            } catch (error: UnknownHostException) {
-                throw YouTubeNetworkException()
-            } catch (error: SocketTimeoutException) {
-                lastFailure = YouTubeNetworkException()
-                continue
-            } catch (error: Throwable) {
-                lastFailure = mapFailure(error)
-                continue
-            }
+        val signatureTimestamp = runCatching {
+            CipherDeobfuscator.signatureTimestamp()
+        }.getOrNull()
 
-            val playability = response.optJSONObject("playabilityStatus")
-            val status = playability?.optString("status").orEmpty()
-            val detail = listOfNotNull(
-                playability?.optString("reason"),
-                playability?.optJSONObject("errorScreen")?.toString()
-            ).joinToString(" ").lowercase(Locale.ROOT)
+        val response = requestWebPlayer(
+            videoId = video.videoId,
+            bootstrap = bootstrap,
+            playerPoToken = poTokens.playerRequestPoToken,
+            signatureTimestamp = signatureTimestamp
+        )
 
-            if (isAgeRestrictedStatus(status, detail)) {
-                throw YouTubeAgeRestrictedException()
-            }
+        val playability = response.optJSONObject("playabilityStatus")
+        val status = playability?.optString("status").orEmpty()
+        val detail = buildString {
+            append(playability?.optString("reason").orEmpty())
+            append(' ')
+            append(playability?.optJSONObject("errorScreen")?.toString().orEmpty())
+        }.lowercase(Locale.ROOT)
 
-            if (status != "OK") {
-                lastFailure = when {
-                    status == "LOGIN_REQUIRED" ||
-                        "sign in to confirm" in detail ||
-                        "not a bot" in detail ||
-                        "login required" in detail -> YouTubeSignInRequiredException()
-                    "private" in detail ||
-                        "unavailable" in detail ||
-                        "not available" in detail -> YouTubeUnavailableException()
-                    else -> YouTubeUnavailableException()
-                }
-                continue
-            }
-
-            val streaming = response.optJSONObject("streamingData")
-            if (streaming == null) {
-                lastFailure = YouTubeUnavailableException()
-                continue
-            }
-
-            val formats = streaming.optJSONArray("formats").asObjects()
-            val adaptive = streaming.optJSONArray("adaptiveFormats").asObjects()
-
-            val progressive = formats
-                .asSequence()
-                .filter(::hasDirectUrl)
-                .filter(::isProgressiveVideo)
-                .filterNot(::isDrmFormat)
-                .sortedWith(innerTubeVideoComparator())
-                .firstOrNull()
-
-            if (progressive != null) {
-                return innerTubeSource(video, response, progressive.optString("url"), null)
-            }
-
-            val splitVideo = adaptive
-                .asSequence()
-                .filter(::hasDirectUrl)
-                .filter { it.optString("mimeType").startsWith("video/") }
-                .filterNot(::isDrmFormat)
-                .sortedWith(innerTubeVideoComparator())
-                .firstOrNull()
-
-            val splitAudio = adaptive
-                .asSequence()
-                .filter(::hasDirectUrl)
-                .filter { it.optString("mimeType").startsWith("audio/") }
-                .filterNot(::isDrmFormat)
-                .sortedWith(
-                    compareByDescending<JSONObject> {
-                        if (it.optString("mimeType").contains("mp4a")) 1 else 0
-                    }.thenByDescending { it.optInt("bitrate", 0) }
-                )
-                .firstOrNull()
-
-            if (splitVideo != null && splitAudio != null) {
-                return innerTubeSource(
-                    video = video,
-                    response = response,
-                    mediaUrl = splitVideo.optString("url"),
-                    secondaryAudioUrl = splitAudio.optString("url")
-                )
-            }
-
-            val hls = streaming.optString("hlsManifestUrl")
-            if (isDirectHttpUrl(hls)) {
-                return innerTubeSource(video, response, hls, null)
-            }
-
-            lastFailure = YouTubeUnavailableException()
+        if (isAgeRestrictedStatus(status, detail)) {
+            throw YouTubeAgeRestrictedException()
         }
 
-        throw lastFailure
+        if (status != "OK") {
+            throw when {
+                status == "LOGIN_REQUIRED" ||
+                    "sign in to confirm" in detail ||
+                    "not a bot" in detail ||
+                    "login required" in detail ->
+                        YouTubeSignInRequiredException()
+                "private" in detail ||
+                    "unavailable" in detail ||
+                    "not available" in detail ->
+                        YouTubeUnavailableException()
+                else -> YouTubeUnavailableException()
+            }
+        }
+
+        val streaming = response.optJSONObject("streamingData")
+            ?: throw YouTubeUnavailableException()
+        val formats = streaming.optJSONArray("formats").asObjects()
+        val adaptive = streaming.optJSONArray("adaptiveFormats").asObjects()
+
+        val splitVideoCandidates = adaptive
+            .asSequence()
+            .filter { it.optString("mimeType").startsWith("video/") }
+            .filterNot(::isDrmFormat)
+            .sortedWith(webVideoComparator())
+            .take(5)
+            .toList()
+
+        val splitAudioCandidates = adaptive
+            .asSequence()
+            .filter { it.optString("mimeType").startsWith("audio/") }
+            .filterNot(::isDrmFormat)
+            .sortedWith(
+                compareByDescending<JSONObject> {
+                    if (it.optString("mimeType").contains("mp4a")) 1 else 0
+                }.thenByDescending { it.optInt("bitrate", 0) }
+            )
+            .take(4)
+            .toList()
+
+        val splitVideoUrl = resolveFirstFormatUrl(
+            candidates = splitVideoCandidates,
+            videoId = video.videoId,
+            streamingPoToken = poTokens.streamingDataPoToken
+        )
+        val splitAudioUrl = resolveFirstFormatUrl(
+            candidates = splitAudioCandidates,
+            videoId = video.videoId,
+            streamingPoToken = poTokens.streamingDataPoToken
+        )
+
+        if (
+            splitVideoUrl != null &&
+            splitAudioUrl != null &&
+            probeMediaUrl(splitVideoUrl) &&
+            probeMediaUrl(splitAudioUrl)
+        ) {
+            return sourceFromWebResponse(
+                video = video,
+                response = response,
+                mediaUrl = splitVideoUrl,
+                secondaryAudioUrl = splitAudioUrl
+            )
+        }
+
+        val progressiveCandidates = formats
+            .asSequence()
+            .filter(::isProgressiveVideo)
+            .filterNot(::isDrmFormat)
+            .sortedWith(webVideoComparator())
+            .take(5)
+            .toList()
+
+        val progressiveUrl = resolveFirstFormatUrl(
+            candidates = progressiveCandidates,
+            videoId = video.videoId,
+            streamingPoToken = poTokens.streamingDataPoToken
+        )
+
+        if (progressiveUrl != null && probeMediaUrl(progressiveUrl)) {
+            return sourceFromWebResponse(
+                video = video,
+                response = response,
+                mediaUrl = progressiveUrl,
+                secondaryAudioUrl = null
+            )
+        }
+
+        val hls = streaming.optString("hlsManifestUrl")
+            .takeIf(::isDirectHttpUrl)
+            ?.let { appendPoToken(it, poTokens.streamingDataPoToken) }
+
+        if (hls != null) {
+            return sourceFromWebResponse(
+                video = video,
+                response = response,
+                mediaUrl = hls,
+                secondaryAudioUrl = null
+            )
+        }
+
+        runCatching { CipherDeobfuscator.onStreamRejected() }
+        throw YouTubeUnavailableException()
     }
 
-    private fun requestInnerTubePlayer(
+    private suspend fun resolveFirstFormatUrl(
+        candidates: List<JSONObject>,
         videoId: String,
-        client: InnerTubeClient
-    ): JSONObject {
-        val clientJson = JSONObject()
-            .put("clientName", client.name)
-            .put("clientVersion", client.version)
-            .put("hl", "ru")
-            .put("gl", "PL")
+        streamingPoToken: String
+    ): String? {
+        for (format in candidates) {
+            val resolved = resolveFormatUrl(
+                format = format,
+                videoId = videoId,
+                streamingPoToken = streamingPoToken
+            )
+            if (resolved != null) return resolved
+        }
+        return null
+    }
 
-        val keys = client.extraContext.keys()
-        while (keys.hasNext()) {
-            val key = keys.next()
-            clientJson.put(key, client.extraContext.get(key))
+    private suspend fun resolveFormatUrl(
+        format: JSONObject,
+        videoId: String,
+        streamingPoToken: String
+    ): String? {
+        var url = format.optString("url").takeIf(::isDirectHttpUrl)
+
+        if (url == null) {
+            val signatureCipher = format.optString("signatureCipher")
+                .ifBlank { format.optString("cipher") }
+            if (signatureCipher.isNotBlank()) {
+                url = CipherDeobfuscator.deobfuscateStreamUrl(
+                    signatureCipher = signatureCipher,
+                    videoId = videoId
+                )
+            }
         }
 
+        if (!isDirectHttpUrl(url)) return null
+
+        val transformed = CipherDeobfuscator.transformNParamInUrl(url!!)
+        return appendPoToken(transformed, streamingPoToken)
+    }
+
+    private fun requestWebPlayer(
+        videoId: String,
+        bootstrap: WebBootstrap,
+        playerPoToken: String,
+        signatureTimestamp: Int?
+    ): JSONObject {
+        val client = JSONObject()
+            .put("clientName", "WEB")
+            .put("clientVersion", bootstrap.clientVersion)
+            .put("hl", "ru")
+            .put("gl", "PL")
+            .put("visitorData", bootstrap.visitorData)
+
         val body = JSONObject()
-            .put(
-                "context",
-                JSONObject().put("client", clientJson)
-            )
+            .put("context", JSONObject().put("client", client))
             .put("videoId", videoId)
+            .put("contentCheckOk", true)
+            .put("racyCheckOk", true)
+            .put(
+                "serviceIntegrityDimensions",
+                JSONObject().put("poToken", playerPoToken)
+            )
+
+        if (signatureTimestamp != null && signatureTimestamp > 0) {
+            body.put(
+                "playbackContext",
+                JSONObject().put(
+                    "contentPlaybackContext",
+                    JSONObject().put("signatureTimestamp", signatureTimestamp)
+                )
+            )
+        }
 
         val endpoint =
             "https://www.youtube.com/youtubei/v1/player" +
-                "?prettyPrint=false&key=$INNERTUBE_API_KEY"
+                "?prettyPrint=false&key=" + bootstrap.apiKey
 
         val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
             connectTimeout = 12_000
@@ -347,10 +434,14 @@ object YouTubeNativeResolver {
             setRequestProperty("Content-Type", "application/json")
             setRequestProperty("Accept", "application/json")
             setRequestProperty("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.7")
-            setRequestProperty("User-Agent", client.userAgent)
+            setRequestProperty("User-Agent", WEB_USER_AGENT)
             setRequestProperty("Origin", "https://www.youtube.com")
-            setRequestProperty("X-YouTube-Client-Name", client.numericName.toString())
-            setRequestProperty("X-YouTube-Client-Version", client.version)
+            setRequestProperty("X-Origin", "https://www.youtube.com")
+            setRequestProperty("Referer", "https://www.youtube.com/")
+            setRequestProperty("X-Goog-Api-Format-Version", "1")
+            setRequestProperty("X-Goog-Visitor-Id", bootstrap.visitorData)
+            setRequestProperty("X-YouTube-Client-Name", WEB_CLIENT_NAME.toString())
+            setRequestProperty("X-YouTube-Client-Version", bootstrap.clientVersion)
         }
 
         try {
@@ -379,7 +470,55 @@ object YouTubeNativeResolver {
         }
     }
 
-    private fun innerTubeSource(
+    private fun loadWebBootstrap(): WebBootstrap {
+        val now = System.currentTimeMillis()
+        cachedBootstrap?.let { cached ->
+            if (now - cached.fetchedAtMs < BOOTSTRAP_TTL_MS) return cached
+        }
+
+        synchronized(bootstrapLock) {
+            val freshNow = System.currentTimeMillis()
+            cachedBootstrap?.let { cached ->
+                if (freshNow - cached.fetchedAtMs < BOOTSTRAP_TTL_MS) return cached
+            }
+
+            val page = fetchText(
+                "https://www.youtube.com/?hl=ru&gl=PL",
+                WEB_USER_AGENT
+            )
+
+            val visitorData = firstGroup(
+                page,
+                Regex("""\"VISITOR_DATA\":\"([^\"]+)\""""),
+                Regex("""\"visitorData\":\"([^\"]+)\"""")
+            )?.let(::decodeBootstrapValue)
+                ?.takeIf { it.startsWith("Cg") }
+                ?: throw YouTubeSignInRequiredException()
+
+            val apiKey = firstGroup(
+                page,
+                Regex("""\"INNERTUBE_API_KEY\":\"([^\"]+)\"""")
+            )?.let(::decodeBootstrapValue)
+                ?.takeIf { it.isNotBlank() }
+                ?: FALLBACK_WEB_API_KEY
+
+            val clientVersion = firstGroup(
+                page,
+                Regex("""\"INNERTUBE_CLIENT_VERSION\":\"([^\"]+)\"""")
+            )?.let(::decodeBootstrapValue)
+                ?.takeIf { it.isNotBlank() }
+                ?: FALLBACK_WEB_VERSION
+
+            return WebBootstrap(
+                visitorData = visitorData,
+                apiKey = apiKey,
+                clientVersion = clientVersion,
+                fetchedAtMs = freshNow
+            ).also { cachedBootstrap = it }
+        }
+    }
+
+    private fun sourceFromWebResponse(
         video: YouTubeFeedVideo,
         response: JSONObject,
         mediaUrl: String,
@@ -402,25 +541,22 @@ object YouTubeNativeResolver {
         )
     }
 
-    private fun innerTubeVideoComparator(): Comparator<JSONObject> =
+    private fun webVideoComparator(): Comparator<JSONObject> =
         compareByDescending<JSONObject> {
             val mime = it.optString("mimeType")
             when {
-                mime.contains("avc1") && mime.startsWith("video/mp4") -> 3
+                mime.startsWith("video/mp4") && mime.contains("avc1") -> 3
                 mime.startsWith("video/mp4") -> 2
                 else -> 1
             }
         }.thenByDescending {
             val height = it.optInt("height", 0)
             when {
-                height in 1..1080 -> height
+                height in 1..1080 -> 10_000 + height
                 height > 1080 -> 1
                 else -> 0
             }
         }.thenByDescending { it.optInt("bitrate", 0) }
-
-    private fun hasDirectUrl(format: JSONObject): Boolean =
-        isDirectHttpUrl(format.optString("url"))
 
     private fun isProgressiveVideo(format: JSONObject): Boolean {
         val mime = format.optString("mimeType")
@@ -442,6 +578,41 @@ object YouTubeNativeResolver {
             "confirm your age" in detail ||
             "age verification" in detail
 
+    private fun probeMediaUrl(url: String): Boolean {
+        val connection = runCatching {
+            (URL(url).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 8_000
+                readTimeout = 8_000
+                instanceFollowRedirects = true
+                requestMethod = "GET"
+                useCaches = false
+                setRequestProperty("Range", "bytes=0-1023")
+                setRequestProperty("User-Agent", WEB_USER_AGENT)
+                setRequestProperty("Accept", "*/*")
+            }
+        }.getOrNull() ?: return false
+
+        return try {
+            val code = connection.responseCode
+            if (code != 200 && code != 206) return false
+            val stream = runCatching { connection.inputStream }.getOrNull() ?: return false
+            stream.use {
+                val buffer = ByteArray(1024)
+                it.read(buffer) > 0
+            }
+        } catch (_: Throwable) {
+            false
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun appendPoToken(url: String, token: String): String {
+        if (token.isBlank()) return url
+        val separator = if ('?' in url) "&" else "?"
+        return url + separator + "pot=" + Uri.encode(token)
+    }
+
     private fun JSONArray?.asObjects(): List<JSONObject> {
         if (this == null) return emptyList()
         return buildList {
@@ -449,6 +620,46 @@ object YouTubeNativeResolver {
                 optJSONObject(index)?.let(::add)
             }
         }
+    }
+
+    private fun decodeBootstrapValue(raw: String): String =
+        raw.replace("\\u003d", "=")
+            .replace("\\u0026", "&")
+            .replace("\\u002f", "/")
+            .replace("\\/", "/")
+
+    private fun fetchText(url: String, userAgent: String): String {
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 10_000
+            readTimeout = 12_000
+            instanceFollowRedirects = true
+            requestMethod = "GET"
+            useCaches = false
+            setRequestProperty("User-Agent", userAgent)
+            setRequestProperty("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.7")
+            setRequestProperty("Accept", "text/html,application/json;q=0.9,*/*;q=0.8")
+        }
+        try {
+            val code = connection.responseCode
+            if (code !in 200..299) {
+                if (code == 408 || code == 429 || code >= 500) {
+                    throw YouTubeNetworkException()
+                }
+                throw YouTubeUnavailableException()
+            }
+            return connection.inputStream
+                .bufferedReader(Charsets.UTF_8)
+                .use { it.readText() }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun firstGroup(raw: String, vararg regexes: Regex): String? {
+        regexes.forEach { regex ->
+            regex.find(raw)?.groupValues?.getOrNull(1)?.let { return it }
+        }
+        return null
     }
 
     private fun mapFailure(error: Throwable): YouTubeNativeResolveException {
@@ -482,7 +693,8 @@ object YouTubeNativeResolver {
                 "cannot be watched anonymously" in combined ||
                 "sign in to confirm you're not a bot" in combined ||
                 "sign in to confirm you’re not a bot" in combined ||
-                "login required" in combined ->
+                "login required" in combined ||
+                "potoken" in classChain ->
                     YouTubeSignInRequiredException()
 
             "private video" in combined ||
@@ -500,16 +712,16 @@ object YouTubeNativeResolver {
         }
     }
 
-    private fun ensureInitialized() {
-        if (initialized) return
-        synchronized(initLock) {
-            if (initialized) return
+    private fun ensureNewPipeInitialized() {
+        if (newPipeInitialized) return
+        synchronized(newPipeInitLock) {
+            if (newPipeInitialized) return
             NewPipe.init(
                 SohrExtractorDownloader(),
                 Localization("ru", "RU"),
                 ContentCountry("PL")
             )
-            initialized = true
+            newPipeInitialized = true
         }
     }
 
