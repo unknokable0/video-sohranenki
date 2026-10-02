@@ -266,6 +266,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        YouTubeNativeResolver.initialize(applicationContext)
+
         settings = AppSettings(this)
         twitchCategoryTracker = TwitchCategoryTracker(this)
         lastT2x2Timeline = twitchCategoryTracker.timeline()
