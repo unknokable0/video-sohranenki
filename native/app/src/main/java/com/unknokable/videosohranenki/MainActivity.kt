@@ -106,6 +106,7 @@ class MainActivity : AppCompatActivity() {
     private var youtubeFeedLoading = false
     private var youtubeFeedJob: kotlinx.coroutines.Job? = null
     private var youtubeDurationEnrichJob: kotlinx.coroutines.Job? = null
+    private var youtubeCatalogExpandJob: kotlinx.coroutines.Job? = null
     private var youtubeFeedAutoRefreshJob: kotlinx.coroutines.Job? = null
     private var lastYoutubeFeedRefreshAt = 0L
     private var lastYoutubeFeedAttemptAt = 0L
@@ -6502,10 +6503,19 @@ class MainActivity : AppCompatActivity() {
 
         val refreshedChannels = incoming.channels.map { channel ->
             val previous = previousChannelsByHandle[channel.handle.lowercase(Locale.ROOT)]
+            val mergedChannelVideos =
+                buildList {
+                    channel.videos.forEach { add(stabilizeVideo(it)) }
+                    previous?.videos.orEmpty().forEach { add(stabilizeVideo(it)) }
+                }
+                    .distinctBy { it.videoId }
+                    .sortedByDescending { it.publishedAt }
+                    .take(30)
+
             channel.copy(
                 title = channel.title.ifBlank { previous?.title.orEmpty() },
                 avatarUrl = channel.avatarUrl.ifBlank { previous?.avatarUrl.orEmpty() },
-                videos = channel.videos.map(::stabilizeVideo)
+                videos = mergedChannelVideos
             )
         }
 
@@ -6598,6 +6608,44 @@ class MainActivity : AppCompatActivity() {
                 showFeed(currentVideos)
             }
 
+            // RSS is intentionally the fast first pass. Expand each channel from its
+            // /videos page in the background so the channel screen is not capped by RSS.
+            if (
+                snapshot.channels.isNotEmpty() &&
+                youtubeCatalogExpandJob?.isActive != true
+            ) {
+                youtubeCatalogExpandJob = lifecycleScope.launch {
+                    val expandedRaw = runCatching {
+                        kotlinx.coroutines.withTimeout(12_000L) {
+                            YouTubeFeedRepository.expandSnapshotVideos(snapshot)
+                        }
+                    }.getOrNull()
+
+                    youtubeCatalogExpandJob = null
+                    if (expandedRaw == null) return@launch
+
+                    val expanded = stabilizeYouTubeSnapshot(expandedRaw)
+                    val catalogChanged =
+                        expanded.channels != youtubeChannels ||
+                            expanded.videos != youtubeFeedVideos
+                    if (!catalogChanged) return@launch
+
+                    youtubeChannels = expanded.channels
+                    youtubeFeedVideos = expanded.videos
+
+                    if (videoSection == 2 && !isFinishing) {
+                        if (auxiliaryScreen == null) {
+                            rememberFeedScrollPosition()
+                            suppressNextRootAnimation = true
+                            suppressNextContentAnimation = true
+                            showFeed(currentVideos)
+                        } else if (auxiliaryScreen == "youtube_channel") {
+                            refreshOpenYouTubeChannelIfVisible()
+                        }
+                    }
+                }
+            }
+
             // Durations are optional metadata. Enrich a small visible slice in the
             // background after the list is already on screen, never blocking skeleton exit.
             if (
@@ -6635,6 +6683,33 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    private fun refreshOpenYouTubeChannelIfVisible() {
+        if (auxiliaryScreen != "youtube_channel" || isFinishing) return
+        val current = openYouTubeChannelSummary ?: return
+        val updated = youtubeChannels.firstOrNull {
+            it.handle.equals(current.handle, ignoreCase = true)
+        } ?: return
+        if (updated.videos == current.videos && updated.avatarUrl == current.avatarUrl) return
+
+        openYouTubeChannelSummary = updated
+        val content = YouTubeFeedUi.buildChannel(
+            activity = this,
+            settings = settings,
+            channel = updated,
+            onBack = {
+                auxiliaryScreen = null
+                openYouTubeChannelSummary = null
+                videoSection = 2
+                pendingRootSlide = -1
+                showFeed(currentVideos)
+            },
+            onOpenVideo = { video, _ -> openYouTubeVideo(video) }
+        )
+        suppressNextRootAnimation = true
+        suppressNextContentAnimation = true
+        replaceRoot(withBottomNav(content, SohrTab.VIDEOS))
     }
 
     private fun openYouTubeChannelScreen(channel: YouTubeChannelSummary) {
