@@ -852,7 +852,8 @@ jobs:
               "secondaryAudioUrl = resolved.secondaryAudioUrl",
               "PlayerScreen(",
               'mimeType = "video/*"',
-              "showYouTubePlaybackError(video, error, returnView)"
+              "showYouTubePlaybackError(video, retryError, returnView)",
+              "showYouTubePlaybackError(video, firstError, returnView)"
           ]:
               if required not in youtube_open_section:
                   raise SystemExit(f"SOHR 6.7.4 native Media3 YouTube wiring regression: {required}")
