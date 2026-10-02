@@ -17,3 +17,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "VideoSohranenki"
 include(":app")
+include(":zemerCipher")
+project(":zemerCipher").projectDir = file("vendor/zemer-cipher/library")
