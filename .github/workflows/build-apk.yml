@@ -954,11 +954,11 @@ jobs:
               "secondaryAudioUrl = resolved.secondaryAudioUrl",
               "PlayerScreen(",
               'mimeType = "video/*"',
-              "showYouTubePlaybackError(video, retryError, returnView)",
-              "showYouTubePlaybackError(video, firstError, returnView)"
+              "handleYouTubeNativeFailure(video, retryError, returnView)",
+              "handleYouTubeNativeFailure(video, firstError, returnView)"
           ]:
               if required not in youtube_open_section:
-                  raise SystemExit(f"SOHR 6.7.4 native Media3 YouTube wiring regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.0 native Media3-first YouTube wiring regression: {required}")
 
           for required in [
               "firstError is YouTubeSessionInitException",
