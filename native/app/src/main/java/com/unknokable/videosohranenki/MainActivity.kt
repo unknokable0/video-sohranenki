@@ -6677,7 +6677,8 @@ class MainActivity : AppCompatActivity() {
             TextView(this).apply {
                 text = when (error) {
                     is YouTubeAgeRestrictedException -> "Видео ограничено YouTube"
-                    is YouTubeSignInRequiredException -> "YouTube не отдал прямой поток"
+                    is YouTubeSignInRequiredException -> "YouTube требует подтверждение"
+                    is YouTubePoTokenException -> "Не удалось подготовить YouTube"
                     is YouTubeNetworkException -> "Нет связи с YouTube"
                     else -> "Видео сейчас недоступно"
                 }
@@ -6699,7 +6700,9 @@ class MainActivity : AppCompatActivity() {
                     is YouTubeAgeRestrictedException ->
                         "YouTube ограничил этот ролик по возрасту. SOHR не обходит такое ограничение."
                     is YouTubeSignInRequiredException ->
-                        "YouTube потребовал проверку аккаунта и не выдал прямой медиапоток. SOHR не подменяет это официальным YouTube-плеером."
+                        "Сам YouTube требует подтверждённую сессию для этого ролика. SOHR не обходит ограничения аккаунта или возраста."
+                    is YouTubePoTokenException ->
+                        "SOHR дважды пересоздал BotGuard-сессию и PO Token, но YouTube не подтвердил защитную проверку на этом устройстве."
                     is YouTubeNetworkException ->
                         "Проверьте подключение к интернету и откройте ролик ещё раз."
                     else ->
