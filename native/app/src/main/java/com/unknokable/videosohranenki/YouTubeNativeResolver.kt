@@ -117,12 +117,13 @@ object YouTubeNativeResolver {
                 val mapped = mapFailure(error)
                 if (mapped is YouTubeAgeRestrictedException) throw mapped
 
-                when {
+                throw when {
                     mapped is YouTubeNetworkException &&
                         primaryFailure is YouTubeNetworkException -> mapped
                     mapped is YouTubeSignInRequiredException -> mapped
                     mapped is YouTubeUnavailableException &&
-                        primaryFailure is YouTubeSignInRequiredException -> primaryFailure!!
+                        primaryFailure is YouTubeSignInRequiredException ->
+                            primaryFailure ?: mapped
                     else -> mapped
                 }
             }
@@ -249,10 +250,10 @@ object YouTubeNativeResolver {
             }
 
             val streaming = response.optJSONObject("streamingData")
-                ?: run {
-                    lastFailure = YouTubeUnavailableException()
-                    continue
-                }
+            if (streaming == null) {
+                lastFailure = YouTubeUnavailableException()
+                continue
+            }
 
             val formats = streaming.optJSONArray("formats").asObjects()
             val adaptive = streaming.optJSONArray("adaptiveFormats").asObjects()
