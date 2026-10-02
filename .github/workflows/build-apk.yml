@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.7.7: fullscreen-centered dialogs + in-app YouTube fallback
+# SOHR 6.7.8: resilient native YouTube multi-client playback
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -51,11 +51,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.7.7 version
+      - name: Assign SOHR 6.7.8 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=670007" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.7.7" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=670008" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.7.8" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -75,6 +75,108 @@ jobs:
             exit 1
           fi
           echo "Twitch OAuth authorize endpoint reachable (HTTP $CODE)"
+
+      - name: Verify YouTube native fallback endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import urllib.request
+
+          video_id = "YE7VzlLtp-4"
+          api_key = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
+          clients = [
+              {
+                  "name": "VISIONOS",
+                  "version": "1.02",
+                  "number": "101",
+                  "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
+                  "extra": {
+                      "deviceMake": "Apple",
+                      "deviceModel": "RealityDevice17,1",
+                      "osName": "visionOS",
+                      "osVersion": "26.5.23O471",
+                  },
+              },
+              {
+                  "name": "TVHTML5",
+                  "version": "5.20260707",
+                  "number": "7",
+                  "ua": "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/Version",
+                  "extra": {},
+              },
+          ]
+
+          errors = []
+          for client in clients:
+              ctx = {
+                  "clientName": client["name"],
+                  "clientVersion": client["version"],
+                  "hl": "en",
+                  "gl": "US",
+                  **client["extra"],
+              }
+              body = json.dumps({
+                  "context": {"client": ctx},
+                  "videoId": video_id,
+              }).encode()
+              req = urllib.request.Request(
+                  f"https://www.youtube.com/youtubei/v1/player?prettyPrint=false&key={api_key}",
+                  data=body,
+                  headers={
+                      "Content-Type": "application/json",
+                      "Accept": "application/json",
+                      "User-Agent": client["ua"],
+                      "Origin": "https://www.youtube.com",
+                      "X-YouTube-Client-Name": client["number"],
+                      "X-YouTube-Client-Version": client["version"],
+                  },
+                  method="POST",
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=20) as response:
+                      player = json.loads(response.read().decode())
+                  status = player.get("playabilityStatus", {}).get("status")
+                  if status != "OK":
+                      errors.append(f'{client["name"]}: status={status}')
+                      continue
+
+                  sd = player.get("streamingData") or {}
+                  formats = (sd.get("formats") or []) + (sd.get("adaptiveFormats") or [])
+                  direct = next(
+                      (
+                          item.get("url")
+                          for item in formats
+                          if isinstance(item, dict)
+                          and isinstance(item.get("url"), str)
+                          and item["url"].startswith("https://")
+                          and not item.get("drmFamilies")
+                      ),
+                      None,
+                  )
+                  if direct is None:
+                      errors.append(f'{client["name"]}: no direct stream URL')
+                      continue
+
+                  media_req = urllib.request.Request(
+                      direct,
+                      headers={
+                          "Range": "bytes=0-1023",
+                          "User-Agent": client["ua"],
+                      },
+                  )
+                  with urllib.request.urlopen(media_req, timeout=20) as media:
+                      sample = media.read(1024)
+                      if media.status not in (200, 206) or not sample:
+                          raise RuntimeError(f"media HTTP {media.status}, bytes={len(sample)}")
+                  print(f'YouTube fallback OK via {client["name"]}; sample={len(sample)} bytes')
+                  break
+              except Exception as exc:
+                  errors.append(f'{client["name"]}: {type(exc).__name__}: {exc}')
+          else:
+              raise SystemExit("YouTube native fallback probe failed: " + " | ".join(errors))
+          PY
 
       - name: Build signed release APK
         shell: bash
@@ -826,7 +928,15 @@ jobs:
               "YouTubeSignInRequiredException",
               "YouTubeNetworkException",
               "cannot be watched anonymously",
-              "mapFailure(error)"
+              "mapFailure(error)",
+              "resolveViaInnerTube(video)",
+              "requestInnerTubePlayer(",
+              'name = "VISIONOS"',
+              'name = "TVHTML5"',
+              "isAgeRestrictedStatus(",
+              "isDrmFormat(",
+              "X-YouTube-Client-Name",
+              "X-YouTube-Client-Version"
           ]:
               if required not in youtube_resolver:
                   raise SystemExit(f"SOHR 6.7.1 native YouTube resolver regression: {required}")
@@ -1759,7 +1869,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.7.7 • Оформление, список обновлений и остальные ModernDialogs теперь видимы и центрированы уже на первом кадре без пустого затемнённого экрана • удалён официальный YouTube WebView/embed fallback • доступные YouTube-ролики открываются только через нативный Media3 PlayerScreen SOHR с тем же интерфейсом плеера • если YouTube не выдаёт прямой поток или ограничивает ролик, SOHR остаётся внутри приложения и показывает собственный экран состояния без перехода во внешний YouTube • даты публикации в Ленте сохранены"
+            "notes": "SOHR 6.7.8 • YouTube-воспроизведение усилено многоступенчатым нативным resolver: NewPipe остаётся основным путём, а при антибот-проверке SOHR пробует прямые InnerTube VISIONOS и TVHTML5 потоки • никакого YouTube WebView/embed-плеера нет — успешный поток по-прежнему открывается в обычном Media3 PlayerScreen SOHR • возрастные ограничения и age verification не обходятся • добавлен живой CI-probe, который перед релизом проверяет player endpoint и доступность прямого медиапотока • исправления мгновенных ModernDialogs из 6.7.7 сохранены"
           }
           EOF
           cat update.json
