@@ -62,6 +62,8 @@ class SohrOnboarding(
     private lateinit var skipButton: TextView
 
     private var currentPage = 0
+    private val ambientAnimators =
+        mutableMapOf<View, android.animation.ValueAnimator>()
 
     private val ease = PathInterpolator(0.22f, 1f, 0.36f, 1f)
 
@@ -158,9 +160,9 @@ class SohrOnboarding(
             adapter = IntroPagerAdapter()
             setPageTransformer(false) { page, position ->
                 val distance = kotlin.math.abs(position).coerceIn(0f, 1f)
-                page.alpha = 1f - distance * 0.38f
-                page.translationX = -position * dp(22).toFloat()
-                val scale = 1f - distance * 0.025f
+                page.alpha = 1f - distance * 0.28f
+                page.translationX = -position * dp(18).toFloat()
+                val scale = 1f - distance * 0.018f
                 page.scaleX = scale
                 page.scaleY = scale
             }
@@ -294,20 +296,8 @@ class SohrOnboarding(
             }
 
             val hero = FrameLayout(activity).apply {
-                tag = "intro_hero"
+                tag = "intro_hero_$position"
             }
-
-            val glow = View(activity).apply {
-                background = circleDrawable(palette().accentSoft)
-            }
-            hero.addView(
-                glow,
-                FrameLayout.LayoutParams(
-                    dp(196),
-                    dp(196),
-                    Gravity.CENTER
-                )
-            )
 
             val icon = ImageView(activity).apply {
                 setImageResource(page.icon)
@@ -318,8 +308,8 @@ class SohrOnboarding(
             hero.addView(
                 icon,
                 FrameLayout.LayoutParams(
-                    dp(154),
-                    dp(154),
+                    dp(218),
+                    dp(218),
                     Gravity.CENTER
                 )
             )
@@ -328,7 +318,7 @@ class SohrOnboarding(
                 hero,
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(252)
+                    dp(264)
                 )
             )
 
@@ -386,8 +376,13 @@ class SohrOnboarding(
                         .scaleY(1f)
                         .setDuration(330L)
                         .setInterpolator(ease)
+                        .withEndAction {
+                            startAmbientMotion(root, icon, position)
+                        }
                         .start()
                 }
+            } else {
+                startAmbientMotion(root, icon, position)
             }
 
             return root
@@ -398,16 +393,88 @@ class SohrOnboarding(
             position: Int,
             obj: Any
         ) {
-            container.removeView(obj as View)
+            val view = obj as View
+            ambientAnimators.remove(view)?.cancel()
+            container.removeView(view)
         }
+    }
+
+    private fun startAmbientMotion(
+        owner: View,
+        icon: View,
+        position: Int
+    ) {
+        if (!settings.animations) return
+
+        ambientAnimators.remove(owner)?.cancel()
+
+        val animator =
+            android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+                duration =
+                    when (position) {
+                        0 -> 4200L
+                        1 -> 4600L
+                        2 -> 3600L
+                        3 -> 3000L
+                        else -> 4400L
+                    }
+                repeatCount = android.animation.ValueAnimator.INFINITE
+                interpolator =
+                    android.view.animation.LinearInterpolator()
+                addUpdateListener {
+                    val t = it.animatedValue as Float
+                    val angle =
+                        t * kotlin.math.PI.toFloat() * 2f
+
+                    when (position) {
+                        0 -> {
+                            icon.translationY =
+                                kotlin.math.sin(angle) * dp(2).toFloat()
+                            icon.rotation =
+                                kotlin.math.sin(angle) * 0.55f
+                        }
+                        1 -> {
+                            icon.translationY =
+                                kotlin.math.sin(angle) * dp(2).toFloat()
+                            icon.rotation =
+                                kotlin.math.sin(angle + 0.7f) * 0.45f
+                        }
+                        2 -> {
+                            val pulse =
+                                1f + kotlin.math.sin(angle) * 0.008f
+                            icon.scaleX = pulse
+                            icon.scaleY = pulse
+                        }
+                        3 -> {
+                            val pulse =
+                                1f + kotlin.math.sin(angle) * 0.016f
+                            icon.scaleX = pulse
+                            icon.scaleY = pulse
+                            icon.translationY =
+                                kotlin.math.sin(angle + 0.4f) * dp(1).toFloat()
+                        }
+                        else -> {
+                            icon.translationX =
+                                kotlin.math.sin(angle) * dp(1).toFloat()
+                            icon.translationY =
+                                kotlin.math.cos(angle) * dp(1).toFloat()
+                        }
+                    }
+                }
+            }
+
+        ambientAnimators[owner] = animator
+        animator.start()
     }
 
     private fun animateSelectedHero() {
         if (!settings.animations) return
-        val page = pager.findViewWithTag<View>("intro_hero") ?: return
+        val page =
+            pager.findViewWithTag<View>("intro_hero_$currentPage")
+                ?: return
         page.animate().cancel()
-        page.scaleX = 0.97f
-        page.scaleY = 0.97f
+        page.scaleX = 0.985f
+        page.scaleY = 0.985f
         page.animate()
             .scaleX(1f)
             .scaleY(1f)
