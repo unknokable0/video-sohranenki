@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.7.6: fullscreen-centered dialogs + in-app YouTube fallback
+# SOHR 6.7.7: fullscreen-centered dialogs + in-app YouTube fallback
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -46,11 +46,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.7.6 version
+      - name: Assign SOHR 6.7.7 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=670006" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.7.6" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=670007" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.7.7" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -858,40 +858,43 @@ jobs:
               if required not in youtube_open_section:
                   raise SystemExit(f"SOHR 6.7.4 native Media3 YouTube wiring regression: {required}")
 
-          youtube_fallback = Path(
+          youtube_fallback_path = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/YouTubeFallbackPlayerScreen.kt"
-          ).read_text(encoding="utf-8")
+          )
+          if youtube_fallback_path.exists():
+              raise SystemExit("SOHR 6.7.7 regression: official YouTube WebView fallback file returned")
+
           for required in [
               "private fun showYouTubePlaybackError(",
-              "YouTubeFallbackPlayerScreen(",
-              "youtubeFallbackPlayerScreen = fallback",
+              "replaceRoot(errorRoot)",
               "firstResolve",
               "delay(320L)",
               "YouTubeUnavailableException",
-              "YouTubeNetworkException"
+              "YouTubeNetworkException",
+              "mediaUrl = resolved.mediaUrl",
+              "secondaryAudioUrl = resolved.secondaryAudioUrl",
+              "PlayerScreen("
           ]:
               if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.7.6 YouTube fallback wiring regression: {required}")
-          for required in [
-              "class YouTubeFallbackPlayerScreen(",
-              "android.webkit.WebView",
-              '"https://www.youtube.com/embed/',
-              '"Referer" to "https://unknokable0.github.io/video-sohranenki/"',
-              "settings.mediaPlaybackRequiresUserGesture = false",
-              "WebChromeClient",
-              "handleBack(): Boolean",
-              "fun destroy()"
-          ]:
-              if required not in youtube_fallback:
-                  raise SystemExit(f"SOHR 6.7.6 official embedded fallback regression: {required}")
+                  raise SystemExit(f"SOHR 6.7.7 native YouTube playback regression: {required}")
+
+          youtube_error_section = sohr_main.split(
+              "private fun showYouTubePlaybackError(", 1
+          )[1].split("\n    private fun ", 1)[0]
           for forbidden in [
-              '"Повторить"',
-              '"Открыть в YouTube"'
+              "WebView",
+              "youtube.com/embed",
+              '"Открыть в YouTube"',
+              '"Повторить"'
           ]:
-              if forbidden in sohr_main.split(
-                  "private fun showYouTubePlaybackError(", 1
-              )[1].split("\n    private fun ", 1)[0]:
-                  raise SystemExit(f"SOHR 6.7.6 regression: external/retry fallback button returned: {forbidden}")
+              if forbidden in youtube_error_section:
+                  raise SystemExit(f"SOHR 6.7.7 embedded/external YouTube fallback regression: {forbidden}")
+          for forbidden in [
+              "YouTubeFallbackPlayerScreen",
+              "youtubeFallbackPlayerScreen"
+          ]:
+              if forbidden in sohr_main:
+                  raise SystemExit(f"SOHR 6.7.7 fallback wiring returned: {forbidden}")
 
           youtube_feed_ui = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/YouTubeFeedUi.kt"
@@ -904,7 +907,7 @@ jobs:
               '"d MMMM yyyy"'
           ]:
               if required not in youtube_feed_ui:
-                  raise SystemExit(f"SOHR 6.7.6 publication-date regression: {required}")
+                  raise SystemExit(f"SOHR 6.7.7 publication-date regression: {required}")
           for forbidden in [
               'return "недавно"',
               '" мин назад"',
@@ -912,7 +915,7 @@ jobs:
               '" дн назад"'
           ]:
               if forbidden in youtube_feed_ui:
-                  raise SystemExit(f"SOHR 6.7.6 vague publication-date regression: {forbidden}")
+                  raise SystemExit(f"SOHR 6.7.7 vague publication-date regression: {forbidden}")
 
           for required in [
               '2 -> "YouTube • каналы и новые видео"',
@@ -1673,13 +1676,19 @@ jobs:
               "Gravity.CENTER",
               "ViewGroup.LayoutParams.MATCH_PARENT",
               "windowAnimations = 0",
-              "android.view.ViewTreeObserver.OnPreDrawListener",
-              "stablePasses >= 1"
+              "box.visibility = View.VISIBLE",
+              "box.alpha = 1f",
+              "overlay.addOnLayoutChangeListener"
           ]:
               if required not in dialogs:
-                  raise SystemExit(f"SOHR 6.7.6 fullscreen-centered dialog regression: {required}")
-          if "box.postDelayed({" in dialogs:
-              raise SystemExit("SOHR 6.7.6 regression: timed dialog reveal returned")
+                  raise SystemExit(f"SOHR 6.7.7 first-frame dialog regression: {required}")
+          for forbidden in [
+              "box.visibility = View.INVISIBLE",
+              "stablePasses >=",
+              "box.postDelayed({"
+          ]:
+              if forbidden in dialogs:
+                  raise SystemExit(f"SOHR 6.7.7 delayed-dialog regression: {forbidden}")
           if "LinearLayout.LayoutParams(dp(context, 38), dp(context, 4))" in dialogs:
               raise SystemExit("Legacy dialog top handle regression")
 
@@ -1745,7 +1754,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.7.6 • Оформление, Что нового, список обновлений и остальные ModernDialogs переведены на полноэкранный прозрачный host: карточка закреплена по центру до первого видимого кадра и больше не телепортируется сверху • обычные YouTube-видео по-прежнему сначала запускаются нативным Media3-плеером SOHR • если YouTube не отдаёт прямой поток extractor-у, SOHR автоматически остаётся внутри приложения и переключается на официальный встроенный YouTube playback без кнопок Повторить/Открыть в YouTube • ограничения аккаунта, возраста и embed по-прежнему контролирует сам YouTube и не обходятся • в Ленте вместо недавно/часов назад теперь показывается Сегодня, Вчера или конкретная дата публикации"
+            "notes": "SOHR 6.7.7 • Оформление, список обновлений и остальные ModernDialogs теперь видимы и центрированы уже на первом кадре без пустого затемнённого экрана • удалён официальный YouTube WebView/embed fallback • доступные YouTube-ролики открываются только через нативный Media3 PlayerScreen SOHR с тем же интерфейсом плеера • если YouTube не выдаёт прямой поток или ограничивает ролик, SOHR остаётся внутри приложения и показывает собственный экран состояния без перехода во внешний YouTube • даты публикации в Ленте сохранены"
           }
           EOF
           cat update.json
