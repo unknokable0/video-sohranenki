@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.9.28 version
+      - name: Assign SOHR 6.9.29 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690028" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.28" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690029" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.29" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -776,7 +776,8 @@ jobs:
               "SohrIntroMorphView(activity)",
               "morphView.setPageProgress(progress)",
               "dots.setPageProgress(progress)",
-              "ViewPager(activity).apply",
+              "SohrIntroPager(activity).apply",
+              "MORPH_DURATION_MS = 320",
               '"Добро пожаловать в SOHR"',
               '"Лента без лишнего"',
               '"Удобный просмотр"',
@@ -790,7 +791,12 @@ jobs:
                   raise SystemExit(f"SOHR 6.9.23 parametric onboarding regression: {required}")
           for required in [
               "class SohrIntroMorphView",
-              "private data class IconState(",
+              "private data class CanonicalState(",
+              "private data class CloudState(",
+              "private data class FeedState(",
+              "private data class PlayerState(",
+              "private data class CalendarState(",
+              "private data class SettingsState(",
               "private data class ShapeLayer(",
               "private data class GlyphLayer(",
               "cloudState()",
@@ -798,8 +804,10 @@ jobs:
               "playerState()",
               "calendarState()",
               "settingsState()",
-              "renderState(",
-              "interpolateState(",
+              "render(",
+              "interpolate(",
+              "if (t <= 0f) return a",
+              "if (t >= 1f) return b",
               "mixPoints(",
               "drawShape(",
               "drawArtwork(",
@@ -811,7 +819,7 @@ jobs:
               "minOf(width, height).toFloat() / 112f"
           ]:
               if required not in morph_view:
-                  raise SystemExit(f"SOHR 6.9.28 unified onboarding-state regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.29 unified onboarding-state regression: {required}")
           for forbidden in [
               "Drawable",
               "ContextCompat.getDrawable",
@@ -838,7 +846,7 @@ jobs:
               "LAYER_TYPE_SOFTWARE"
           ]:
               if forbidden in morph_view:
-                  raise SystemExit(f"SOHR 6.9.28 duplicate/final-snap renderer returned: {forbidden}")
+                  raise SystemExit(f"SOHR 6.9.29 duplicate/final-snap renderer returned: {forbidden}")
           for forbidden in [
               "ambientAnimators",
               "startAmbientMotion(",
@@ -850,7 +858,7 @@ jobs:
               "morphView.animate()\n                    .alpha(1f)"
           ]:
               if forbidden in onboarding:
-                  raise SystemExit(f"SOHR 6.9.28 dimmed icon-view regression: {forbidden}")
+                  raise SystemExit(f"SOHR 6.9.29 dimmed icon-view regression: {forbidden}")
 
           for required in [
               "private var telegramLogoutInProgress = false",
@@ -1806,7 +1814,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.28 • исправлена реальная причина тусклых onboarding-иконок: отдельная ViewPropertyAnimator-анимация morphView больше не ставит alpha=0 и scale=0.94; icon renderer всегда остаётся alpha=1/scale=1 • по кадру из реальной записи яркость Cloud была всего ~40–65/255, что соответствовало приглушению всего View; теперь этот слой полностью убран • основные gradients дополнительно пересобраны в более яркий lavender→purple→violet диапазон без примеси тёмного theme accent • specular highlights усилены, player sky стал светлее и ближе к PNG • реальная геометрия увеличена через coordinate unit 112 вместо 124, без scale(Canvas) • единый IconState/interpolateState/renderState morph из 6.9.27 сохранён, поэтому post-morph snap не возвращается • остальной onboarding UI не изменён"
+            "notes": "SOHR 6.9.29 • пять onboarding-иконок полностью пересобраны как яркие premium 3D purple states: Cloud с единым силуэтом и тёмным Play, Feed с front-card и двумя depth cards, Player с многослойным artwork и progress controls, Calendar с чистым header/bindings/flame, Settings с объёмными tracks/thumbs • основные поверхности и детали непрозрачны, низкая alpha оставлена только для задней глубины и теней • добавлены чистые specular highlights и контурные блики без raster-ассетов • canonical state model теперь имеет CloudState/FeedState/PlayerState/CalendarState/SettingsState и единый render(interpolate(A,B,t)); endpoints возвращают точные A/B без post-morph snap • ViewPager использует симметричный 320 ms settle; morphView остаётся alpha=1/scale=1 • тексты, кнопки, pagination, top bar, background и остальной layout onboarding не изменены"
           }
           EOF
           cat update.json

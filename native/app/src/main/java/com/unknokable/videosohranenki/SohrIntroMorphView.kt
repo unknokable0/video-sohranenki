@@ -7,6 +7,7 @@ import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PointF
+import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
 import android.view.View
@@ -52,7 +53,7 @@ class SohrIntroMorphView(context: Context) : View(context) {
         val darkness: Float
     )
 
-    private data class IconState(
+    private data class CanonicalState(
         val main: ShapeLayer,
         val depth1: ShapeLayer,
         val depth2: ShapeLayer,
@@ -69,20 +70,49 @@ class SohrIntroMorphView(context: Context) : View(context) {
         val glyph: GlyphLayer
     )
 
+    private sealed interface NamedIconState {
+        val frame: CanonicalState
+    }
+
+    private data class CloudState(
+        override val frame: CanonicalState
+    ) : NamedIconState
+
+    private data class FeedState(
+        override val frame: CanonicalState
+    ) : NamedIconState
+
+    private data class PlayerState(
+        override val frame: CanonicalState
+    ) : NamedIconState
+
+    private data class CalendarState(
+        override val frame: CanonicalState
+    ) : NamedIconState
+
+    private data class SettingsState(
+        override val frame: CanonicalState
+    ) : NamedIconState
+
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val rim = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
     private val path = Path()
 
     private var palette: ThemePalette? = null
     private var pageProgress = 0f
     private var animationsEnabled = true
 
-    private val states: List<IconState> by lazy {
+    private val states: List<NamedIconState> by lazy {
         listOf(
-            cloudState(),
-            feedState(),
-            playerState(),
-            calendarState(),
-            settingsState()
+            CloudState(cloudState()),
+            FeedState(feedState()),
+            PlayerState(playerState()),
+            CalendarState(calendarState()),
+            SettingsState(settingsState())
         )
     }
 
@@ -107,7 +137,7 @@ class SohrIntroMorphView(context: Context) : View(context) {
 
         val base = floor(pageProgress).toInt().coerceIn(0, 4)
         if (base == 4) {
-            renderState(canvas, states[4], colors)
+            render(canvas, states[4].frame, colors)
             return
         }
 
@@ -115,28 +145,28 @@ class SohrIntroMorphView(context: Context) : View(context) {
 
         // There is only one renderer for both transition and rest.
         // At an integer page position raw == 0 and the exact stored state is
-        // rendered. The previous transition approaches that same state through
-        // interpolateState(), so no second "final icon" can snap in afterward.
+        // rendered. interpolate() returns the stored A/B object at its exact
+        // endpoints, so no second "final icon" can snap in afterward.
         val state = if (!animationsEnabled || raw <= 0f) {
-            states[base]
+            states[base].frame
         } else {
-            interpolateState(
-                states[base],
-                states[base + 1],
+            interpolate(
+                states[base].frame,
+                states[base + 1].frame,
                 smoother(raw)
             )
         }
 
-        renderState(canvas, state, colors)
+        render(canvas, state, colors)
     }
 
     // ---------------------------------------------------------------------
     // SINGLE SOURCE OF TRUTH: 5 FINAL STATES
     // ---------------------------------------------------------------------
 
-    private fun cloudState(): IconState {
+    private fun cloudState(): CanonicalState {
         val center = PointF(80f, 82f)
-        return IconState(
+        return CanonicalState(
             main = shape(
                 cloudPoints(),
                 rotation = 0f,
@@ -167,31 +197,31 @@ class SohrIntroMorphView(context: Context) : View(context) {
         )
     }
 
-    private fun feedState(): IconState {
-        return IconState(
+    private fun feedState(): CanonicalState {
+        return CanonicalState(
             main = shape(
                 roundedPanelPoints(82f, 83f, 132f, 64f),
                 rotation = -4f,
                 alpha = 1f,
                 tone = 0.98f,
-                brightness = 0.96f,
-                shadow = 0.82f
+                brightness = 1f,
+                shadow = 0.92f
             ),
             depth1 = shape(
                 roundedPanelPoints(82f, 52f, 114f, 47f),
                 rotation = -9f,
-                alpha = 0.46f,
-                tone = 0.44f,
-                brightness = 0.34f,
-                shadow = 0.20f
+                alpha = 0.76f,
+                tone = 0.62f,
+                brightness = 0.54f,
+                shadow = 0.34f
             ),
             depth2 = shape(
                 roundedPanelPoints(80f, 114f, 110f, 43f),
                 rotation = 5f,
-                alpha = 0.38f,
-                tone = 0.36f,
-                brightness = 0.30f,
-                shadow = 0.16f
+                alpha = 0.68f,
+                tone = 0.54f,
+                brightness = 0.47f,
+                shadow = 0.28f
             ),
             preview = box(
                 48f, 83f, 45f, 43f,
@@ -225,31 +255,31 @@ class SohrIntroMorphView(context: Context) : View(context) {
         )
     }
 
-    private fun playerState(): IconState {
-        return IconState(
+    private fun playerState(): CanonicalState {
+        return CanonicalState(
             main = shape(
                 roundedPanelPoints(80f, 82f, 142f, 91f),
                 rotation = 0f,
                 alpha = 1f,
-                tone = 0.82f,
-                brightness = 0.80f,
-                shadow = 0.86f
+                tone = 0.96f,
+                brightness = 0.94f,
+                shadow = 0.94f
             ),
             depth1 = shape(
                 roundedPanelPoints(68f, 80f, 127f, 82f),
                 rotation = -6f,
-                alpha = 0.31f,
-                tone = 0.28f,
-                brightness = 0.24f,
-                shadow = 0.15f
+                alpha = 0.72f,
+                tone = 0.54f,
+                brightness = 0.46f,
+                shadow = 0.32f
             ),
             depth2 = shape(
                 roundedPanelPoints(92f, 80f, 125f, 81f),
                 rotation = 5f,
-                alpha = 0.25f,
-                tone = 0.23f,
-                brightness = 0.20f,
-                shadow = 0.12f
+                alpha = 0.62f,
+                tone = 0.46f,
+                brightness = 0.40f,
+                shadow = 0.26f
             ),
             preview = box(
                 80f, 64f, 130f, 62f,
@@ -265,7 +295,7 @@ class SohrIntroMorphView(context: Context) : View(context) {
                 3.75f, 0f, 1f,
                 0.36f, 0.28f, 0f
             ),
-            timelineProgress = 0.55f,
+            timelineProgress = 0.62f,
             timelineThumb = dot(
                 94f, 117f, 7f,
                 1f, 1f
@@ -282,15 +312,15 @@ class SohrIntroMorphView(context: Context) : View(context) {
         )
     }
 
-    private fun calendarState(): IconState {
-        return IconState(
+    private fun calendarState(): CanonicalState {
+        return CanonicalState(
             main = shape(
                 roundedPanelPoints(80f, 83f, 106f, 101f),
                 rotation = 0f,
                 alpha = 1f,
-                tone = 0.72f,
-                brightness = 0.70f,
-                shadow = 0.84f
+                tone = 0.94f,
+                brightness = 0.92f,
+                shadow = 0.94f
             ),
             depth1 = hiddenShape(80f, 83f),
             depth2 = hiddenShape(80f, 83f),
@@ -301,7 +331,7 @@ class SohrIntroMorphView(context: Context) : View(context) {
             accentBar = box(
                 80f, 47f, 106f, 27f,
                 15f, 0f, 1f,
-                0.78f, 0.48f, 0f
+                1f, 0.94f, 0.12f
             ),
             timeline = hiddenBox(80f, 112f),
             timelineProgress = 0f,
@@ -326,15 +356,15 @@ class SohrIntroMorphView(context: Context) : View(context) {
         )
     }
 
-    private fun settingsState(): IconState {
-        return IconState(
+    private fun settingsState(): CanonicalState {
+        return CanonicalState(
             main = shape(
                 roundedPanelPoints(80f, 82f, 107f, 107f),
                 rotation = 0f,
                 alpha = 1f,
-                tone = 0.78f,
-                brightness = 0.76f,
-                shadow = 0.86f
+                tone = 0.96f,
+                brightness = 0.94f,
+                shadow = 0.94f
             ),
             depth1 = hiddenShape(80f, 82f),
             depth2 = hiddenShape(80f, 82f),
@@ -378,9 +408,9 @@ class SohrIntroMorphView(context: Context) : View(context) {
     // ONE RENDERER USED BY STATIC STATES AND EVERY MORPH FRAME
     // ---------------------------------------------------------------------
 
-    private fun renderState(
+    private fun render(
         canvas: Canvas,
-        state: IconState,
+        state: CanonicalState,
         colors: ThemePalette
     ) {
         drawShape(canvas, state.depth2, colors)
@@ -449,19 +479,19 @@ class SohrIntroMorphView(context: Context) : View(context) {
         val tone = layer.tone.coerceIn(0f, 1f)
 
         val top = ColorUtils.blendARGB(
-            Color.rgb(126, 91, 198),
-            Color.rgb(252, 229, 255),
-            0.46f + brightness * 0.50f
+            Color.rgb(112, 76, 190),
+            Color.rgb(255, 238, 255),
+            0.42f + brightness * 0.54f
         )
         val middle = ColorUtils.blendARGB(
-            Color.rgb(124, 80, 224),
-            Color.rgb(211, 159, 255),
-            0.34f + brightness * 0.54f
+            Color.rgb(112, 66, 218),
+            Color.rgb(220, 164, 255),
+            0.34f + brightness * 0.58f
         )
         val bottom = ColorUtils.blendARGB(
-            Color.rgb(92, 57, 190),
-            Color.rgb(121, 78, 255),
-            0.42f + tone * 0.52f
+            Color.rgb(70, 43, 158),
+            Color.rgb(135, 82, 255),
+            0.38f + tone * 0.58f
         )
 
         fill.shader = LinearGradient(
@@ -501,6 +531,25 @@ class SohrIntroMorphView(context: Context) : View(context) {
         canvas.drawRect(bounds, fill)
         fill.shader = null
         canvas.restore()
+
+        rim.strokeWidth = dp(1.15f)
+        rim.shader = LinearGradient(
+            bounds.left,
+            bounds.top,
+            bounds.right,
+            bounds.bottom,
+            ColorUtils.setAlphaComponent(
+                Color.WHITE,
+                (136f * layer.alpha * brightness).toInt().coerceIn(0, 136)
+            ),
+            ColorUtils.setAlphaComponent(
+                Color.rgb(73, 43, 164),
+                (92f * layer.alpha).toInt().coerceIn(0, 92)
+            ),
+            Shader.TileMode.CLAMP
+        )
+        canvas.drawPath(shapePath, rim)
+        rim.shader = null
 
         canvas.restore()
     }
@@ -552,20 +601,20 @@ class SohrIntroMorphView(context: Context) : View(context) {
         val bright = layer.brightness.coerceIn(0f, 1f)
         val tone = layer.tone.coerceIn(0f, 1f)
 
-        val darkTop = Color.rgb(122, 88, 194)
-        val brightTop = Color.rgb(252, 226, 255)
-        val darkBottom = Color.rgb(90, 60, 166)
-        val brightBottom = Color.rgb(170, 103, 255)
+        val darkTop = Color.rgb(112, 76, 190)
+        val brightTop = Color.rgb(255, 238, 255)
+        val darkBottom = Color.rgb(72, 43, 154)
+        val brightBottom = Color.rgb(177, 108, 255)
 
         val top = ColorUtils.blendARGB(
             darkTop,
             brightTop,
-            0.16f + bright * 0.78f
+            0.14f + bright * 0.82f
         )
         val bottom = ColorUtils.blendARGB(
             darkBottom,
             brightBottom,
-            0.18f + tone * 0.72f
+            0.16f + tone * 0.78f
         )
 
         fill.shader = LinearGradient(
@@ -584,6 +633,54 @@ class SohrIntroMorphView(context: Context) : View(context) {
             fill
         )
         fill.shader = null
+
+        canvas.save()
+        path.reset()
+        path.addRoundRect(
+            rect,
+            n(layer.radius),
+            n(layer.radius),
+            Path.Direction.CW
+        )
+        canvas.clipPath(path)
+        fill.shader = RadialGradient(
+            rect.left + rect.width() * 0.18f,
+            rect.top + rect.height() * 0.12f,
+            maxOf(rect.width(), rect.height()) * 0.72f,
+            ColorUtils.setAlphaComponent(
+                Color.WHITE,
+                (92f * bright * layer.alpha).toInt().coerceIn(0, 92)
+            ),
+            Color.TRANSPARENT,
+            Shader.TileMode.CLAMP
+        )
+        canvas.drawRect(rect, fill)
+        fill.shader = null
+        canvas.restore()
+
+        rim.strokeWidth = dp(1.05f)
+        rim.shader = LinearGradient(
+            rect.left,
+            rect.top,
+            rect.right,
+            rect.bottom,
+            ColorUtils.setAlphaComponent(
+                Color.WHITE,
+                (128f * bright * layer.alpha).toInt().coerceIn(0, 128)
+            ),
+            ColorUtils.setAlphaComponent(
+                Color.rgb(76, 43, 160),
+                (82f * layer.alpha).toInt().coerceIn(0, 82)
+            ),
+            Shader.TileMode.CLAMP
+        )
+        canvas.drawRoundRect(
+            rect,
+            n(layer.radius),
+            n(layer.radius),
+            rim
+        )
+        rim.shader = null
 
         canvas.restore()
     }
@@ -632,19 +729,23 @@ class SohrIntroMorphView(context: Context) : View(context) {
             rect.bottom,
             intArrayOf(
                 ColorUtils.setAlphaComponent(
-                    Color.rgb(255, 196, 255),
+                    Color.rgb(255, 213, 255),
                     (255f * a).toInt()
                 ),
                 ColorUtils.setAlphaComponent(
-                    Color.rgb(194, 126, 247),
+                    Color.rgb(226, 151, 255),
                     (255f * a).toInt()
                 ),
                 ColorUtils.setAlphaComponent(
-                    Color.rgb(88, 58, 172),
+                    Color.rgb(151, 91, 239),
+                    (255f * a).toInt()
+                ),
+                ColorUtils.setAlphaComponent(
+                    Color.rgb(65, 44, 139),
                     (255f * a).toInt()
                 )
             ),
-            floatArrayOf(0f, 0.47f, 1f),
+            floatArrayOf(0f, 0.34f, 0.66f, 1f),
             Shader.TileMode.CLAMP
         )
         canvas.drawRect(rect, fill)
@@ -653,8 +754,8 @@ class SohrIntroMorphView(context: Context) : View(context) {
         // Soft sun/moon gives the thumbnail the same layered scene language
         // as the PNG references instead of a flat pair of triangles.
         fill.color = ColorUtils.setAlphaComponent(
-            Color.rgb(240, 190, 255),
-            (104f * a).toInt().coerceIn(0, 104)
+            Color.rgb(255, 224, 255),
+            (188f * a).toInt().coerceIn(0, 188)
         )
         canvas.drawCircle(
             rect.left + rect.width() * 0.69f,
@@ -669,8 +770,8 @@ class SohrIntroMorphView(context: Context) : View(context) {
             horizon = 0.55f,
             amplitude = 0.25f,
             color = ColorUtils.setAlphaComponent(
-                Color.rgb(169, 105, 215),
-                (232f * a).toInt()
+                Color.rgb(190, 119, 235),
+                (244f * a).toInt()
             )
         )
         drawMountainLayer(
@@ -679,8 +780,8 @@ class SohrIntroMorphView(context: Context) : View(context) {
             horizon = 0.70f,
             amplitude = 0.28f,
             color = ColorUtils.setAlphaComponent(
-                Color.rgb(106, 67, 181),
-                (246f * a).toInt()
+                Color.rgb(119, 72, 194),
+                (251f * a).toInt()
             )
         )
         drawMountainLayer(
@@ -689,9 +790,36 @@ class SohrIntroMorphView(context: Context) : View(context) {
             horizon = 0.83f,
             amplitude = 0.20f,
             color = ColorUtils.setAlphaComponent(
-                Color.rgb(51, 38, 103),
+                Color.rgb(49, 34, 103),
                 (255f * a).toInt()
             )
+        )
+
+        fill.shader = LinearGradient(
+            rect.left,
+            rect.top,
+            rect.left + rect.width() * 0.58f,
+            rect.top + rect.height() * 0.44f,
+            ColorUtils.setAlphaComponent(
+                Color.WHITE,
+                (70f * a).toInt().coerceIn(0, 70)
+            ),
+            Color.TRANSPARENT,
+            Shader.TileMode.CLAMP
+        )
+        canvas.drawRect(rect, fill)
+        fill.shader = null
+
+        rim.strokeWidth = dp(1f)
+        rim.color = ColorUtils.setAlphaComponent(
+            Color.WHITE,
+            (130f * a).toInt().coerceIn(0, 130)
+        )
+        canvas.drawRoundRect(
+            rect,
+            n(box.radius),
+            n(box.radius),
+            rim
         )
 
         canvas.restore()
@@ -774,7 +902,7 @@ class SohrIntroMorphView(context: Context) : View(context) {
 
             fill.shader = null
             fill.color = ColorUtils.setAlphaComponent(
-                Color.rgb(85, 62, 145),
+                Color.rgb(88, 58, 160),
                 (255f * track.alpha).toInt().coerceIn(0, 255)
             )
             canvas.drawRoundRect(
@@ -800,11 +928,11 @@ class SohrIntroMorphView(context: Context) : View(context) {
                 played.right,
                 played.bottom,
                 ColorUtils.setAlphaComponent(
-                    Color.rgb(250, 215, 255),
+                    Color.rgb(255, 226, 255),
                     (255f * track.alpha).toInt().coerceIn(0, 255)
                 ),
                 ColorUtils.setAlphaComponent(
-                    Color.rgb(190, 132, 255),
+                    Color.rgb(190, 123, 255),
                     (255f * track.alpha).toInt().coerceIn(0, 255)
                 ),
                 Shader.TileMode.CLAMP
@@ -816,6 +944,18 @@ class SohrIntroMorphView(context: Context) : View(context) {
                 fill
             )
             fill.shader = null
+
+            rim.strokeWidth = dp(0.9f)
+            rim.color = ColorUtils.setAlphaComponent(
+                Color.WHITE,
+                (88f * track.alpha).toInt().coerceIn(0, 88)
+            )
+            canvas.drawRoundRect(
+                rect,
+                n(track.radius),
+                n(track.radius),
+                rim
+            )
 
             canvas.restore()
         }
@@ -847,23 +987,29 @@ class SohrIntroMorphView(context: Context) : View(context) {
             fill
         )
 
-        fill.shader = LinearGradient(
+        fill.shader = RadialGradient(
             cx - r,
             cy - r,
-            cx + r,
-            cy + r,
+            r * 2.55f,
             ColorUtils.setAlphaComponent(
-                Color.rgb(251, 222, 255),
+                Color.rgb(255, 236, 255),
                 a
             ),
             ColorUtils.setAlphaComponent(
-                Color.rgb(150, 91, 255),
+                Color.rgb(139, 78, 255),
                 a
             ),
             Shader.TileMode.CLAMP
         )
         canvas.drawCircle(cx, cy, r, fill)
         fill.shader = null
+
+        rim.strokeWidth = dp(1f)
+        rim.color = ColorUtils.setAlphaComponent(
+            Color.WHITE,
+            (126f * dot.alpha).toInt().coerceIn(0, 126)
+        )
+        canvas.drawCircle(cx, cy, r, rim)
 
         fill.color = ColorUtils.setAlphaComponent(
             Color.WHITE,
@@ -931,6 +1077,27 @@ class SohrIntroMorphView(context: Context) : View(context) {
         canvas.drawPath(outer, fill)
         fill.shader = null
 
+        rim.strokeWidth = dp(1f)
+        rim.shader = LinearGradient(
+            bounds.left,
+            bounds.top,
+            bounds.right,
+            bounds.bottom,
+            ColorUtils.setAlphaComponent(
+                Color.WHITE,
+                (144f * glyph.alpha * (1f - dark * 0.55f))
+                    .toInt()
+                    .coerceIn(0, 144)
+            ),
+            ColorUtils.setAlphaComponent(
+                Color.rgb(88, 51, 180),
+                (96f * glyph.alpha).toInt().coerceIn(0, 96)
+            ),
+            Shader.TileMode.CLAMP
+        )
+        canvas.drawPath(outer, rim)
+        rim.shader = null
+
         if (glyph.innerAlpha > 0.002f) {
             val inner = smoothClosedPath(glyph.inner)
             fill.color = ColorUtils.setAlphaComponent(
@@ -947,38 +1114,43 @@ class SohrIntroMorphView(context: Context) : View(context) {
     // STATE INTERPOLATION
     // ---------------------------------------------------------------------
 
-    private fun interpolateState(
-        a: IconState,
-        b: IconState,
+    private fun interpolate(
+        a: CanonicalState,
+        b: CanonicalState,
         t: Float
-    ): IconState = IconState(
-        main = mix(a.main, b.main, t),
-        depth1 = mix(a.depth1, b.depth1, t),
-        depth2 = mix(a.depth2, b.depth2, t),
-        preview = mix(a.preview, b.preview, t),
-        artworkAlpha = lerp(
-            a.artworkAlpha,
-            b.artworkAlpha,
-            t
-        ),
-        line1 = mix(a.line1, b.line1, t),
-        line2 = mix(a.line2, b.line2, t),
-        accentBar = mix(a.accentBar, b.accentBar, t),
-        timeline = mix(a.timeline, b.timeline, t),
-        timelineProgress = lerp(
-            a.timelineProgress,
-            b.timelineProgress,
-            t
-        ),
-        timelineThumb = mix(
-            a.timelineThumb,
-            b.timelineThumb,
-            t
-        ),
-        pill1 = mix(a.pill1, b.pill1, t),
-        pill2 = mix(a.pill2, b.pill2, t),
-        glyph = mix(a.glyph, b.glyph, t)
-    )
+    ): CanonicalState {
+        if (t <= 0f) return a
+        if (t >= 1f) return b
+
+        return CanonicalState(
+            main = mix(a.main, b.main, t),
+            depth1 = mix(a.depth1, b.depth1, t),
+            depth2 = mix(a.depth2, b.depth2, t),
+            preview = mix(a.preview, b.preview, t),
+            artworkAlpha = lerp(
+                a.artworkAlpha,
+                b.artworkAlpha,
+                t
+            ),
+            line1 = mix(a.line1, b.line1, t),
+            line2 = mix(a.line2, b.line2, t),
+            accentBar = mix(a.accentBar, b.accentBar, t),
+            timeline = mix(a.timeline, b.timeline, t),
+            timelineProgress = lerp(
+                a.timelineProgress,
+                b.timelineProgress,
+                t
+            ),
+            timelineThumb = mix(
+                a.timelineThumb,
+                b.timelineThumb,
+                t
+            ),
+            pill1 = mix(a.pill1, b.pill1, t),
+            pill2 = mix(a.pill2, b.pill2, t),
+            glyph = mix(a.glyph, b.glyph, t)
+        )
+    }
 
     private fun mix(
         a: ShapeLayer,

@@ -1,6 +1,7 @@
 package com.unknokable.videosohranenki
 
 import android.app.Activity
+import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
@@ -11,6 +12,7 @@ import android.view.animation.PathInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.Scroller
 import android.widget.TextView
 import androidx.viewpager.widget.PagerAdapter
 import androidx.viewpager.widget.ViewPager
@@ -20,6 +22,45 @@ class SohrOnboarding(
     private val settings: AppSettings,
     private val onFinished: () -> Unit
 ) {
+    private class SohrIntroPager(context: Context) : ViewPager(context) {
+        init {
+            // ViewPager owns the only page-settle animation. Pinning its
+            // scroller to 320 ms keeps forward and backward morphs symmetric
+            // without starting a second animation on the icon view.
+            runCatching {
+                val field = ViewPager::class.java.getDeclaredField("mScroller")
+                field.isAccessible = true
+                field.set(
+                    this,
+                    object : Scroller(
+                        context,
+                        PathInterpolator(0.22f, 1f, 0.36f, 1f)
+                    ) {
+                        override fun startScroll(
+                            startX: Int,
+                            startY: Int,
+                            dx: Int,
+                            dy: Int,
+                            duration: Int
+                        ) {
+                            super.startScroll(
+                                startX,
+                                startY,
+                                dx,
+                                dy,
+                                MORPH_DURATION_MS
+                            )
+                        }
+                    }
+                )
+            }
+        }
+
+        private companion object {
+            const val MORPH_DURATION_MS = 320
+        }
+    }
+
     private data class Page(
         val title: String,
         val description: String
@@ -174,7 +215,7 @@ class SohrOnboarding(
             }
         )
 
-        pager = ViewPager(activity).apply {
+        pager = SohrIntroPager(activity).apply {
             id = View.generateViewId()
             offscreenPageLimit = 1
             adapter = IntroPagerAdapter()
