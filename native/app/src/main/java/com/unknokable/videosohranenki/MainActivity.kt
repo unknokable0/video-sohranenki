@@ -2734,46 +2734,6 @@ class MainActivity : AppCompatActivity() {
         return removed
     }
 
-    private fun animateVisibleVideoTabsTo(
-        targetSection: Int,
-        onCommit: () -> Unit
-    ) {
-        if (!settings.animations) {
-            onCommit()
-            return
-        }
-
-        val tabs = root.findViewWithTag<FrameLayout>("sohr_video_section_tabs")
-        val indicator = root.findViewWithTag<View>("sohr_video_tab_indicator")
-        if (tabs == null || indicator == null || tabs.width <= 0) {
-            onCommit()
-            return
-        }
-
-        val usable = tabs.width - tabs.paddingLeft - tabs.paddingRight
-        val slot = (usable / 3f).coerceAtLeast(0f)
-        val targetX = slot * (targetSection - 1)
-
-        for (index in 1..3) {
-            root.findViewWithTag<TextView>("sohr_video_section_label_$index")?.apply {
-                animate().cancel()
-                setTextColor(if (index == targetSection) Color.WHITE else muted)
-                alpha = 1f
-            }
-        }
-
-        indicator.animate().cancel()
-        indicator.animate()
-            .translationX(targetX)
-            .setDuration(190L)
-            .setInterpolator(SohrMotion.smooth())
-            .start()
-
-        // Rebuild the section shortly after the indicator has visibly started moving.
-        // The new page is placed at the final indicator position, so there is no jump.
-        root.postDelayed(onCommit, 105L)
-    }
-
     private fun switchVideoSection(section: Int) {
         if (section !in 1..3 || videoSection == section) return
 
@@ -2784,24 +2744,25 @@ class MainActivity : AppCompatActivity() {
 
         videoSectionSwitchLocked = true
         pendingVideoSectionCrossfade = true
+        pendingVideoSectionDirection = if (section > videoSection) 1 else -1
         pendingRootSlide = 0
+
+        // One animation path only: rebuild immediately, then let the new tabs
+        // animate their indicator from the previous slot while only section
+        // content moves. No delayed pre-animation and no double hand-off.
         suppressNextRootAnimation = true
         suppressNextContentAnimation = false
+        videoSection = section
+        showFeed(currentVideos)
 
-        animateVisibleVideoTabsTo(section) {
-            pendingVideoSectionDirection = 0
-            videoSection = section
-            showFeed(currentVideos)
-
-            root.postDelayed({
-                videoSectionSwitchLocked = false
-                val queued = pendingVideoSectionTarget
-                pendingVideoSectionTarget = null
-                if (queued != null && queued != videoSection) {
-                    switchVideoSection(queued)
-                }
-            }, if (settings.animations) 165L else 16L)
-        }
+        root.postDelayed({
+            videoSectionSwitchLocked = false
+            val queued = pendingVideoSectionTarget
+            pendingVideoSectionTarget = null
+            if (queued != null && queued != videoSection) {
+                switchVideoSection(queued)
+            }
+        }, if (settings.animations) 235L else 16L)
     }
 
     private fun showFeed(videos: List<VideoItem>) {
@@ -6968,14 +6929,12 @@ class MainActivity : AppCompatActivity() {
                 showYouTubePlaybackError(video, error, returnView)
 
             is YouTubeSignInRequiredException ->
-                openYouTubeAccountRequired(
-                    video = video,
-                    returnView = returnView,
-                    chooseAccount = !settings.youtubeBrowserConnected
-                )
+                // Never throw the user into YouTube/Chrome from a video tap.
+                // Keep the fallback inside SOHR. YouTube itself still decides
+                // whether the watch page can play without an age/account gate.
+                openYouTubeWebPlayer(video, returnView)
 
             else ->
-                // Public video fallback stays visually inside SOHR.
                 openYouTubeWebPlayer(video, returnView)
         }
     }
@@ -7085,7 +7044,7 @@ class MainActivity : AppCompatActivity() {
                     is YouTubeAgeRestrictedException ->
                         "YouTube подтвердил возрастное ограничение для этого ролика. SOHR его не обходит."
                     is YouTubeSignInRequiredException ->
-                        "YouTube требует аккаунт для этого ролика. Вход откроется в системном браузере, где можно выбрать уже сохранённый Google-аккаунт."
+                        "YouTube требует подтверждённый аккаунт для этого ролика. SOHR остаётся внутри приложения и не отправляет вас во внешний YouTube."
                     is YouTubeSessionInitException ->
                         "BotGuard-модуль не успел подготовить обычную гостевую сессию даже после повторной попытки. Это технический сбой, а не подтверждённое ограничение ролика."
                     is YouTubeNetworkException ->
@@ -9386,6 +9345,9 @@ class MainActivity : AppCompatActivity() {
             ?.replace('_', ' ')
             ?.trim()
             ?.takeIf { it.isNotBlank() }
+            ?.replaceFirstChar { ch ->
+                if (ch.isLowerCase()) ch.titlecase(Locale.getDefault()) else ch.toString()
+            }
             ?: "YouTube"
 
         val youtubeCard = LinearLayout(this).apply {
@@ -9396,15 +9358,30 @@ class MainActivity : AppCompatActivity() {
         }
 
         val youtubeAvatarFrame = FrameLayout(this).apply {
-            background = roundedBg(Color.parseColor("#FF0033"), 46)
+            background = roundedBg(
+                if (youtubeConnected) Color.parseColor("#FF0033") else palette.accentSoft,
+                46
+            )
             setPadding(dp(3), dp(3), dp(3), dp(3))
         }
-        val youtubeAvatar = ImageView(this).apply {
-            setImageResource(R.drawable.ic_play)
-            imageTintList = ColorStateList.valueOf(Color.WHITE)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(24), dp(24), dp(24), dp(24))
-            background = roundedBg(Color.parseColor("#E60023"), 42)
+        val youtubeAvatar = TextView(this).apply {
+            val initial = youtubeAccount
+                ?.substringBefore('@')
+                ?.trim()
+                ?.firstOrNull()
+                ?.uppercaseChar()
+                ?.toString()
+                ?: "Y"
+            text = initial
+            textSize = 34f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            includeFontPadding = false
+            background = roundedBg(
+                if (youtubeConnected) palette.surfaceAlt else panel,
+                42
+            )
         }
         youtubeAvatarFrame.addView(
             youtubeAvatar,
@@ -9429,7 +9406,7 @@ class MainActivity : AppCompatActivity() {
                 youtubeConnected && !youtubeAccount.isNullOrBlank() ->
                     "$youtubeAccount • YouTube"
                 youtubeConnected ->
-                    "Google-аккаунт выбран • YouTube"
+                    "Google-аккаунт • YouTube"
                 else ->
                     "YouTube не подключён"
             }
@@ -9441,20 +9418,24 @@ class MainActivity : AppCompatActivity() {
         })
 
         val youtubeAction = TextView(this).apply {
-            text = if (youtubeConnected) "Сменить аккаунт" else "Подключить YouTube"
+            text = if (youtubeConnected) "Выйти из YouTube" else "Подключить YouTube"
             textSize = 14f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
             background = roundedBg(
-                if (youtubeConnected) palette.surfaceAlt else Color.parseColor("#E60023"),
+                if (youtubeConnected) Color.parseColor("#D9435F") else Color.parseColor("#E60023"),
                 15
             )
             isClickable = true
             isFocusable = true
             setOnClickListener {
                 animatePress(this)
-                launchYouTubeAccountPicker()
+                if (youtubeConnected) {
+                    confirmYouTubeLogout()
+                } else {
+                    launchYouTubeAccountPicker()
+                }
             }
         }
         youtubeCard.addView(
@@ -9466,7 +9447,7 @@ class MainActivity : AppCompatActivity() {
         page.addView(youtubeCard)
 
         val privacy = TextView(this).apply {
-            text = "SOHR не видит пароль Google. Для роликов, которым YouTube требует аккаунт, используется защищённая браузерная сессия в Custom Tab; обычные ролики остаются в нативном SOHR-плеере."
+            text = "SOHR не видит пароль Google. Выбранный аккаунт используется только как настройка YouTube в приложении; обычные доступные ролики открываются внутри SOHR."
             textSize = 12f
             setTextColor(muted)
             setPadding(dp(4), dp(12), dp(4), 0)
@@ -9876,6 +9857,40 @@ class MainActivity : AppCompatActivity() {
 
 
 
+
+    private fun confirmYouTubeLogout() {
+        ModernDialogs.showConfirm(
+            context = this,
+            palette = palette,
+            title = "Выйти из YouTube?",
+            message = "SOHR отключит выбранный YouTube-аккаунт на этом устройстве. В браузере Google-аккаунт останется без изменений.",
+            confirm = "Выйти",
+            destructive = true
+        ) {
+            settings.youtubeBrowserConnected = false
+            settings.youtubeAccountName = null
+
+            youtubeWebPlayer?.let { webView ->
+                runCatching {
+                    webView.stopLoading()
+                    webView.loadUrl("about:blank")
+                    webView.clearHistory()
+                    webView.clearCache(true)
+                }
+            }
+
+            showAccount()
+            root.postDelayed({
+                ModernDialogs.showNotice(
+                    context = this,
+                    palette = palette,
+                    title = "YouTube отключён",
+                    message = "SOHR больше не использует выбранный Google-аккаунт.",
+                    button = "Готово"
+                )
+            }, 180L)
+        }
+    }
 
     private fun confirmTwitchLogout() {
         ModernDialogs.showConfirm(
