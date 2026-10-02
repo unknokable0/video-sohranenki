@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.9.27 version
+      - name: Assign SOHR 6.9.28 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690027" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.27" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690028" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.28" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -808,10 +808,10 @@ jobs:
               "roundedTrianglePoints(",
               "flamePoints(",
               "smoothClosedPath(",
-              "minOf(width, height).toFloat() / 124f"
+              "minOf(width, height).toFloat() / 112f"
           ]:
               if required not in morph_view:
-                  raise SystemExit(f"SOHR 6.9.27 unified onboarding-state regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.28 unified onboarding-state regression: {required}")
           for forbidden in [
               "Drawable",
               "ContextCompat.getDrawable",
@@ -838,15 +838,19 @@ jobs:
               "LAYER_TYPE_SOFTWARE"
           ]:
               if forbidden in morph_view:
-                  raise SystemExit(f"SOHR 6.9.27 duplicate/final-snap renderer returned: {forbidden}")
+                  raise SystemExit(f"SOHR 6.9.28 duplicate/final-snap renderer returned: {forbidden}")
           for forbidden in [
               "ambientAnimators",
               "startAmbientMotion(",
               "intro_hero_",
-              "dp(218)"
+              "dp(218)",
+              "morphView.alpha = 0f",
+              "morphView.scaleX = 0.94f",
+              "morphView.scaleY = 0.94f",
+              "morphView.animate()\n                    .alpha(1f)"
           ]:
               if forbidden in onboarding:
-                  raise SystemExit(f"SOHR 6.9.21 old per-page hero returned: {forbidden}")
+                  raise SystemExit(f"SOHR 6.9.28 dimmed icon-view regression: {forbidden}")
 
           for required in [
               "private var telegramLogoutInProgress = false",
@@ -1802,7 +1806,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.27 • onboarding morph переписан вокруг единого IconState renderer: final state и transition больше не имеют разных геометрий • последний кадр A→B математически интерполируется в тот же State B, который остаётся после перехода, поэтому дополнительный snap/resize/repaint после morph устранён • удалены отдельные drawFinal* и специализированные draw*To* renderer-ветки, а также ambient float-анимация после перехода • Cloud, Feed, Player, Calendar и Settings стали крупнее и ярче; основные поверхности непрозрачные и используют lavender→purple градиенты • Cloud остаётся одним цельным силуэтом без stroke/дуги • Feed получил яркую front-card и две depth-card • Player сохраняет Play, layered artwork, timeline и thumb в final state • Calendar получил яркий header, одинаковые крепления и крупный flame • Calendar→Settings теперь непрерывно превращает header в верхний track, крепления в thumbs и формирует нижний track • масштаб renderer увеличен примерно на 20–25% без scale(Canvas) • остальные элементы onboarding не изменены"
+            "notes": "SOHR 6.9.28 • исправлена реальная причина тусклых onboarding-иконок: отдельная ViewPropertyAnimator-анимация morphView больше не ставит alpha=0 и scale=0.94; icon renderer всегда остаётся alpha=1/scale=1 • по кадру из реальной записи яркость Cloud была всего ~40–65/255, что соответствовало приглушению всего View; теперь этот слой полностью убран • основные gradients дополнительно пересобраны в более яркий lavender→purple→violet диапазон без примеси тёмного theme accent • specular highlights усилены, player sky стал светлее и ближе к PNG • реальная геометрия увеличена через coordinate unit 112 вместо 124, без scale(Canvas) • единый IconState/interpolateState/renderState morph из 6.9.27 сохранён, поэтому post-morph snap не возвращается • остальной onboarding UI не изменён"
           }
           EOF
           cat update.json
