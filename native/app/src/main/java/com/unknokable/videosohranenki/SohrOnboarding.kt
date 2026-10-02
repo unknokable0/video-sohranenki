@@ -34,8 +34,8 @@ class SohrOnboarding(
         Page(
             R.drawable.sohr_brand_logo,
             "Добро пожаловать в SOHR",
-            "Одна аккуратная медиатека для видео, ленты, Twitch и твоего прогресса.",
-            "ТВОЙ SOHR"
+            "Одна аккуратная медиатека для видео, ленты, Twitch и прогресса просмотра.",
+            "SOHR"
         ),
         Page(
             R.drawable.ic_nav_video,
@@ -45,19 +45,19 @@ class SohrOnboarding(
         ),
         Page(
             R.drawable.ic_play,
-            "Смотреть удобно",
+            "Удобный просмотр",
             "Telegram и Twitch открываются внутри SOHR. YouTube — одной кнопкой в YouTube без лишних ошибок.",
             "ПРОСМОТР"
         ),
         Page(
             R.drawable.ic_streak_shield,
-            "Сохраняй Streak",
+            "Streak и прогресс",
             "Дни просмотра, прогресс и небольшие анимации помогают видеть свою активность.",
             "STREAK"
         ),
         Page(
             R.drawable.ic_setting_appearance,
-            "Сделай SOHR своим",
+            "Персонализация SOHR",
             "Темы, акцент, уведомления и обновления собраны в одном спокойном интерфейсе.",
             "ГОТОВО"
         )
