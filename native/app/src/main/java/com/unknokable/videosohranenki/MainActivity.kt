@@ -2724,7 +2724,7 @@ class MainActivity : AppCompatActivity() {
             if (queued != null && queued != videoSection) {
                 switchVideoSection(queued)
             }
-        }, if (settings.animations) 120L else 16L)
+        }, if (settings.animations) SohrMotion.NORMAL + 24L else 16L)
     }
 
     private fun showFeed(videos: List<VideoItem>) {
@@ -2806,9 +2806,6 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(bg)
             setPadding(0, 0, 0, dp(16))
         }
-        if (sectionTransitionDirection != 0 && settings.animations) {
-            body.alpha = 0.92f
-        }
         scroll.addView(
             body,
             ViewGroup.LayoutParams(
@@ -2816,17 +2813,6 @@ class MainActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
         )
-        if (sectionTransitionDirection != 0 && settings.animations) {
-            body.post {
-                if (!body.isAttachedToWindow) return@post
-                body.animate().cancel()
-                body.animate()
-                    .alpha(1f)
-                    .setDuration(170L)
-                    .setInterpolator(SohrMotion.smooth())
-                    .start()
-            }
-        }
         page.addView(
             scroll,
             LinearLayout.LayoutParams(
