@@ -2749,25 +2749,67 @@ class MainActivity : AppCompatActivity() {
         }
 
         videoSectionSwitchLocked = true
-        pendingVideoSectionCrossfade = true
-        pendingVideoSectionDirection = if (section > videoSection) 1 else -1
-        pendingRootSlide = 0
+        val previousSection = videoSection
+        val direction = if (section > previousSection) 1 else -1
 
-        // One animation path only: rebuild once, then the new tab indicator starts
-        // from the previous slot while only the section body eases into place.
-        suppressNextRootAnimation = true
-        suppressNextContentAnimation = false
-        videoSection = section
-        showFeed(currentVideos)
+        fun commitSectionChange() {
+            pendingVideoSectionCrossfade = true
+            pendingVideoSectionDirection = direction
+            pendingRootSlide = 0
+            suppressNextRootAnimation = true
+            suppressNextContentAnimation = false
+            videoSection = section
+            showFeed(currentVideos)
 
-        root.postDelayed({
-            videoSectionSwitchLocked = false
-            val queued = pendingVideoSectionTarget
-            pendingVideoSectionTarget = null
-            if (queued != null && queued != videoSection) {
-                switchVideoSection(queued)
+            root.postDelayed({
+                videoSectionSwitchLocked = false
+                val queued = pendingVideoSectionTarget
+                pendingVideoSectionTarget = null
+                if (queued != null && queued != videoSection) {
+                    switchVideoSection(queued)
+                }
+            }, if (settings.animations) 230L else 16L)
+        }
+
+        val tabs = root.findViewWithTag<FrameLayout>("sohr_video_section_tabs")
+        val indicator = root.findViewWithTag<View>("sohr_video_tab_indicator")
+        val fromLabel = root.findViewWithTag<TextView>("sohr_video_section_label_$previousSection")
+        val toLabel = root.findViewWithTag<TextView>("sohr_video_section_label_$section")
+
+        if (
+            settings.animations &&
+            tabs != null &&
+            indicator != null &&
+            tabs.width > 0
+        ) {
+            val usable = tabs.width - tabs.paddingLeft - tabs.paddingRight
+            val slot = (usable / 3f).coerceAtLeast(0f)
+            val target = slot * (section - 1)
+
+            indicator.animate().cancel()
+            indicator.animate()
+                .translationX(target)
+                .setDuration(190L)
+                .setInterpolator(SohrMotion.smooth())
+                .start()
+
+            val colorAnimator = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = 180L
+                interpolator = SohrMotion.smooth()
+                addUpdateListener { animator ->
+                    val progress = animator.animatedFraction
+                    val fromColor = android.graphics.ColorUtils.blendARGB(Color.WHITE, muted, progress)
+                    val toColor = android.graphics.ColorUtils.blendARGB(muted, Color.WHITE, progress)
+                    fromLabel?.setTextColor(fromColor)
+                    toLabel?.setTextColor(toColor)
+                }
             }
-        }, if (settings.animations) SohrMotion.NORMAL + 40L else 16L)
+            colorAnimator.start()
+
+            root.postDelayed({ commitSectionChange() }, 170L)
+        } else {
+            commitSectionChange()
+        }
     }
 
     private fun showFeed(videos: List<VideoItem>) {
@@ -3098,19 +3140,8 @@ class MainActivity : AppCompatActivity() {
             params.width = slot.toInt()
             params.height = dp(40)
             tabIndicator.layoutParams = params
-            val target = slot * (videoSection - 1)
-            if (sectionTransitionDirection != 0 && settings.animations) {
-                val previousSection = (videoSection - sectionTransitionDirection).coerceIn(1, 3)
-                tabIndicator.translationX = slot * (previousSection - 1)
-                tabIndicator.animate().cancel()
-                tabIndicator.animate()
-                    .translationX(target)
-                    .setDuration(SohrMotion.NORMAL)
-                    .setInterpolator(SohrMotion.smooth())
-                    .start()
-            } else {
-                tabIndicator.translationX = target
-            }
+            tabIndicator.animate().cancel()
+            tabIndicator.translationX = slot * (videoSection - 1)
         }
         header.addView(
             tabs,
@@ -9358,6 +9389,12 @@ class MainActivity : AppCompatActivity() {
             ?.replace('.', ' ')
             ?.replace('_', ' ')
             ?.trim()
+            ?.split(' ')
+            ?.joinToString(" ") { part ->
+                part.replaceFirstChar { ch ->
+                    if (ch.isLowerCase()) ch.titlecase(Locale.ROOT) else ch.toString()
+                }
+            }
             ?.takeIf { it.isNotBlank() }
             ?: "YouTube"
 
@@ -9658,6 +9695,7 @@ class MainActivity : AppCompatActivity() {
         suppressNextContentAnimation = false
         val animateContent = settings.animations && !skipContentAnimation && old != null && old !== content
         val sectionCrossfade = pendingVideoSectionCrossfade
+        val sectionDirection = pendingVideoSectionDirection
         pendingVideoSectionCrossfade = false
         pendingVideoSectionDirection = 0
         content.alpha = 1f
@@ -9701,22 +9739,21 @@ class MainActivity : AppCompatActivity() {
                     val sectionBody = content.findViewWithTag<View>("sohr_video_section_content")
                     if (sectionBody != null) {
                         sectionBody.animate().cancel()
-                        sectionBody.alpha = 0f
-                        sectionBody.translationY = dp(5).toFloat()
-                        sectionBody.scaleX = 0.998f
-                        sectionBody.scaleY = 0.998f
+                        val bodyOffset =
+                            dp(10).toFloat() * if (sectionDirection >= 0) 1f else -1f
+                        sectionBody.alpha = 0.90f
+                        sectionBody.translationX = bodyOffset
+                        sectionBody.translationY = 0f
+                        sectionBody.scaleX = 1f
+                        sectionBody.scaleY = 1f
                         sectionBody.animate()
                             .alpha(1f)
-                            .translationY(0f)
-                            .scaleX(1f)
-                            .scaleY(1f)
-                            .setDuration(SohrMotion.NORMAL)
+                            .translationX(0f)
+                            .setDuration(210L)
                             .setInterpolator(SohrMotion.smooth())
                             .withEndAction {
                                 sectionBody.alpha = 1f
-                                sectionBody.translationY = 0f
-                                sectionBody.scaleX = 1f
-                                sectionBody.scaleY = 1f
+                                sectionBody.translationX = 0f
                                 content.setLayerType(View.LAYER_TYPE_NONE, null)
                             }
                             .start()
@@ -9868,8 +9905,6 @@ class MainActivity : AppCompatActivity() {
         ) {
             settings.youtubeBrowserConnected = false
             settings.youtubeAccountName = null
-            CookieManager.getInstance().removeAllCookies(null)
-            CookieManager.getInstance().flush()
             suppressNextRootAnimation = true
             suppressNextContentAnimation = true
             showAccount()
