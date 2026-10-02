@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.9.22 version
+      - name: Assign SOHR 6.9.23 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690022" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.22" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690023" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.23" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -787,25 +787,37 @@ jobs:
               "SohrThemeTransition.reveal("
           ]:
               if required not in onboarding:
-                  raise SystemExit(f"SOHR 6.9.22 exact-style onboarding regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.23 parametric onboarding regression: {required}")
           for required in [
               "class SohrIntroMorphView",
-              "R.drawable.ill_intro_cloud_morph",
-              "R.drawable.ill_intro_feed_morph",
-              "R.drawable.ill_intro_watch_morph",
-              "R.drawable.ill_intro_streak_morph",
-              "R.drawable.ill_intro_tune_morph",
-              "drawTransition(",
-              "drawMorphCore(",
-              "drawTransformedIcon(",
-              "COLLAPSE_END = 0.44f",
-              "EXPAND_START = 0.56f",
-              "setPageProgress(",
-              "ValueAnimator.ofFloat(0f, 1f)",
-              "smooth(raw)"
+              "private data class Scene(",
+              "private data class Box(",
+              "interpolateScene(",
+              "drawGlassBox(",
+              "drawPreviewArtwork(",
+              "drawPlayToFlameMorph(",
+              "roundedTrianglePoints(",
+              "flamePoints(",
+              "smoothClosedPath(",
+              "cloudScene()",
+              "feedScene()",
+              "playerScene()",
+              "calendarScene()",
+              "settingsScene()"
           ]:
               if required not in morph_view:
-                  raise SystemExit(f"SOHR 6.9.22 two-phase morph regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.23 parametric morph regression: {required}")
+          for forbidden in [
+              "Drawable",
+              "ContextCompat.getDrawable",
+              "R.drawable.ill_intro_",
+              "drawTransformedIcon(",
+              "drawMorphCore(",
+              "COLLAPSE_END",
+              "EXPAND_START"
+          ]:
+              if forbidden in morph_view:
+                  raise SystemExit(f"SOHR 6.9.23 drawable/crossfade morph returned: {forbidden}")
           for forbidden in [
               "ambientAnimators",
               "startAmbientMotion(",
@@ -1769,7 +1781,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.22 • onboarding-иконки перерисованы в точном стиле последних утверждённых макетов: мягкие голубо-фиолетовые градиенты, светлые детали, одинаковый визуальный размер и фиксированный центр; облако с play, стопка карточек ленты, мини-плеер, календарь с читаемым пламенем и блок с тремя ползунками • устранено главное наложение перехода: готовая старая и готовая новая иконка больше никогда не рисуются в одном кадре • morph теперь двухфазный: старая форма схлопывается, в центральной зоне остаётся одна промежуточная градиентная форма, затем из неё раскрывается новая иконка • swipe и кнопка «Дальше» используют один и тот же progress, поэтому переход одинаковый в обе стороны и без второго старого эффекта"
+            "notes": "SOHR 6.9.23 • onboarding morph полностью переписан: готовые drawable больше не участвуют в анимации; одна Canvas-сцена рисует логические части иконки в общей системе координат 160×160 и интерполирует их параметры между пятью состояниями • Cloud → Feed: облачные rounded-blobs перестраиваются в слои карточек, Play уходит в preview-зону, появляются preview и строки • Feed → Player: передняя карточка расширяется в player, preview растёт в artwork, строки перестраиваются в timeline и thumb • Player → Calendar: panel меняет пропорции, задние слои уходят, Play и flame используют настоящий point/path morph с одинаковым числом опорных точек, формируются top bar и две петли • Calendar → Settings: panel становится квадратной настройкой, петли перемещаются к slider thumbs, tracks/thumbs вырастают из тех же параметрических элементов, flame схлопывается • обратный свайп использует ту же геометрию назад; нет двух полноценных иконок одновременно и нет crossfade между PNG/drawable • сохранён фиксированный центр, единый визуальный масштаб, soft-glass градиенты и локальные мягкие тени"
           }
           EOF
           cat update.json
