@@ -1208,7 +1208,7 @@ jobs:
               "window.sohr&&window.sohr.seek(",
               "setFullscreenMode(",
               "prepareForPictureInPicture()",
-              "youtube-player/"
+              'open("youtube_player.html")'
           ]:
               if required not in youtube_playback:
                   raise SystemExit(f"SOHR 6.9.9 custom YouTube player regression: {required}")
