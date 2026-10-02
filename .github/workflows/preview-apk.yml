@@ -1,9 +1,8 @@
 name: SOHR Preview Build
-# restart: 6.7.5 centered-dialog preview
 
 on:
   push:
-    branches: [sohr-preview, sohr-preview-675]
+    branches: [sohr-preview]
     paths:
       - "native/**"
       - ".github/workflows/preview-apk.yml"
