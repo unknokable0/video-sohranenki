@@ -73,8 +73,15 @@ object YouTubeFeedRepository {
         Source("@beerloga_t2x2", "https://www.youtube.com/@beerloga_t2x2", "Берлога T2x2")
     )
 
+    private data class ChannelVisual(
+        val title: String,
+        val avatarUrl: String
+    )
+
     private val durationCache = ConcurrentHashMap<String, Int>()
     private val channelIdCache = ConcurrentHashMap<String, String>()
+    private val channelVisualCache = ConcurrentHashMap<String, ChannelVisual>()
+    private val thumbnailCache = ConcurrentHashMap<String, String>()
     private val durationGate = Semaphore(4)
 
     suspend fun loadAll(): YouTubeFeedSnapshot = coroutineScope {
@@ -144,17 +151,23 @@ object YouTubeFeedRepository {
             throw IllegalStateException("Не удалось определить YouTube Channel ID для ${source.handle}")
         }
 
-        val title = if (page.isBlank()) {
-            source.fallbackTitle
+        val cachedVisual = channelVisualCache[source.handle]
+
+        val parsedTitle = if (page.isBlank()) {
+            ""
         } else {
             firstGroup(
                 page,
                 Regex("""<meta\s+property="og:title"\s+content="([^"]+)"""", RegexOption.IGNORE_CASE),
                 Regex("""<meta\s+content="([^"]+)"\s+property="og:title"""", RegexOption.IGNORE_CASE)
-            )?.let(::decodeHtml)?.trim()?.takeIf { it.isNotBlank() } ?: source.fallbackTitle
+            )?.let(::decodeHtml)?.trim().orEmpty()
         }
+        val title =
+            parsedTitle.takeIf { it.isNotBlank() }
+                ?: cachedVisual?.title?.takeIf { it.isNotBlank() }
+                ?: source.fallbackTitle
 
-        val avatar = if (page.isBlank()) {
+        val parsedAvatar = if (page.isBlank()) {
             ""
         } else {
             firstGroup(
@@ -163,6 +176,11 @@ object YouTubeFeedRepository {
                 Regex("""<meta\s+content="([^"]+)"\s+property="og:image"""", RegexOption.IGNORE_CASE)
             )?.let(::decodeHtml).orEmpty()
         }
+        val avatar =
+            parsedAvatar.takeIf { it.isNotBlank() }
+                ?: cachedVisual?.avatarUrl.orEmpty()
+
+        channelVisualCache[source.handle] = ChannelVisual(title, avatar)
 
         val feed = fetchText("https://www.youtube.com/feeds/videos.xml?channel_id=$channelId")
         val videos = parseFeed(feed, channelId, title, source.handle)
@@ -211,12 +229,18 @@ object YouTubeFeedRepository {
                 }
                 XmlPullParser.END_TAG -> if (parser.name.substringAfter(':') == "entry" && inEntry) {
                     if (videoId.isNotBlank() && title.isNotBlank()) {
+                        val stableThumbnail =
+                            thumbnail.takeIf { it.isNotBlank() }
+                                ?: thumbnailCache[videoId]
+                                ?: "https://i.ytimg.com/vi/$videoId/hqdefault.jpg"
+                        thumbnailCache[videoId] = stableThumbnail
+
                         result += YouTubeFeedVideo(
                             videoId = videoId,
                             title = decodeHtml(title),
                             description = decodeHtml(description),
                             publishedAt = published,
-                            thumbnailUrl = thumbnail.ifBlank { "https://i.ytimg.com/vi/$videoId/hqdefault.jpg" },
+                            thumbnailUrl = stableThumbnail,
                             channelId = channelId,
                             channelTitle = channelTitle,
                             handle = handle
