@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.9.5 version
+      - name: Assign SOHR 6.9.6 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690005" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.5" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690006" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.6" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -845,11 +845,22 @@ jobs:
               'Source("@wt2x2"',
               'Source("@beerloga_t2x2"',
               "private fun deduplicate(",
-              "titleScore >= 0.72",
+              "input.distinctBy { it.videoId }",
+              "suspend fun expandSnapshotVideos(",
+              'channel.channelUrl + "/videos?hl=ru&gl=PL"',
+              "parseVideosPage(",
+              "mergeChannelVideos(",
               "YouTubeFeedSnapshot"
           ]:
               if required not in youtube_feed:
-                  raise SystemExit(f"SOHR 6.7.0 YouTube feed regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.6 YouTube full-catalog regression: {required}")
+          for forbidden in [
+              "titleScore >=",
+              "descriptionScore >=",
+              "private fun isDuplicate("
+          ]:
+              if forbidden in youtube_feed:
+                  raise SystemExit(f"SOHR 6.9.6 fuzzy-dedup regression: {forbidden}")
 
           for required in [
               "fun buildDirectory(",
@@ -1123,16 +1134,14 @@ jobs:
               "private fun switchVideoSection(", 1
           )[1].split("\n    private fun showFeed", 1)[0]
           for required in [
-              "val previousSection = videoSection",
-              "val direction = if (section > previousSection) 1 else -1",
-              "pendingVideoSectionDirection = direction",
+              "pendingVideoSectionCrossfade = true",
+              "pendingVideoSectionDirection = if (section > videoSection) 1 else -1",
               "suppressNextRootAnimation = true",
               "videoSection = section",
-              "showFeed(currentVideos)",
-              "root.postDelayed({ commitSectionChange() }, 170L)"
+              "showFeed(currentVideos)"
           ]:
               if required not in tabs_switch_section:
-                  raise SystemExit(f"SOHR 6.9.5 smooth-tabs regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.6 immediate-tabs regression: {required}")
 
           failure_section = sohr_main.split(
               "private fun handleYouTubeNativeFailure(", 1
@@ -1193,14 +1202,25 @@ jobs:
               if required not in sohr_main:
                   raise SystemExit(f"SOHR 6.9.4 refresh-stability regression: {required}")
 
+          for required in [
+              "youtubeCatalogExpandJob",
+              "YouTubeFeedRepository.expandSnapshotVideos(snapshot)",
+              "mergedChannelVideos",
+              ".take(30)",
+              "refreshOpenYouTubeChannelIfVisible()"
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.9.6 YouTube catalog wiring regression: {required}")
+
+
           section_transition = sohr_main.split(
               "if (sectionCrossfade) {", 1
           )[1].split("} else if (primaryTabTransition)", 1)[0]
           for required in [
               "if (old.parent === host) host.removeView(old)",
               'findViewWithTag<View>("sohr_video_section_content")',
-              "sectionBody.translationX = dp(9).toFloat() * direction",
-              ".setDuration(210L)"
+              "sectionBody.translationX = dp(10).toFloat() * direction",
+              ".setDuration(SohrMotion.NORMAL)"
           ]:
               if required not in section_transition:
                   raise SystemExit(f"SOHR 6.9.5 smooth-section regression: {required}")
@@ -1210,13 +1230,15 @@ jobs:
           tabs_render = sohr_main.split(
               'tag = "sohr_video_tab_indicator"', 1
           )[1].split("header.addView(", 1)[0]
-          for forbidden in [
+          for required in [
               "previousSection",
               ".translationX(target)",
-              "ValueAnimator.ofFloat"
+              "ValueAnimator.ofFloat",
+              "previousLabel?.setTextColor(Color.WHITE)",
+              "targetLabel?.setTextColor(muted)"
           ]:
-              if forbidden in tabs_render:
-                  raise SystemExit(f"SOHR 6.9.5 regression: rebuilt tabs re-animate: {forbidden}")
+              if required not in tabs_render:
+                  raise SystemExit(f"SOHR 6.9.6 rebuilt-tabs animation regression: {required}")
 
           account_section = sohr_main.split(
               "private fun renderAccount(user:", 1
@@ -1660,22 +1682,29 @@ jobs:
                   raise SystemExit(f"SOHR 6.2.3 search-motion regression: {required}")
 
           for required in [
-              "val previousSection = videoSection",
-              "val direction = if (section > previousSection) 1 else -1",
-              'findViewWithTag<FrameLayout>("sohr_video_section_tabs")',
-              'findViewWithTag<View>("sohr_video_tab_indicator")',
-              'findViewWithTag<TextView>("sohr_video_section_label_$previousSection")',
-              'findViewWithTag<TextView>("sohr_video_section_label_$section")',
-              "root.postDelayed({ commitSectionChange() }, 170L)",
-              "tabIndicator.animate().cancel()",
+              "pendingVideoSectionCrossfade = true",
+              "pendingVideoSectionDirection = if (section > videoSection) 1 else -1",
               "suppressNextRootAnimation = true",
               "suppressNextContentAnimation = false",
+              "videoSection = section",
+              "showFeed(currentVideos)",
+              "tabIndicator.animate().cancel()",
               "nav.clearAnimation()",
               "nav.scaleX = 1f",
               "nav.scaleY = 1f"
           ]:
               if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.9.5 smooth-tabs/nav regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.6 smooth-tabs/nav regression: {required}")
+          tabs_switch_section = sohr_main.split(
+              "private fun switchVideoSection(", 1
+          )[1].split("\n    private fun showFeed", 1)[0]
+          for forbidden in [
+              "commitSectionChange()",
+              "root.postDelayed({ commitSectionChange()",
+              'findViewWithTag<FrameLayout>("sohr_video_section_tabs")'
+          ]:
+              if forbidden in tabs_switch_section:
+                  raise SystemExit(f"SOHR 6.9.6 delayed-old-tabs regression: {forbidden}")
 
           for required in [
               "activeSearchInput: EditText?",
@@ -2130,7 +2159,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.5 • полностью исправлена анимация «Главная / Лента / Просмотренные»: индикатор и подписи теперь анимируются на уже видимой панели до перестройки контента, затем новый tab-bar сразу появляется в конечном положении и не запускает вторую анимацию • содержимое секции получает отдельный короткий горизонтальный transition без движения верхней панели • сохранены исправления 6.9.4: YouTube не выбрасывает наружу автоматически, аккаунт-карточка с выбранным Google-аккаунтом/выходом, clean-session retry, кэш YouTube-аватаров/обложек и параллельная загрузка аккаунтов"
+            "notes": "SOHR 6.9.6 • возвращена проверенная плавная анимация вкладок из 6.9.4: секция перестраивается сразу, новый индикатор стартует из предыдущей позиции и плавно доезжает до выбранной без задержки/двойного hand-off старой панели • YouTube-каналы больше не ограничиваются коротким RSS-списком: RSS показывается сразу, затем /videos тихо дозаполняет канал до 30 роликов • удалена fuzzy-дедупликация по похожим названиям/описаниям — скрывается только настоящий дубль с тем же videoId • refresh больше не может заменить длинный список более коротким, а открытый экран канала обновляется после фоновой дозагрузки"
           }
           EOF
           cat update.json

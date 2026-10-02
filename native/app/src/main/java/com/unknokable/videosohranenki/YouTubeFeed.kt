@@ -14,9 +14,7 @@ import java.io.StringReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.time.Instant
-import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.math.abs
 
 data class YouTubeFeedVideo(
     val videoId: String,
@@ -127,6 +125,53 @@ object YouTubeFeedRepository {
             )
         }
     }
+
+    suspend fun expandSnapshotVideos(
+        snapshot: YouTubeFeedSnapshot,
+        perChannelLimit: Int = 30
+    ): YouTubeFeedSnapshot = coroutineScope {
+        val channels = snapshot.channels.map { channel ->
+            async(Dispatchers.IO) {
+                val page = runCatching {
+                    withTimeoutOrNull(7_000L) {
+                        fetchText(channel.channelUrl + "/videos?hl=ru&gl=PL")
+                    }
+                }.getOrNull()
+
+                if (page.isNullOrBlank()) {
+                    channel
+                } else {
+                    val pageVideos = parseVideosPage(
+                        page = page,
+                        channel = channel,
+                        limit = perChannelLimit
+                    )
+                    channel.copy(
+                        videos = mergeChannelVideos(
+                            primary = channel.videos,
+                            secondary = pageVideos,
+                            limit = perChannelLimit
+                        )
+                    )
+                }
+            }
+        }.mapNotNull { deferred ->
+            runCatching { deferred.await() }.getOrNull()
+        }
+
+        if (channels.isEmpty()) {
+            snapshot
+        } else {
+            YouTubeFeedSnapshot(
+                channels = channels,
+                videos = channels
+                    .flatMap { it.videos }
+                    .distinctBy { it.videoId }
+                    .sortedByDescending { it.publishedAt }
+            )
+        }
+    }
+
 
     private suspend fun loadChannel(source: Source): YouTubeChannelSummary = withContext(Dispatchers.IO) {
         val cachedId = channelIdCache[source.handle]
@@ -254,6 +299,126 @@ object YouTubeFeedRepository {
         return result.sortedByDescending { it.publishedAt }.take(30)
     }
 
+    private fun parseVideosPage(
+        page: String,
+        channel: YouTubeChannelSummary,
+        limit: Int
+    ): List<YouTubeFeedVideo> {
+        val rendererIds = Regex(
+            """"(?:videoRenderer|gridVideoRenderer)":\{"videoId":"([A-Za-z0-9_-]{11})""""
+        )
+            .findAll(page)
+            .mapNotNull { it.groupValues.getOrNull(1) }
+            .distinct()
+            .take(limit)
+            .toList()
+
+        if (rendererIds.isEmpty()) return emptyList()
+
+        val existing = channel.videos.associateBy { it.videoId }
+        val oldestKnown =
+            channel.videos
+                .map { it.publishedAt }
+                .filter { it > 0L }
+                .minOrNull()
+                ?: Instant.now().epochSecond
+
+        var extraIndex = 0
+        return rendererIds.mapNotNull { videoId ->
+            existing[videoId] ?: run {
+                val marker = "\"videoId\":\"$videoId\""
+                val markerIndex = page.indexOf(marker)
+                if (markerIndex < 0) return@run null
+
+                val titleRaw =
+                    readJsonStringAfter(
+                        raw = page,
+                        startAt = markerIndex,
+                        key = "\"title\":{\"runs\":[{\"text\":\"",
+                        maxDistance = 7_000
+                    )
+                        ?: readJsonStringAfter(
+                            raw = page,
+                            startAt = markerIndex,
+                            key = "\"title\":{\"simpleText\":\"",
+                            maxDistance = 7_000
+                        )
+                        ?: return@run null
+
+                val title = decodeHtml(decodeJsonEscapes(titleRaw)).trim()
+                if (title.isBlank()) return@run null
+
+                extraIndex += 1
+                YouTubeFeedVideo(
+                    videoId = videoId,
+                    title = title,
+                    description = "",
+                    publishedAt = (oldestKnown - extraIndex * 60L).coerceAtLeast(0L),
+                    thumbnailUrl =
+                        thumbnailCache[videoId]
+                            ?: "https://i.ytimg.com/vi/$videoId/hqdefault.jpg",
+                    channelId = channel.channelId,
+                    channelTitle = channel.title,
+                    handle = channel.handle
+                ).also {
+                    thumbnailCache[videoId] = it.thumbnailUrl
+                }
+            }
+        }
+    }
+
+    private fun mergeChannelVideos(
+        primary: List<YouTubeFeedVideo>,
+        secondary: List<YouTubeFeedVideo>,
+        limit: Int
+    ): List<YouTubeFeedVideo> {
+        val merged = LinkedHashMap<String, YouTubeFeedVideo>()
+        primary.forEach { merged[it.videoId] = it }
+        secondary.forEach { candidate ->
+            if (!merged.containsKey(candidate.videoId)) {
+                merged[candidate.videoId] = candidate
+            }
+        }
+        return merged.values.take(limit)
+    }
+
+    private fun readJsonStringAfter(
+        raw: String,
+        startAt: Int,
+        key: String,
+        maxDistance: Int
+    ): String? {
+        val keyIndex = raw.indexOf(key, startAt)
+        if (keyIndex < 0 || keyIndex - startAt > maxDistance) return null
+
+        val valueStart = keyIndex + key.length
+        var escaped = false
+        for (index in valueStart until raw.length) {
+            val ch = raw[index]
+            if (escaped) {
+                escaped = false
+                continue
+            }
+            when (ch) {
+                '\\' -> escaped = true
+                '"' -> return raw.substring(valueStart, index)
+            }
+        }
+        return null
+    }
+
+    private fun decodeJsonEscapes(raw: String): String =
+        raw.replace("\\u0026", "&")
+            .replace("\\u003d", "=")
+            .replace("\\u003c", "<")
+            .replace("\\u003e", ">")
+            .replace("\\/", "/")
+            .replace("\\n", " ")
+            .replace("\\r", " ")
+            .replace("\\t", " ")
+            .replace("\\\"", "\"")
+            .replace("\\\\", "\\")
+
     private suspend fun enrichDurations(
         videos: List<YouTubeFeedVideo>
     ): List<YouTubeFeedVideo> = coroutineScope {
@@ -292,51 +457,8 @@ object YouTubeFeedRepository {
             .toInt()
     }
 
-    private fun deduplicate(input: List<YouTubeFeedVideo>): List<YouTubeFeedVideo> {
-        val kept = mutableListOf<YouTubeFeedVideo>()
-        input.forEach { candidate ->
-            if (kept.none { existing -> isDuplicate(existing, candidate) }) kept += candidate
-        }
-        return kept
-    }
-
-    private fun isDuplicate(a: YouTubeFeedVideo, b: YouTubeFeedVideo): Boolean {
-        if (a.videoId == b.videoId) return true
-        if (abs(a.publishedAt - b.publishedAt) > 5L * 24L * 60L * 60L) return false
-
-        val titleScore = jaccard(normalizedTokens(a.title), normalizedTokens(b.title))
-        if (titleScore >= 0.72) return true
-
-        val descriptionScore = jaccard(
-            normalizedTokens(a.description).take(60).toSet(),
-            normalizedTokens(b.description).take(60).toSet()
-        )
-        return titleScore >= 0.58 && descriptionScore >= 0.78
-    }
-
-    private fun normalizedTokens(raw: String): Set<String> {
-        val stop = setOf(
-            "t2x2", "т2х2", "т2x2", "стрим", "стрима", "нарезка", "нарезки",
-            "лучшее", "видео", "новое", "новый", "часть", "youtube", "ютуб"
-        )
-        return raw
-            .lowercase(Locale.getDefault())
-            .replace(Regex("""https?://\S+"""), " ")
-            .replace(Regex("""@[a-z0-9_\-]+"""), " ")
-            .replace(Regex("""[^a-zа-яё0-9]+""", RegexOption.IGNORE_CASE), " ")
-            .split(' ')
-            .asSequence()
-            .map { it.trim() }
-            .filter { it.length >= 3 && it !in stop }
-            .toSet()
-    }
-
-    private fun jaccard(a: Set<String>, b: Set<String>): Double {
-        if (a.isEmpty() || b.isEmpty()) return 0.0
-        val intersection = a.count { it in b }
-        val union = a.size + b.size - intersection
-        return if (union <= 0) 0.0 else intersection.toDouble() / union.toDouble()
-    }
+    private fun deduplicate(input: List<YouTubeFeedVideo>): List<YouTubeFeedVideo> =
+        input.distinctBy { it.videoId }
 
     private fun fetchText(url: String): String {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {

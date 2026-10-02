@@ -106,6 +106,7 @@ class MainActivity : AppCompatActivity() {
     private var youtubeFeedLoading = false
     private var youtubeFeedJob: kotlinx.coroutines.Job? = null
     private var youtubeDurationEnrichJob: kotlinx.coroutines.Job? = null
+    private var youtubeCatalogExpandJob: kotlinx.coroutines.Job? = null
     private var youtubeFeedAutoRefreshJob: kotlinx.coroutines.Job? = null
     private var lastYoutubeFeedRefreshAt = 0L
     private var lastYoutubeFeedAttemptAt = 0L
@@ -2743,70 +2744,26 @@ class MainActivity : AppCompatActivity() {
         }
 
         videoSectionSwitchLocked = true
-        val previousSection = videoSection
-        val direction = if (section > previousSection) 1 else -1
+        pendingVideoSectionCrossfade = true
+        pendingVideoSectionDirection = if (section > videoSection) 1 else -1
+        pendingRootSlide = 0
 
-        fun commitSectionChange() {
-            pendingVideoSectionCrossfade = true
-            pendingVideoSectionDirection = direction
-            pendingRootSlide = 0
-            suppressNextRootAnimation = true
-            suppressNextContentAnimation = false
-            videoSection = section
-            showFeed(currentVideos)
+        // One animation path only: rebuild immediately, then let the new tabs
+        // animate their indicator from the previous slot while only section
+        // content moves. No delayed pre-animation and no double hand-off.
+        suppressNextRootAnimation = true
+        suppressNextContentAnimation = false
+        videoSection = section
+        showFeed(currentVideos)
 
-            root.postDelayed({
-                videoSectionSwitchLocked = false
-                val queued = pendingVideoSectionTarget
-                pendingVideoSectionTarget = null
-                if (queued != null && queued != videoSection) {
-                    switchVideoSection(queued)
-                }
-            }, if (settings.animations) 230L else 16L)
-        }
-
-        val tabs = root.findViewWithTag<FrameLayout>("sohr_video_section_tabs")
-        val indicator = root.findViewWithTag<View>("sohr_video_tab_indicator")
-        val fromLabel = root.findViewWithTag<TextView>("sohr_video_section_label_$previousSection")
-        val toLabel = root.findViewWithTag<TextView>("sohr_video_section_label_$section")
-
-        if (
-            settings.animations &&
-            tabs != null &&
-            indicator != null &&
-            tabs.width > 0
-        ) {
-            val usable = tabs.width - tabs.paddingLeft - tabs.paddingRight
-            val slot = (usable / 3f).coerceAtLeast(0f)
-            val target = slot * (section - 1)
-
-            indicator.animate().cancel()
-            indicator.animate()
-                .translationX(target)
-                .setDuration(190L)
-                .setInterpolator(SohrMotion.smooth())
-                .start()
-
-            android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
-                duration = 180L
-                interpolator = SohrMotion.smooth()
-                val evaluator = android.animation.ArgbEvaluator()
-                addUpdateListener { animator ->
-                    val progress = animator.animatedFraction
-                    fromLabel?.setTextColor(
-                        evaluator.evaluate(progress, Color.WHITE, muted) as Int
-                    )
-                    toLabel?.setTextColor(
-                        evaluator.evaluate(progress, muted, Color.WHITE) as Int
-                    )
-                }
-                start()
+        root.postDelayed({
+            videoSectionSwitchLocked = false
+            val queued = pendingVideoSectionTarget
+            pendingVideoSectionTarget = null
+            if (queued != null && queued != videoSection) {
+                switchVideoSection(queued)
             }
-
-            root.postDelayed({ commitSectionChange() }, 170L)
-        } else {
-            commitSectionChange()
-        }
+        }, if (settings.animations) 235L else 16L)
     }
 
     private fun showFeed(videos: List<VideoItem>) {
@@ -3137,8 +3094,46 @@ class MainActivity : AppCompatActivity() {
             params.width = slot.toInt()
             params.height = dp(40)
             tabIndicator.layoutParams = params
-            tabIndicator.animate().cancel()
-            tabIndicator.translationX = slot * (videoSection - 1)
+
+            val target = slot * (videoSection - 1)
+            if (sectionTransitionDirection != 0 && settings.animations) {
+                val previousSection =
+                    (videoSection - sectionTransitionDirection).coerceIn(1, 3)
+
+                val previousLabel =
+                    tabs.findViewWithTag<TextView>("sohr_video_section_label_$previousSection")
+                val targetLabel =
+                    tabs.findViewWithTag<TextView>("sohr_video_section_label_$videoSection")
+
+                previousLabel?.setTextColor(Color.WHITE)
+                targetLabel?.setTextColor(muted)
+
+                val colorAnimator = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+                    duration = SohrMotion.NORMAL
+                    interpolator = SohrMotion.smooth()
+                    addUpdateListener { animator ->
+                        val progress = animator.animatedValue as Float
+                        val evaluator = android.animation.ArgbEvaluator()
+                        previousLabel?.setTextColor(
+                            evaluator.evaluate(progress, Color.WHITE, muted) as Int
+                        )
+                        targetLabel?.setTextColor(
+                            evaluator.evaluate(progress, muted, Color.WHITE) as Int
+                        )
+                    }
+                }
+
+                tabIndicator.translationX = slot * (previousSection - 1)
+                tabIndicator.animate().cancel()
+                tabIndicator.animate()
+                    .translationX(target)
+                    .setDuration(SohrMotion.NORMAL)
+                    .setInterpolator(SohrMotion.smooth())
+                    .start()
+                colorAnimator.start()
+            } else {
+                tabIndicator.translationX = target
+            }
         }
         header.addView(
             tabs,
@@ -6508,10 +6503,19 @@ class MainActivity : AppCompatActivity() {
 
         val refreshedChannels = incoming.channels.map { channel ->
             val previous = previousChannelsByHandle[channel.handle.lowercase(Locale.ROOT)]
+            val mergedChannelVideos =
+                buildList {
+                    channel.videos.forEach { add(stabilizeVideo(it)) }
+                    previous?.videos.orEmpty().forEach { add(stabilizeVideo(it)) }
+                }
+                    .distinctBy { it.videoId }
+                    .sortedByDescending { it.publishedAt }
+                    .take(30)
+
             channel.copy(
                 title = channel.title.ifBlank { previous?.title.orEmpty() },
                 avatarUrl = channel.avatarUrl.ifBlank { previous?.avatarUrl.orEmpty() },
-                videos = channel.videos.map(::stabilizeVideo)
+                videos = mergedChannelVideos
             )
         }
 
@@ -6604,6 +6608,44 @@ class MainActivity : AppCompatActivity() {
                 showFeed(currentVideos)
             }
 
+            // RSS is intentionally the fast first pass. Expand each channel from its
+            // /videos page in the background so the channel screen is not capped by RSS.
+            if (
+                snapshot.channels.isNotEmpty() &&
+                youtubeCatalogExpandJob?.isActive != true
+            ) {
+                youtubeCatalogExpandJob = lifecycleScope.launch {
+                    val expandedRaw = runCatching {
+                        kotlinx.coroutines.withTimeout(12_000L) {
+                            YouTubeFeedRepository.expandSnapshotVideos(snapshot)
+                        }
+                    }.getOrNull()
+
+                    youtubeCatalogExpandJob = null
+                    if (expandedRaw == null) return@launch
+
+                    val expanded = stabilizeYouTubeSnapshot(expandedRaw)
+                    val catalogChanged =
+                        expanded.channels != youtubeChannels ||
+                            expanded.videos != youtubeFeedVideos
+                    if (!catalogChanged) return@launch
+
+                    youtubeChannels = expanded.channels
+                    youtubeFeedVideos = expanded.videos
+
+                    if (videoSection == 2 && !isFinishing) {
+                        if (auxiliaryScreen == null) {
+                            rememberFeedScrollPosition()
+                            suppressNextRootAnimation = true
+                            suppressNextContentAnimation = true
+                            showFeed(currentVideos)
+                        } else if (auxiliaryScreen == "youtube_channel") {
+                            refreshOpenYouTubeChannelIfVisible()
+                        }
+                    }
+                }
+            }
+
             // Durations are optional metadata. Enrich a small visible slice in the
             // background after the list is already on screen, never blocking skeleton exit.
             if (
@@ -6641,6 +6683,33 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    private fun refreshOpenYouTubeChannelIfVisible() {
+        if (auxiliaryScreen != "youtube_channel" || isFinishing) return
+        val current = openYouTubeChannelSummary ?: return
+        val updated = youtubeChannels.firstOrNull {
+            it.handle.equals(current.handle, ignoreCase = true)
+        } ?: return
+        if (updated.videos == current.videos && updated.avatarUrl == current.avatarUrl) return
+
+        openYouTubeChannelSummary = updated
+        val content = YouTubeFeedUi.buildChannel(
+            activity = this,
+            settings = settings,
+            channel = updated,
+            onBack = {
+                auxiliaryScreen = null
+                openYouTubeChannelSummary = null
+                videoSection = 2
+                pendingRootSlide = -1
+                showFeed(currentVideos)
+            },
+            onOpenVideo = { video, _ -> openYouTubeVideo(video) }
+        )
+        suppressNextRootAnimation = true
+        suppressNextContentAnimation = true
+        replaceRoot(withBottomNav(content, SohrTab.VIDEOS))
     }
 
     private fun openYouTubeChannelScreen(channel: YouTubeChannelSummary) {
@@ -9811,15 +9880,15 @@ class MainActivity : AppCompatActivity() {
                             if (sectionDirection >= 0) 1f else -1f
 
                         sectionBody.animate().cancel()
-                        sectionBody.alpha = 0.92f
-                        sectionBody.translationX = dp(9).toFloat() * direction
+                        sectionBody.alpha = 0.94f
+                        sectionBody.translationX = dp(10).toFloat() * direction
                         sectionBody.translationY = 0f
                         sectionBody.scaleX = 1f
                         sectionBody.scaleY = 1f
                         sectionBody.animate()
                             .alpha(1f)
                             .translationX(0f)
-                            .setDuration(210L)
+                            .setDuration(SohrMotion.NORMAL)
                             .setInterpolator(SohrMotion.smooth())
                             .withEndAction {
                                 sectionBody.alpha = 1f
