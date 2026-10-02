@@ -2743,70 +2743,26 @@ class MainActivity : AppCompatActivity() {
         }
 
         videoSectionSwitchLocked = true
-        val previousSection = videoSection
-        val direction = if (section > previousSection) 1 else -1
+        pendingVideoSectionCrossfade = true
+        pendingVideoSectionDirection = if (section > videoSection) 1 else -1
+        pendingRootSlide = 0
 
-        fun commitSectionChange() {
-            pendingVideoSectionCrossfade = true
-            pendingVideoSectionDirection = direction
-            pendingRootSlide = 0
-            suppressNextRootAnimation = true
-            suppressNextContentAnimation = false
-            videoSection = section
-            showFeed(currentVideos)
+        // One animation path only: rebuild immediately, then let the new tabs
+        // animate their indicator from the previous slot while only section
+        // content moves. No delayed pre-animation and no double hand-off.
+        suppressNextRootAnimation = true
+        suppressNextContentAnimation = false
+        videoSection = section
+        showFeed(currentVideos)
 
-            root.postDelayed({
-                videoSectionSwitchLocked = false
-                val queued = pendingVideoSectionTarget
-                pendingVideoSectionTarget = null
-                if (queued != null && queued != videoSection) {
-                    switchVideoSection(queued)
-                }
-            }, if (settings.animations) 230L else 16L)
-        }
-
-        val tabs = root.findViewWithTag<FrameLayout>("sohr_video_section_tabs")
-        val indicator = root.findViewWithTag<View>("sohr_video_tab_indicator")
-        val fromLabel = root.findViewWithTag<TextView>("sohr_video_section_label_$previousSection")
-        val toLabel = root.findViewWithTag<TextView>("sohr_video_section_label_$section")
-
-        if (
-            settings.animations &&
-            tabs != null &&
-            indicator != null &&
-            tabs.width > 0
-        ) {
-            val usable = tabs.width - tabs.paddingLeft - tabs.paddingRight
-            val slot = (usable / 3f).coerceAtLeast(0f)
-            val target = slot * (section - 1)
-
-            indicator.animate().cancel()
-            indicator.animate()
-                .translationX(target)
-                .setDuration(190L)
-                .setInterpolator(SohrMotion.smooth())
-                .start()
-
-            android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
-                duration = 180L
-                interpolator = SohrMotion.smooth()
-                val evaluator = android.animation.ArgbEvaluator()
-                addUpdateListener { animator ->
-                    val progress = animator.animatedFraction
-                    fromLabel?.setTextColor(
-                        evaluator.evaluate(progress, Color.WHITE, muted) as Int
-                    )
-                    toLabel?.setTextColor(
-                        evaluator.evaluate(progress, muted, Color.WHITE) as Int
-                    )
-                }
-                start()
+        root.postDelayed({
+            videoSectionSwitchLocked = false
+            val queued = pendingVideoSectionTarget
+            pendingVideoSectionTarget = null
+            if (queued != null && queued != videoSection) {
+                switchVideoSection(queued)
             }
-
-            root.postDelayed({ commitSectionChange() }, 170L)
-        } else {
-            commitSectionChange()
-        }
+        }, if (settings.animations) 235L else 16L)
     }
 
     private fun showFeed(videos: List<VideoItem>) {
@@ -3137,8 +3093,46 @@ class MainActivity : AppCompatActivity() {
             params.width = slot.toInt()
             params.height = dp(40)
             tabIndicator.layoutParams = params
-            tabIndicator.animate().cancel()
-            tabIndicator.translationX = slot * (videoSection - 1)
+
+            val target = slot * (videoSection - 1)
+            if (sectionTransitionDirection != 0 && settings.animations) {
+                val previousSection =
+                    (videoSection - sectionTransitionDirection).coerceIn(1, 3)
+
+                val previousLabel =
+                    tabs.findViewWithTag<TextView>("sohr_video_section_label_$previousSection")
+                val targetLabel =
+                    tabs.findViewWithTag<TextView>("sohr_video_section_label_$videoSection")
+
+                previousLabel?.setTextColor(Color.WHITE)
+                targetLabel?.setTextColor(muted)
+
+                val colorAnimator = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+                    duration = SohrMotion.NORMAL
+                    interpolator = SohrMotion.smooth()
+                    addUpdateListener { animator ->
+                        val progress = animator.animatedValue as Float
+                        val evaluator = android.animation.ArgbEvaluator()
+                        previousLabel?.setTextColor(
+                            evaluator.evaluate(progress, Color.WHITE, muted) as Int
+                        )
+                        targetLabel?.setTextColor(
+                            evaluator.evaluate(progress, muted, Color.WHITE) as Int
+                        )
+                    }
+                }
+
+                tabIndicator.translationX = slot * (previousSection - 1)
+                tabIndicator.animate().cancel()
+                tabIndicator.animate()
+                    .translationX(target)
+                    .setDuration(SohrMotion.NORMAL)
+                    .setInterpolator(SohrMotion.smooth())
+                    .start()
+                colorAnimator.start()
+            } else {
+                tabIndicator.translationX = target
+            }
         }
         header.addView(
             tabs,
@@ -9811,15 +9805,15 @@ class MainActivity : AppCompatActivity() {
                             if (sectionDirection >= 0) 1f else -1f
 
                         sectionBody.animate().cancel()
-                        sectionBody.alpha = 0.92f
-                        sectionBody.translationX = dp(9).toFloat() * direction
+                        sectionBody.alpha = 0.94f
+                        sectionBody.translationX = dp(10).toFloat() * direction
                         sectionBody.translationY = 0f
                         sectionBody.scaleX = 1f
                         sectionBody.scaleY = 1f
                         sectionBody.animate()
                             .alpha(1f)
                             .translationX(0f)
-                            .setDuration(210L)
+                            .setDuration(SohrMotion.NORMAL)
                             .setInterpolator(SohrMotion.smooth())
                             .withEndAction {
                                 sectionBody.alpha = 1f
