@@ -355,13 +355,28 @@ class YouTubePlaybackScreen(
     }
 
     private fun loadVideo() {
-        val url = Uri.parse("https://unknokable0.github.io/video-sohranenki/youtube-player/")
+        val baseUrl = Uri.parse("https://unknokable0.github.io/video-sohranenki/youtube-player/")
             .buildUpon()
             .appendQueryParameter("video", videoId)
             .appendQueryParameter("start", (startPositionMs / 1000L).coerceAtLeast(0L).toString())
             .build()
             .toString()
-        webView.loadUrl(url)
+
+        val html = activity.assets
+            .open("youtube_player.html")
+            .bufferedReader(Charsets.UTF_8)
+            .use { it.readText() }
+
+        // Keep a normal HTTPS origin/referrer for the YouTube IFrame API while
+        // shipping the playback engine inside the APK. Playback therefore does
+        // not depend on GitHub Pages propagation or a separate server request.
+        webView.loadDataWithBaseURL(
+            baseUrl,
+            html,
+            "text/html",
+            "UTF-8",
+            baseUrl
+        )
     }
 
     private fun buildCopyrightNotice(): LinearLayout {
