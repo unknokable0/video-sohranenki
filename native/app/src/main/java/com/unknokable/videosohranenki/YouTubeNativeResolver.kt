@@ -83,6 +83,8 @@ object YouTubeNativeResolver {
     private const val VISIONOS_CLIENT_NAME = 101
     private const val WEB_SAFARI_CLIENT_VERSION = "2.20260708.00.00"
     private const val WEB_SAFARI_CLIENT_NAME = 1
+    private const val WEB_EMBEDDED_CLIENT_VERSION = "2.20260708.00.00"
+    private const val WEB_EMBEDDED_CLIENT_NAME = 56
     private const val TV_SIMPLY_CLIENT_VERSION = "1.0"
     private const val TV_SIMPLY_CLIENT_NAME = 75
     private const val BOOTSTRAP_TTL_MS = 3L * 60L * 60L * 1000L
@@ -97,6 +99,9 @@ object YouTubeNativeResolver {
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) " +
             "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
     private const val WEB_SAFARI_USER_AGENT =
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
+            "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15,gzip(gfe)"
+    private const val WEB_EMBEDDED_USER_AGENT =
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
             "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15,gzip(gfe)"
     private const val TV_SIMPLY_USER_AGENT =
@@ -158,6 +163,14 @@ object YouTubeNativeResolver {
 
             try {
                 return@withContext resolveWithVisionOs(video)
+            } catch (error: Throwable) {
+                val mapped = mapFailure(error)
+                if (mapped is YouTubeAgeRestrictedException) throw mapped
+                failures += mapped
+            }
+
+            try {
+                return@withContext resolveWithWebEmbedded(video)
             } catch (error: Throwable) {
                 val mapped = mapFailure(error)
                 if (mapped is YouTubeAgeRestrictedException) throw mapped
@@ -283,13 +296,7 @@ object YouTubeNativeResolver {
 
         if (isAgeRestrictedStatus(status, detail)) throw YouTubeAgeRestrictedException()
         if (status != "OK") {
-            throw when {
-                status == "LOGIN_REQUIRED" ||
-                    "sign in to confirm" in detail ||
-                    "login required" in detail ->
-                        YouTubeSignInRequiredException()
-                else -> YouTubeUnavailableException()
-            }
+            throw classifyPlayabilityFailure(status, detail)
         }
 
         return sourceFromPlayerResponse(
@@ -298,6 +305,27 @@ object YouTubeNativeResolver {
             streamingPoToken = null,
             userAgent = VISIONOS_USER_AGENT,
             referer = "https://www.youtube.com/"
+        )
+    }
+
+    private suspend fun resolveWithWebEmbedded(video: YouTubeFeedVideo): YouTubeNativeSource {
+        val bootstrap = loadWebBootstrap()
+        val response = requestWebEmbeddedPlayer(video.videoId, bootstrap)
+        val playability = response.optJSONObject("playabilityStatus")
+        val status = playability?.optString("status").orEmpty()
+        val detail = playabilityDetail(playability)
+
+        if (isAgeRestrictedStatus(status, detail)) throw YouTubeAgeRestrictedException()
+        if (status != "OK") {
+            throw classifyPlayabilityFailure(status, detail)
+        }
+
+        return sourceFromPlayerResponse(
+            video = video,
+            response = response,
+            streamingPoToken = null,
+            userAgent = WEB_EMBEDDED_USER_AGENT,
+            referer = "https://www.youtube.com/embed/${video.videoId}?html5=1"
         )
     }
 
@@ -310,13 +338,7 @@ object YouTubeNativeResolver {
 
         if (isAgeRestrictedStatus(status, detail)) throw YouTubeAgeRestrictedException()
         if (status != "OK") {
-            throw when {
-                status == "LOGIN_REQUIRED" ||
-                    "sign in to confirm" in detail ||
-                    "login required" in detail ->
-                        YouTubeSignInRequiredException()
-                else -> YouTubeUnavailableException()
-            }
+            throw classifyPlayabilityFailure(status, detail)
         }
 
         val streaming = response.optJSONObject("streamingData")
@@ -345,13 +367,7 @@ object YouTubeNativeResolver {
 
         if (isAgeRestrictedStatus(status, detail)) throw YouTubeAgeRestrictedException()
         if (status != "OK") {
-            throw when {
-                status == "LOGIN_REQUIRED" ||
-                    "sign in to confirm" in detail ||
-                    "login required" in detail ->
-                        YouTubeSignInRequiredException()
-                else -> YouTubeUnavailableException()
-            }
+            throw classifyPlayabilityFailure(status, detail)
         }
 
         val streaming = response.optJSONObject("streamingData")
@@ -530,18 +546,7 @@ object YouTubeNativeResolver {
         }
 
         if (status != "OK") {
-            throw when {
-                status == "LOGIN_REQUIRED" ||
-                    "sign in to confirm" in detail ||
-                    "not a bot" in detail ||
-                    "login required" in detail ->
-                        YouTubeSignInRequiredException()
-                "private" in detail ||
-                    "unavailable" in detail ||
-                    "not available" in detail ->
-                        YouTubeUnavailableException()
-                else -> YouTubeUnavailableException()
-            }
+            throw classifyPlayabilityFailure(status, detail)
         }
 
         val streaming = response.optJSONObject("streamingData")
@@ -784,6 +789,31 @@ object YouTubeNativeResolver {
         )
     }
 
+    private fun requestWebEmbeddedPlayer(
+        videoId: String,
+        bootstrap: WebBootstrap
+    ): JSONObject {
+        val client = JSONObject()
+            .put("clientName", "WEB_EMBEDDED_PLAYER")
+            .put("clientVersion", WEB_EMBEDDED_CLIENT_VERSION)
+            .put("userAgent", WEB_EMBEDDED_USER_AGENT)
+            .put("hl", "ru")
+            .put("gl", "PL")
+            .put("visitorData", bootstrap.visitorData)
+
+        return requestInnertubePlayer(
+            videoId = videoId,
+            bootstrap = bootstrap,
+            client = client,
+            clientNameId = WEB_EMBEDDED_CLIENT_NAME,
+            clientVersion = WEB_EMBEDDED_CLIENT_VERSION,
+            userAgent = WEB_EMBEDDED_USER_AGENT,
+            origin = "https://www.youtube.com",
+            referer = "https://www.youtube.com/embed/$videoId?html5=1",
+            thirdPartyEmbedUrl = "https://www.reddit.com/"
+        )
+    }
+
     private fun requestWebSafariPlayer(
         videoId: String,
         bootstrap: WebBootstrap
@@ -840,10 +870,19 @@ object YouTubeNativeResolver {
         clientVersion: String,
         userAgent: String,
         origin: String,
-        referer: String
+        referer: String,
+        thirdPartyEmbedUrl: String? = null
     ): JSONObject {
+        val context = JSONObject().put("client", client)
+        if (!thirdPartyEmbedUrl.isNullOrBlank()) {
+            context.put(
+                "thirdParty",
+                JSONObject().put("embedUrl", thirdPartyEmbedUrl)
+            )
+        }
+
         val body = JSONObject()
-            .put("context", JSONObject().put("client", client))
+            .put("context", context)
             .put("videoId", videoId)
             .put("contentCheckOk", true)
             .put("racyCheckOk", true)
@@ -1081,6 +1120,32 @@ object YouTubeNativeResolver {
             format.has("drmTrackType") ||
             format.optString("type").contains("DRM", ignoreCase = true)
 
+    private fun isAntiBotStatus(detail: String): Boolean =
+        "sign in to confirm you're not a bot" in detail ||
+            "sign in to confirm you’re not a bot" in detail ||
+            "confirm you're not a bot" in detail ||
+            "confirm you’re not a bot" in detail ||
+            "not a bot" in detail
+
+    private fun classifyPlayabilityFailure(
+        status: String,
+        detail: String
+    ): YouTubeNativeResolveException =
+        when {
+            isAgeRestrictedStatus(status, detail) -> YouTubeAgeRestrictedException()
+            isAntiBotStatus(detail) -> YouTubeSessionInitException()
+            status == "LOGIN_REQUIRED" ||
+                "cannot be watched anonymously" in detail ||
+                "login required" in detail ||
+                "sign in" in detail ->
+                    YouTubeSignInRequiredException()
+            "private" in detail ||
+                "unavailable" in detail ||
+                "not available" in detail ->
+                    YouTubeUnavailableException()
+            else -> YouTubeUnavailableException()
+        }
+
     private fun isAgeRestrictedStatus(status: String, detail: String): Boolean =
         status == "AGE_CHECK_REQUIRED" ||
             status == "AGE_VERIFICATION_REQUIRED" ||
@@ -1205,12 +1270,14 @@ object YouTubeNativeResolver {
                     YouTubeAgeRestrictedException()
 
             "signinconfirmnotbot" in classChain ||
-                "loginrequired" in classChain ||
-                "cannot be watched anonymously" in combined ||
                 "sign in to confirm you're not a bot" in combined ||
                 "sign in to confirm you’re not a bot" in combined ||
-                "login required" in combined ||
                 "potoken" in classChain ->
+                    YouTubeSessionInitException()
+
+            "loginrequired" in classChain ||
+                "cannot be watched anonymously" in combined ||
+                "login required" in combined ->
                     YouTubeSignInRequiredException()
 
             "private video" in combined ||

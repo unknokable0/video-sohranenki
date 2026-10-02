@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.9.6 version
+      - name: Assign SOHR 6.9.7 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690006" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.6" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690007" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.7" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -912,7 +912,6 @@ jobs:
                   raise SystemExit(f"SOHR 6.7.1 native YouTube resolver regression: {required}")
           for forbidden in [
               "android.webkit.WebView",
-              "youtube.com/embed",
               "youtube.com/iframe_api",
               "YT.Player",
               "import com.zemer.cipher.potoken.PoTokenGenerator",
@@ -932,6 +931,7 @@ jobs:
           for required in [
               "failures += mapFailure(error)",
               "resolveWithVisionOs(video)",
+              "resolveWithWebEmbedded(video)",
               "resolveWithWebSafariHls(video)",
               "resolveWithPoToken(video)"
           ]:
@@ -1073,6 +1073,7 @@ jobs:
           expected_order = [
               "StreamInfo.getInfo(video.watchUrl)",
               "resolveWithVisionOs(video)",
+              "resolveWithWebEmbedded(video)",
               "resolveWithWebSafariHls(video)",
               "resolveWithTvSimplyHls(video)",
               "resolveWithPoToken(video)"
@@ -1080,6 +1081,22 @@ jobs:
           positions = [resolve_section.find(marker) for marker in expected_order]
           if any(pos < 0 for pos in positions) or positions != sorted(positions):
               raise SystemExit("SOHR 6.8.4 regression: YouTube fallback order changed")
+
+          for required in [
+              'private const val WEB_EMBEDDED_CLIENT_VERSION = "2.20260708.00.00"',
+              "private const val WEB_EMBEDDED_CLIENT_NAME = 56",
+              'put("clientName", "WEB_EMBEDDED_PLAYER")',
+              "requestWebEmbeddedPlayer(",
+              "resolveWithWebEmbedded(video)",
+              'JSONObject().put("embedUrl", thirdPartyEmbedUrl)',
+              '"https://www.reddit.com/"',
+              "classifyPlayabilityFailure(",
+              "isAntiBotStatus(",
+              '"signinconfirmnotbot" in classChain',
+              "YouTubeSessionInitException()"
+          ]:
+              if required not in youtube_resolver:
+                  raise SystemExit(f"SOHR 6.9.7 embedded/anti-bot regression: {required}")
 
           for required in [
               'private const val TV_SIMPLY_CLIENT_VERSION = "1.0"',
@@ -2159,7 +2176,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.6 • возвращена проверенная плавная анимация вкладок из 6.9.4: секция перестраивается сразу, новый индикатор стартует из предыдущей позиции и плавно доезжает до выбранной без задержки/двойного hand-off старой панели • YouTube-каналы больше не ограничиваются коротким RSS-списком: RSS показывается сразу, затем /videos тихо дозаполняет канал до 30 роликов • удалена fuzzy-дедупликация по похожим названиям/описаниям — скрывается только настоящий дубль с тем же videoId • refresh больше не может заменить длинный список более коротким, а открытый экран канала обновляется после фоновой дозагрузки"
+            "notes": "SOHR 6.9.7 • исправлена ложная ошибка «YouTube требует аккаунт»: ответ «Sign in to confirm you're not a bot» и ошибки PO Token теперь считаются техническим сбоем гостевой сессии, а не настоящим account-gate • перед Safari/TV/PoToken добавлен актуальный WEB_EMBEDDED_PLAYER (client 56) с thirdParty embed context — для обычных embeddable-роликов это даёт ещё один нативный путь к потоку без подмены интерфейса SOHR • настоящий возрастной gate по-прежнему не обходится • сохранены плавные вкладки и полный каталог YouTube из 6.9.6"
           }
           EOF
           cat update.json
