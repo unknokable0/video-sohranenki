@@ -9,6 +9,11 @@ on:
     paths:
       - "native/**"
       - ".github/workflows/build-apk.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "native/**"
+      - ".github/workflows/build-apk.yml"
   workflow_dispatch:
 
 permissions:
@@ -1770,6 +1775,7 @@ jobs:
           retention-days: 30
 
       - name: Publish updater channel
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -1787,6 +1793,7 @@ jobs:
 
 
       - name: Verify published updater channel
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
