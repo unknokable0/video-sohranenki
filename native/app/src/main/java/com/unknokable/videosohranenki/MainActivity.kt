@@ -6521,7 +6521,8 @@ class MainActivity : AppCompatActivity() {
             val resolved = firstResolve.getOrElse { firstError ->
                 if (
                     firstError is YouTubeNetworkException ||
-                    firstError is YouTubeUnavailableException
+                    firstError is YouTubeUnavailableException ||
+                    firstError is YouTubeSessionInitException
                 ) {
                     delay(320L)
                     runCatching {
@@ -6677,7 +6678,8 @@ class MainActivity : AppCompatActivity() {
             TextView(this).apply {
                 text = when (error) {
                     is YouTubeAgeRestrictedException -> "Видео ограничено YouTube"
-                    is YouTubeSignInRequiredException -> "YouTube не отдал прямой поток"
+                    is YouTubeSignInRequiredException -> "YouTube требует аккаунт"
+                    is YouTubeSessionInitException -> "Не удалось подготовить YouTube-сессию"
                     is YouTubeNetworkException -> "Нет связи с YouTube"
                     else -> "Видео сейчас недоступно"
                 }
@@ -6697,9 +6699,11 @@ class MainActivity : AppCompatActivity() {
             TextView(this).apply {
                 text = when (error) {
                     is YouTubeAgeRestrictedException ->
-                        "YouTube ограничил этот ролик по возрасту. SOHR не обходит такое ограничение."
+                        "YouTube подтвердил возрастное ограничение для этого ролика. SOHR его не обходит."
                     is YouTubeSignInRequiredException ->
-                        "YouTube потребовал проверку аккаунта и не выдал прямой медиапоток. SOHR не подменяет это официальным YouTube-плеером."
+                        "YouTube действительно требует вход или проверку аккаунта для этого ролика. Нативный SOHR-плеер не обходит такую проверку."
+                    is YouTubeSessionInitException ->
+                        "BotGuard/WebView не успел подготовить обычную гостевую сессию даже после повторной попытки. Это технический сбой, а не подтверждённое ограничение ролика."
                     is YouTubeNetworkException ->
                         "Проверьте подключение к интернету и откройте ролик ещё раз."
                     else ->
