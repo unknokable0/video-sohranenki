@@ -39,7 +39,11 @@ class YouTubeAgeRestrictedException : YouTubeNativeResolveException(
 )
 
 class YouTubeSignInRequiredException : YouTubeNativeResolveException(
-    "YouTube не подтвердил обычную сессию воспроизведения."
+    "YouTube требует подтверждённую сессию для этого ролика."
+)
+
+class YouTubePoTokenException : YouTubeNativeResolveException(
+    "SOHR не удалось подготовить защищённую сессию YouTube."
 )
 
 class YouTubeUnavailableException : YouTubeNativeResolveException(
@@ -59,7 +63,9 @@ object YouTubeNativeResolver {
     private var zemerInitialized = false
     private val zemerInitLock = Any()
 
-    private val poTokenGenerator by lazy { PoTokenGenerator() }
+    @Volatile
+    private var poTokenGenerator: PoTokenGenerator = PoTokenGenerator()
+    private val poTokenGeneratorLock = Any()
 
     private const val FALLBACK_WEB_API_KEY =
         "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
@@ -210,16 +216,69 @@ object YouTubeNativeResolver {
         )
     }
 
+    private data class PoTokenSession(
+        val bootstrap: WebBootstrap,
+        val playerRequestPoToken: String,
+        val streamingDataPoToken: String
+    )
+
+    private fun invalidatePoTokenSession() {
+        synchronized(bootstrapLock) {
+            cachedBootstrap = null
+        }
+        synchronized(poTokenGeneratorLock) {
+            poTokenGenerator = PoTokenGenerator()
+        }
+    }
+
+    private fun generatePoTokenSession(videoId: String): PoTokenSession {
+        var lastFailure: Throwable? = null
+
+        repeat(2) { attempt ->
+            if (attempt > 0) {
+                invalidatePoTokenSession()
+            }
+
+            val bootstrap = try {
+                loadWebBootstrap()
+            } catch (error: YouTubeNetworkException) {
+                throw error
+            } catch (error: Throwable) {
+                lastFailure = error
+                return@repeat
+            }
+
+            val generator = synchronized(poTokenGeneratorLock) { poTokenGenerator }
+            val tokens = try {
+                generator.getWebClientPoToken(
+                    videoId = videoId,
+                    sessionId = bootstrap.visitorData
+                )
+            } catch (error: Throwable) {
+                lastFailure = error
+                null
+            }
+
+            if (
+                tokens != null &&
+                tokens.playerRequestPoToken.isNotBlank() &&
+                tokens.streamingDataPoToken.isNotBlank()
+            ) {
+                return PoTokenSession(
+                    bootstrap = bootstrap,
+                    playerRequestPoToken = tokens.playerRequestPoToken,
+                    streamingDataPoToken = tokens.streamingDataPoToken
+                )
+            }
+        }
+
+        invalidatePoTokenSession()
+        throw YouTubePoTokenException()
+    }
+
     private suspend fun resolveWithPoToken(video: YouTubeFeedVideo): YouTubeNativeSource {
-        val bootstrap = loadWebBootstrap()
-        val poTokens = runCatching {
-            poTokenGenerator.getWebClientPoToken(
-                videoId = video.videoId,
-                sessionId = bootstrap.visitorData
-            )
-        }.getOrElse {
-            throw YouTubeSignInRequiredException()
-        } ?: throw YouTubeSignInRequiredException()
+        val session = generatePoTokenSession(video.videoId)
+        val bootstrap = session.bootstrap
 
         val signatureTimestamp = runCatching {
             CipherDeobfuscator.signatureTimestamp()
@@ -228,7 +287,7 @@ object YouTubeNativeResolver {
         val response = requestWebPlayer(
             videoId = video.videoId,
             bootstrap = bootstrap,
-            playerPoToken = poTokens.playerRequestPoToken,
+            playerPoToken = session.playerRequestPoToken,
             signatureTimestamp = signatureTimestamp
         )
 
@@ -246,9 +305,14 @@ object YouTubeNativeResolver {
 
         if (status != "OK") {
             throw when {
+                "not a bot" in detail ||
+                    "confirm you're not a bot" in detail ||
+                    "confirm you’re not a bot" in detail -> {
+                        invalidatePoTokenSession()
+                        YouTubePoTokenException()
+                    }
                 status == "LOGIN_REQUIRED" ||
                     "sign in to confirm" in detail ||
-                    "not a bot" in detail ||
                     "login required" in detail ->
                         YouTubeSignInRequiredException()
                 "private" in detail ||
@@ -287,12 +351,12 @@ object YouTubeNativeResolver {
         val splitVideoUrl = resolveFirstFormatUrl(
             candidates = splitVideoCandidates,
             videoId = video.videoId,
-            streamingPoToken = poTokens.streamingDataPoToken
+            streamingPoToken = session.streamingDataPoToken
         )
         val splitAudioUrl = resolveFirstFormatUrl(
             candidates = splitAudioCandidates,
             videoId = video.videoId,
-            streamingPoToken = poTokens.streamingDataPoToken
+            streamingPoToken = session.streamingDataPoToken
         )
 
         if (
@@ -320,7 +384,7 @@ object YouTubeNativeResolver {
         val progressiveUrl = resolveFirstFormatUrl(
             candidates = progressiveCandidates,
             videoId = video.videoId,
-            streamingPoToken = poTokens.streamingDataPoToken
+            streamingPoToken = session.streamingDataPoToken
         )
 
         if (progressiveUrl != null && probeMediaUrl(progressiveUrl)) {
@@ -334,7 +398,7 @@ object YouTubeNativeResolver {
 
         val hls = streaming.optString("hlsManifestUrl")
             .takeIf(::isDirectHttpUrl)
-            ?.let { appendPoToken(it, poTokens.streamingDataPoToken) }
+            ?.let { appendPoToken(it, session.streamingDataPoToken) }
 
         if (hls != null) {
             return sourceFromWebResponse(
@@ -495,7 +559,7 @@ object YouTubeNativeResolver {
                 Regex("""\"visitorData\":\"([^\"]+)\"""")
             )?.let(::decodeBootstrapValue)
                 ?.takeIf { it.startsWith("Cg") }
-                ?: throw YouTubeSignInRequiredException()
+                ?: throw YouTubePoTokenException()
 
             val apiKey = firstGroup(
                 page,
@@ -690,13 +754,18 @@ object YouTubeNativeResolver {
                 "ageverificationrequired" in classChain ->
                     YouTubeAgeRestrictedException()
 
+            "potoken" in classChain ||
+                "botguard" in combined ||
+                "integrity token" in combined ||
+                "po token" in combined ->
+                    YouTubePoTokenException()
+
             "signinconfirmnotbot" in classChain ||
                 "loginrequired" in classChain ||
                 "cannot be watched anonymously" in combined ||
                 "sign in to confirm you're not a bot" in combined ||
                 "sign in to confirm you’re not a bot" in combined ||
-                "login required" in combined ||
-                "potoken" in classChain ->
+                "login required" in combined ->
                     YouTubeSignInRequiredException()
 
             "private video" in combined ||
