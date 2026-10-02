@@ -784,49 +784,74 @@ object ModernDialogs {
         box: View,
         widthRatio: Float
     ) {
-        dialog.setContentView(box)
-        dialog.setCanceledOnTouchOutside(false)
-
         val requestedWidth =
             (context.resources.displayMetrics.widthPixels * widthRatio).toInt()
         val maxWidth = dp(context, 520)
         val targetWidth = minOf(requestedWidth, maxWidth)
 
-        // Never expose a half-laid-out dialog. Some of our ScrollViews adjust
-        // their max height during the first layout pass; showing the card before
-        // that pass made it appear near the top and then jump into the center.
+        // Use a fullscreen transparent host and center the card *inside the host*
+        // before the dialog ever becomes visible. This avoids Android's default
+        // WRAP_CONTENT dialog window being laid out near the top first and then
+        // re-positioned to center after ScrollView height corrections.
+        val overlay = FrameLayout(context).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            clipChildren = false
+            clipToPadding = false
+            isClickable = true
+            isFocusable = true
+        }
+
         box.visibility = View.INVISIBLE
         box.alpha = 0f
         box.scaleX = 0.985f
         box.scaleY = 0.985f
         box.translationY = 0f
 
+        overlay.addView(
+            box,
+            FrameLayout.LayoutParams(
+                targetWidth,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER
+            )
+        )
+
+        dialog.setContentView(overlay)
+        dialog.setCanceledOnTouchOutside(false)
+
         dialog.window?.apply {
             setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-            setGravity(Gravity.CENTER)
             decorView.setPadding(0, 0, 0, 0)
-            decorView.alpha = 0f
             setDimAmount(0.42f)
             addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            setGravity(Gravity.CENTER)
             attributes = attributes.apply {
+                width = ViewGroup.LayoutParams.MATCH_PARENT
+                height = ViewGroup.LayoutParams.MATCH_PARENT
                 gravity = Gravity.CENTER
                 x = 0
                 y = 0
+                windowAnimations = 0
             }
         }
 
         dialog.show()
 
         val window = dialog.window ?: return
+        window.setLayout(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        )
         window.setGravity(Gravity.CENTER)
-        window.setLayout(targetWidth, ViewGroup.LayoutParams.WRAP_CONTENT)
         window.attributes = window.attributes.apply {
+            width = ViewGroup.LayoutParams.MATCH_PARENT
+            height = ViewGroup.LayoutParams.MATCH_PARENT
             gravity = Gravity.CENTER
             x = 0
             y = 0
+            windowAnimations = 0
         }
 
-        val decor = window.decorView
         var previousWidth = -1
         var previousHeight = -1
         var stablePasses = 0
@@ -844,7 +869,12 @@ object ModernDialogs {
                 passes++
                 val width = box.measuredWidth
                 val height = box.measuredHeight
-                if (width > 0 && height > 0 && width == previousWidth && height == previousHeight) {
+                if (
+                    width > 0 &&
+                    height > 0 &&
+                    width == previousWidth &&
+                    height == previousHeight
+                ) {
                     stablePasses++
                 } else {
                     stablePasses = 0
@@ -852,17 +882,19 @@ object ModernDialogs {
                 previousWidth = width
                 previousHeight = height
 
-                // Two identical pre-draw measurements means all first-pass
-                // height caps have settled. The pass limit is only a safety net.
-                if ((stablePasses >= 1 && width > 0 && height > 0) || passes >= 4) {
+                if ((stablePasses >= 1 && width > 0 && height > 0) || passes >= 5) {
                     box.viewTreeObserver.removeOnPreDrawListener(this)
-                    window.setGravity(Gravity.CENTER)
-                    window.attributes = window.attributes.apply {
-                        gravity = Gravity.CENTER
-                        x = 0
-                        y = 0
+
+                    // Re-assert CENTER on the child's own layout params. Even if a
+                    // ScrollView changed height during first layout, the card never
+                    // changes anchors and therefore cannot jump from top to center.
+                    (box.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
+                        params.width = targetWidth
+                        params.height = ViewGroup.LayoutParams.WRAP_CONTENT
+                        params.gravity = Gravity.CENTER
+                        box.layoutParams = params
                     }
-                    decor.alpha = 1f
+
                     box.visibility = View.VISIBLE
                     box.animate().cancel()
                     box.animate()
