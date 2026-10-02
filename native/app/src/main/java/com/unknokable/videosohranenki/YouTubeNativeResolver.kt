@@ -83,6 +83,8 @@ object YouTubeNativeResolver {
     private const val VISIONOS_CLIENT_NAME = 101
     private const val WEB_SAFARI_CLIENT_VERSION = "2.20260708.00.00"
     private const val WEB_SAFARI_CLIENT_NAME = 1
+    private const val TV_SIMPLY_CLIENT_VERSION = "1.0"
+    private const val TV_SIMPLY_CLIENT_NAME = 75
     private const val BOOTSTRAP_TTL_MS = 3L * 60L * 60L * 1000L
     private const val WEB_USER_AGENT =
         "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 " +
@@ -97,6 +99,8 @@ object YouTubeNativeResolver {
     private const val WEB_SAFARI_USER_AGENT =
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
             "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15,gzip(gfe)"
+    private const val TV_SIMPLY_USER_AGENT =
+        "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/Version"
 
     private data class WebBootstrap(
         val visitorData: String,
@@ -147,6 +151,14 @@ object YouTubeNativeResolver {
 
             try {
                 return@withContext resolveWithWebSafariHls(video)
+            } catch (error: Throwable) {
+                val mapped = mapFailure(error)
+                if (mapped is YouTubeAgeRestrictedException) throw mapped
+                failures += mapped
+            }
+
+            try {
+                return@withContext resolveWithTvSimplyHls(video)
             } catch (error: Throwable) {
                 val mapped = mapFailure(error)
                 if (mapped is YouTubeAgeRestrictedException) throw mapped
@@ -298,6 +310,42 @@ object YouTubeNativeResolver {
             ?: throw YouTubeUnavailableException()
 
         if (!probeMediaUrl(hls, WEB_SAFARI_USER_AGENT, "https://www.youtube.com/")) {
+            throw YouTubeUnavailableException()
+        }
+
+        return sourceFromWebResponse(
+            video = video,
+            response = response,
+            mediaUrl = hls,
+            secondaryAudioUrl = null
+        )
+    }
+
+    private suspend fun resolveWithTvSimplyHls(video: YouTubeFeedVideo): YouTubeNativeSource {
+        val bootstrap = loadWebBootstrap()
+        val response = requestTvSimplyPlayer(video.videoId, bootstrap)
+        val playability = response.optJSONObject("playabilityStatus")
+        val status = playability?.optString("status").orEmpty()
+        val detail = playabilityDetail(playability)
+
+        if (isAgeRestrictedStatus(status, detail)) throw YouTubeAgeRestrictedException()
+        if (status != "OK") {
+            throw when {
+                status == "LOGIN_REQUIRED" ||
+                    "sign in to confirm" in detail ||
+                    "login required" in detail ->
+                        YouTubeSignInRequiredException()
+                else -> YouTubeUnavailableException()
+            }
+        }
+
+        val streaming = response.optJSONObject("streamingData")
+            ?: throw YouTubeUnavailableException()
+        val hls = streaming.optString("hlsManifestUrl").takeIf(::isDirectHttpUrl)
+            ?: throw YouTubeUnavailableException()
+
+        // Current TVHTML5_SIMPLY policy only makes HLS useful without a GVS PO Token.
+        if (!probeMediaUrl(hls, TV_SIMPLY_USER_AGENT, "https://www.youtube.com/tv")) {
             throw YouTubeUnavailableException()
         }
 
@@ -742,6 +790,30 @@ object YouTubeNativeResolver {
             userAgent = WEB_SAFARI_USER_AGENT,
             origin = "https://www.youtube.com",
             referer = "https://www.youtube.com/"
+        )
+    }
+
+    private fun requestTvSimplyPlayer(
+        videoId: String,
+        bootstrap: WebBootstrap
+    ): JSONObject {
+        val client = JSONObject()
+            .put("clientName", "TVHTML5_SIMPLY")
+            .put("clientVersion", TV_SIMPLY_CLIENT_VERSION)
+            .put("userAgent", TV_SIMPLY_USER_AGENT)
+            .put("hl", "ru")
+            .put("gl", "PL")
+            .put("visitorData", bootstrap.visitorData)
+
+        return requestInnertubePlayer(
+            videoId = videoId,
+            bootstrap = bootstrap,
+            client = client,
+            clientNameId = TV_SIMPLY_CLIENT_NAME,
+            clientVersion = TV_SIMPLY_CLIENT_VERSION,
+            userAgent = TV_SIMPLY_USER_AGENT,
+            origin = "https://www.youtube.com",
+            referer = "https://www.youtube.com/tv"
         )
     }
 
