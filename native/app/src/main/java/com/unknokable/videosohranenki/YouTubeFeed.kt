@@ -74,6 +74,7 @@ object YouTubeFeedRepository {
     )
 
     private val durationCache = ConcurrentHashMap<String, Int>()
+    private val channelIdCache = ConcurrentHashMap<String, String>()
     private val durationGate = Semaphore(4)
 
     suspend fun loadAll(): YouTubeFeedSnapshot = coroutineScope {
@@ -121,27 +122,47 @@ object YouTubeFeedRepository {
     }
 
     private suspend fun loadChannel(source: Source): YouTubeChannelSummary = withContext(Dispatchers.IO) {
-        val page = fetchText(source.url + "?hl=ru&gl=PL")
-        val channelId = firstGroup(
-            page,
-            Regex(""""channelId":"(UC[^"]+)""""),
-            Regex("""youtube\.com/channel/(UC[A-Za-z0-9_-]+)""")
-        ).orEmpty()
+        val cachedId = channelIdCache[source.handle]
+        var page = ""
+        val channelId = if (!cachedId.isNullOrBlank()) {
+            cachedId
+        } else {
+            page = fetchText(source.url + "?hl=ru&gl=PL")
+            firstGroup(
+                page,
+                Regex(""""channelId":"(UC[^"]+)""""),
+                Regex(""""browseId":"(UC[^"]+)""""),
+                Regex(""""externalId":"(UC[^"]+)""""),
+                Regex("""youtube\.com/channel/(UC[A-Za-z0-9_-]+)"""),
+                Regex("""<link[^>]+rel="canonical"[^>]+href="https://www\.youtube\.com/channel/(UC[A-Za-z0-9_-]+)"""", RegexOption.IGNORE_CASE)
+            ).orEmpty().also { resolved ->
+                if (resolved.isNotBlank()) channelIdCache[source.handle] = resolved
+            }
+        }
+
         if (channelId.isBlank()) {
             throw IllegalStateException("Не удалось определить YouTube Channel ID для ${source.handle}")
         }
 
-        val title = firstGroup(
-            page,
-            Regex("""<meta\s+property="og:title"\s+content="([^"]+)"""", RegexOption.IGNORE_CASE),
-            Regex("""<meta\s+content="([^"]+)"\s+property="og:title"""", RegexOption.IGNORE_CASE)
-        )?.let(::decodeHtml)?.trim()?.takeIf { it.isNotBlank() } ?: source.fallbackTitle
+        val title = if (page.isBlank()) {
+            source.fallbackTitle
+        } else {
+            firstGroup(
+                page,
+                Regex("""<meta\s+property="og:title"\s+content="([^"]+)"""", RegexOption.IGNORE_CASE),
+                Regex("""<meta\s+content="([^"]+)"\s+property="og:title"""", RegexOption.IGNORE_CASE)
+            )?.let(::decodeHtml)?.trim()?.takeIf { it.isNotBlank() } ?: source.fallbackTitle
+        }
 
-        val avatar = firstGroup(
-            page,
-            Regex("""<meta\s+property="og:image"\s+content="([^"]+)"""", RegexOption.IGNORE_CASE),
-            Regex("""<meta\s+content="([^"]+)"\s+property="og:image"""", RegexOption.IGNORE_CASE)
-        )?.let(::decodeHtml).orEmpty()
+        val avatar = if (page.isBlank()) {
+            ""
+        } else {
+            firstGroup(
+                page,
+                Regex("""<meta\s+property="og:image"\s+content="([^"]+)"""", RegexOption.IGNORE_CASE),
+                Regex("""<meta\s+content="([^"]+)"\s+property="og:image"""", RegexOption.IGNORE_CASE)
+            )?.let(::decodeHtml).orEmpty()
+        }
 
         val feed = fetchText("https://www.youtube.com/feeds/videos.xml?channel_id=$channelId")
         val videos = parseFeed(feed, channelId, title, source.handle)
