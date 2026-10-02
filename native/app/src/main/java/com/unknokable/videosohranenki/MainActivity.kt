@@ -9755,6 +9755,7 @@ class MainActivity : AppCompatActivity() {
         suppressNextContentAnimation = false
         val animateContent = settings.animations && !skipContentAnimation && old != null && old !== content
         val sectionCrossfade = pendingVideoSectionCrossfade
+        val sectionDirection = pendingVideoSectionDirection
         pendingVideoSectionCrossfade = false
         pendingVideoSectionDirection = 0
         content.alpha = 1f
@@ -9801,7 +9802,7 @@ class MainActivity : AppCompatActivity() {
                     val sectionBody = content.findViewWithTag<View>("sohr_video_section_content")
                     if (sectionBody != null) {
                         val direction =
-                            if (sectionTransitionDirection >= 0) 1f else -1f
+                            if (sectionDirection >= 0) 1f else -1f
 
                         sectionBody.animate().cancel()
                         sectionBody.alpha = 0.94f
