@@ -6448,6 +6448,66 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun stabilizeYouTubeSnapshot(
+        incoming: YouTubeFeedSnapshot
+    ): YouTubeFeedSnapshot {
+        val previousChannelsByHandle =
+            youtubeChannels.associateBy { it.handle.lowercase(Locale.ROOT) }
+        val previousVideosById =
+            youtubeFeedVideos.associateBy { it.videoId }
+
+        fun stabilizeVideo(video: YouTubeFeedVideo): YouTubeFeedVideo {
+            val previous = previousVideosById[video.videoId]
+            return video.copy(
+                title = video.title.ifBlank { previous?.title.orEmpty() },
+                description = video.description.ifBlank { previous?.description.orEmpty() },
+                thumbnailUrl = video.thumbnailUrl.ifBlank { previous?.thumbnailUrl.orEmpty() },
+                channelTitle = video.channelTitle.ifBlank { previous?.channelTitle.orEmpty() },
+                handle = video.handle.ifBlank { previous?.handle.orEmpty() },
+                durationSeconds =
+                    if (video.durationSeconds > 0) {
+                        video.durationSeconds
+                    } else {
+                        previous?.durationSeconds ?: 0
+                    }
+            )
+        }
+
+        val refreshedChannels = incoming.channels.map { channel ->
+            val previous = previousChannelsByHandle[channel.handle.lowercase(Locale.ROOT)]
+            channel.copy(
+                title = channel.title.ifBlank { previous?.title.orEmpty() },
+                avatarUrl = channel.avatarUrl.ifBlank { previous?.avatarUrl.orEmpty() },
+                videos = channel.videos.map(::stabilizeVideo)
+            )
+        }
+
+        val refreshedHandles =
+            refreshedChannels.mapTo(linkedSetOf()) { it.handle.lowercase(Locale.ROOT) }
+
+        // A single failed source must never blank a channel/card that was already
+        // visible. Keep the previous channel until that source returns valid data.
+        val preservedChannels =
+            youtubeChannels.filterNot {
+                refreshedHandles.contains(it.handle.lowercase(Locale.ROOT))
+            }
+
+        val mergedChannels = refreshedChannels + preservedChannels
+        val mergedVideos = buildList {
+            mergedChannels.forEach { channel ->
+                channel.videos.forEach { add(stabilizeVideo(it)) }
+            }
+            incoming.videos.forEach { add(stabilizeVideo(it)) }
+        }
+            .distinctBy { it.videoId }
+            .sortedByDescending { it.publishedAt }
+
+        return YouTubeFeedSnapshot(
+            channels = mergedChannels,
+            videos = mergedVideos
+        )
+    }
+
     private fun loadYouTubeFeed(
         force: Boolean = false,
         quiet: Boolean = false
@@ -6477,7 +6537,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         youtubeFeedJob = lifecycleScope.launch {
-            val snapshot = try {
+            val rawSnapshot = try {
                 kotlinx.coroutines.withTimeout(10_000L) {
                     withContext(Dispatchers.IO) { YouTubeFeedRepository.loadAll() }
                 }
@@ -6488,6 +6548,9 @@ class MainActivity : AppCompatActivity() {
                 youtubeFeedJob = null
                 lastYoutubeFeedRefreshAt = System.currentTimeMillis()
             }
+
+            val snapshot =
+                if (hadContent) stabilizeYouTubeSnapshot(rawSnapshot) else rawSnapshot
 
             val changed =
                 snapshot.channels != youtubeChannels ||
@@ -6515,14 +6578,17 @@ class MainActivity : AppCompatActivity() {
                 youtubeDurationEnrichJob?.isActive != true
             ) {
                 youtubeDurationEnrichJob = lifecycleScope.launch {
-                    val enriched = runCatching {
+                    val enrichedRaw = runCatching {
                         kotlinx.coroutines.withTimeout(22_000L) {
                             YouTubeFeedRepository.enrichSnapshotDurations(snapshot)
                         }
                     }.getOrNull()
 
                     youtubeDurationEnrichJob = null
-                    if (enriched == null || enriched == snapshot) return@launch
+                    if (enrichedRaw == null) return@launch
+
+                    val enriched = stabilizeYouTubeSnapshot(enrichedRaw)
+                    if (enriched == snapshot) return@launch
 
                     val durationChanged = enriched.videos != youtubeFeedVideos
                     youtubeChannels = enriched.channels
