@@ -789,10 +789,10 @@ object ModernDialogs {
         val maxWidth = dp(context, 520)
         val targetWidth = minOf(requestedWidth, maxWidth)
 
-        // Use a fullscreen transparent host and center the card *inside the host*
-        // before the dialog ever becomes visible. This avoids Android's default
-        // WRAP_CONTENT dialog window being laid out near the top first and then
-        // re-positioned to center after ScrollView height corrections.
+        // Keep the card inside a fullscreen transparent host so Gravity.CENTER
+        // is the only anchor from the very first frame. Do not hide the card
+        // while waiting for later layout passes: that caused the screen to dim
+        // immediately while the dialog itself appeared noticeably later.
         val overlay = FrameLayout(context).apply {
             setBackgroundColor(Color.TRANSPARENT)
             clipChildren = false
@@ -801,10 +801,10 @@ object ModernDialogs {
             isFocusable = true
         }
 
-        box.visibility = View.INVISIBLE
-        box.alpha = 0f
-        box.scaleX = 0.985f
-        box.scaleY = 0.985f
+        box.visibility = View.VISIBLE
+        box.alpha = 1f
+        box.scaleX = 1f
+        box.scaleY = 1f
         box.translationY = 0f
 
         overlay.addView(
@@ -837,81 +837,39 @@ object ModernDialogs {
 
         dialog.show()
 
-        val window = dialog.window ?: return
-        window.setLayout(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        )
-        window.setGravity(Gravity.CENTER)
-        window.attributes = window.attributes.apply {
-            width = ViewGroup.LayoutParams.MATCH_PARENT
-            height = ViewGroup.LayoutParams.MATCH_PARENT
-            gravity = Gravity.CENTER
-            x = 0
-            y = 0
-            windowAnimations = 0
-        }
-
-        var previousWidth = -1
-        var previousHeight = -1
-        var stablePasses = 0
-        var passes = 0
-
-        val listener = object : android.view.ViewTreeObserver.OnPreDrawListener {
-            override fun onPreDraw(): Boolean {
-                if (!dialog.isShowing || !box.viewTreeObserver.isAlive) {
-                    runCatching {
-                        box.viewTreeObserver.removeOnPreDrawListener(this)
-                    }
-                    return true
-                }
-
-                passes++
-                val width = box.measuredWidth
-                val height = box.measuredHeight
-                if (
-                    width > 0 &&
-                    height > 0 &&
-                    width == previousWidth &&
-                    height == previousHeight
-                ) {
-                    stablePasses++
-                } else {
-                    stablePasses = 0
-                }
-                previousWidth = width
-                previousHeight = height
-
-                if ((stablePasses >= 1 && width > 0 && height > 0) || passes >= 5) {
-                    box.viewTreeObserver.removeOnPreDrawListener(this)
-
-                    // Re-assert CENTER on the child's own layout params. Even if a
-                    // ScrollView changed height during first layout, the card never
-                    // changes anchors and therefore cannot jump from top to center.
-                    (box.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
-                        params.width = targetWidth
-                        params.height = ViewGroup.LayoutParams.WRAP_CONTENT
-                        params.gravity = Gravity.CENTER
-                        box.layoutParams = params
-                    }
-
-                    box.visibility = View.VISIBLE
-                    box.animate().cancel()
-                    box.animate()
-                        .alpha(1f)
-                        .scaleX(1f)
-                        .scaleY(1f)
-                        .translationY(0f)
-                        .setDuration(170L)
-                        .setInterpolator(
-                            android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
-                        )
-                        .start()
-                }
-                return true
+        dialog.window?.apply {
+            setLayout(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            setGravity(Gravity.CENTER)
+            attributes = attributes.apply {
+                width = ViewGroup.LayoutParams.MATCH_PARENT
+                height = ViewGroup.LayoutParams.MATCH_PARENT
+                gravity = Gravity.CENTER
+                x = 0
+                y = 0
+                windowAnimations = 0
             }
         }
-        box.viewTreeObserver.addOnPreDrawListener(listener)
+
+        // Some dialog bodies (notably Appearance and update history) adjust a
+        // ScrollView height after the initial measure. Re-assert the same center
+        // anchor on layout changes without ever hiding the card.
+        overlay.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            (box.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
+                if (
+                    params.width != targetWidth ||
+                    params.height != ViewGroup.LayoutParams.WRAP_CONTENT ||
+                    params.gravity != Gravity.CENTER
+                ) {
+                    params.width = targetWidth
+                    params.height = ViewGroup.LayoutParams.WRAP_CONTENT
+                    params.gravity = Gravity.CENTER
+                    box.layoutParams = params
+                }
+            }
+        }
     }
 
     private fun compactButton(

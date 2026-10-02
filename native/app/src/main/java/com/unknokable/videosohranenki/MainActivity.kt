@@ -99,7 +99,6 @@ class MainActivity : AppCompatActivity() {
     private var twitchPlayerScreen: TwitchPlayerScreen? = null
     private var twitchLivePlayerScreen: TwitchLivePlayerScreen? = null
     private var youtubeResolveJob: kotlinx.coroutines.Job? = null
-    private var youtubeFallbackPlayerScreen: YouTubeFallbackPlayerScreen? = null
     private var youtubeChannels: List<YouTubeChannelSummary> = emptyList()
     private var youtubeFeedVideos: List<YouTubeFeedVideo> = emptyList()
     private var youtubeFeedLoading = false
@@ -606,13 +605,11 @@ class MainActivity : AppCompatActivity() {
         val hasPlayer =
             isPlayerScreen ||
             playerScreen != null ||
-            youtubeFallbackPlayerScreen != null ||
             twitchPlayerScreen != null ||
             twitchLivePlayerScreen != null
 
         if (!hasPlayer) return false
         if (playerBackInProgress) return true
-        if (youtubeFallbackPlayerScreen?.handleBack() == true) return true
 
         val playerActuallyFullscreen =
             playerScreen?.isFullscreen == true ||
@@ -658,7 +655,6 @@ class MainActivity : AppCompatActivity() {
 
         val exactReturnView = playerReturnView
         playerReturnView = null
-        val outgoingYouTubeFallback = youtubeFallbackPlayerScreen
         val outgoingTwitchPlayer = twitchPlayerScreen
         val outgoingTwitchLivePlayer = twitchLivePlayerScreen
 
@@ -666,7 +662,6 @@ class MainActivity : AppCompatActivity() {
         outgoingTwitchLivePlayer?.prepareForExit()
 
         playerScreen = null
-        youtubeFallbackPlayerScreen = null
         twitchPlayerScreen = null
         twitchLivePlayerScreen = null
         isPlayerScreen = false
@@ -695,7 +690,6 @@ class MainActivity : AppCompatActivity() {
         root.postDelayed({
             try {
                 outgoingPlayer?.destroy()
-                outgoingYouTubeFallback?.destroy()
                 outgoingTwitchPlayer?.destroy()
                 outgoingTwitchLivePlayer?.destroy()
                 currentStreamingItem?.let { streamed -> streamServer?.release(streamed) }
@@ -6484,8 +6478,6 @@ class MainActivity : AppCompatActivity() {
 
         youtubeResolveJob?.cancel()
         youtubeResolveJob = null
-        youtubeFallbackPlayerScreen?.destroy()
-        youtubeFallbackPlayerScreen = null
         playerScreen?.destroy()
         playerScreen = null
         twitchPlayerScreen?.destroy()
@@ -6613,20 +6605,160 @@ class MainActivity : AppCompatActivity() {
         fullScreen = false
         setFullscreen(false)
 
-        // Native Media3 remains the preferred path. If YouTube refuses to expose
-        // a direct stream (including extractor anti-bot/sign-in responses), stay
-        // inside SOHR and hand playback to YouTube's official embedded player.
-        // The official player keeps YouTube's own account/age/embed enforcement.
-        youtubeFallbackPlayerScreen?.destroy()
-        val fallback = YouTubeFallbackPlayerScreen(
-            activity = this,
-            video = video,
-            settings = settings,
-            onBack = { closeCurrentPlayerScreen() }
+        // Never replace SOHR playback with YouTube's embedded player.
+        // Available videos stay on the native Media3 PlayerScreen. When YouTube
+        // refuses to expose a playable stream, keep the user inside the same
+        // SOHR visual language and explain the failure without external buttons.
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(10), dp(14), dp(18))
+            setBackgroundColor(bg)
+        }
+
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        val back = ImageButton(this).apply {
+            setImageResource(R.drawable.ic_back)
+            imageTintList = android.content.res.ColorStateList.valueOf(text)
+            background = roundedBg(palette.surfaceAlt, 18)
+            setPadding(dp(11), dp(11), dp(11), dp(11))
+            contentDescription = "Назад"
+            setOnClickListener { closeCurrentPlayerScreen() }
+        }
+        header.addView(back, LinearLayout.LayoutParams(dp(44), dp(44)))
+
+        header.addView(
+            TextView(this).apply {
+                this.text = video.title
+                textSize = 16.5f
+                maxLines = 2
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                includeFontPadding = false
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(this@MainActivity.text)
+                setPadding(dp(12), 0, dp(4), 0)
+            },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         )
-        youtubeFallbackPlayerScreen = fallback
+        page.addView(header)
+
+        val playerCard = FrameLayout(this).apply {
+            background = roundedBg(Color.BLACK, 20)
+            clipToOutline = true
+        }
+
+        val message = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(28), dp(22), dp(28), dp(22))
+        }
+
+        message.addView(
+            TextView(this).apply {
+                text = "!"
+                textSize = 22f
+                gravity = Gravity.CENTER
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(purple)
+                background = roundedBg(panel, 22)
+            },
+            LinearLayout.LayoutParams(dp(54), dp(54)).apply {
+                bottomMargin = dp(16)
+                gravity = Gravity.CENTER_HORIZONTAL
+            }
+        )
+
+        message.addView(
+            TextView(this).apply {
+                text = when (error) {
+                    is YouTubeAgeRestrictedException -> "Видео ограничено YouTube"
+                    is YouTubeSignInRequiredException -> "YouTube не отдал прямой поток"
+                    is YouTubeNetworkException -> "Нет связи с YouTube"
+                    else -> "Видео сейчас недоступно"
+                }
+                textSize = 18f
+                gravity = Gravity.CENTER
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(Color.WHITE)
+                includeFontPadding = false
+            },
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        message.addView(
+            TextView(this).apply {
+                text = when (error) {
+                    is YouTubeAgeRestrictedException ->
+                        "YouTube ограничил этот ролик по возрасту. SOHR не обходит такое ограничение."
+                    is YouTubeSignInRequiredException ->
+                        "YouTube потребовал проверку аккаунта и не выдал прямой медиапоток. SOHR не подменяет это официальным YouTube-плеером."
+                    is YouTubeNetworkException ->
+                        "Проверьте подключение к интернету и откройте ролик ещё раз."
+                    else ->
+                        "Нативный плеер SOHR не получил совместимый поток для этого ролика."
+                }
+                textSize = 12.5f
+                gravity = Gravity.CENTER
+                setTextColor(Color.parseColor("#B7B5C4"))
+                setPadding(0, dp(9), 0, 0)
+                includeFontPadding = false
+                setLineSpacing(0f, 1.12f)
+            },
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        playerCard.addView(
+            message,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                Gravity.CENTER
+            )
+        )
+
+        val availableWidth =
+            (resources.displayMetrics.widthPixels - dp(28)).coerceAtLeast(dp(240))
+        val playerHeight = (availableWidth * 9f / 16f).toInt()
+        page.addView(
+            playerCard,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                playerHeight
+            ).apply { topMargin = dp(14) }
+        )
+
+        page.addView(
+            TextView(this).apply {
+                text = video.channelTitle
+                textSize = 12.5f
+                setTextColor(muted)
+                includeFontPadding = false
+                setPadding(dp(4), dp(10), dp(4), 0)
+            }
+        )
+
+        val errorRoot = FrameLayout(this).apply {
+            setBackgroundColor(bg)
+            addView(
+                page,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
+        }
+
         suppressNextContentAnimation = true
-        replaceRoot(fallback.root)
+        replaceRoot(errorRoot)
     }
 
     private fun refreshTelegramChannels(silent: Boolean = false) {
