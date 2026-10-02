@@ -1584,18 +1584,17 @@ jobs:
                   raise SystemExit(f"SOHR 6.2.3 search-motion regression: {required}")
 
           for required in [
-              "private fun animateVisibleVideoTabsTo(",
               "pendingVideoSectionCrossfade = true",
+              "pendingVideoSectionDirection = if (section > videoSection) 1 else -1",
               "suppressNextRootAnimation = true",
               "suppressNextContentAnimation = false",
-              "indicator.animate().cancel()",
               "tabIndicator.animate().cancel()",
               "nav.clearAnimation()",
               "nav.scaleX = 1f",
               "nav.scaleY = 1f"
           ]:
               if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.9.2 smooth-tabs/nav regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.3 smooth-tabs/nav regression: {required}")
 
           for required in [
               "activeSearchInput: EditText?",
