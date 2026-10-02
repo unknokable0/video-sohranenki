@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.9.21 version
+      - name: Assign SOHR 6.9.22 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690021" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.21" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690022" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.22" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -787,7 +787,7 @@ jobs:
               "SohrThemeTransition.reveal("
           ]:
               if required not in onboarding:
-                  raise SystemExit(f"SOHR 6.9.21 morph onboarding regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.22 exact-style onboarding regression: {required}")
           for required in [
               "class SohrIntroMorphView",
               "R.drawable.ill_intro_cloud_morph",
@@ -795,14 +795,17 @@ jobs:
               "R.drawable.ill_intro_watch_morph",
               "R.drawable.ill_intro_streak_morph",
               "R.drawable.ill_intro_tune_morph",
-              "drawBridge(",
-              "drawIcon(",
+              "drawTransition(",
+              "drawMorphCore(",
+              "drawTransformedIcon(",
+              "COLLAPSE_END = 0.44f",
+              "EXPAND_START = 0.56f",
               "setPageProgress(",
               "ValueAnimator.ofFloat(0f, 1f)",
               "smooth(raw)"
           ]:
               if required not in morph_view:
-                  raise SystemExit(f"SOHR 6.9.21 morph renderer regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.22 two-phase morph regression: {required}")
           for forbidden in [
               "ambientAnimators",
               "startAmbientMotion(",
@@ -1766,7 +1769,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.21 • onboarding переделан под настоящий единый morph-flow: hero-иконка теперь существует в одной фиксированной сцене на одной высоте, а текст листается отдельно; onPageScrolled напрямую управляет прогрессом превращения, поэтому свайп пальцем и кнопка «Дальше» дают одну и ту же плавную анимацию • облако → лента → плеер → Streak → настройки переходят через сжатие/растяжение, лёгкий поворот, смещение и общий accent-bridge в центре вместо резкого исчезновения/появления • добавлен новый спокойный набор иконок без неона, рамок и тяжёлых панелей; размеры 148–154dp и выровнены по одному центру • тексты сокращены, точки и кнопка остаются строго на месте • переключение темы сохраняет текущую страницу и точный progress morph-анимации"
+            "notes": "SOHR 6.9.22 • onboarding-иконки перерисованы в точном стиле последних утверждённых макетов: мягкие голубо-фиолетовые градиенты, светлые детали, одинаковый визуальный размер и фиксированный центр; облако с play, стопка карточек ленты, мини-плеер, календарь с читаемым пламенем и блок с тремя ползунками • устранено главное наложение перехода: готовая старая и готовая новая иконка больше никогда не рисуются в одном кадре • morph теперь двухфазный: старая форма схлопывается, в центральной зоне остаётся одна промежуточная градиентная форма, затем из неё раскрывается новая иконка • swipe и кнопка «Дальше» используют один и тот же progress, поэтому переход одинаковый в обе стороны и без второго старого эффекта"
           }
           EOF
           cat update.json

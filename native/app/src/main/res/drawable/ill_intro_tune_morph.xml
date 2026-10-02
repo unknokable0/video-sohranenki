@@ -1,14 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="160dp"
     android:height="160dp"
     android:viewportWidth="160"
     android:viewportHeight="160">
-    <path android:fillColor="#30263F" android:pathData="M27,30 C27,21 34,14 43,14 H117 C126,14 133,21 133,30 V130 C133,139 126,146 117,146 H43 C34,146 27,139 27,130 Z"/>
-    <path android:fillColor="#51456C" android:pathData="M43,50 H117 V58 H43 Z M43,79 H117 V87 H43 Z M43,108 H117 V116 H43 Z"/>
-    <path android:fillColor="#7F63E8" android:pathData="M43,50 H74 V58 H43 Z M43,79 H97 V87 H43 Z M43,108 H82 V116 H43 Z"/>
-    <path android:fillColor="#9B7AF4" android:pathData="M75,39 A15,15 0,1 0,75,69 A15,15 0,1 0,75,39"/>
-    <path android:fillColor="#7F63E8" android:pathData="M98,68 A15,15 0,1 0,98,98 A15,15 0,1 0,98,68"/>
-    <path android:fillColor="#6C86F5" android:pathData="M83,97 A15,15 0,1 0,83,127 A15,15 0,1 0,83,97"/>
-    <path android:fillColor="#F7F5FF" android:pathData="M75,47 A7,7 0,1 0,75,61 A7,7 0,1 0,75,47 M98,76 A7,7 0,1 0,98,90 A7,7 0,1 0,98,76 M83,105 A7,7 0,1 0,83,119 A7,7 0,1 0,83,105"/>
+
+    <path android:pathData="M27,27 C27,17 35,9 45,9 H115 C125,9 133,17 133,27 V133 C133,143 125,151 115,151 H45 C35,151 27,143 27,133 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="27"
+                android:startY="9"
+                android:endX="133"
+                android:endY="151"
+                android:type="linear">
+                <item android:offset="0" android:color="#CCD6FF"/>
+                <item android:offset="0.48" android:color="#8E88FF"/>
+                <item android:offset="1" android:color="#6849ED"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <path
+        android:fillColor="#E8E7FF"
+        android:pathData="M43,51 C43,47 46,44 50,44 H113 C117,44 120,47 120,51 C120,55 117,58 113,58 H50 C46,58 43,55 43,51 Z M43,80 C43,76 46,73 50,73 H113 C117,73 120,76 120,80 C120,84 117,87 113,87 H50 C46,87 43,84 43,80 Z M43,109 C43,105 46,102 50,102 H113 C117,102 120,105 120,109 C120,113 117,116 113,116 H50 C46,116 43,113 43,109 Z"/>
+
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M58,38 A13,13 0,1 0,58,64 A13,13 0,1 0,58,38 M100,67 A13,13 0,1 0,100,93 A13,13 0,1 0,100,67 M69,96 A13,13 0,1 0,69,122 A13,13 0,1 0,69,96"/>
 </vector>
