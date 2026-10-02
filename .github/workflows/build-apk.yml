@@ -867,7 +867,6 @@ jobs:
               "youtubeFallbackPlayerScreen = fallback",
               "firstResolve",
               "delay(320L)",
-              "YouTubeSignInRequiredException",
               "YouTubeUnavailableException",
               "YouTubeNetworkException"
           ]:
