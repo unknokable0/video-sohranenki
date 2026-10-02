@@ -1175,8 +1175,8 @@ class MainActivity : AppCompatActivity() {
             clipToOutline = true
         }
         val heroHalo = View(this).apply {
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
                 setColor(palette.accentSoft)
             }
         }
@@ -10187,7 +10187,7 @@ class MainActivity : AppCompatActivity() {
 
                 // Remote logout is best-effort and bounded. Local logout must never
                 // hang because TDLib is waiting on a bad connection.
-                withTimeoutOrNull(2_500L) {
+                kotlinx.coroutines.withTimeoutOrNull(2_500L) {
                     runCatching { client.send(TdApi.LogOut()) }
                 }
 
