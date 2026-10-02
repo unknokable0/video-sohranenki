@@ -20,7 +20,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: sohr-build-main-v2
+  group: sohr-build-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.8.1 version
+      - name: Assign SOHR 6.8.2 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=680001" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.8.1" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=680002" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.8.2" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -992,6 +992,50 @@ jobs:
               raise SystemExit("SOHR 6.8.1 regression: duplicate body alpha animation returned")
 
 
+          for required in [
+              "youtubeFeedInitialAttempted",
+              "lastYoutubeFeedAttemptAt",
+              "youtubeFeedRetryCooldownMs = 30_000L",
+              "youtubeNow - lastYoutubeFeedAttemptAt >= youtubeFeedRetryCooldownMs",
+              'tag = "sohr_video_section_content"',
+              'findViewWithTag<View>("sohr_video_section_content")'
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.8.2 YouTube retry/motion regression: {required}")
+
+          for required in [
+              "channelIdCache",
+              "browseId",
+              "externalId"
+          ]:
+              if required not in youtube_feed_repo:
+                  raise SystemExit(f"SOHR 6.8.2 channel resolver regression: {required}")
+
+          for required in [
+              '"Не удалось загрузить YouTube-каналы\\nНажмите, чтобы повторить"',
+              "onRefresh()"
+          ]:
+              if required not in youtube_feed_ui:
+                  raise SystemExit(f"SOHR 6.8.2 feed error-state regression: {required}")
+
+          for required in [
+              'private const val MWEB_CLIENT_VERSION = "2.20260708.05.00"',
+              "private const val MWEB_CLIENT_NAME = 2",
+              'put("clientName", "MWEB")',
+              "requestMwebPlayer(",
+              "playerPoToken = null",
+              "playerPoToken = poTokens.streamingDataPoToken",
+              'setRequestProperty("X-YouTube-Client-Name", MWEB_CLIENT_NAME.toString())',
+              'setRequestProperty("X-YouTube-Client-Version", MWEB_CLIENT_VERSION)'
+          ]:
+              if required not in youtube_resolver:
+                  raise SystemExit(f"SOHR 6.8.2 MWEB playback regression: {required}")
+          if 'put("clientName", "WEB")' in youtube_resolver:
+              raise SystemExit("SOHR 6.8.2 regression: direct fallback returned to SABR-only WEB client")
+          if youtube_resolver.count("isAgeRestrictedStatus(status, detail)") < 2:
+              raise SystemExit("SOHR 6.8.2 regression: age gate is not checked before and after MWEB retry")
+
+
           youtube_fallback_path = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/YouTubeFallbackPlayerScreen.kt"
           )
@@ -1889,7 +1933,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.8.1 • YouTube-лента теперь открывается быстро: первичный экран больше не ждёт отдельный HTTP-запрос длительности для каждого ролика, каналы и видео показываются сразу, а длительности небольшой видимой части подтягиваются тихо в фоне • добавлены жёсткие таймауты, поэтому skeleton больше не может висеть бесконечно из-за медленного ответа YouTube • переход Главная ↔ Лента теперь использует одну плавную анимацию контента и индикатора без второго root-slide/alpha-эффекта, из-за которого раньше дёргался верх • нативный Media3-плеер и BotGuard/PoToken recovery из 6.8.0 сохранены; ограничения, которые сам YouTube не разрешает аккаунту, SOHR не обходит"
+            "notes": "SOHR 6.8.2 • исправлен реальный бесконечный цикл YouTube-ленты: после сетевой ошибки SOHR больше не запускает загрузку заново мгновенно, показывает понятное состояние с ручным повтором и использует cooldown перед автоматическим retry • Channel ID теперь определяется по channelId/browseId/externalId/canonical и кэшируется, поэтому обновления RSS не зависят от одного HTML-шаблона • переход Главная ↔ Лента больше не анимирует весь экран: верх SOHR и вкладки остаются стабильными, плавно появляется только содержимое секции • нативный YouTube fallback переведён с SABR-only WEB на MWEB 2.20260708.05.00: сначала обычный MWEB /player, при anti-bot selective challenge повтор с video-bound PO Token, прямые media URL получают video-bound pot • настоящие возрастные ограничения YouTube по-прежнему не обходятся"
           }
           EOF
           cat update.json
