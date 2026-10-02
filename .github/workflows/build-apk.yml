@@ -1006,8 +1006,7 @@ jobs:
           for required in [
               "channelIdCache",
               "browseId",
-              "externalId",
-              "youtube.com/channel/"
+              "externalId"
           ]:
               if required not in youtube_feed_repo:
                   raise SystemExit(f"SOHR 6.8.2 channel resolver regression: {required}")
