@@ -293,10 +293,15 @@ class SohrOnboarding(
         morphView.setPageProgress(currentProgress)
         updateChrome()
 
+        // The icon renderer must always stay fully opaque and at its exact
+        // geometry. A separate ViewPropertyAnimator on morphView used to leave
+        // the premium artwork visually dimmed in real devices/recordings.
+        morphView.animate().cancel()
+        morphView.alpha = 1f
+        morphView.scaleX = 1f
+        morphView.scaleY = 1f
+
         if (settings.animations) {
-            morphView.alpha = 0f
-            morphView.scaleX = 0.94f
-            morphView.scaleY = 0.94f
             pager.alpha = 0f
             pager.translationY = dp(7).toFloat()
             dots.alpha = 0f
@@ -304,14 +309,6 @@ class SohrOnboarding(
             nextButton.translationY = dp(7).toFloat()
 
             morphView.post {
-                morphView.animate()
-                    .alpha(1f)
-                    .scaleX(1f)
-                    .scaleY(1f)
-                    .setDuration(360L)
-                    .setInterpolator(ease)
-                    .start()
-
                 pager.animate()
                     .alpha(1f)
                     .translationY(0f)
