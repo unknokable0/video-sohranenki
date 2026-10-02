@@ -99,6 +99,7 @@ class MainActivity : AppCompatActivity() {
     private var twitchPlayerScreen: TwitchPlayerScreen? = null
     private var twitchLivePlayerScreen: TwitchLivePlayerScreen? = null
     private var youtubeResolveJob: kotlinx.coroutines.Job? = null
+    private var youtubeFallbackPlayerScreen: YouTubeFallbackPlayerScreen? = null
     private var youtubeChannels: List<YouTubeChannelSummary> = emptyList()
     private var youtubeFeedVideos: List<YouTubeFeedVideo> = emptyList()
     private var youtubeFeedLoading = false
@@ -605,11 +606,13 @@ class MainActivity : AppCompatActivity() {
         val hasPlayer =
             isPlayerScreen ||
             playerScreen != null ||
+            youtubeFallbackPlayerScreen != null ||
             twitchPlayerScreen != null ||
             twitchLivePlayerScreen != null
 
         if (!hasPlayer) return false
         if (playerBackInProgress) return true
+        if (youtubeFallbackPlayerScreen?.handleBack() == true) return true
 
         val playerActuallyFullscreen =
             playerScreen?.isFullscreen == true ||
@@ -655,6 +658,7 @@ class MainActivity : AppCompatActivity() {
 
         val exactReturnView = playerReturnView
         playerReturnView = null
+        val outgoingYouTubeFallback = youtubeFallbackPlayerScreen
         val outgoingTwitchPlayer = twitchPlayerScreen
         val outgoingTwitchLivePlayer = twitchLivePlayerScreen
 
@@ -662,6 +666,7 @@ class MainActivity : AppCompatActivity() {
         outgoingTwitchLivePlayer?.prepareForExit()
 
         playerScreen = null
+        youtubeFallbackPlayerScreen = null
         twitchPlayerScreen = null
         twitchLivePlayerScreen = null
         isPlayerScreen = false
@@ -690,6 +695,7 @@ class MainActivity : AppCompatActivity() {
         root.postDelayed({
             try {
                 outgoingPlayer?.destroy()
+                outgoingYouTubeFallback?.destroy()
                 outgoingTwitchPlayer?.destroy()
                 outgoingTwitchLivePlayer?.destroy()
                 currentStreamingItem?.let { streamed -> streamServer?.release(streamed) }
@@ -6478,6 +6484,8 @@ class MainActivity : AppCompatActivity() {
 
         youtubeResolveJob?.cancel()
         youtubeResolveJob = null
+        youtubeFallbackPlayerScreen?.destroy()
+        youtubeFallbackPlayerScreen = null
         playerScreen?.destroy()
         playerScreen = null
         twitchPlayerScreen?.destroy()
@@ -6605,199 +6613,20 @@ class MainActivity : AppCompatActivity() {
         fullScreen = false
         setFullscreen(false)
 
-        val ageRestricted = error is YouTubeAgeRestrictedException
-        val signInRequired = error is YouTubeSignInRequiredException
-        val unavailable = error is YouTubeUnavailableException
-        val retryable = error is YouTubeNetworkException || unavailable
-
-        val page = FrameLayout(this).apply {
-            setBackgroundColor(bg)
-        }
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(24), dp(28), dp(24), dp(28))
-        }
-
-        val badge = TextView(this).apply {
-            text = if (ageRestricted || signInRequired) "YT" else "!"
-            textSize = if (ageRestricted || signInRequired) 15f else 24f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(purple)
-            background = roundedBg(palette.surfaceAlt, 22)
-        }
-        content.addView(
-            badge,
-            LinearLayout.LayoutParams(dp(58), dp(58)).apply {
-                bottomMargin = dp(20)
-            }
+        // Native Media3 remains the preferred path. If YouTube refuses to expose
+        // a direct stream (including extractor anti-bot/sign-in responses), stay
+        // inside SOHR and hand playback to YouTube's official embedded player.
+        // The official player keeps YouTube's own account/age/embed enforcement.
+        youtubeFallbackPlayerScreen?.destroy()
+        val fallback = YouTubeFallbackPlayerScreen(
+            activity = this,
+            video = video,
+            settings = settings,
+            onBack = { closeCurrentPlayerScreen() }
         )
-
-        val titleView = TextView(this).apply {
-            text = when {
-                ageRestricted -> "Нужен доступ YouTube"
-                signInRequired -> "YouTube требует вход"
-                unavailable -> "YouTube не отдал поток"
-                else -> "Не удалось открыть видео"
-            }
-            textSize = 23f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(this@MainActivity.text)
-        }
-        content.addView(
-            titleView,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        )
-
-        val descriptionView = TextView(this).apply {
-            text = when (error) {
-                is YouTubeAgeRestrictedException ->
-                    "YouTube требует подтверждение доступа к этому ролику. " +
-                        "Если требуется подтверждение возраста, SOHR не обходит такую проверку."
-                is YouTubeSignInRequiredException ->
-                    "Это не ошибка 18+. YouTube не отдаёт этот ролик анонимному " +
-                        "нативному плееру. Если вы уже вошли в YouTube, ролик можно открыть там."
-                is YouTubeNetworkException ->
-                    "Не получилось связаться с YouTube. Проверьте подключение и повторите попытку."
-                is YouTubeUnavailableException ->
-                    "SOHR нашёл ролик, но YouTube сейчас не выдал совместимый поток " +
-                        "нативному плееру. Можно повторить попытку или открыть ролик в YouTube."
-                else ->
-                    "Этот ролик сейчас нельзя воспроизвести через нативный SOHR-плеер."
-            }
-            textSize = 14f
-            gravity = Gravity.CENTER
-            setTextColor(muted)
-            setLineSpacing(0f, 1.12f)
-            setPadding(0, dp(10), 0, 0)
-        }
-        content.addView(
-            descriptionView,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        )
-
-        val videoLabel = TextView(this).apply {
-            text = video.title
-            textSize = 12f
-            gravity = Gravity.CENTER
-            maxLines = 2
-            ellipsize = android.text.TextUtils.TruncateAt.END
-            setTextColor(Color.argb(145, 255, 255, 255))
-            setPadding(dp(12), dp(12), dp(12), dp(12))
-            background = roundedBg(panel, 16)
-        }
-        content.addView(
-            videoLabel,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
-                topMargin = dp(22)
-            }
-        )
-
-        if (retryable) {
-            val retry = TextView(this).apply {
-                text = "Повторить"
-                textSize = 14f
-                gravity = Gravity.CENTER
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(Color.WHITE)
-                background = roundedBg(purple, 18)
-                isClickable = true
-                isFocusable = true
-                setOnClickListener {
-                    animatePress(this)
-                    openYouTubeVideo(video)
-                }
-            }
-            content.addView(
-                retry,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(48)
-                ).apply {
-                    topMargin = dp(18)
-                }
-            )
-        }
-
-        if (signInRequired || ageRestricted || unavailable) {
-            val external = TextView(this).apply {
-                text = "Открыть в YouTube"
-                textSize = 14f
-                gravity = Gravity.CENTER
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(this@MainActivity.text)
-                background = roundedBg(palette.surfaceAlt, 18)
-                isClickable = true
-                isFocusable = true
-                setOnClickListener {
-                    animatePress(this)
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(video.watchUrl))
-                    runCatching { startActivity(intent) }.onFailure {
-                        Toast.makeText(
-                            this@MainActivity,
-                            "Не удалось открыть YouTube",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
-            }
-            content.addView(
-                external,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(48)
-                ).apply {
-                    topMargin = dp(if (retryable) 10 else 18)
-                }
-            )
-        }
-
-        val back = TextView(this).apply {
-            text = "Назад к ленте"
-            textSize = 14f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(this@MainActivity.text)
-            background = roundedBg(palette.surfaceAlt, 18)
-            isClickable = true
-            isFocusable = true
-            setOnClickListener {
-                animatePress(this)
-                closeCurrentPlayerScreen()
-            }
-        }
-        content.addView(
-            back,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(48)
-            ).apply {
-                topMargin = dp(
-                    if (retryable || signInRequired || ageRestricted || unavailable) 10 else 18
-                )
-            }
-        )
-
-        page.addView(
-            content,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.CENTER
-            )
-        )
-        replaceRoot(page)
+        youtubeFallbackPlayerScreen = fallback
+        suppressNextContentAnimation = true
+        replaceRoot(fallback.root)
     }
 
     private fun refreshTelegramChannels(silent: Boolean = false) {
