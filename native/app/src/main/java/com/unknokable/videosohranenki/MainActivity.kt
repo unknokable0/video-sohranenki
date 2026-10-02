@@ -103,6 +103,7 @@ class MainActivity : AppCompatActivity() {
     private var youtubeFeedVideos: List<YouTubeFeedVideo> = emptyList()
     private var youtubeFeedLoading = false
     private var youtubeFeedJob: kotlinx.coroutines.Job? = null
+    private var youtubeDurationEnrichJob: kotlinx.coroutines.Job? = null
     private var youtubeFeedAutoRefreshJob: kotlinx.coroutines.Job? = null
     private var lastYoutubeFeedRefreshAt = 0L
     private var openYouTubeChannelSummary: YouTubeChannelSummary? = null
@@ -2705,10 +2706,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         videoSectionSwitchLocked = true
-        pendingVideoSectionCrossfade = false
+        pendingVideoSectionCrossfade = true
         pendingVideoSectionDirection = if (section > videoSection) 1 else -1
         pendingRootSlide = 0
-        suppressNextContentAnimation = true
+
+        // Section tabs already animate their own content/indicator. Suppress the
+        // outer root transition so the header never jumps or double-animates.
+        suppressNextRootAnimation = true
+        suppressNextContentAnimation = false
         videoSection = section
         showFeed(currentVideos)
 
@@ -2719,7 +2724,7 @@ class MainActivity : AppCompatActivity() {
             if (queued != null && queued != videoSection) {
                 switchVideoSection(queued)
             }
-        }, if (settings.animations) 120L else 16L)
+        }, if (settings.animations) SohrMotion.NORMAL + 24L else 16L)
     }
 
     private fun showFeed(videos: List<VideoItem>) {
@@ -2801,9 +2806,6 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(bg)
             setPadding(0, 0, 0, dp(16))
         }
-        if (sectionTransitionDirection != 0 && settings.animations) {
-            body.alpha = 0.92f
-        }
         scroll.addView(
             body,
             ViewGroup.LayoutParams(
@@ -2811,17 +2813,6 @@ class MainActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
         )
-        if (sectionTransitionDirection != 0 && settings.animations) {
-            body.post {
-                if (!body.isAttachedToWindow) return@post
-                body.animate().cancel()
-                body.animate()
-                    .alpha(1f)
-                    .setDuration(170L)
-                    .setInterpolator(SohrMotion.smooth())
-                    .start()
-            }
-        }
         page.addView(
             scroll,
             LinearLayout.LayoutParams(
@@ -6409,7 +6400,7 @@ class MainActivity : AppCompatActivity() {
     ) {
         if (youtubeFeedJob?.isActive == true) return
 
-        val hadContent = youtubeChannels.isNotEmpty() && youtubeFeedVideos.isNotEmpty()
+        val hadContent = youtubeChannels.isNotEmpty() || youtubeFeedVideos.isNotEmpty()
         if (!force && hadContent) return
 
         youtubeFeedLoading = !quiet && !hadContent
@@ -6420,10 +6411,16 @@ class MainActivity : AppCompatActivity() {
         }
 
         youtubeFeedJob = lifecycleScope.launch {
-            val snapshot = runCatching {
-                withContext(Dispatchers.IO) { YouTubeFeedRepository.loadAll() }
-            }.getOrElse {
+            val snapshot = try {
+                kotlinx.coroutines.withTimeout(10_000L) {
+                    withContext(Dispatchers.IO) { YouTubeFeedRepository.loadAll() }
+                }
+            } catch (_: Throwable) {
                 YouTubeFeedSnapshot(youtubeChannels, youtubeFeedVideos)
+            } finally {
+                youtubeFeedLoading = false
+                youtubeFeedJob = null
+                lastYoutubeFeedRefreshAt = System.currentTimeMillis()
             }
 
             val changed =
@@ -6432,20 +6429,51 @@ class MainActivity : AppCompatActivity() {
 
             youtubeChannels = snapshot.channels
             youtubeFeedVideos = snapshot.videos
-            youtubeFeedLoading = false
-            youtubeFeedJob = null
-            lastYoutubeFeedRefreshAt = System.currentTimeMillis()
 
             if (
                 videoSection == 2 &&
                 auxiliaryScreen == null &&
                 !isFinishing &&
-                (!hadContent || changed)
+                (!hadContent || changed || youtubeChannels.isEmpty())
             ) {
                 if (hadContent) rememberFeedScrollPosition()
                 suppressNextRootAnimation = true
                 suppressNextContentAnimation = true
                 showFeed(currentVideos)
+            }
+
+            // Durations are optional metadata. Enrich a small visible slice in the
+            // background after the list is already on screen, never blocking skeleton exit.
+            if (
+                snapshot.channels.isNotEmpty() &&
+                youtubeDurationEnrichJob?.isActive != true
+            ) {
+                youtubeDurationEnrichJob = lifecycleScope.launch {
+                    val enriched = runCatching {
+                        kotlinx.coroutines.withTimeout(22_000L) {
+                            YouTubeFeedRepository.enrichSnapshotDurations(snapshot)
+                        }
+                    }.getOrNull()
+
+                    youtubeDurationEnrichJob = null
+                    if (enriched == null || enriched == snapshot) return@launch
+
+                    val durationChanged = enriched.videos != youtubeFeedVideos
+                    youtubeChannels = enriched.channels
+                    youtubeFeedVideos = enriched.videos
+
+                    if (
+                        durationChanged &&
+                        videoSection == 2 &&
+                        auxiliaryScreen == null &&
+                        !isFinishing
+                    ) {
+                        rememberFeedScrollPosition()
+                        suppressNextRootAnimation = true
+                        suppressNextContentAnimation = true
+                        showFeed(currentVideos)
+                    }
+                }
             }
         }
     }

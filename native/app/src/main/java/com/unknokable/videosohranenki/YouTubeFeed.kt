@@ -6,6 +6,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import org.xmlpull.v1.XmlPullParser
@@ -77,7 +78,11 @@ object YouTubeFeedRepository {
 
     suspend fun loadAll(): YouTubeFeedSnapshot = coroutineScope {
         val channels = sources.map { source ->
-            async(Dispatchers.IO) { loadChannel(source) }
+            async(Dispatchers.IO) {
+                withTimeoutOrNull(8_000L) {
+                    loadChannel(source)
+                }
+            }
         }.mapNotNull { deferred ->
             runCatching { deferred.await() }.getOrNull()
         }
@@ -85,6 +90,34 @@ object YouTubeFeedRepository {
             channels = channels,
             videos = deduplicate(channels.flatMap { it.videos }.sortedByDescending { it.publishedAt })
         )
+    }
+
+    suspend fun enrichSnapshotDurations(
+        snapshot: YouTubeFeedSnapshot,
+        perChannelLimit: Int = 6
+    ): YouTubeFeedSnapshot = coroutineScope {
+        val channels = snapshot.channels.map { channel ->
+            async(Dispatchers.IO) {
+                val visible = channel.videos.take(perChannelLimit)
+                val enriched = enrichDurations(visible)
+                channel.copy(
+                    videos = enriched + channel.videos.drop(visible.size)
+                )
+            }
+        }.mapNotNull { deferred ->
+            runCatching { deferred.await() }.getOrNull()
+        }
+
+        if (channels.isEmpty()) {
+            snapshot
+        } else {
+            YouTubeFeedSnapshot(
+                channels = channels,
+                videos = deduplicate(
+                    channels.flatMap { it.videos }.sortedByDescending { it.publishedAt }
+                )
+            )
+        }
     }
 
     private suspend fun loadChannel(source: Source): YouTubeChannelSummary = withContext(Dispatchers.IO) {
@@ -111,7 +144,7 @@ object YouTubeFeedRepository {
         )?.let(::decodeHtml).orEmpty()
 
         val feed = fetchText("https://www.youtube.com/feeds/videos.xml?channel_id=$channelId")
-        val videos = enrichDurations(parseFeed(feed, channelId, title, source.handle))
+        val videos = parseFeed(feed, channelId, title, source.handle)
 
         YouTubeChannelSummary(channelId, source.handle, title, avatar, source.url, videos)
     }
@@ -262,8 +295,8 @@ object YouTubeFeedRepository {
 
     private fun fetchText(url: String): String {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 10_000
-            readTimeout = 12_000
+            connectTimeout = 4_500
+            readTimeout = 6_500
             instanceFollowRedirects = true
             requestMethod = "GET"
             setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/141 Mobile Safari/537.36")
