@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.9.14 version
+      - name: Assign SOHR 6.9.15 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690014" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.14" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690015" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.15" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -764,19 +764,37 @@ jobs:
           ).read_text(encoding="utf-8")
           for required in [
               "class SohrOnboarding(",
+              "R.drawable.ic_onboarding_cloud",
+              "R.drawable.ic_onboarding_feed",
+              "R.drawable.ic_onboarding_watch",
+              "R.drawable.ic_onboarding_streak",
+              "R.drawable.ic_onboarding_customize",
               '"Добро пожаловать в SOHR"',
-              '"Лента без лишнего шума"',
-              '"Удобный просмотр"',
+              '"Лента без лишнего"',
+              '"Просмотр без лишних экранов"',
               '"Streak и прогресс"',
               '"Персонализация SOHR"',
+              '"Пропустить"',
               '"Дальше"',
               '"Начать"',
               "GestureDetector(",
               "settings.lightTheme = !settings.lightTheme",
+              "val outerRing = View(activity).apply",
+              "val iconPlate = FrameLayout(activity).apply",
+              ".scaleX(1.035f)",
+              ".setStartDelay(195L)",
               ".setInterpolator(ease)"
           ]:
               if required not in onboarding:
-                  raise SystemExit(f"SOHR 6.9.13 onboarding regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.15 premium onboarding regression: {required}")
+          for forbidden in [
+              "R.drawable.sohr_brand_logo",
+              "val chipLeft",
+              "val chipRight",
+              "elevation = dp(3).toFloat()"
+          ]:
+              if forbidden in onboarding:
+                  raise SystemExit(f"SOHR 6.9.15 old onboarding visual returned: {forbidden}")
           for required in [
               "!settings.postLoginTourSeen && !onboardingActive",
               "val onboarding = SohrOnboarding(",
@@ -1704,7 +1722,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.14 • исправлен выход из Telegram: SOHR больше не зависит от финального ответа TDLib — старая локальная сессия сразу инвалидируется новой authGeneration, удаляется после bounded logout/close и приложение гарантированно возвращается к чистому входу • поздний AuthorizationStateReady во время выхода больше не может вернуть главную страницу • guestMode и старый каталог при logout очищаются • после выхода снова показывается приветственный onboarding, а не Главная • экран номера переделан под стиль присланного примера: full-screen SOHR, большая иллюстрация, тема и язык сверху, центрированный текст, мягкие stagger-анимации и аккуратные поля • email/пароль получили тот же визуальный язык; красивый кодовый экран сохранён"
+            "notes": "SOHR 6.9.15 • onboarding полностью переработан по мотивам присланного референса: убрана огромная прямоугольная карточка и квадратная bitmap-фотка логотипа, вместо неё используется чистый векторный знак SOHR и единый набор outline-иконок для Ленты, просмотра, Streak и оформления • центральная иллюстрация теперь построена из лёгких концентрических слоёв и микроэлементов без тяжёлых бейджей • добавлен аккуратный «Пропустить», уменьшены и выровнены точки, кнопка и верхняя панель • переходы между страницами переведены на короткий shared-axis/fade, а внутренняя иллюстрация получает мягкий scale/glow/stagger без вращения основного логотипа • светлая/тёмная тема и свайпы сохранены"
           }
           EOF
           cat update.json

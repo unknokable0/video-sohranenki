@@ -21,45 +21,45 @@ class SohrOnboarding(
     private val settings: AppSettings,
     private val onFinished: () -> Unit
 ) {
-    data class Page(
+    private data class Page(
         val icon: Int,
+        val kicker: String,
         val title: String,
-        val description: String,
-        val accentLabel: String
+        val description: String
     )
 
     val root = FrameLayout(activity)
 
     private val pages = listOf(
         Page(
-            R.drawable.sohr_brand_logo,
+            R.drawable.ic_onboarding_cloud,
+            "МЕДИАТЕКА",
             "Добро пожаловать в SOHR",
-            "Одна аккуратная медиатека для видео, ленты, Twitch и прогресса просмотра.",
-            "SOHR"
+            "Видео, источники и прогресс — в одном спокойном интерфейсе."
         ),
         Page(
-            R.drawable.ic_nav_video,
-            "Лента без лишнего шума",
-            "Выбранные каналы, чёткие превью, дата публикации и быстрый переход к нужному видео.",
-            "ЛЕНТА"
+            R.drawable.ic_onboarding_feed,
+            "ЛЕНТА",
+            "Лента без лишнего",
+            "Чёткие превью, понятные даты и быстрый доступ к выбранным каналам."
         ),
         Page(
-            R.drawable.ic_play,
-            "Удобный просмотр",
-            "Telegram и Twitch открываются внутри SOHR. YouTube — одной кнопкой в YouTube без лишних ошибок.",
-            "ПРОСМОТР"
+            R.drawable.ic_onboarding_watch,
+            "ПРОСМОТР",
+            "Просмотр без лишних экранов",
+            "Telegram и Twitch — внутри SOHR. YouTube открывается сразу на нужном ролике."
         ),
         Page(
-            R.drawable.ic_streak_shield,
+            R.drawable.ic_onboarding_streak,
+            "STREAK",
             "Streak и прогресс",
-            "Дни просмотра, прогресс и небольшие анимации помогают видеть свою активность.",
-            "STREAK"
+            "Аккуратный прогресс по дням помогает видеть активность без перегруженных экранов."
         ),
         Page(
-            R.drawable.ic_setting_appearance,
+            R.drawable.ic_onboarding_customize,
+            "ОФОРМЛЕНИЕ",
             "Персонализация SOHR",
-            "Темы, акцент, уведомления и обновления собраны в одном спокойном интерфейсе.",
-            "ГОТОВО"
+            "Темы, акцент, уведомления и обновления настраиваются в одном месте."
         )
     )
 
@@ -67,8 +67,11 @@ class SohrOnboarding(
     private lateinit var contentHost: FrameLayout
     private lateinit var dots: LinearLayout
     private lateinit var nextButton: TextView
+    private lateinit var skipButton: TextView
     private lateinit var themeButton: ImageView
+
     private val ease = PathInterpolator(0.22f, 1f, 0.36f, 1f)
+    private val quickEase = PathInterpolator(0.2f, 0f, 0f, 1f)
 
     init {
         buildShell()
@@ -83,7 +86,7 @@ class SohrOnboarding(
 
         val column = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(22), dp(18), dp(22), dp(20))
+            setPadding(dp(24), dp(14), dp(24), dp(18))
         }
         root.addView(
             column,
@@ -97,15 +100,42 @@ class SohrOnboarding(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        top.addView(TextView(activity).apply {
-            text = "SOHR"
-            textSize = 18f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(palette().text)
+
+        top.addView(
+            TextView(activity).apply {
+                text = "SOHR"
+                textSize = 17.5f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(palette().text)
+                includeFontPadding = false
+                gravity = Gravity.CENTER_VERTICAL
+            },
+            LinearLayout.LayoutParams(0, dp(42), 1f)
+        )
+
+        skipButton = TextView(activity).apply {
+            text = "Пропустить"
+            textSize = 12.5f
+            setTextColor(palette().muted)
+            gravity = Gravity.CENTER
             includeFontPadding = false
-        }, LinearLayout.LayoutParams(0, dp(44), 1f).apply {
-            gravity = Gravity.CENTER_VERTICAL
-        })
+            setPadding(dp(10), 0, dp(10), 0)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                press(this)
+                onFinished()
+            }
+        }
+        top.addView(
+            skipButton,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                dp(40)
+            ).apply {
+                marginEnd = dp(8)
+            }
+        )
 
         themeButton = ImageView(activity).apply {
             setImageResource(
@@ -113,18 +143,19 @@ class SohrOnboarding(
                 else R.drawable.ic_theme_sun
             )
             imageTintList = ColorStateList.valueOf(palette().text)
-            background = rounded(palette().surfaceAlt, 18)
+            background = circle(palette().surfaceAlt)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(11), dp(11), dp(11), dp(11))
+            setPadding(dp(10), dp(10), dp(10), dp(10))
             contentDescription = "Сменить тему"
             setOnClickListener {
                 press(this)
+                val saved = index
                 settings.lightTheme = !settings.lightTheme
                 buildShell()
-                showPage(index, direction = 0, animate = true)
+                showPage(saved, direction = 0, animate = false)
             }
         }
-        top.addView(themeButton, LinearLayout.LayoutParams(dp(44), dp(44)))
+        top.addView(themeButton, LinearLayout.LayoutParams(dp(40), dp(40)))
         column.addView(top)
 
         contentHost = FrameLayout(activity).apply {
@@ -145,6 +176,7 @@ class SohrOnboarding(
             activity,
             object : GestureDetector.SimpleOnGestureListener() {
                 override fun onDown(e: MotionEvent): Boolean = true
+
                 override fun onFling(
                     e1: MotionEvent?,
                     e2: MotionEvent,
@@ -153,7 +185,7 @@ class SohrOnboarding(
                 ): Boolean {
                     val start = e1 ?: return false
                     val dx = e2.x - start.x
-                    if (kotlin.math.abs(dx) < dp(52) || kotlin.math.abs(velocityX) < 240f) {
+                    if (kotlin.math.abs(dx) < dp(48) || kotlin.math.abs(velocityX) < 220f) {
                         return false
                     }
                     if (dx < 0f) next() else previous()
@@ -173,9 +205,9 @@ class SohrOnboarding(
             dots,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(30)
+                dp(28)
             ).apply {
-                bottomMargin = dp(12)
+                bottomMargin = dp(10)
             }
         )
 
@@ -184,7 +216,7 @@ class SohrOnboarding(
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
-            background = rounded(palette().accent, 19)
+            background = rounded(palette().accent, 18)
             isClickable = true
             isFocusable = true
             setOnClickListener {
@@ -196,153 +228,166 @@ class SohrOnboarding(
             nextButton,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(56)
+                dp(54)
             )
         )
 
-        updateDots()
-        updateButton()
+        updateChrome()
     }
 
     private fun showPage(target: Int, direction: Int, animate: Boolean = true) {
         val safe = target.coerceIn(0, pages.lastIndex)
         val old = contentHost.getChildAt(0)
         index = safe
-        val pageView = buildPage(pages[safe])
+        val next = buildPage(pages[safe])
 
         if (old == null || !animate || !settings.animations) {
             contentHost.removeAllViews()
-            contentHost.addView(pageView)
-            updateDots()
-            updateButton()
+            contentHost.addView(next)
+            updateChrome()
             return
         }
 
-        val enterX = dp(34).toFloat() * if (direction >= 0) 1f else -1f
+        old.animate().cancel()
+        next.animate().cancel()
+
+        val enterX = dp(28).toFloat() * if (direction >= 0) 1f else -1f
         val exitX = -enterX * 0.65f
 
-        pageView.alpha = 0f
-        pageView.translationX = enterX
-        pageView.scaleX = 0.975f
-        pageView.scaleY = 0.975f
-        contentHost.addView(pageView)
+        next.alpha = 0f
+        next.translationX = enterX
+        next.scaleX = 0.985f
+        next.scaleY = 0.985f
+        contentHost.addView(next)
 
         old.animate()
             .alpha(0f)
             .translationX(exitX)
-            .scaleX(0.985f)
-            .scaleY(0.985f)
-            .setDuration(170L)
-            .setInterpolator(ease)
+            .scaleX(0.992f)
+            .scaleY(0.992f)
+            .setDuration(165L)
+            .setInterpolator(quickEase)
             .withEndAction {
                 if (old.parent === contentHost) contentHost.removeView(old)
             }
             .start()
 
-        pageView.animate()
+        next.animate()
             .alpha(1f)
             .translationX(0f)
             .scaleX(1f)
             .scaleY(1f)
-            .setStartDelay(35L)
-            .setDuration(330L)
+            .setStartDelay(28L)
+            .setDuration(300L)
             .setInterpolator(ease)
             .start()
 
-        updateDots()
-        updateButton()
+        updateChrome()
     }
 
     private fun buildPage(page: Page): View {
         val wrap = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL or Gravity.CENTER_VERTICAL
-            setPadding(dp(8), dp(6), dp(8), dp(6))
+            setPadding(dp(6), dp(4), dp(6), dp(4))
         }
 
-        val illustration = FrameLayout(activity).apply {
-            background = rounded(palette().surface, 32)
-            elevation = dp(3).toFloat()
-        }
+        val hero = FrameLayout(activity)
 
-        val halo = View(activity).apply {
-            background = oval(palette().accentSoft)
-            alpha = 0.82f
+        val outerRing = View(activity).apply {
+            background = ring(
+                strokeColor = alpha(palette().accent, 0.16f),
+                strokeWidthDp = 1
+            )
         }
-        illustration.addView(
-            halo,
+        hero.addView(
+            outerRing,
+            FrameLayout.LayoutParams(dp(224), dp(224), Gravity.CENTER)
+        )
+
+        val middleGlow = View(activity).apply {
+            background = circle(alpha(palette().accent, 0.10f))
+        }
+        hero.addView(
+            middleGlow,
             FrameLayout.LayoutParams(dp(176), dp(176), Gravity.CENTER)
+        )
+
+        val orbitA = View(activity).apply {
+            background = circle(alpha(palette().accent, 0.48f))
+        }
+        hero.addView(
+            orbitA,
+            FrameLayout.LayoutParams(dp(10), dp(10), Gravity.TOP or Gravity.END).apply {
+                topMargin = dp(45)
+                marginEnd = dp(40)
+            }
+        )
+
+        val orbitB = View(activity).apply {
+            background = circle(alpha(palette().accent, 0.26f))
+        }
+        hero.addView(
+            orbitB,
+            FrameLayout.LayoutParams(dp(7), dp(7), Gravity.BOTTOM or Gravity.START).apply {
+                bottomMargin = dp(50)
+                marginStart = dp(43)
+            }
+        )
+
+        val iconPlate = FrameLayout(activity).apply {
+            background = circle(palette().surfaceAlt)
+        }
+        hero.addView(
+            iconPlate,
+            FrameLayout.LayoutParams(dp(118), dp(118), Gravity.CENTER)
         )
 
         val icon = ImageView(activity).apply {
             setImageResource(page.icon)
-            if (page.icon != R.drawable.sohr_brand_logo) {
-                imageTintList = ColorStateList.valueOf(palette().accent)
-            }
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(24), dp(24), dp(24), dp(24))
-            background = rounded(palette().surfaceAlt, 30)
-        }
-        illustration.addView(
-            icon,
-            FrameLayout.LayoutParams(dp(116), dp(116), Gravity.CENTER)
-        )
-
-        val chipLeft = miniChip(page.accentLabel.take(5))
-        illustration.addView(
-            chipLeft,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                dp(34),
-                Gravity.START or Gravity.BOTTOM
-            ).apply {
-                marginStart = dp(18)
-                bottomMargin = dp(24)
-            }
-        )
-
-        val chipRight = ImageView(activity).apply {
-            setImageResource(
-                when (index) {
-                    1 -> R.drawable.ic_search
-                    2 -> R.drawable.ic_action_open
-                    3 -> R.drawable.ic_stat_trophy
-                    4 -> R.drawable.ic_setting_update
-                    else -> R.drawable.ic_check
-                }
-            )
             imageTintList = ColorStateList.valueOf(palette().accent)
-            background = rounded(palette().surfaceAlt, 17)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(9), dp(9), dp(9), dp(9))
+            setPadding(dp(27), dp(27), dp(27), dp(27))
+            contentDescription = page.title
         }
-        illustration.addView(
-            chipRight,
-            FrameLayout.LayoutParams(dp(42), dp(42), Gravity.END or Gravity.TOP).apply {
-                marginEnd = dp(18)
-                topMargin = dp(24)
-            }
+        iconPlate.addView(
+            icon,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
         )
 
         wrap.addView(
-            illustration,
+            hero,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(270)
+                dp(250)
             ).apply {
-                marginStart = dp(2)
-                marginEnd = dp(2)
-                bottomMargin = dp(30)
+                bottomMargin = dp(22)
             }
         )
+
+        val kicker = TextView(activity).apply {
+            text = page.kicker
+            textSize = 10.5f
+            letterSpacing = 0.08f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(palette().accent)
+            includeFontPadding = false
+        }
+        wrap.addView(kicker)
 
         val title = TextView(activity).apply {
             text = page.title
             textSize = 27f
             gravity = Gravity.CENTER
+            maxLines = 2
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(palette().text)
             includeFontPadding = false
+            setPadding(dp(8), dp(10), dp(8), 0)
         }
         wrap.addView(title)
 
@@ -350,49 +395,105 @@ class SohrOnboarding(
             text = page.description
             textSize = 14.2f
             gravity = Gravity.CENTER
+            maxLines = 3
             setTextColor(palette().muted)
             setLineSpacing(dp(2).toFloat(), 1.04f)
-            setPadding(dp(12), dp(12), dp(12), 0)
+            setPadding(dp(20), dp(12), dp(20), 0)
             includeFontPadding = false
         }
         wrap.addView(description)
 
         if (settings.animations) {
-            icon.scaleX = 0.82f
-            icon.scaleY = 0.82f
-            icon.alpha = 0f
-            halo.scaleX = 0.86f
-            halo.scaleY = 0.86f
-            chipLeft.alpha = 0f
-            chipRight.alpha = 0f
+            outerRing.alpha = 0f
+            outerRing.scaleX = 0.82f
+            outerRing.scaleY = 0.82f
+            middleGlow.alpha = 0f
+            middleGlow.scaleX = 0.76f
+            middleGlow.scaleY = 0.76f
+            iconPlate.alpha = 0f
+            iconPlate.scaleX = 0.84f
+            iconPlate.scaleY = 0.84f
+            orbitA.alpha = 0f
+            orbitB.alpha = 0f
+            kicker.alpha = 0f
+            title.alpha = 0f
+            description.alpha = 0f
 
-            icon.post {
-                halo.animate()
+            iconPlate.post {
+                outerRing.animate()
+                    .alpha(1f)
                     .scaleX(1f)
                     .scaleY(1f)
                     .setDuration(420L)
                     .setInterpolator(ease)
                     .start()
-                icon.animate()
+
+                middleGlow.animate()
                     .alpha(1f)
                     .scaleX(1f)
                     .scaleY(1f)
-                    .rotationBy(if (index % 2 == 0) 2.5f else -2.5f)
-                    .setDuration(430L)
+                    .setStartDelay(35L)
+                    .setDuration(390L)
                     .setInterpolator(ease)
                     .start()
-                chipLeft.animate()
+
+                iconPlate.animate()
                     .alpha(1f)
-                    .translationY(-dp(4).toFloat())
-                    .setStartDelay(120L)
-                    .setDuration(340L)
+                    .scaleX(1.035f)
+                    .scaleY(1.035f)
+                    .setStartDelay(55L)
+                    .setDuration(260L)
+                    .setInterpolator(ease)
+                    .withEndAction {
+                        iconPlate.animate()
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .setDuration(145L)
+                            .setInterpolator(quickEase)
+                            .start()
+                    }
+                    .start()
+
+                orbitA.translationX = -dp(8).toFloat()
+                orbitA.translationY = dp(8).toFloat()
+                orbitB.translationX = dp(8).toFloat()
+                orbitB.translationY = -dp(8).toFloat()
+
+                orbitA.animate()
+                    .alpha(1f)
+                    .translationX(0f)
+                    .translationY(0f)
+                    .setStartDelay(150L)
+                    .setDuration(300L)
                     .setInterpolator(ease)
                     .start()
-                chipRight.animate()
+
+                orbitB.animate()
                     .alpha(1f)
-                    .translationY(dp(3).toFloat())
-                    .setStartDelay(165L)
-                    .setDuration(340L)
+                    .translationX(0f)
+                    .translationY(0f)
+                    .setStartDelay(195L)
+                    .setDuration(300L)
+                    .setInterpolator(ease)
+                    .start()
+
+                kicker.animate()
+                    .alpha(1f)
+                    .setStartDelay(110L)
+                    .setDuration(210L)
+                    .start()
+                title.animate()
+                    .alpha(1f)
+                    .translationY(0f)
+                    .setStartDelay(145L)
+                    .setDuration(250L)
+                    .setInterpolator(ease)
+                    .start()
+                description.animate()
+                    .alpha(1f)
+                    .translationY(0f)
+                    .setStartDelay(185L)
+                    .setDuration(260L)
                     .setInterpolator(ease)
                     .start()
             }
@@ -400,18 +501,6 @@ class SohrOnboarding(
 
         return wrap
     }
-
-    private fun miniChip(label: String): TextView =
-        TextView(activity).apply {
-            text = label
-            textSize = 10.5f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(palette().text)
-            background = rounded(palette().surfaceAlt, 15)
-            setPadding(dp(13), 0, dp(13), 0)
-            includeFontPadding = false
-        }
 
     private fun next() {
         if (index < pages.lastIndex) showPage(index + 1, direction = 1)
@@ -421,39 +510,63 @@ class SohrOnboarding(
         if (index > 0) showPage(index - 1, direction = -1)
     }
 
-    private fun updateButton() {
+    private fun updateChrome() {
+        updateDots()
         if (::nextButton.isInitialized) {
             nextButton.text = if (index == pages.lastIndex) "Начать" else "Дальше"
+        }
+        if (::skipButton.isInitialized) {
+            skipButton.visibility =
+                if (index == pages.lastIndex) View.INVISIBLE else View.VISIBLE
         }
     }
 
     private fun updateDots() {
         if (!::dots.isInitialized) return
         dots.removeAllViews()
+
         pages.indices.forEach { dotIndex ->
             val selected = dotIndex == index
             val dot = View(activity).apply {
                 background = rounded(
-                    if (selected) palette().accent else palette().surfaceAlt,
-                    5
+                    if (selected) palette().accent
+                    else alpha(palette().muted, 0.22f),
+                    4
                 )
                 isClickable = true
                 setOnClickListener {
                     if (dotIndex != index) {
-                        showPage(dotIndex, if (dotIndex > index) 1 else -1)
+                        showPage(
+                            dotIndex,
+                            direction = if (dotIndex > index) 1 else -1
+                        )
                     }
                 }
             }
+
             dots.addView(
                 dot,
                 LinearLayout.LayoutParams(
-                    dp(if (selected) 24 else 8),
-                    dp(8)
+                    dp(if (selected) 22 else 6),
+                    dp(6)
                 ).apply {
                     marginStart = dp(4)
                     marginEnd = dp(4)
                 }
             )
+
+            if (settings.animations && selected) {
+                dot.scaleX = 0.7f
+                dot.alpha = 0f
+                dot.post {
+                    dot.animate()
+                        .alpha(1f)
+                        .scaleX(1f)
+                        .setDuration(220L)
+                        .setInterpolator(ease)
+                        .start()
+                }
+            }
         }
     }
 
@@ -461,19 +574,32 @@ class SohrOnboarding(
         if (!settings.animations) return
         view.animate().cancel()
         view.animate()
-            .scaleX(0.96f)
-            .scaleY(0.96f)
+            .scaleX(0.965f)
+            .scaleY(0.965f)
             .setDuration(55L)
             .withEndAction {
                 view.animate()
                     .scaleX(1f)
                     .scaleY(1f)
-                    .setDuration(150L)
+                    .setDuration(145L)
                     .setInterpolator(ease)
                     .start()
             }
             .start()
     }
+
+    private fun ring(strokeColor: Int, strokeWidthDp: Int): GradientDrawable =
+        GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(Color.TRANSPARENT)
+            setStroke(dp(strokeWidthDp), strokeColor)
+        }
+
+    private fun circle(color: Int): GradientDrawable =
+        GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(color)
+        }
 
     private fun rounded(color: Int, radiusDp: Int): GradientDrawable =
         GradientDrawable().apply {
@@ -482,11 +608,13 @@ class SohrOnboarding(
             setColor(color)
         }
 
-    private fun oval(color: Int): GradientDrawable =
-        GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(color)
-        }
+    private fun alpha(color: Int, fraction: Float): Int =
+        Color.argb(
+            (255f * fraction.coerceIn(0f, 1f)).toInt(),
+            Color.red(color),
+            Color.green(color),
+            Color.blue(color)
+        )
 
     private fun dp(value: Int): Int =
         (value * activity.resources.displayMetrics.density).toInt()
