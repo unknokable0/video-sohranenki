@@ -101,6 +101,7 @@ class MainActivity : AppCompatActivity() {
     private var twitchPlayerScreen: TwitchPlayerScreen? = null
     private var twitchLivePlayerScreen: TwitchLivePlayerScreen? = null
     private var youtubeResolveJob: kotlinx.coroutines.Job? = null
+    private var youtubePlaybackScreen: YouTubePlaybackScreen? = null
     private var youtubeChannels: List<YouTubeChannelSummary> = emptyList()
     private var youtubeFeedVideos: List<YouTubeFeedVideo> = emptyList()
     private var youtubeFeedLoading = false
@@ -639,6 +640,7 @@ class MainActivity : AppCompatActivity() {
         val hasPlayer =
             isPlayerScreen ||
             playerScreen != null ||
+            youtubePlaybackScreen != null ||
             twitchPlayerScreen != null ||
             twitchLivePlayerScreen != null
 
@@ -647,6 +649,7 @@ class MainActivity : AppCompatActivity() {
 
         val playerActuallyFullscreen =
             playerScreen?.isFullscreen == true ||
+            youtubePlaybackScreen?.isFullscreen == true ||
             twitchPlayerScreen?.isFullscreen == true ||
             twitchLivePlayerScreen?.isFullscreen == true
 
@@ -656,6 +659,7 @@ class MainActivity : AppCompatActivity() {
             when {
                 twitchLivePlayerScreen?.isFullscreen == true -> twitchLivePlayerScreen?.exitFullscreen()
                 twitchPlayerScreen?.isFullscreen == true -> twitchPlayerScreen?.exitFullscreen()
+                youtubePlaybackScreen?.isFullscreen == true -> youtubePlaybackScreen?.exitFullscreen()
                 playerScreen?.isFullscreen == true -> playerScreen?.exitFullscreen()
             }
             return true
@@ -689,6 +693,7 @@ class MainActivity : AppCompatActivity() {
 
         val exactReturnView = playerReturnView
         playerReturnView = null
+        val outgoingYouTubePlayback = youtubePlaybackScreen
         val outgoingTwitchPlayer = twitchPlayerScreen
         val outgoingTwitchLivePlayer = twitchLivePlayerScreen
         val outgoingYouTubeWebPlayer = youtubeWebPlayer
@@ -698,6 +703,7 @@ class MainActivity : AppCompatActivity() {
         outgoingTwitchLivePlayer?.prepareForExit()
 
         playerScreen = null
+        youtubePlaybackScreen = null
         twitchPlayerScreen = null
         twitchLivePlayerScreen = null
         isPlayerScreen = false
@@ -726,6 +732,7 @@ class MainActivity : AppCompatActivity() {
         root.postDelayed({
             try {
                 outgoingPlayer?.destroy()
+                outgoingYouTubePlayback?.destroy()
                 outgoingTwitchPlayer?.destroy()
                 outgoingTwitchLivePlayer?.destroy()
                 outgoingYouTubeWebPlayer?.let { webView ->
@@ -753,6 +760,13 @@ class MainActivity : AppCompatActivity() {
         val prepared = when {
             playerScreen?.player?.isPlaying == true -> {
                 val screen = playerScreen!!
+                if (screen.prepareForPictureInPicture()) {
+                    restore = { screen.restoreFromPictureInPicture() }
+                    true
+                } else false
+            }
+            youtubePlaybackScreen?.isPlayingForPictureInPicture() == true -> {
+                val screen = youtubePlaybackScreen!!
                 if (screen.prepareForPictureInPicture()) {
                     restore = { screen.restoreFromPictureInPicture() }
                     true
@@ -799,11 +813,13 @@ class MainActivity : AppCompatActivity() {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         if (!isInPictureInPictureMode) {
             playerScreen?.restoreFromPictureInPicture()
+            youtubePlaybackScreen?.restoreFromPictureInPicture()
             twitchPlayerScreen?.restoreFromPictureInPicture()
             twitchLivePlayerScreen?.restoreFromPictureInPicture()
 
             val anyPlaying =
                 playerScreen?.player?.isPlaying == true ||
+                    youtubePlaybackScreen?.isPlayingForPictureInPicture() == true ||
                     twitchPlayerScreen?.isPlayingForPictureInPicture() == true ||
                     twitchLivePlayerScreen?.isPlayingForPictureInPicture() == true
             if (!anyPlaying) {
@@ -6742,6 +6758,8 @@ class MainActivity : AppCompatActivity() {
 
         youtubeResolveJob?.cancel()
         youtubeResolveJob = null
+        youtubePlaybackScreen?.destroy()
+        youtubePlaybackScreen = null
         playerScreen?.destroy()
         playerScreen = null
         twitchPlayerScreen?.destroy()
@@ -7093,9 +7111,66 @@ class MainActivity : AppCompatActivity() {
         error: Throwable,
         returnView: View?
     ) {
-        // Keep one visual playback path. A failed native resolve must never be
-        // replaced automatically by the full YouTube watch page.
-        showYouTubePlaybackError(video, error, returnView)
+        when (error) {
+            is YouTubeAgeRestrictedException,
+            is YouTubeNetworkException ->
+                showYouTubePlaybackError(video, error, returnView)
+            else ->
+                openYouTubePlaybackFallback(video, returnView)
+        }
+    }
+
+    private fun openYouTubePlaybackFallback(
+        video: YouTubeFeedVideo,
+        returnView: View?
+    ) {
+        youtubeResolveJob?.cancel()
+        youtubeResolveJob = null
+
+        playerScreen?.destroy()
+        playerScreen = null
+        youtubePlaybackScreen?.destroy()
+        youtubePlaybackScreen = null
+        twitchPlayerScreen?.destroy()
+        twitchPlayerScreen = null
+        twitchLivePlayerScreen?.destroy()
+        twitchLivePlayerScreen = null
+
+        isSettingsScreen = false
+        isAccountScreen = false
+        isStreakScreen = false
+        isPlayerScreen = true
+        fullScreen = false
+        playerReturnView = returnView
+
+        val item = video.toVideoItem().copy(
+            title = video.title,
+            durationSeconds = video.durationSeconds,
+            mimeType = "text/html",
+            thumbnailUrl = video.thumbnailUrl
+        )
+        val resumePositionMs = settings.playbackPosition(item.messageId)
+
+        val created = YouTubePlaybackScreen(
+            activity = this,
+            item = item,
+            videoId = video.videoId,
+            palette = palette,
+            animationsEnabled = settings.animations,
+            settings = settings,
+            startPositionMs = resumePositionMs,
+            onBack = { closeCurrentPlayerScreen() },
+            onFullscreen = { setFullscreen(it) },
+            onPlaybackStarted = {
+                settings.markPlayed(item.messageId)
+                streakTracker.markWatched()
+            }
+        )
+
+        youtubePlaybackScreen = created
+        pendingRootSlide = 1
+        suppressNextContentAnimation = true
+        replaceRoot(created.root)
     }
 
     private fun showYouTubePlaybackError(
@@ -10164,10 +10239,12 @@ class MainActivity : AppCompatActivity() {
             // actual fullscreen state and can recover even if Activity state
             // got out of sync after navigation or an OEM-specific layout event.
             playerScreen?.setFullscreenMode(enabled)
+            youtubePlaybackScreen?.setFullscreenMode(enabled)
             twitchPlayerScreen?.setFullscreenMode(enabled)
             twitchLivePlayerScreen?.setFullscreenMode(enabled)
             val actual =
                 playerScreen?.isFullscreen
+                    ?: youtubePlaybackScreen?.isFullscreen
                     ?: twitchPlayerScreen?.isFullscreen
                     ?: twitchLivePlayerScreen?.isFullscreen
                     ?: false
@@ -10185,6 +10262,7 @@ class MainActivity : AppCompatActivity() {
             requestedOrientation =
                 android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
             runCatching { playerScreen?.exitFullscreen() }
+            runCatching { youtubePlaybackScreen?.exitFullscreen() }
             runCatching { twitchPlayerScreen?.exitFullscreen() }
             runCatching { twitchLivePlayerScreen?.exitFullscreen() }
             runCatching { applySystemBars(false) }
@@ -11188,6 +11266,8 @@ class MainActivity : AppCompatActivity() {
         inlinePreviewView = null
         playerScreen?.destroy()
         playerScreen = null
+        youtubePlaybackScreen?.destroy()
+        youtubePlaybackScreen = null
         twitchPlayerScreen?.destroy()
         twitchPlayerScreen = null
         twitchLivePlayerScreen?.destroy()

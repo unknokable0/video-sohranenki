@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta name="color-scheme" content="dark">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <title>SOHR • YouTube Player</title>
+  <style>html,body,#player{margin:0;width:100%;height:100%;background:#000;overflow:hidden}iframe{display:block;width:100%!important;height:100%!important}</style>
+</head>
+<body>
+  <div id="player"></div>
+  <script>
+    (() => {
+      const query = new URLSearchParams(location.search);
+      const id = (query.get("video") || "").replace(/[^A-Za-z0-9_-]/g, "");
+      const start = Math.max(0, parseInt(query.get("start") || "0", 10) || 0);
+      let player = null, ready = false, state = -1, error = 0;
+      function safe(call, fallback) { try { return call(); } catch (_) { return fallback; } }
+      function qualities() { return Array.from(safe(() => player.getAvailableQualityLevels(), []) || []).map(String); }
+      window.sohr = {
+        play() { if (player && ready) safe(() => player.playVideo(), null); },
+        pause() { if (player && ready) safe(() => player.pauseVideo(), null); },
+        seek(seconds) { if (player && ready) safe(() => player.seekTo(Math.max(0, Number(seconds) || 0), true), null); },
+        setQuality(quality) { if (player && ready && quality) safe(() => player.setPlaybackQuality(String(quality)), null); },
+        status() {
+          if (!player || !ready) return {ready:false,paused:true,current:0,duration:0,buffer:0,quality:"",qualities:[],error};
+          const duration = Number(safe(() => player.getDuration(), 0)) || 0;
+          const current = Number(safe(() => player.getCurrentTime(), 0)) || 0;
+          const loaded = Math.max(0, Math.min(1, Number(safe(() => player.getVideoLoadedFraction(), 0)) || 0));
+          return {ready:true,paused:state !== 1,current,duration,buffer:Math.max(0,duration*loaded-current),quality:String(safe(() => player.getPlaybackQuality(),"auto")||"auto"),qualities:qualities(),error};
+        }
+      };
+      if (!id) { error = 2; return; }
+      window.onYouTubeIframeAPIReady = () => {
+        player = new YT.Player("player", {
+          width:"100%",height:"100%",videoId:id,
+          playerVars:{autoplay:1,controls:0,disablekb:1,fs:0,playsinline:1,rel:0,iv_load_policy:3,start:start},
+          events:{
+            onReady:(event)=>{ready=true;error=0;if(start>0)safe(()=>event.target.seekTo(start,true),null);safe(()=>event.target.playVideo(),null);},
+            onStateChange:(event)=>{state=Number(event.data);},
+            onError:(event)=>{error=Number(event.data)||-1;}
+          }
+        });
+      };
+      const api=document.createElement("script");api.src="https://www.youtube.com/iframe_api";api.async=true;document.head.appendChild(api);
+    })();
+  </script>
+</body>
+</html>

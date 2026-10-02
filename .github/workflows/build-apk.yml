@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.9.8 version
+      - name: Assign SOHR 6.9.9 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690008" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.8" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690009" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.9" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -1181,15 +1181,49 @@ jobs:
           failure_section = sohr_main.split(
               "private fun handleYouTubeNativeFailure(", 1
           )[1].split("\n    private fun ", 1)[0]
-          if "showYouTubePlaybackError(video, error, returnView)" not in failure_section:
-              raise SystemExit("SOHR 6.9.4 regression: failed native YouTube resolve is not kept in SOHR UI")
+          for required in [
+              "YouTubeAgeRestrictedException",
+              "YouTubeNetworkException",
+              "openYouTubePlaybackFallback(video, returnView)"
+          ]:
+              if required not in failure_section:
+                  raise SystemExit(f"SOHR 6.9.9 YouTube fallback routing regression: {required}")
           for forbidden in [
               "openYouTubeWebPlayer(",
               "openYouTubeAccountRequired(",
               "launchYouTubeCustomTab("
           ]:
               if forbidden in failure_section:
-                  raise SystemExit(f"SOHR 6.9.4 regression: video failure auto-substitutes YouTube UI: {forbidden}")
+                  raise SystemExit(f"SOHR 6.9.9 regression: fallback leaves SOHR UI: {forbidden}")
+
+          youtube_playback = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/YouTubePlaybackScreen.kt"
+          ).read_text(encoding="utf-8")
+          youtube_player_page = Path("docs/youtube-player/index.html").read_text(encoding="utf-8")
+          for required in [
+              "class YouTubePlaybackScreen(",
+              "SohrTimeBar(activity, palette.accent)",
+              "window.sohr&&window.sohr.play()",
+              "window.sohr&&window.sohr.pause()",
+              "window.sohr&&window.sohr.seek(",
+              "setFullscreenMode(",
+              "prepareForPictureInPicture()",
+              "youtube-player/"
+          ]:
+              if required not in youtube_playback:
+                  raise SystemExit(f"SOHR 6.9.9 custom YouTube player regression: {required}")
+          for required in [
+              "https://www.youtube.com/iframe_api",
+              "controls:0",
+              "disablekb:1",
+              "playsinline:1",
+              "window.sohr",
+              "getCurrentTime()",
+              "getDuration()",
+              "getVideoLoadedFraction()"
+          ]:
+              if required not in youtube_player_page:
+                  raise SystemExit(f"SOHR 6.9.9 YouTube engine page regression: {required}")
 
           youtube_open_section = sohr_main.split(
               "private fun openYouTubeVideo(", 1
@@ -2194,7 +2228,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.8 • YouTube resolver теперь создаёт полноценную logged-out guest session: сохраняет Set-Cookie с главной страницы, прогревает watch/embed конкретного ролика и передаёт полученные guest cookies во все Innertube player-запросы • добавлен актуальный TVHTML5 client 7.20260707.07.00 перед остальными fallback-путями • голый LOGIN_REQUIRED больше не считается доказательством настоящего account-gate и обрабатывается как сбой гостевой сессии • настоящий возрастной gate по-прежнему не обходится • воспроизведение остаётся в Media3/SOHR"
+            "notes": "SOHR 6.9.9 • YouTube больше не заканчивается экранами BotGuard/LOGIN_REQUIRED для обычных роликов: Media3/direct resolver остаётся первым путём, а при технической блокировке автоматически включается встроенный playback-engine под интерфейсом SOHR • пользователь остаётся внутри SOHR и управляет видео через наши контролы: play/pause, ±10 секунд, themed timeline, оставшееся время, качество, fullscreen и PiP • позиция сохраняется • настоящий возрастной gate и отсутствие сети не маскируются"
           }
           EOF
           cat update.json
