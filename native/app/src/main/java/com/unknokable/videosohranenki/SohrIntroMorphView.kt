@@ -449,23 +449,19 @@ class SohrIntroMorphView(context: Context) : View(context) {
         val tone = layer.tone.coerceIn(0f, 1f)
 
         val top = ColorUtils.blendARGB(
-            Color.rgb(91, 66, 150),
-            Color.rgb(249, 223, 255),
-            0.34f + brightness * 0.58f
+            Color.rgb(126, 91, 198),
+            Color.rgb(252, 229, 255),
+            0.46f + brightness * 0.50f
         )
         val middle = ColorUtils.blendARGB(
-            Color.rgb(104, 72, 190),
-            Color.rgb(199, 150, 255),
-            0.24f + brightness * 0.54f
+            Color.rgb(124, 80, 224),
+            Color.rgb(211, 159, 255),
+            0.34f + brightness * 0.54f
         )
         val bottom = ColorUtils.blendARGB(
-            Color.rgb(73, 49, 151),
-            ColorUtils.blendARGB(
-                Color.rgb(119, 77, 246),
-                colors.accent,
-                0.12f
-            ),
-            0.36f + tone * 0.52f
+            Color.rgb(92, 57, 190),
+            Color.rgb(121, 78, 255),
+            0.42f + tone * 0.52f
         )
 
         fill.shader = LinearGradient(
@@ -495,9 +491,9 @@ class SohrIntroMorphView(context: Context) : View(context) {
             bounds.top + bounds.height() * 0.55f,
             ColorUtils.setAlphaComponent(
                 Color.WHITE,
-                (78f * brightness * layer.alpha)
+                (112f * brightness * layer.alpha)
                     .toInt()
-                    .coerceIn(0, 78)
+                    .coerceIn(0, 112)
             ),
             Color.TRANSPARENT,
             Shader.TileMode.CLAMP
@@ -556,14 +552,10 @@ class SohrIntroMorphView(context: Context) : View(context) {
         val bright = layer.brightness.coerceIn(0f, 1f)
         val tone = layer.tone.coerceIn(0f, 1f)
 
-        val darkTop = Color.rgb(106, 78, 172)
-        val brightTop = Color.rgb(250, 222, 255)
-        val darkBottom = Color.rgb(79, 55, 151)
-        val brightBottom = ColorUtils.blendARGB(
-            Color.rgb(162, 99, 255),
-            colors.accent,
-            0.12f
-        )
+        val darkTop = Color.rgb(122, 88, 194)
+        val brightTop = Color.rgb(252, 226, 255)
+        val darkBottom = Color.rgb(90, 60, 166)
+        val brightBottom = Color.rgb(170, 103, 255)
 
         val top = ColorUtils.blendARGB(
             darkTop,
@@ -640,15 +632,15 @@ class SohrIntroMorphView(context: Context) : View(context) {
             rect.bottom,
             intArrayOf(
                 ColorUtils.setAlphaComponent(
-                    Color.rgb(251, 183, 255),
+                    Color.rgb(255, 196, 255),
                     (255f * a).toInt()
                 ),
                 ColorUtils.setAlphaComponent(
-                    Color.rgb(179, 111, 235),
+                    Color.rgb(194, 126, 247),
                     (255f * a).toInt()
                 ),
                 ColorUtils.setAlphaComponent(
-                    Color.rgb(78, 52, 155),
+                    Color.rgb(88, 58, 172),
                     (255f * a).toInt()
                 )
             ),
@@ -865,11 +857,7 @@ class SohrIntroMorphView(context: Context) : View(context) {
                 a
             ),
             ColorUtils.setAlphaComponent(
-                ColorUtils.blendARGB(
-                    Color.rgb(144, 84, 255),
-                    colors.accent,
-                    0.12f
-                ),
+                Color.rgb(150, 91, 255),
                 a
             ),
             Shader.TileMode.CLAMP
@@ -916,11 +904,7 @@ class SohrIntroMorphView(context: Context) : View(context) {
         val dark = glyph.darkness.coerceIn(0f, 1f)
 
         val lightTop = Color.rgb(255, 234, 255)
-        val lightBottom = ColorUtils.blendARGB(
-            Color.rgb(186, 122, 255),
-            colors.accent,
-            0.08f
-        )
+        val lightBottom = Color.rgb(190, 126, 255)
         val darkTop = Color.rgb(99, 70, 167)
         val darkBottom = Color.rgb(42, 28, 85)
 
@@ -1384,7 +1368,7 @@ class SohrIntroMorphView(context: Context) : View(context) {
     // widened, producing roughly 20–25% more visual weight without scaling
     // the Canvas or changing the onboarding layout.
     private fun unit() =
-        minOf(width, height).toFloat() / 124f
+        minOf(width, height).toFloat() / 112f
 
     private fun px(x: Float) =
         width / 2f +
