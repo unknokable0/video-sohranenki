@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.8.4 version
+      - name: Assign SOHR 6.9.0 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=680004" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.8.4" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690000" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.0" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -954,11 +954,11 @@ jobs:
               "secondaryAudioUrl = resolved.secondaryAudioUrl",
               "PlayerScreen(",
               'mimeType = "video/*"',
-              "showYouTubePlaybackError(video, retryError, returnView)",
-              "showYouTubePlaybackError(video, firstError, returnView)"
+              "handleYouTubeNativeFailure(video, retryError, returnView)",
+              "handleYouTubeNativeFailure(video, firstError, returnView)"
           ]:
               if required not in youtube_open_section:
-                  raise SystemExit(f"SOHR 6.7.4 native Media3 YouTube wiring regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.0 native Media3-first YouTube wiring regression: {required}")
 
           for required in [
               "firstError is YouTubeSessionInitException",
@@ -1082,12 +1082,6 @@ jobs:
               if required not in youtube_resolver:
                   raise SystemExit(f"SOHR 6.8.4 TV Simply HLS regression: {required}")
 
-          youtube_fallback_path = Path(
-              "native/app/src/main/java/com/unknokable/videosohranenki/YouTubeFallbackPlayerScreen.kt"
-          )
-          if youtube_fallback_path.exists():
-              raise SystemExit("SOHR 6.7.7 regression: official YouTube WebView fallback file returned")
-
           for required in [
               "private fun showYouTubePlaybackError(",
               "replaceRoot(errorRoot)",
@@ -1100,25 +1094,50 @@ jobs:
               "PlayerScreen("
           ]:
               if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.7.7 native YouTube playback regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.0 native YouTube playback regression: {required}")
 
-          youtube_error_section = sohr_main.split(
-              "private fun showYouTubePlaybackError(", 1
+          for required in [
+              "private fun youtubeWebSessionConnected()",
+              "private fun configureYouTubeWebView(",
+              "private fun showYouTubeAccountDialog(",
+              "private fun openYouTubeWebPlayer(",
+              "private fun handleYouTubeNativeFailure(",
+              '"Подключить YouTube"',
+              '"Сессия YouTube подключена"',
+              'webView.loadUrl("https://m.youtube.com/watch?v=" + Uri.encode(video.videoId))',
+              "CookieManager.getInstance().flush()",
+              "setAcceptThirdPartyCookies(webView, true)"
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.9.0 YouTube account/web fallback regression: {required}")
+
+          failure_section = sohr_main.split(
+              "private fun handleYouTubeNativeFailure(", 1
           )[1].split("\n    private fun ", 1)[0]
-          for forbidden in [
-              "WebView",
-              "youtube.com/embed",
-              '"Открыть в YouTube"',
-              '"Повторить"'
+          for required in [
+              "YouTubeAgeRestrictedException",
+              "YouTubeNetworkException",
+              "YouTubeSignInRequiredException",
+              "youtubeWebSessionConnected()",
+              "openYouTubeWebPlayer(video, returnView)"
           ]:
-              if forbidden in youtube_error_section:
-                  raise SystemExit(f"SOHR 6.7.7 embedded/external YouTube fallback regression: {forbidden}")
-          for forbidden in [
-              "YouTubeFallbackPlayerScreen",
-              "youtubeFallbackPlayerScreen"
+              if required not in failure_section:
+                  raise SystemExit(f"SOHR 6.9.0 failure routing regression: {required}")
+
+          if "YouTubeAgeRestrictedException -> openYouTubeWebPlayer" in failure_section:
+              raise SystemExit("SOHR 6.9.0 regression: age-gated videos must not bypass YouTube checks")
+
+          account_section = sohr_main.split(
+              "private fun renderAccount(user:", 1
+          )[1].split("\n    private fun maskPhone", 1)[0]
+          for required in [
+              '"Telegram, Twitch и YouTube"',
+              '"YouTube"',
+              "youtubeWebSessionConnected()",
+              "showYouTubeAccountDialog()"
           ]:
-              if forbidden in sohr_main:
-                  raise SystemExit(f"SOHR 6.7.7 fallback wiring returned: {forbidden}")
+              if required not in account_section:
+                  raise SystemExit(f"SOHR 6.9.0 YouTube account UI regression: {required}")
 
           youtube_feed_ui = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/YouTubeFeedUi.kt"
@@ -1979,7 +1998,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.8.4 • YouTube resolver расширен ещё одним независимым нативным путём: NewPipe → VISIONOS direct → WEB_SAFARI HLS → TVHTML5_SIMPLY HLS → MWEB + video-bound PO Token • TVHTML5_SIMPLY используется только для HLS, потому что этот протокол сейчас не требует GVS PO Token для данного клиента, тогда как HTTPS/DASH намеренно не используются без токена • NewPipeExtractor 0.26.5 подтверждён как актуальный релиз • Media3 и интерфейс SOHR сохранены • реальные возрастные/аккаунтные ограничения YouTube не обходятся"
+            "notes": "SOHR 6.9.0 • добавлена отдельная YouTube-сессия во вкладке «Аккаунт»: вход выполняется на официальной странице YouTube внутри системного WebView, cookies остаются в WebView и не копируются в настройки SOHR • нативный Media3 resolver остаётся первым путём; если YouTube отвечает LOGIN_REQUIRED и сессия подключена, SOHR автоматически открывает тот же ролик через официальный YouTube watch внутри приложения • если direct resolver не получил совместимый URL по технической причине, официальный web fallback также используется вместо чёрной ошибки • настоящий AGE_CHECK_REQUIRED/AGE_VERIFICATION_REQUIRED по-прежнему не обходится"
           }
           EOF
           cat update.json
