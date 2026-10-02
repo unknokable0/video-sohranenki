@@ -6513,12 +6513,27 @@ class MainActivity : AppCompatActivity() {
         replaceRoot(loadingPage)
 
         youtubeResolveJob = lifecycleScope.launch {
-            val resolved = runCatching {
+            val firstResolve = runCatching {
                 YouTubeNativeResolver.resolve(video)
-            }.getOrElse { error ->
-                youtubeResolveJob = null
-                showYouTubePlaybackError(video, error, returnView)
-                return@launch
+            }
+            val resolved = firstResolve.getOrElse { firstError ->
+                if (
+                    firstError is YouTubeNetworkException ||
+                    firstError is YouTubeUnavailableException
+                ) {
+                    delay(320L)
+                    runCatching {
+                        YouTubeNativeResolver.resolve(video)
+                    }.getOrElse { retryError ->
+                        youtubeResolveJob = null
+                        showYouTubePlaybackError(video, retryError, returnView)
+                        return@launch
+                    }
+                } else {
+                    youtubeResolveJob = null
+                    showYouTubePlaybackError(video, firstError, returnView)
+                    return@launch
+                }
             }
 
             if (!isActive || !isPlayerScreen) return@launch
@@ -6592,7 +6607,8 @@ class MainActivity : AppCompatActivity() {
 
         val ageRestricted = error is YouTubeAgeRestrictedException
         val signInRequired = error is YouTubeSignInRequiredException
-        val retryable = error is YouTubeNetworkException
+        val unavailable = error is YouTubeUnavailableException
+        val retryable = error is YouTubeNetworkException || unavailable
 
         val page = FrameLayout(this).apply {
             setBackgroundColor(bg)
@@ -6622,6 +6638,7 @@ class MainActivity : AppCompatActivity() {
             text = when {
                 ageRestricted -> "Нужен доступ YouTube"
                 signInRequired -> "YouTube требует вход"
+                unavailable -> "YouTube не отдал поток"
                 else -> "Не удалось открыть видео"
             }
             textSize = 23f
@@ -6647,6 +6664,9 @@ class MainActivity : AppCompatActivity() {
                         "нативному плееру. Если вы уже вошли в YouTube, ролик можно открыть там."
                 is YouTubeNetworkException ->
                     "Не получилось связаться с YouTube. Проверьте подключение и повторите попытку."
+                is YouTubeUnavailableException ->
+                    "SOHR нашёл ролик, но YouTube сейчас не выдал совместимый поток " +
+                        "нативному плееру. Можно повторить попытку или открыть ролик в YouTube."
                 else ->
                     "Этот ролик сейчас нельзя воспроизвести через нативный SOHR-плеер."
             }
@@ -6684,9 +6704,9 @@ class MainActivity : AppCompatActivity() {
             }
         )
 
-        if (retryable || signInRequired || ageRestricted) {
-            val primary = TextView(this).apply {
-                text = if (signInRequired || ageRestricted) "Открыть в YouTube" else "Повторить"
+        if (retryable) {
+            val retry = TextView(this).apply {
+                text = "Повторить"
                 textSize = 14f
                 gravity = Gravity.CENTER
                 setTypeface(typeface, Typeface.BOLD)
@@ -6696,27 +6716,49 @@ class MainActivity : AppCompatActivity() {
                 isFocusable = true
                 setOnClickListener {
                     animatePress(this)
-                    if (signInRequired || ageRestricted) {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(video.watchUrl))
-                        runCatching { startActivity(intent) }.onFailure {
-                            Toast.makeText(
-                                this@MainActivity,
-                                "Не удалось открыть YouTube",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    } else {
-                        openYouTubeVideo(video)
-                    }
+                    openYouTubeVideo(video)
                 }
             }
             content.addView(
-                primary,
+                retry,
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     dp(48)
                 ).apply {
                     topMargin = dp(18)
+                }
+            )
+        }
+
+        if (signInRequired || ageRestricted || unavailable) {
+            val external = TextView(this).apply {
+                text = "Открыть в YouTube"
+                textSize = 14f
+                gravity = Gravity.CENTER
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(this@MainActivity.text)
+                background = roundedBg(palette.surfaceAlt, 18)
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    animatePress(this)
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(video.watchUrl))
+                    runCatching { startActivity(intent) }.onFailure {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Не удалось открыть YouTube",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            }
+            content.addView(
+                external,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dp(48)
+                ).apply {
+                    topMargin = dp(if (retryable) 10 else 18)
                 }
             )
         }
@@ -6741,7 +6783,9 @@ class MainActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(48)
             ).apply {
-                topMargin = dp(if (retryable || signInRequired || ageRestricted) 10 else 18)
+                topMargin = dp(
+                    if (retryable || signInRequired || ageRestricted || unavailable) 10 else 18
+                )
             }
         )
 

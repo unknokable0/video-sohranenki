@@ -786,45 +786,100 @@ object ModernDialogs {
     ) {
         dialog.setContentView(box)
         dialog.setCanceledOnTouchOutside(false)
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
 
-        // Keep the card hidden while ScrollView max-height listeners settle.
-        // Previously the dialog became visible first and then changed height,
-        // which looked like a one-frame jump in Appearance / release notes.
+        val requestedWidth =
+            (context.resources.displayMetrics.widthPixels * widthRatio).toInt()
+        val maxWidth = dp(context, 520)
+        val targetWidth = minOf(requestedWidth, maxWidth)
+
+        // Never expose a half-laid-out dialog. Some of our ScrollViews adjust
+        // their max height during the first layout pass; showing the card before
+        // that pass made it appear near the top and then jump into the center.
         box.visibility = View.INVISIBLE
         box.alpha = 0f
         box.scaleX = 0.985f
         box.scaleY = 0.985f
-        box.translationY = dp(context, 6).toFloat()
+        box.translationY = 0f
+
+        dialog.window?.apply {
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            setGravity(Gravity.CENTER)
+            decorView.setPadding(0, 0, 0, 0)
+            decorView.alpha = 0f
+            setDimAmount(0.42f)
+            addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            attributes = attributes.apply {
+                gravity = Gravity.CENTER
+                x = 0
+                y = 0
+            }
+        }
 
         dialog.show()
 
-        dialog.window?.apply {
-            decorView.setPadding(0, 0, 0, 0)
-            setDimAmount(0.42f)
-            addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            val requestedWidth =
-                (context.resources.displayMetrics.widthPixels * widthRatio).toInt()
-            val maxWidth = dp(context, 520)
-            setLayout(
-                minOf(requestedWidth, maxWidth),
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
+        val window = dialog.window ?: return
+        window.setGravity(Gravity.CENTER)
+        window.setLayout(targetWidth, ViewGroup.LayoutParams.WRAP_CONTENT)
+        window.attributes = window.attributes.apply {
+            gravity = Gravity.CENTER
+            x = 0
+            y = 0
         }
 
-        box.postDelayed({
-            if (!dialog.isShowing) return@postDelayed
-            box.visibility = View.VISIBLE
-            box.animate().cancel()
-            box.animate()
-                .alpha(1f)
-                .scaleX(1f)
-                .scaleY(1f)
-                .translationY(0f)
-                .setDuration(170L)
-                .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
-                .start()
-        }, 32L)
+        val decor = window.decorView
+        var previousWidth = -1
+        var previousHeight = -1
+        var stablePasses = 0
+        var passes = 0
+
+        val listener = object : android.view.ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                if (!dialog.isShowing || !box.viewTreeObserver.isAlive) {
+                    runCatching {
+                        box.viewTreeObserver.removeOnPreDrawListener(this)
+                    }
+                    return true
+                }
+
+                passes++
+                val width = box.measuredWidth
+                val height = box.measuredHeight
+                if (width > 0 && height > 0 && width == previousWidth && height == previousHeight) {
+                    stablePasses++
+                } else {
+                    stablePasses = 0
+                }
+                previousWidth = width
+                previousHeight = height
+
+                // Two identical pre-draw measurements means all first-pass
+                // height caps have settled. The pass limit is only a safety net.
+                if ((stablePasses >= 1 && width > 0 && height > 0) || passes >= 4) {
+                    box.viewTreeObserver.removeOnPreDrawListener(this)
+                    window.setGravity(Gravity.CENTER)
+                    window.attributes = window.attributes.apply {
+                        gravity = Gravity.CENTER
+                        x = 0
+                        y = 0
+                    }
+                    decor.alpha = 1f
+                    box.visibility = View.VISIBLE
+                    box.animate().cancel()
+                    box.animate()
+                        .alpha(1f)
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .translationY(0f)
+                        .setDuration(170L)
+                        .setInterpolator(
+                            android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
+                        )
+                        .start()
+                }
+                return true
+            }
+        }
+        box.viewTreeObserver.addOnPreDrawListener(listener)
     }
 
     private fun compactButton(
