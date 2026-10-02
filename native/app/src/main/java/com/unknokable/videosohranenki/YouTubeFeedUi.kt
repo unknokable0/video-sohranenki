@@ -98,10 +98,12 @@ object YouTubeFeedUi {
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         } else {
             channels.forEachIndexed { index, channel ->
+                val row = channelRow(activity, settings, channel) { pressed ->
+                    onOpenChannel(channel, pressed)
+                }
+                animateEntrance(activity, settings, row, index, 8)
                 root.addView(
-                    channelRow(activity, settings, channel) { row ->
-                        onOpenChannel(channel, row)
-                    },
+                    row,
                     LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(activity, 78)).apply {
                         if (index > 0) topMargin = dp(activity, 6)
                     }
@@ -148,10 +150,17 @@ object YouTubeFeedUi {
             val byChannel = channels.associateBy { it.channelId }
             videos.take(30).forEachIndexed { index, video ->
                 val channel = byChannel[video.channelId]
+                val card = videoCard(
+                    activity,
+                    settings,
+                    video,
+                    channel?.avatarUrl.orEmpty()
+                ) { pressed ->
+                    onOpenVideo(video, pressed)
+                }
+                animateEntrance(activity, settings, card, index, 6)
                 root.addView(
-                    videoCard(activity, settings, video, channel?.avatarUrl.orEmpty()) { card ->
-                        onOpenVideo(video, card)
-                    },
+                    card,
                     LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                         if (index > 0) topMargin = dp(activity, 14)
                     }
@@ -255,10 +264,17 @@ object YouTubeFeedUi {
             })
         } else {
             channel.videos.forEachIndexed { index, video ->
+                val card = videoCard(
+                    activity,
+                    settings,
+                    video,
+                    channel.avatarUrl
+                ) { pressed ->
+                    onOpenVideo(video, pressed)
+                }
+                animateEntrance(activity, settings, card, index, 6)
                 body.addView(
-                    videoCard(activity, settings, video, channel.avatarUrl) { card ->
-                        onOpenVideo(video, card)
-                    },
+                    card,
                     LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                         if (index > 0) topMargin = dp(activity, 14)
                     }
@@ -361,9 +377,11 @@ object YouTubeFeedUi {
             ImageView(activity).apply {
                 scaleType = ImageView.ScaleType.CENTER_CROP
                 setBackgroundColor(Color.BLACK)
-                load(video.thumbnailUrl) {
-                    crossfade(settings.animations)
-                }
+                loadVideoThumbnail(
+                    image = this,
+                    video = video,
+                    animate = settings.animations
+                )
             },
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -510,8 +528,61 @@ object YouTubeFeedUi {
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }
 
+    private fun loadVideoThumbnail(
+        image: ImageView,
+        video: YouTubeFeedVideo,
+        animate: Boolean
+    ) {
+        val primary = video.thumbnailUrl
+            .takeIf { it.isNotBlank() }
+            ?: "https://i.ytimg.com/vi/${video.videoId}/maxresdefault.jpg"
+        val sd = "https://i.ytimg.com/vi/${video.videoId}/sddefault.jpg"
+        val hq = "https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg"
+
+        image.load(primary) {
+            crossfade(animate)
+            listener(
+                onError = { _, _ ->
+                    if (primary == sd) return@listener
+                    image.load(sd) {
+                        crossfade(false)
+                        listener(
+                            onError = { _, _ ->
+                                if (sd != hq) {
+                                    image.load(hq) { crossfade(false) }
+                                }
+                            }
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    private fun animateEntrance(
+        activity: Activity,
+        settings: AppSettings,
+        view: View,
+        index: Int,
+        maxStagger: Int
+    ) {
+        if (!settings.animations) return
+
+        view.alpha = 0f
+        view.translationY = dp(activity, 8).toFloat()
+        view.post {
+            view.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setStartDelay(index.coerceIn(0, maxStagger) * 24L)
+                .setDuration(SohrMotion.NORMAL)
+                .setInterpolator(SohrMotion.smooth())
+                .start()
+        }
+    }
+
     private fun relativeTime(epochSeconds: Long): String {
-        if (epochSeconds <= 0L) return "Дата неизвестна"
+        if (epochSeconds <= 0L) return "Недавно"
 
         val zone = java.time.ZoneId.systemDefault()
         val published = java.time.Instant.ofEpochSecond(epochSeconds).atZone(zone)

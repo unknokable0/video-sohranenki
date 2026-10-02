@@ -275,9 +275,8 @@ object YouTubeFeedRepository {
                 XmlPullParser.END_TAG -> if (parser.name.substringAfter(':') == "entry" && inEntry) {
                     if (videoId.isNotBlank() && title.isNotBlank()) {
                         val stableThumbnail =
-                            thumbnail.takeIf { it.isNotBlank() }
-                                ?: thumbnailCache[videoId]
-                                ?: "https://i.ytimg.com/vi/$videoId/hqdefault.jpg"
+                            thumbnailCache[videoId]
+                                ?: sharpThumbnailUrl(videoId)
                         thumbnailCache[videoId] = stableThumbnail
 
                         result += YouTubeFeedVideo(
@@ -304,67 +303,223 @@ object YouTubeFeedRepository {
         channel: YouTubeChannelSummary,
         limit: Int
     ): List<YouTubeFeedVideo> {
-        val rendererIds = Regex(
+        val rendererMatches = Regex(
             """"(?:videoRenderer|gridVideoRenderer)":\{"videoId":"([A-Za-z0-9_-]{11})""""
         )
             .findAll(page)
-            .mapNotNull { it.groupValues.getOrNull(1) }
-            .distinct()
+            .distinctBy { it.groupValues.getOrNull(1).orEmpty() }
             .take(limit)
             .toList()
 
-        if (rendererIds.isEmpty()) return emptyList()
+        if (rendererMatches.isEmpty()) return emptyList()
 
         val existing = channel.videos.associateBy { it.videoId }
-        val oldestKnown =
+        var fallbackEpoch =
             channel.videos
                 .map { it.publishedAt }
                 .filter { it > 0L }
                 .minOrNull()
                 ?: Instant.now().epochSecond
 
-        var extraIndex = 0
-        return rendererIds.mapNotNull { videoId ->
-            existing[videoId] ?: run {
-                val marker = "\"videoId\":\"$videoId\""
-                val markerIndex = page.indexOf(marker)
-                if (markerIndex < 0) return@run null
+        return rendererMatches.mapNotNull { match ->
+            val videoId = match.groupValues.getOrNull(1).orEmpty()
+            if (videoId.isBlank()) return@mapNotNull null
 
-                val titleRaw =
-                    readJsonStringAfter(
+            val markerIndex = match.range.first
+            val titleRaw =
+                readJsonStringAfter(
+                    raw = page,
+                    startAt = markerIndex,
+                    key = "\"title\":{\"runs\":[{\"text\":\"",
+                    maxDistance = 8_000
+                )
+                    ?: readJsonStringAfter(
                         raw = page,
                         startAt = markerIndex,
-                        key = "\"title\":{\"runs\":[{\"text\":\"",
-                        maxDistance = 7_000
+                        key = "\"title\":{\"simpleText\":\"",
+                        maxDistance = 8_000
                     )
-                        ?: readJsonStringAfter(
-                            raw = page,
-                            startAt = markerIndex,
-                            key = "\"title\":{\"simpleText\":\"",
-                            maxDistance = 7_000
-                        )
-                        ?: return@run null
 
-                val title = decodeHtml(decodeJsonEscapes(titleRaw)).trim()
-                if (title.isBlank()) return@run null
+            val base = existing[videoId]
+            val title =
+                titleRaw
+                    ?.let(::decodeJsonEscapes)
+                    ?.let(::decodeHtml)
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?: base?.title
+                    ?: return@mapNotNull null
 
-                extraIndex += 1
-                YouTubeFeedVideo(
-                    videoId = videoId,
-                    title = title,
-                    description = "",
-                    publishedAt = (oldestKnown - extraIndex * 60L).coerceAtLeast(0L),
-                    thumbnailUrl =
-                        thumbnailCache[videoId]
-                            ?: "https://i.ytimg.com/vi/$videoId/hqdefault.jpg",
-                    channelId = channel.channelId,
-                    channelTitle = channel.title,
-                    handle = channel.handle
-                ).also {
-                    thumbnailCache[videoId] = it.thumbnailUrl
-                }
-            }
+            val publishedRaw =
+                readJsonStringAfter(
+                    raw = page,
+                    startAt = markerIndex,
+                    key = "\"publishedTimeText\":{\"simpleText\":\"",
+                    maxDistance = 12_000
+                )
+                    ?: readJsonStringAfter(
+                        raw = page,
+                        startAt = markerIndex,
+                        key = "\"publishedTimeText\":{\"runs\":[{\"text\":\"",
+                        maxDistance = 12_000
+                    )
+
+            val parsedPublished =
+                publishedRaw
+                    ?.let(::decodeJsonEscapes)
+                    ?.let(::decodeHtml)
+                    ?.let(::parsePublishedTimeText)
+
+            val publishedAt =
+                base?.publishedAt?.takeIf { it > 0L }
+                    ?: parsedPublished
+                    ?: run {
+                        fallbackEpoch = (fallbackEpoch - 86_400L).coerceAtLeast(0L)
+                        fallbackEpoch
+                    }
+
+            val durationRaw =
+                readJsonStringAfter(
+                    raw = page,
+                    startAt = markerIndex,
+                    key = "\"lengthText\":{\"simpleText\":\"",
+                    maxDistance = 12_000
+                )
+                    ?: readJsonStringAfter(
+                        raw = page,
+                        startAt = markerIndex,
+                        key = "\"lengthText\":{\"runs\":[{\"text\":\"",
+                        maxDistance = 12_000
+                    )
+
+            val parsedDuration =
+                durationRaw
+                    ?.let(::decodeJsonEscapes)
+                    ?.let(::parseDurationText)
+                    ?: 0
+
+            val pageThumbnail =
+                readBestThumbnailAfter(
+                    raw = page,
+                    startAt = markerIndex,
+                    maxDistance = 14_000
+                )
+
+            val thumbnailUrl =
+                pageThumbnail
+                    ?.takeIf { it.isNotBlank() }
+                    ?: thumbnailCache[videoId]
+                    ?: sharpThumbnailUrl(videoId)
+
+            thumbnailCache[videoId] = thumbnailUrl
+            if (parsedDuration > 0) durationCache[videoId] = parsedDuration
+
+            YouTubeFeedVideo(
+                videoId = videoId,
+                title = title,
+                description = base?.description.orEmpty(),
+                publishedAt = publishedAt,
+                thumbnailUrl = thumbnailUrl,
+                channelId = channel.channelId,
+                channelTitle = channel.title,
+                handle = channel.handle,
+                durationSeconds =
+                    parsedDuration.takeIf { it > 0 }
+                        ?: base?.durationSeconds
+                        ?: 0
+            )
         }
+    }
+
+    private fun sharpThumbnailUrl(videoId: String): String =
+        "https://i.ytimg.com/vi/$videoId/maxresdefault.jpg"
+
+    private fun readBestThumbnailAfter(
+        raw: String,
+        startAt: Int,
+        maxDistance: Int
+    ): String? {
+        val key = "\"thumbnail\":{\"thumbnails\":["
+        val keyIndex = raw.indexOf(key, startAt)
+        if (keyIndex < 0 || keyIndex - startAt > maxDistance) return null
+
+        val blockStart = keyIndex + key.length
+        val blockEnd = raw.indexOf("]", blockStart)
+        if (blockEnd < 0 || blockEnd - blockStart > 12_000) return null
+
+        val block = raw.substring(blockStart, blockEnd)
+        return Regex(
+            """\{"url":"([^"]+)","width":(\d+),"height":(\d+)\}"""
+        )
+            .findAll(block)
+            .mapNotNull { match ->
+                val url = match.groupValues.getOrNull(1)
+                    ?.let(::decodeJsonEscapes)
+                    ?.takeIf { it.startsWith("http") }
+                    ?: return@mapNotNull null
+                val width = match.groupValues.getOrNull(2)?.toLongOrNull() ?: 0L
+                val height = match.groupValues.getOrNull(3)?.toLongOrNull() ?: 0L
+                Triple(url, width, height)
+            }
+            .maxByOrNull { (_, width, height) -> width * height }
+            ?.first
+    }
+
+    private fun parseDurationText(raw: String): Int? {
+        val parts = raw.trim().split(":").mapNotNull { it.trim().toIntOrNull() }
+        if (parts.isEmpty() || parts.size > 3) return null
+
+        val seconds = when (parts.size) {
+            1 -> parts[0].toLong()
+            2 -> parts[0] * 60L + parts[1]
+            else -> parts[0] * 3_600L + parts[1] * 60L + parts[2]
+        }
+        return seconds.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+    }
+
+    private fun parsePublishedTimeText(raw: String): Long? {
+        val normalized = raw
+            .lowercase(java.util.Locale.ROOT)
+            .replace('\u00A0', ' ')
+            .replace("streamed", "")
+            .replace("premiered", "")
+            .replace("назад", "")
+            .trim()
+
+        if (
+            normalized == "только что" ||
+            normalized == "just now" ||
+            normalized == "сейчас"
+        ) {
+            return Instant.now().epochSecond
+        }
+
+        val amount = Regex("""(\d+)""")
+            .find(normalized)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.toLongOrNull()
+            ?: return null
+
+        val now = java.time.ZonedDateTime.now()
+        val published = when {
+            Regex("""секунд|секунда|секунды|second|seconds|sec|secs""").containsMatchIn(normalized) ->
+                now.minusSeconds(amount)
+            Regex("""минут|минута|минуты|minute|minutes|min|mins""").containsMatchIn(normalized) ->
+                now.minusMinutes(amount)
+            Regex("""час|часа|часов|hour|hours|hr|hrs""").containsMatchIn(normalized) ->
+                now.minusHours(amount)
+            Regex("""день|дня|дней|day|days""").containsMatchIn(normalized) ->
+                now.minusDays(amount)
+            Regex("""недел|week|weeks""").containsMatchIn(normalized) ->
+                now.minusWeeks(amount)
+            Regex("""месяц|месяца|месяцев|month|months""").containsMatchIn(normalized) ->
+                now.minusMonths(amount)
+            Regex("""год|года|лет|year|years""").containsMatchIn(normalized) ->
+                now.minusYears(amount)
+            else -> return null
+        }
+        return published.toEpochSecond()
     }
 
     private fun mergeChannelVideos(
@@ -375,11 +530,26 @@ object YouTubeFeedRepository {
         val merged = LinkedHashMap<String, YouTubeFeedVideo>()
         primary.forEach { merged[it.videoId] = it }
         secondary.forEach { candidate ->
-            if (!merged.containsKey(candidate.videoId)) {
-                merged[candidate.videoId] = candidate
+            val current = merged[candidate.videoId]
+            merged[candidate.videoId] = if (current == null) {
+                candidate
+            } else {
+                current.copy(
+                    thumbnailUrl =
+                        candidate.thumbnailUrl.takeIf { it.isNotBlank() }
+                            ?: current.thumbnailUrl,
+                    publishedAt =
+                        current.publishedAt.takeIf { it > 0L }
+                            ?: candidate.publishedAt,
+                    durationSeconds =
+                        candidate.durationSeconds.takeIf { it > 0 }
+                            ?: current.durationSeconds
+                )
             }
         }
-        return merged.values.take(limit)
+        return merged.values
+            .sortedByDescending { it.publishedAt }
+            .take(limit)
     }
 
     private fun readJsonStringAfter(

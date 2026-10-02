@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.9.11 version
+      - name: Assign SOHR 6.9.12 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690011" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.11" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690012" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.12" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -988,6 +988,30 @@ jobs:
           ]:
               if required not in youtube_feed_ui:
                   raise SystemExit(f"SOHR 6.9.11 YouTube feed external-UX regression: {required}")
+
+          for required in [
+              "readBestThumbnailAfter(",
+              "parsePublishedTimeText(",
+              "parseDurationText(",
+              "publishedTimeText",
+              "lengthText",
+              "sharpThumbnailUrl(videoId)",
+              "sortedByDescending { it.publishedAt }"
+          ]:
+              if required not in youtube_feed:
+                  raise SystemExit(f"SOHR 6.9.12 YouTube metadata/thumbnail regression: {required}")
+
+          for required in [
+              "loadVideoThumbnail(",
+              "maxresdefault.jpg",
+              "sddefault.jpg",
+              "hqdefault.jpg",
+              "animateEntrance(",
+              ".setStartDelay(index.coerceIn(0, maxStagger) * 24L)",
+              'return "Недавно"'
+          ]:
+              if required not in youtube_feed_ui:
+                  raise SystemExit(f"SOHR 6.9.12 YouTube feed polish regression: {required}")
 
           for required in [
               "withTimeoutOrNull(8_000L)",
@@ -2225,7 +2249,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.11 • YouTube-видео из Ленты и экранов YouTube-каналов больше не запускают внутренний resolver/Media3/WebView: при нажатии SOHR показывает аккуратное подтверждение «Открыть в YouTube?» с названием ролика и каналом, после подтверждения открывает точный ролик в приложении YouTube • если приложение YouTube недоступно, используется системный обработчик ссылки/браузер • на карточках добавлен компактный внешний индикатор, а подпись Ленты заранее объясняет поведение • список, каналы, даты и навигация остаются внутри SOHR, поэтому BotGuard/404/age-gate больше не ломают саму Ленту"
+            "notes": "SOHR 6.9.12 • улучшена Лента YouTube: превью теперь берутся в максимально доступном качестве из thumbnails страницы канала, а при недоступном maxres автоматически переключаются на sd/hq без пустых карточек • для догруженных роликов читаются реальные publishedTimeText и lengthText вместо технической даты-заглушки, поэтому исчезает «Дата неизвестна» и корректнее показываются дата/время и длительность • карточки и каналы получили лёгкое stagger-появление при включённых анимациях, без изменения существующих переходов вкладок • внешний просмотр YouTube из 6.9.11 сохранён"
           }
           EOF
           cat update.json
