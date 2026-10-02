@@ -962,7 +962,7 @@ jobs:
           for required in [
               "firstError is YouTubeSessionInitException",
               'is YouTubeSessionInitException -> "Не удалось подготовить YouTube-сессию"',
-              "BotGuard/WebView не успел подготовить обычную гостевую сессию"
+              "BotGuard-модуль не успел подготовить обычную гостевую сессию"
           ]:
               if required not in sohr_main:
                   raise SystemExit(f"SOHR 6.8.0 YouTube session UX regression: {required}")
