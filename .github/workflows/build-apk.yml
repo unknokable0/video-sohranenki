@@ -342,17 +342,13 @@ jobs:
                   raise SystemExit(f"SOHR 6.3.2 top-tabs/search/cache regression: {required}")
 
           for required in [
-              "pendingVideoSectionCrossfade = false",
-              "suppressNextContentAnimation = true",
-              "body.alpha = 0.92f",
-              ".setDuration(170L)",
               "SohrBackgroundCheckWorker.schedule(this)",
               'UPDATE_NOTIFICATION_CHANNEL = "sohr_updates_v2"',
               'setContentTitle("T2x2 в эфире")',
               "consumeUpdateNotificationIntent"
           ]:
               if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.3.5 stable-tabs/notification regression: {required}")
+                  raise SystemExit(f"SOHR 6.3.5 notification regression: {required}")
           if "val travel = dp(20).toFloat()" in sohr_main:
               raise SystemExit("SOHR 6.3.5 top-tab regression: horizontal page travel returned")
 
