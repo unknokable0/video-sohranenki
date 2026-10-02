@@ -89,7 +89,6 @@ class SohrIntroMorphView(context: Context) : View(context) {
     }
 
     init {
-        setLayerType(LAYER_TYPE_SOFTWARE, null)
         ambientAnimator.start()
     }
 
@@ -145,10 +144,10 @@ class SohrIntroMorphView(context: Context) : View(context) {
     }
 
     private fun cloudScene(): Scene = Scene(
-        main = box(80f, 101f, 116f, 48f, 24f, 0f, 1f, 0.92f, 0.70f),
-        back1 = box(83f, 68f, 74f, 74f, 37f, 0f, 1f, 1f, 0f),
-        back2 = box(45f, 88f, 62f, 62f, 31f, 0f, 1f, 0.97f, 0f),
-        back3 = box(119f, 91f, 58f, 58f, 29f, 0f, 1f, 0.82f, 0f),
+        main = box(80f, 101f, 116f, 48f, 24f, 0f, 1f, 0.96f, 0.72f),
+        back1 = box(83f, 68f, 74f, 74f, 37f, 0f, 1f, 0.96f, 0f),
+        back2 = box(45f, 88f, 62f, 62f, 31f, 0f, 1f, 0.96f, 0f),
+        back3 = box(119f, 91f, 58f, 58f, 29f, 0f, 1f, 0.96f, 0f),
         preview = hiddenBox(),
         line1 = hiddenBox(),
         line2 = hiddenBox(),
@@ -166,9 +165,9 @@ class SohrIntroMorphView(context: Context) : View(context) {
     )
 
     private fun feedScene(): Scene = Scene(
-        main = box(82f, 87f, 112f, 60f, 15f, -4f, 1f, 0.84f, 0.65f),
-        back1 = box(83f, 57f, 96f, 49f, 15f, -9f, 0.92f, 0.30f, 0.50f),
-        back2 = box(80f, 117f, 96f, 42f, 14f, 5f, 0.82f, 0.20f, 0.38f),
+        main = box(82f, 87f, 112f, 60f, 15f, -4f, 1f, 0.90f, 0.68f),
+        back1 = box(83f, 57f, 96f, 49f, 15f, -9f, 0.98f, 0.50f, 0.46f),
+        back2 = box(80f, 117f, 96f, 42f, 14f, 5f, 0.96f, 0.40f, 0.34f),
         back3 = hiddenBox(),
         preview = box(49f, 87f, 37f, 36f, 9f, -4f, 1f, 1f, 0.12f),
         line1 = box(101f, 77f, 39f, 7f, 3.5f, -4f, 1f, 0.94f, 0f),
@@ -187,9 +186,9 @@ class SohrIntroMorphView(context: Context) : View(context) {
     )
 
     private fun playerScene(): Scene = Scene(
-        main = box(80f, 83f, 126f, 88f, 18f, 0f, 1f, 0.76f, 0.72f),
-        back1 = box(69f, 78f, 116f, 80f, 18f, -7f, 0.58f, 0.20f, 0.38f),
-        back2 = box(91f, 79f, 116f, 80f, 18f, 7f, 0.50f, 0.16f, 0.32f),
+        main = box(80f, 83f, 126f, 88f, 18f, 0f, 1f, 0.88f, 0.72f),
+        back1 = box(69f, 78f, 116f, 80f, 18f, -7f, 0.92f, 0.38f, 0.32f),
+        back2 = box(91f, 79f, 116f, 80f, 18f, 7f, 0.88f, 0.31f, 0.27f),
         back3 = hiddenBox(),
         preview = box(80f, 69f, 116f, 63f, 14f, 0f, 1f, 0.95f, 0.05f),
         line1 = hiddenBox(),
@@ -208,11 +207,11 @@ class SohrIntroMorphView(context: Context) : View(context) {
     )
 
     private fun calendarScene(): Scene = Scene(
-        main = box(80f, 86f, 92f, 112f, 19f, 0f, 1f, 0.36f, 0.68f),
+        main = box(80f, 86f, 92f, 112f, 19f, 0f, 1f, 0.66f, 0.70f),
         back1 = hiddenBox(),
         back2 = hiddenBox(),
         back3 = hiddenBox(),
-        preview = box(80f, 45f, 92f, 28f, 14f, 0f, 1f, 0.52f, 0f),
+        preview = box(80f, 45f, 92f, 28f, 14f, 0f, 1f, 0.82f, 0f),
         line1 = hiddenBox(),
         line2 = hiddenBox(),
         timeline = hiddenBox(),
@@ -225,11 +224,11 @@ class SohrIntroMorphView(context: Context) : View(context) {
         sliderThumb2 = dot(102f, 24f, 6f, 0f, 1f),
         playX = 80f, playY = 84f, playSize = 34f, playAlpha = 0f,
         flameX = 80f, flameY = 87f, flameSize = 42f, flameAlpha = 1f,
-        mountainAlpha = 0f, gridAlpha = 0.25f
+        mountainAlpha = 0f, gridAlpha = 0f
     )
 
     private fun settingsScene(): Scene = Scene(
-        main = box(80f, 82f, 96f, 96f, 21f, 0f, 1f, 0.42f, 0.70f),
+        main = box(80f, 82f, 96f, 96f, 21f, 0f, 1f, 0.68f, 0.70f),
         back1 = hiddenBox(),
         back2 = hiddenBox(),
         back3 = hiddenBox(),
@@ -259,7 +258,7 @@ class SohrIntroMorphView(context: Context) : View(context) {
     ) {
         val ambientPhase = ambient * PI.toFloat() * 2f
         val floatY = if (animationsEnabled) {
-            sin(ambientPhase + pageProgress * 0.65f) * dp(1.1f)
+            sin(ambientPhase + pageProgress * 0.65f) * dp(0.65f)
         } else {
             0f
         }
@@ -318,52 +317,56 @@ class SohrIntroMorphView(context: Context) : View(context) {
         val cx = rect.centerX()
         val cy = rect.centerY()
 
-        val dark = ColorUtils.blendARGB(
-            Color.rgb(29, 23, 57),
+        val baseDark = ColorUtils.blendARGB(
+            Color.rgb(68, 50, 121),
             palette.surfaceAlt,
-            0.24f
+            0.06f
         )
         val accent = ColorUtils.blendARGB(
-            Color.rgb(121, 88, 232),
-            palette.accent,
-            0.36f
-        )
-        val light = ColorUtils.blendARGB(
-            Color.rgb(235, 222, 255),
+            Color.rgb(130, 88, 249),
             palette.accent,
             0.18f
         )
+        val light = Color.rgb(238, 218, 255)
 
-        val topColor = ColorUtils.blendARGB(
-            dark, light, spec.tone.coerceIn(0f, 1f)
-        )
+        val tone = spec.tone.coerceIn(0f, 1f)
+        val lift = 0.38f + tone * 0.62f
+        val topColor = ColorUtils.blendARGB(baseDark, light, lift)
         val bottomColor = ColorUtils.blendARGB(
-            dark, accent, spec.tone.coerceIn(0f, 1f)
+            baseDark,
+            accent,
+            0.52f + tone * 0.48f
         )
+        val a = (255f * spec.alpha).toInt().coerceIn(0, 255)
 
         canvas.save()
         canvas.rotate(spec.rotation, cx, cy)
 
         if (spec.shadow > 0f) {
-            fill.setShadowLayer(
-                dp(7f), 0f, dp(3f),
-                ColorUtils.setAlphaComponent(
-                    Color.BLACK,
-                    (70f * spec.shadow * spec.alpha).toInt().coerceIn(0, 70)
-                )
+            val shadow = RectF(rect)
+            shadow.offset(0f, dp(3f))
+            fill.shader = null
+            fill.color = ColorUtils.setAlphaComponent(
+                Color.BLACK,
+                (42f * spec.shadow * spec.alpha).toInt().coerceIn(0, 42)
+            )
+            canvas.drawRoundRect(
+                shadow,
+                n(spec.radius),
+                n(spec.radius),
+                fill
             )
         }
 
+        // Global vertical gradient: overlapping cloud blobs share the exact
+        // same color at the same Y, so they read as one solid cloud.
         fill.shader = LinearGradient(
-            rect.left, rect.top, rect.right, rect.bottom,
-            ColorUtils.setAlphaComponent(
-                topColor,
-                (255f * spec.alpha).toInt().coerceIn(0, 255)
-            ),
-            ColorUtils.setAlphaComponent(
-                bottomColor,
-                (255f * spec.alpha).toInt().coerceIn(0, 255)
-            ),
+            width / 2f,
+            height * 0.14f,
+            width / 2f,
+            height * 0.86f,
+            ColorUtils.setAlphaComponent(topColor, a),
+            ColorUtils.setAlphaComponent(bottomColor, a),
             Shader.TileMode.CLAMP
         )
         canvas.drawRoundRect(
@@ -372,21 +375,22 @@ class SohrIntroMorphView(context: Context) : View(context) {
             n(spec.radius),
             fill
         )
-
         fill.shader = null
-        fill.clearShadowLayer()
 
-        stroke.strokeWidth = dp(1f)
+        // Tiny top highlight only; no full outline around every blob/card.
+        stroke.strokeWidth = dp(0.65f)
         stroke.color = ColorUtils.setAlphaComponent(
             Color.WHITE,
-            (31f * spec.alpha).toInt().coerceIn(0, 31)
+            (18f * spec.alpha).toInt().coerceIn(0, 18)
         )
-        canvas.drawRoundRect(
-            rect,
-            n(spec.radius),
-            n(spec.radius),
+        canvas.drawLine(
+            rect.left + n(spec.radius) * 0.62f,
+            rect.top + dp(0.8f),
+            rect.right - n(spec.radius) * 0.62f,
+            rect.top + dp(0.8f),
             stroke
         )
+
         canvas.restore()
     }
 
@@ -400,34 +404,42 @@ class SohrIntroMorphView(context: Context) : View(context) {
         val x = px(spec.cx)
         val y = py(spec.cy)
         val r = n(spec.radius)
-        val c = ColorUtils.blendARGB(
-            Color.rgb(213, 198, 255),
-            palette.accent,
-            0.32f
-        )
+        val a = (255f * spec.alpha).toInt().coerceIn(0, 255)
 
-        fill.setShadowLayer(
-            dp(4f), 0f, dp(1.5f),
-            ColorUtils.setAlphaComponent(
-                Color.BLACK,
-                (48f * spec.alpha).toInt().coerceIn(0, 48)
-            )
-        )
+        fill.shader = null
         fill.color = ColorUtils.setAlphaComponent(
-            c,
-            (255f * spec.alpha).toInt().coerceIn(0, 255)
+            Color.BLACK,
+            (30f * spec.alpha).toInt().coerceIn(0, 30)
+        )
+        canvas.drawCircle(x, y + dp(2f), r * 1.02f, fill)
+
+        fill.shader = LinearGradient(
+            x - r,
+            y - r,
+            x + r,
+            y + r,
+            ColorUtils.setAlphaComponent(Color.rgb(239, 220, 255), a),
+            ColorUtils.setAlphaComponent(
+                ColorUtils.blendARGB(
+                    Color.rgb(148, 99, 255),
+                    palette.accent,
+                    0.16f
+                ),
+                a
+            ),
+            Shader.TileMode.CLAMP
         )
         canvas.drawCircle(x, y, r, fill)
-        fill.clearShadowLayer()
+        fill.shader = null
 
         fill.color = ColorUtils.setAlphaComponent(
             Color.WHITE,
-            (48f * spec.alpha).toInt().coerceIn(0, 48)
+            (70f * spec.alpha).toInt().coerceIn(0, 70)
         )
         canvas.drawCircle(
-            x - r * 0.24f,
-            y - r * 0.26f,
-            r * 0.26f,
+            x - r * 0.28f,
+            y - r * 0.30f,
+            r * 0.22f,
             fill
         )
     }
@@ -586,22 +598,34 @@ class SohrIntroMorphView(context: Context) : View(context) {
             roundedTrianglePoints(x, y, size)
         )
 
+        val cloudWeight = (1f - pageProgress.coerceIn(0f, 1f))
+        val top = ColorUtils.blendARGB(
+            Color.WHITE,
+            Color.rgb(83, 59, 144),
+            cloudWeight
+        )
+        val bottom = ColorUtils.blendARGB(
+            ColorUtils.blendARGB(
+                Color.rgb(229, 218, 255),
+                palette.accent,
+                0.10f
+            ),
+            Color.rgb(43, 31, 82),
+            cloudWeight
+        )
+
         fill.shader = LinearGradient(
             px(x - size * 0.45f),
             py(y - size * 0.55f),
             px(x + size * 0.55f),
             py(y + size * 0.55f),
             ColorUtils.setAlphaComponent(
-                Color.WHITE,
-                (250f * alpha).toInt().coerceIn(0, 250)
+                top,
+                (255f * alpha).toInt().coerceIn(0, 255)
             ),
             ColorUtils.setAlphaComponent(
-                ColorUtils.blendARGB(
-                    Color.rgb(232, 222, 255),
-                    palette.accent,
-                    0.18f
-                ),
-                (250f * alpha).toInt().coerceIn(0, 250)
+                bottom,
+                (255f * alpha).toInt().coerceIn(0, 255)
             ),
             Shader.TileMode.CLAMP
         )
@@ -624,19 +648,19 @@ class SohrIntroMorphView(context: Context) : View(context) {
         )
 
         fill.shader = LinearGradient(
-            px(x),
-            py(y - size * 0.65f),
-            px(x),
-            py(y + size * 0.65f),
+            px(x - size * 0.30f),
+            py(y - size * 0.70f),
+            px(x + size * 0.34f),
+            py(y + size * 0.70f),
             ColorUtils.setAlphaComponent(
-                Color.rgb(232, 210, 255),
+                Color.rgb(248, 228, 255),
                 (255f * alpha).toInt().coerceIn(0, 255)
             ),
             ColorUtils.setAlphaComponent(
                 ColorUtils.blendARGB(
-                    Color.rgb(151, 104, 255),
+                    Color.rgb(175, 116, 255),
                     palette.accent,
-                    0.22f
+                    0.10f
                 ),
                 (255f * alpha).toInt().coerceIn(0, 255)
             ),
@@ -646,13 +670,13 @@ class SohrIntroMorphView(context: Context) : View(context) {
         fill.shader = null
 
         val inner = flamePoints(
-            x + size * 0.03f,
+            x + size * 0.02f,
             y + size * 0.18f,
-            size * 0.42f
+            size * 0.39f
         )
         fill.color = ColorUtils.setAlphaComponent(
-            Color.rgb(61, 43, 115),
-            (210f * alpha).toInt().coerceIn(0, 210)
+            Color.rgb(53, 37, 101),
+            (236f * alpha).toInt().coerceIn(0, 236)
         )
         canvas.drawPath(
             smoothClosedPath(inner),
@@ -886,7 +910,7 @@ class SohrIntroMorphView(context: Context) : View(context) {
     }
 
     private fun unit() =
-        minOf(width, height).toFloat() / 220f
+        minOf(width, height).toFloat() / 184f
 
     private fun px(x: Float) =
         width / 2f + (x - 80f) * unit()

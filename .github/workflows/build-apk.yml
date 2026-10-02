@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.9.23 version
+      - name: Assign SOHR 6.9.24 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690023" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.23" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690024" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.24" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -803,10 +803,13 @@ jobs:
               "feedScene()",
               "playerScene()",
               "calendarScene()",
-              "settingsScene()"
+              "settingsScene()",
+              "height * 0.14f",
+              "height * 0.86f",
+              "minOf(width, height).toFloat() / 184f"
           ]:
               if required not in morph_view:
-                  raise SystemExit(f"SOHR 6.9.23 parametric morph regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.24 opaque parametric morph regression: {required}")
           for forbidden in [
               "Drawable",
               "ContextCompat.getDrawable",
@@ -814,7 +817,8 @@ jobs:
               "drawTransformedIcon(",
               "drawMorphCore(",
               "COLLAPSE_END",
-              "EXPAND_START"
+              "EXPAND_START",
+              "LAYER_TYPE_SOFTWARE"
           ]:
               if forbidden in morph_view:
                   raise SystemExit(f"SOHR 6.9.23 drawable/crossfade morph returned: {forbidden}")
@@ -1781,7 +1785,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.23 • onboarding morph полностью переписан: готовые drawable больше не участвуют в анимации; одна Canvas-сцена рисует логические части иконки в общей системе координат 160×160 и интерполирует их параметры между пятью состояниями • Cloud → Feed: облачные rounded-blobs перестраиваются в слои карточек, Play уходит в preview-зону, появляются preview и строки • Feed → Player: передняя карточка расширяется в player, preview растёт в artwork, строки перестраиваются в timeline и thumb • Player → Calendar: panel меняет пропорции, задние слои уходят, Play и flame используют настоящий point/path morph с одинаковым числом опорных точек, формируются top bar и две петли • Calendar → Settings: panel становится квадратной настройкой, петли перемещаются к slider thumbs, tracks/thumbs вырастают из тех же параметрических элементов, flame схлопывается • обратный свайп использует ту же геометрию назад; нет двух полноценных иконок одновременно и нет crossfade между PNG/drawable • сохранён фиксированный центр, единый визуальный масштаб, soft-glass градиенты и локальные мягкие тени"
+            "notes": "SOHR 6.9.24 • onboarding-иконки больше не выглядят прозрачными: основные формы стали плотнее, контрастнее и заметно ярче на тёмном фоне • облако исправлено: четыре параметрические части теперь используют один общий градиент и визуально сливаются в цельную форму без видимых пересечений кругов • hero увеличен примерно на 20%, лишнее плавание уменьшено • календарь очищен от фоновой grid-геометрии, flame стал ярким и читаемым • cloud Play теперь тёмный как на утверждённом референсе, player Play остаётся светлым • software rendering удалён, тени сделаны аппаратно-дружелюбными для более стабильного FPS • GitHub очищается автоматически: старый test release удаляется, а в sohr-latest сохраняются только SOHR.apk, update.json и максимум три последних numbered APK"
           }
           EOF
           cat update.json
@@ -1813,6 +1817,44 @@ jobs:
               --prerelease
           fi
 
+
+      - name: Keep only three SOHR versions
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # One clean release channel: remove the obsolete old test release.
+          if gh release view sohr-test-latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release delete sohr-test-latest --cleanup-tag --yes --repo "$GITHUB_REPOSITORY"
+          fi
+
+          # Keep generic updater files and only the three newest numbered APKs.
+          mapfile -t VERSIONED_APKS < <(
+            gh api "repos/$GITHUB_REPOSITORY/releases/tags/sohr-latest" \
+              --jq '.assets[].name' \
+              | grep -E '^SOHR-[0-9]+\.apk$' \
+              | sort -V
+          )
+
+          COUNT="${#VERSIONED_APKS[@]}"
+          if [ "$COUNT" -gt 3 ]; then
+            DELETE_COUNT=$((COUNT - 3))
+            for ((i=0; i<DELETE_COUNT; i++)); do
+              ASSET="${VERSIONED_APKS[$i]}"
+              echo "Deleting old SOHR asset: $ASSET"
+              gh release delete-asset sohr-latest "$ASSET" --yes --repo "$GITHUB_REPOSITORY"
+            done
+          fi
+
+          LEFT=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/sohr-latest" \
+            --jq '[.assets[].name | select(test("^SOHR-[0-9]+\\.apk$"))] | length')
+          if [ "$LEFT" -gt 3 ]; then
+            echo "Release retention failed: $LEFT versioned APKs remain" >&2
+            exit 1
+          fi
 
       - name: Verify published updater channel
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
