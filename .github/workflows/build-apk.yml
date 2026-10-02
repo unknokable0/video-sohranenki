@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.9.26 version
+      - name: Assign SOHR 6.9.27 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690026" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.26" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690027" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.27" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -790,6 +790,34 @@ jobs:
                   raise SystemExit(f"SOHR 6.9.23 parametric onboarding regression: {required}")
           for required in [
               "class SohrIntroMorphView",
+              "private data class IconState(",
+              "private data class ShapeLayer(",
+              "private data class GlyphLayer(",
+              "cloudState()",
+              "feedState()",
+              "playerState()",
+              "calendarState()",
+              "settingsState()",
+              "renderState(",
+              "interpolateState(",
+              "mixPoints(",
+              "drawShape(",
+              "drawArtwork(",
+              "drawTimeline(",
+              "drawGlyph(",
+              "roundedTrianglePoints(",
+              "flamePoints(",
+              "smoothClosedPath(",
+              "minOf(width, height).toFloat() / 124f"
+          ]:
+              if required not in morph_view:
+                  raise SystemExit(f"SOHR 6.9.27 unified onboarding-state regression: {required}")
+          for forbidden in [
+              "Drawable",
+              "ContextCompat.getDrawable",
+              "R.drawable.ill_intro_",
+              "drawTransformedIcon(",
+              "drawMorphCore(",
               "drawFinalCloud(",
               "drawFinalFeed(",
               "drawFinalPlayer(",
@@ -799,32 +827,18 @@ jobs:
               "drawFeedToPlayer(",
               "drawPlayerToCalendar(",
               "drawCalendarToSettings(",
-              "drawMorphPanel(",
-              "drawPlayToFlameMorph(",
-              "roundedTrianglePoints(",
-              "flamePoints(",
-              "smoothClosedPath(",
-              "finalCloudPath()",
-              "ENDPOINT_EPS = 0.001f",
-              "minOf(width, height).toFloat() / 148f"
-          ]:
-              if required not in morph_view:
-                  raise SystemExit(f"SOHR 6.9.26 premium onboarding regression: {required}")
-          for forbidden in [
-              "Drawable",
-              "ContextCompat.getDrawable",
-              "R.drawable.ill_intro_",
-              "drawTransformedIcon(",
-              "drawMorphCore(",
               "private data class Scene(",
               "interpolateScene(",
               "drawGlassBox(",
+              "ENDPOINT_EPS",
+              "ValueAnimator",
+              "ambientAnimator",
               "COLLAPSE_END",
               "EXPAND_START",
               "LAYER_TYPE_SOFTWARE"
           ]:
               if forbidden in morph_view:
-                  raise SystemExit(f"SOHR 6.9.26 old primitive/crossfade onboarding returned: {forbidden}")
+                  raise SystemExit(f"SOHR 6.9.27 duplicate/final-snap renderer returned: {forbidden}")
           for forbidden in [
               "ambientAnimators",
               "startAmbientMotion(",
@@ -1788,7 +1802,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.26 • onboarding-иконки полностью пересобраны по присланному premium purple референсу • Cloud стал крупнее, ярче и рисуется единым цельным Path без верхней дуги, construction-stroke и видимых пересечений • Feed получил крупную насыщенную переднюю карточку, preview, текстовые линии и две приглушённые depth-карточки • Player увеличен, получил два depth-слоя, clipped purple/pink artwork с тремя слоями гор, яркий Play и аккуратный timeline/thumb • Calendar стал крупнее и контрастнее: светлая верхняя часть, два одинаковых крепления и большой читаемый flame • Settings увеличен и получил яркие tracks и объёмные thumbs • масштаб hero увеличен примерно на 25–35% • старый Scene/interpolate primitive renderer удалён • morph теперь специализирован по парам Cloud→Feed→Player→Calendar→Settings и симметрично работает назад • final state по-прежнему жёстко отделён endpoint guard 0.001 • остальной onboarding не изменён"
+            "notes": "SOHR 6.9.27 • onboarding morph переписан вокруг единого IconState renderer: final state и transition больше не имеют разных геометрий • последний кадр A→B математически интерполируется в тот же State B, который остаётся после перехода, поэтому дополнительный snap/resize/repaint после morph устранён • удалены отдельные drawFinal* и специализированные draw*To* renderer-ветки, а также ambient float-анимация после перехода • Cloud, Feed, Player, Calendar и Settings стали крупнее и ярче; основные поверхности непрозрачные и используют lavender→purple градиенты • Cloud остаётся одним цельным силуэтом без stroke/дуги • Feed получил яркую front-card и две depth-card • Player сохраняет Play, layered artwork, timeline и thumb в final state • Calendar получил яркий header, одинаковые крепления и крупный flame • Calendar→Settings теперь непрерывно превращает header в верхний track, крепления в thumbs и формирует нижний track • масштаб renderer увеличен примерно на 20–25% без scale(Canvas) • остальные элементы onboarding не изменены"
           }
           EOF
           cat update.json
