@@ -30,27 +30,27 @@ class SohrOnboarding(
 
     private val pages = listOf(
         Page(
-            R.drawable.ic_intro_library_clean,
+            R.drawable.ill_intro_library,
             "Всё важное в SOHR",
             "Видео, источники и прогресс собраны в одном месте."
         ),
         Page(
-            R.drawable.ic_intro_feed_clean,
+            R.drawable.ill_intro_feed,
             "Лента без лишнего",
             "Новые видео, понятные даты и быстрый доступ к выбранным каналам."
         ),
         Page(
-            R.drawable.ic_intro_watch_clean,
+            R.drawable.ill_intro_watch,
             "Удобный просмотр",
             "Telegram и Twitch — внутри SOHR. YouTube открывается на нужном ролике."
         ),
         Page(
-            R.drawable.ic_intro_streak_clean,
+            R.drawable.ill_intro_streak,
             "Streak и прогресс",
             "Просмотр по дням помогает видеть привычку без лишних экранов."
         ),
         Page(
-            R.drawable.ic_intro_tune_clean,
+            R.drawable.ill_intro_customize,
             "Настройте под себя",
             "Тема, акцент, уведомления и обновления — в одном разделе."
         )
@@ -303,23 +303,23 @@ class SohrOnboarding(
             hero.addView(
                 glow,
                 FrameLayout.LayoutParams(
-                    dp(168),
-                    dp(168),
+                    dp(196),
+                    dp(196),
                     Gravity.CENTER
                 )
             )
 
             val icon = ImageView(activity).apply {
                 setImageResource(page.icon)
-                imageTintList = ColorStateList.valueOf(palette().accent)
+                imageTintList = null
                 scaleType = ImageView.ScaleType.CENTER_INSIDE
                 contentDescription = page.title
             }
             hero.addView(
                 icon,
                 FrameLayout.LayoutParams(
-                    dp(92),
-                    dp(92),
+                    dp(154),
+                    dp(154),
                     Gravity.CENTER
                 )
             )
@@ -328,13 +328,13 @@ class SohrOnboarding(
                 hero,
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(236)
+                    dp(252)
                 )
             )
 
             val title = TextView(activity).apply {
                 text = page.title
-                textSize = 28f
+                textSize = 27f
                 gravity = Gravity.CENTER
                 maxLines = 2
                 includeFontPadding = false
