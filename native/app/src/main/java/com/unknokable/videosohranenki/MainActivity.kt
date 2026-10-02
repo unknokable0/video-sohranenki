@@ -163,6 +163,7 @@ class MainActivity : AppCompatActivity() {
     private var authErrorView: TextView? = null
     private var requestedPhoneNumber: String? = null
     private var authResetInProgress = false
+    private var telegramLogoutInProgress = false
     private var loadJob: kotlinx.coroutines.Job? = null
     private var reloadRequested = false
     private var suppressNextRootAnimation = false
@@ -961,6 +962,7 @@ class MainActivity : AppCompatActivity() {
                 resetTelegramAuthorization("Возврат к входу по номеру")
             }
             is TdApi.AuthorizationStateReady -> {
+                if (telegramLogoutInProgress) return
                 settings.authPhone = null
                 settings.guestMode = false
                 telegramReady = true
@@ -995,9 +997,18 @@ class MainActivity : AppCompatActivity() {
                 loadVideos(inPlace = true, quiet = true)
                 scheduleFeedAutoRefresh(delayMs = 2_000L, force = false)
             }
-            is TdApi.AuthorizationStateLoggingOut -> runOnUiThread { showLoading("Выходим…") }
-            is TdApi.AuthorizationStateClosing -> runOnUiThread { showLoading("Закрываем соединение…") }
-            is TdApi.AuthorizationStateClosed -> Unit
+            is TdApi.AuthorizationStateLoggingOut -> runOnUiThread {
+                telegramReady = false
+                if (telegramLogoutInProgress) showLoading("Выходим из Telegram…")
+            }
+            is TdApi.AuthorizationStateClosing -> runOnUiThread {
+                telegramReady = false
+                if (telegramLogoutInProgress) showLoading("Завершаем выход…")
+            }
+            is TdApi.AuthorizationStateClosed -> runOnUiThread {
+                telegramReady = false
+                if (telegramLogoutInProgress) showLoading("Готовим экран входа…")
+            }
         }
     }
 
@@ -1087,15 +1098,16 @@ class MainActivity : AppCompatActivity() {
 
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(18), dp(24), dp(18), dp(24))
+            gravity = Gravity.TOP
+            setPadding(dp(22), dp(18), dp(22), dp(22))
             setBackgroundColor(bg)
         }
 
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(20), dp(20), dp(20))
-            background = roundedBg(panel, 24)
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(0, 0, 0, 0)
+            setBackgroundColor(bg)
         }
 
         val topRow = LinearLayout(this).apply {
@@ -1125,22 +1137,80 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        topRow.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+        val themeButton = ImageView(this).apply {
+            setImageResource(
+                if (settings.lightTheme) R.drawable.ic_theme_moon
+                else R.drawable.ic_theme_sun
+            )
+            imageTintList = ColorStateList.valueOf(this@MainActivity.text)
+            background = roundedBg(palette.surfaceAlt, 14)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(11), dp(11), dp(11), dp(11))
+            contentDescription = "Сменить тему"
+            setOnClickListener {
+                animatePress(this)
+                settings.lightTheme = !settings.lightTheme
+                renderPhoneLogin(regions)
+            }
+        }
+
+        topRow.addView(
+            TextView(this).apply {
+                text = "SOHR"
+                textSize = 18f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(this@MainActivity.text)
+                includeFontPadding = false
+                gravity = Gravity.CENTER_VERTICAL
+            },
+            LinearLayout.LayoutParams(0, dp(44), 1f)
+        )
+        topRow.addView(themeButton, LinearLayout.LayoutParams(dp(44), dp(44)).apply {
+            marginEnd = dp(8)
+        })
         topRow.addView(languageButton, LinearLayout.LayoutParams(dp(58), dp(44)))
 
+        val hero = FrameLayout(this).apply {
+            background = roundedBg(palette.surface, 30)
+            clipToOutline = true
+        }
+        val heroHalo = View(this).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(palette.accentSoft)
+            }
+        }
+        hero.addView(
+            heroHalo,
+            FrameLayout.LayoutParams(dp(158), dp(158), Gravity.CENTER)
+        )
+        val heroIcon = ImageView(this).apply {
+            setImageResource(R.drawable.sohr_brand_logo)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(24), dp(24), dp(24), dp(24))
+        }
+        hero.addView(
+            heroIcon,
+            FrameLayout.LayoutParams(dp(116), dp(116), Gravity.CENTER)
+        )
+
         val title = TextView(this).apply {
-            text = t("login")
-            textSize = 29f
+            text = "Вход в SOHR"
+            textSize = 28f
+            gravity = Gravity.CENTER
             setTextColor(this@MainActivity.text)
             setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, dp(16), 0, 0)
+            includeFontPadding = false
+            setPadding(dp(8), dp(20), dp(8), 0)
         }
 
         val subtitle = TextView(this).apply {
-            text = t("choose_country")
+            text = "Войдите через Telegram, чтобы открыть сохранённые видео и синхронизацию."
             textSize = 14f
+            gravity = Gravity.CENTER
             setTextColor(muted)
-            setPadding(0, dp(7), 0, dp(16))
+            setLineSpacing(0f, 1.08f)
+            setPadding(dp(12), dp(8), dp(12), dp(22))
         }
 
         val country = TextView(this).apply {
@@ -1275,7 +1345,7 @@ class MainActivity : AppCompatActivity() {
         val submit = Button(this).apply {
             text = t("continue")
             setTextColor(Color.WHITE)
-            background = roundedBg(purple, 16)
+            background = roundedBg(purple, 19)
             setOnClickListener {
                 animatePress(this)
                 val national = input.text.toString().filter { it.isDigit() }
@@ -1334,7 +1404,7 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(purple)
-            background = roundedBg(palette.surfaceAlt, 16)
+            background = roundedBg(palette.surfaceAlt, 18)
             isClickable = true
             isFocusable = true
             setOnClickListener {
@@ -1355,16 +1425,23 @@ class MainActivity : AppCompatActivity() {
             setLineSpacing(0f, 1.12f)
         }
 
-        card.addView(topRow)
+        card.addView(topRow, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(44)
+        ))
+        card.addView(hero, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(236)
+        ).apply { topMargin = dp(22) })
         card.addView(title)
         card.addView(subtitle)
         card.addView(country, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(52)
+            dp(54)
         ))
         card.addView(phoneRow, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(54)
+            dp(56)
         ).apply { topMargin = dp(10) })
         phoneRow.addView(prefix, LinearLayout.LayoutParams(dp(76), ViewGroup.LayoutParams.MATCH_PARENT))
         phoneRow.addView(input, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
@@ -1381,25 +1458,59 @@ class MainActivity : AppCompatActivity() {
 
         container.addView(card, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
+            ViewGroup.LayoutParams.MATCH_PARENT
         ))
 
         applyCountry()
         if (settings.animations) {
-            card.alpha = 0f
-            card.translationY = dp(14).toFloat()
+            heroIcon.alpha = 0f
+            heroIcon.scaleX = 0.84f
+            heroIcon.scaleY = 0.84f
+            heroHalo.scaleX = 0.88f
+            heroHalo.scaleY = 0.88f
+            title.alpha = 0f
+            subtitle.alpha = 0f
+            country.alpha = 0f
+            phoneRow.alpha = 0f
+            submit.alpha = 0f
+            guest.alpha = 0f
         }
 
         replaceRoot(container)
 
         if (settings.animations) {
-            card.post {
-                card.animate()
-                    .alpha(1f)
-                    .translationY(0f)
-                    .setDuration(280L)
-                    .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+            heroIcon.post {
+                val ease = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
+                heroHalo.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(420L)
+                    .setInterpolator(ease)
                     .start()
+                heroIcon.animate()
+                    .alpha(1f)
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(420L)
+                    .setInterpolator(ease)
+                    .start()
+                title.animate().alpha(1f).setStartDelay(70L).setDuration(230L).start()
+                subtitle.animate().alpha(1f).setStartDelay(100L).setDuration(230L).start()
+
+                country.translationY = dp(8).toFloat()
+                phoneRow.translationY = dp(8).toFloat()
+                submit.translationY = dp(8).toFloat()
+                guest.translationY = dp(8).toFloat()
+
+                listOf(country, phoneRow, submit, guest).forEachIndexed { index, view ->
+                    view.animate()
+                        .alpha(1f)
+                        .translationY(0f)
+                        .setStartDelay(135L + index * 35L)
+                        .setDuration(285L)
+                        .setInterpolator(ease)
+                        .start()
+                }
             }
         }
 
@@ -2155,15 +2266,16 @@ class MainActivity : AppCompatActivity() {
 
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(18), dp(24), dp(18), dp(24))
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(22), dp(22), dp(22), dp(24))
             setBackgroundColor(bg)
         }
 
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(20), dp(20), dp(20))
-            background = roundedBg(panel, 24)
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(0, 0, 0, 0)
+            setBackgroundColor(bg)
         }
 
         if (showBack) {
@@ -2207,18 +2319,42 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
+        val artwork = FrameLayout(this).apply {
+            background = roundedBg(palette.surface, 28)
+        }
+        artwork.addView(
+            ImageView(this).apply {
+                setImageResource(R.drawable.ic_auth_telegram_code)
+                imageTintList = ColorStateList.valueOf(purple)
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+                setPadding(dp(30), dp(30), dp(30), dp(30))
+            },
+            FrameLayout.LayoutParams(dp(112), dp(112), Gravity.CENTER)
+        )
+        card.addView(
+            artwork,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(190)
+            ).apply { bottomMargin = dp(8) }
+        )
+
         val titleView = TextView(this).apply {
             text = title
             textSize = 29f
             setTextColor(this@MainActivity.text)
             setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, dp(16), 0, 0)
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            setPadding(dp(8), dp(12), dp(8), 0)
         }
         val subtitleView = TextView(this).apply {
             text = subtitle
-            textSize = 15f
+            textSize = 14f
+            gravity = Gravity.CENTER
             setTextColor(muted)
-            setPadding(0, dp(8), 0, dp(24))
+            setLineSpacing(0f, 1.08f)
+            setPadding(dp(12), dp(8), dp(12), dp(24))
         }
         val isPassword = (inputType and InputType.TYPE_TEXT_VARIATION_PASSWORD) == InputType.TYPE_TEXT_VARIATION_PASSWORD
         val input = EditText(this).apply {
@@ -2355,9 +2491,49 @@ class MainActivity : AppCompatActivity() {
 
         container.addView(card, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
+            ViewGroup.LayoutParams.MATCH_PARENT
         ))
         replaceRoot(container)
+
+        if (settings.animations) {
+            artwork.alpha = 0f
+            artwork.scaleX = 0.96f
+            artwork.scaleY = 0.96f
+            titleView.alpha = 0f
+            subtitleView.alpha = 0f
+            inputContainer.alpha = 0f
+            inputContainer.translationY = dp(8).toFloat()
+            submit.alpha = 0f
+            submit.translationY = dp(8).toFloat()
+
+            artwork.post {
+                val ease = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
+                artwork.animate()
+                    .alpha(1f)
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(300L)
+                    .setInterpolator(ease)
+                    .start()
+                titleView.animate().alpha(1f).setStartDelay(60L).setDuration(220L).start()
+                subtitleView.animate().alpha(1f).setStartDelay(90L).setDuration(220L).start()
+                inputContainer.animate()
+                    .alpha(1f)
+                    .translationY(0f)
+                    .setStartDelay(120L)
+                    .setDuration(260L)
+                    .setInterpolator(ease)
+                    .start()
+                submit.animate()
+                    .alpha(1f)
+                    .translationY(0f)
+                    .setStartDelay(155L)
+                    .setDuration(260L)
+                    .setInterpolator(ease)
+                    .start()
+            }
+        }
+
         input.requestFocus()
     }
 
@@ -9979,19 +10155,55 @@ class MainActivity : AppCompatActivity() {
             context = this,
             palette = palette,
             title = "Выйти из аккаунта?",
-            message = "Сессия будет удалена с этого телефона. При следующем входе снова понадобится номер и код.",
+            message = "Telegram-сессия будет удалена с этого телефона. После выхода SOHR вернётся к экрану приветствия и входа.",
             confirm = "Выйти",
             destructive = true
         ) {
+            if (telegramLogoutInProgress) return@showConfirm
+            telegramLogoutInProgress = true
+
             lifecycleScope.launch {
-                try {
-                    showLoading("Выходим из аккаунта…")
-                    settings.authPhone = null
-                    client.send(TdApi.LogOut())
-                } catch (e: Exception) {
-                    Toast.makeText(this@MainActivity, e.message ?: "Не удалось выйти", Toast.LENGTH_LONG).show()
-                    showAccount()
+                val oldGeneration = settings.authGeneration
+
+                // Invalidate the local session first. If Android kills SOHR in the
+                // middle of logout, the next launch still cannot reopen this account.
+                settings.authGeneration = oldGeneration + 1
+                settings.authPhone = null
+                settings.guestMode = false
+                settings.postLoginTourSeen = false
+                requestedPhoneNumber = null
+                pendingCodeState = null
+                telegramReady = false
+
+                feedAutoRefreshJob?.cancel()
+                loadJob?.cancel()
+                telegramChannelRefreshJob?.cancel()
+                telegramChannelHub = null
+                telegramChannels = emptyList()
+                telegramVideos = emptyList()
+                currentVideos = emptyList()
+
+                showLoading("Выходим из Telegram…")
+
+                // Remote logout is best-effort and bounded. Local logout must never
+                // hang because TDLib is waiting on a bad connection.
+                withTimeoutOrNull(2_500L) {
+                    runCatching { client.send(TdApi.LogOut()) }
                 }
+
+                runCatching { client.close() }
+                .onFailure { /* new authGeneration already prevents session reuse */ }
+
+                delay(220L)
+                runCatching {
+                    java.io.File(
+                        filesDir,
+                        "tdlib_session_" + oldGeneration
+                    ).deleteRecursively()
+                }
+
+                suppressNextRootAnimation = true
+                recreate()
             }
         }
     }

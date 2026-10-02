@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.9.13 version
+      - name: Assign SOHR 6.9.14 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690013" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.13" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690014" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.14" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -785,6 +785,40 @@ jobs:
           ]:
               if required not in sohr_main:
                   raise SystemExit(f"SOHR 6.9.13 onboarding wiring regression: {required}")
+
+          for required in [
+              "private var telegramLogoutInProgress = false",
+              "if (telegramLogoutInProgress) return",
+              "settings.authGeneration = oldGeneration + 1",
+              "settings.guestMode = false",
+              "settings.postLoginTourSeen = false",
+              "withTimeoutOrNull(2_500L)",
+              "client.send(TdApi.LogOut())",
+              "client.close()",
+              '"tdlib_session_" + oldGeneration',
+              "deleteRecursively()",
+              "recreate()"
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.9.14 hard Telegram logout regression: {required}")
+
+          logout_section = sohr_main.split(
+              "private fun confirmLogout()", 1
+          )[1].split("\n    private fun setFullscreen", 1)[0]
+          if "showAccount()" in logout_section:
+              raise SystemExit("SOHR 6.9.14 logout regression: logout returns to Account instead of fresh auth")
+
+          for required in [
+              'text = "Вход в SOHR"',
+              "R.drawable.sohr_brand_logo",
+              "val themeButton = ImageView(this).apply",
+              "settings.lightTheme = !settings.lightTheme",
+              "heroIcon.animate()",
+              "country.translationY = dp(8).toFloat()",
+              "val artwork = FrameLayout(this).apply"
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.9.14 auth visual regression: {required}")
           youtube_feed_repo = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/YouTubeFeed.kt"
           ).read_text(encoding="utf-8")
@@ -1670,7 +1704,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.13 • исправлена дата YouTube-видео: RSS-время считается точным и показывается как «Сегодня, 17:42», «Вчера, 21:08» или «1 октября, 18:31»; для роликов, где YouTube отдаёт только относительную дату, SOHR показывает исходный текст YouTube вместо выдуманного «Недавно» • добавлен новый первый запуск в стиле SOHR: 5 плавных экранов с возможностями приложения, свайпами, точками, темой и кнопками «Дальше/Начать»; показывается один раз перед первым входом • из вкладки «Аккаунт» полностью удалён YouTube-блок — остаются Telegram и Twitch • улучшения превью и внешний просмотр YouTube из предыдущих версий сохранены"
+            "notes": "SOHR 6.9.14 • исправлен выход из Telegram: SOHR больше не зависит от финального ответа TDLib — старая локальная сессия сразу инвалидируется новой authGeneration, удаляется после bounded logout/close и приложение гарантированно возвращается к чистому входу • поздний AuthorizationStateReady во время выхода больше не может вернуть главную страницу • guestMode и старый каталог при logout очищаются • после выхода снова показывается приветственный onboarding, а не Главная • экран номера переделан под стиль присланного примера: full-screen SOHR, большая иллюстрация, тема и язык сверху, центрированный текст, мягкие stagger-анимации и аккуратные поля • email/пароль получили тот же визуальный язык; красивый кодовый экран сохранён"
           }
           EOF
           cat update.json
