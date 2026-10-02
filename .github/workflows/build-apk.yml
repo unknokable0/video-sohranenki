@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.9.3 version
+      - name: Assign SOHR 6.9.4 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690003" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.3" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690004" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.4" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -1134,16 +1134,75 @@ jobs:
           failure_section = sohr_main.split(
               "private fun handleYouTubeNativeFailure(", 1
           )[1].split("\n    private fun ", 1)[0]
-          for required in [
-              "YouTubeAgeRestrictedException",
-              "YouTubeNetworkException",
-              "YouTubeSignInRequiredException",
-              "openYouTubeWebPlayer(video, returnView)"
+          if "showYouTubePlaybackError(video, error, returnView)" not in failure_section:
+              raise SystemExit("SOHR 6.9.4 regression: failed native YouTube resolve is not kept in SOHR UI")
+          for forbidden in [
+              "openYouTubeWebPlayer(",
+              "openYouTubeAccountRequired(",
+              "launchYouTubeCustomTab("
           ]:
-              if required not in failure_section:
-                  raise SystemExit(f"SOHR 6.9.3 in-app YouTube fallback regression: {required}")
-          if "openYouTubeAccountRequired(" in failure_section or "launchYouTubeCustomTab(" in failure_section:
-              raise SystemExit("SOHR 6.9.3 regression: video tap can still leave SOHR")
+              if forbidden in failure_section:
+                  raise SystemExit(f"SOHR 6.9.4 regression: video failure auto-substitutes YouTube UI: {forbidden}")
+
+          youtube_open_section = sohr_main.split(
+              "private fun openYouTubeVideo(", 1
+          )[1].split("\n    private fun configureYouTubeWebView", 1)[0]
+          for required in [
+              "YouTubeNativeResolver.resetPlaybackSession()",
+              "firstError is YouTubeSignInRequiredException",
+              "PlayerScreen("
+          ]:
+              if required not in youtube_open_section:
+                  raise SystemExit(f"SOHR 6.9.4 native retry regression: {required}")
+
+          youtube_resolver = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/YouTubeNativeResolver.kt"
+          ).read_text(encoding="utf-8")
+          for required in [
+              "suspend fun resetPlaybackSession()",
+              "cachedBootstrap = null",
+              "poTokenWebView?.close()",
+              "poTokenSessionId = null",
+              "poTokenSessionPot = null"
+          ]:
+              if required not in youtube_resolver:
+                  raise SystemExit(f"SOHR 6.9.4 YouTube clean-session retry regression: {required}")
+
+          youtube_feed_repo = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/YouTubeFeed.kt"
+          ).read_text(encoding="utf-8")
+          for required in [
+              "channelVisualCache",
+              "thumbnailCache",
+              "cachedVisual?.avatarUrl",
+              "thumbnailCache[videoId] = stableThumbnail"
+          ]:
+              if required not in youtube_feed_repo:
+                  raise SystemExit(f"SOHR 6.9.4 YouTube artwork cache regression: {required}")
+
+          for required in [
+              "private fun stabilizeYouTubeSnapshot(",
+              "avatarUrl = channel.avatarUrl.ifBlank",
+              "thumbnailUrl = video.thumbnailUrl.ifBlank",
+              "preservedChannels",
+              "distinctBy { it.videoId }"
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.9.4 refresh-stability regression: {required}")
+
+          section_transition = sohr_main.split(
+              "if (sectionCrossfade) {", 1
+          )[1].split("} else if (primaryTabTransition)", 1)[0]
+          for required in [
+              "if (old.parent === host) host.removeView(old)",
+              'findViewWithTag<View>("sohr_video_section_content")',
+              "sectionBody.translationX = dp(10).toFloat() * direction",
+              ".setDuration(SohrMotion.NORMAL)"
+          ]:
+              if required not in section_transition:
+                  raise SystemExit(f"SOHR 6.9.4 smooth-section regression: {required}")
+          if ".withEndAction" in section_transition and "host.removeView(old)" in section_transition.split(".withEndAction", 1)[1]:
+              raise SystemExit("SOHR 6.9.4 regression: old feed shell survives until animation end")
 
           account_section = sohr_main.split(
               "private fun renderAccount(user:", 1
@@ -1151,6 +1210,9 @@ jobs:
           for required in [
               "youtubeAvatarFrame",
               "val youtubeAvatar = TextView(this).apply",
+              "val youtubeBadge = TextView(this).apply",
+              'text = "▶"',
+              'background = roundedBg(Color.parseColor("#FF0033"), 12)',
               "settings.youtubeAccountName",
               '"Выйти из YouTube"',
               "confirmYouTubeLogout()",
@@ -1159,7 +1221,7 @@ jobs:
               '"$youtubeAccount • YouTube"'
           ]:
               if required not in account_section:
-                  raise SystemExit(f"SOHR 6.9.3 YouTube account-card regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.4 YouTube account-card regression: {required}")
 
           for required in [
               "private fun confirmYouTubeLogout()",
@@ -2049,7 +2111,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.3 • исправлена дёрганая анимация «Главная / Лента / Просмотренные»: удалён двухэтапный hand-off с задержкой 105 мс, секция перестраивается сразу, индикатор плавно едет из предыдущего слота, анимируется только содержимое под вкладками • YouTube-карточка в «Аккаунте» приведена к стилю Telegram/Twitch: пользовательский круглый avatar-style блок с инициалом выбранного аккаунта, имя/e-mail и отдельная красная кнопка «Выйти из YouTube» • logout очищает привязку SOHR, не затрагивая Google-аккаунт в системном браузере • нажатие YouTube-видео больше не запускает Custom Tab/внешний YouTube: direct Media3 остаётся первым, технический fallback остаётся внутри SOHR; возрастные ограничения YouTube не обходятся"
+            "notes": "SOHR 6.9.4 • исправлена дёрганая анимация «Главная / Лента / Просмотренные»: старый и новый экран больше не лежат друг на друге, индикатор и цвет подписи двигаются синхронно, анимируется только содержимое секции • YouTube refresh больше не стирает аватарки и превью: добавлены visual/thumbnail cache и сохранение предыдущего валидного канала при частичной сетевой ошибке • YouTube-video tap больше не подменяет нативный SOHR-плеер полной web-страницей: перед финальной ошибкой выполняется clean reset visitorData/BotGuard/PO Token и второй native resolve • YouTube-карточка аккаунта получила account-style avatar с инициалом и маленьким YouTube-badge; красная кнопка «Выйти из YouTube» сохранена • реальные возрастные ограничения YouTube не обходятся"
           }
           EOF
           cat update.json
