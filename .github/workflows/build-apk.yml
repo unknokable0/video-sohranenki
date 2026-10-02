@@ -76,106 +76,34 @@ jobs:
           fi
           echo "Twitch OAuth authorize endpoint reachable (HTTP $CODE)"
 
-      - name: Verify YouTube native fallback endpoint
+      - name: Verify YouTube bootstrap endpoint
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json
+          import re
           import urllib.request
 
-          video_id = "YE7VzlLtp-4"
-          api_key = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
-          clients = [
-              {
-                  "name": "VISIONOS",
-                  "version": "1.02",
-                  "number": "101",
-                  "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
-                  "extra": {
-                      "deviceMake": "Apple",
-                      "deviceModel": "RealityDevice17,1",
-                      "osName": "visionOS",
-                      "osVersion": "26.5.23O471",
-                  },
+          req = urllib.request.Request(
+              "https://www.youtube.com/?hl=en&gl=US",
+              headers={
+                  "User-Agent": "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141 Mobile Safari/537.36",
+                  "Accept-Language": "en-US,en;q=0.8",
               },
-              {
-                  "name": "TVHTML5",
-                  "version": "5.20260707",
-                  "number": "7",
-                  "ua": "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/Version",
-                  "extra": {},
-              },
-          ]
+          )
+          with urllib.request.urlopen(req, timeout=20) as response:
+              page = response.read().decode("utf-8", "replace")
 
-          errors = []
-          for client in clients:
-              ctx = {
-                  "clientName": client["name"],
-                  "clientVersion": client["version"],
-                  "hl": "en",
-                  "gl": "US",
-                  **client["extra"],
-              }
-              body = json.dumps({
-                  "context": {"client": ctx},
-                  "videoId": video_id,
-              }).encode()
-              req = urllib.request.Request(
-                  f"https://www.youtube.com/youtubei/v1/player?prettyPrint=false&key={api_key}",
-                  data=body,
-                  headers={
-                      "Content-Type": "application/json",
-                      "Accept": "application/json",
-                      "User-Agent": client["ua"],
-                      "Origin": "https://www.youtube.com",
-                      "X-YouTube-Client-Name": client["number"],
-                      "X-YouTube-Client-Version": client["version"],
-                  },
-                  method="POST",
-              )
-              try:
-                  with urllib.request.urlopen(req, timeout=20) as response:
-                      player = json.loads(response.read().decode())
-                  status = player.get("playabilityStatus", {}).get("status")
-                  if status != "OK":
-                      errors.append(f'{client["name"]}: status={status}')
-                      continue
-
-                  sd = player.get("streamingData") or {}
-                  formats = (sd.get("formats") or []) + (sd.get("adaptiveFormats") or [])
-                  direct = next(
-                      (
-                          item.get("url")
-                          for item in formats
-                          if isinstance(item, dict)
-                          and isinstance(item.get("url"), str)
-                          and item["url"].startswith("https://")
-                          and not item.get("drmFamilies")
-                      ),
-                      None,
-                  )
-                  if direct is None:
-                      errors.append(f'{client["name"]}: no direct stream URL')
-                      continue
-
-                  media_req = urllib.request.Request(
-                      direct,
-                      headers={
-                          "Range": "bytes=0-1023",
-                          "User-Agent": client["ua"],
-                      },
-                  )
-                  with urllib.request.urlopen(media_req, timeout=20) as media:
-                      sample = media.read(1024)
-                      if media.status not in (200, 206) or not sample:
-                          raise RuntimeError(f"media HTTP {media.status}, bytes={len(sample)}")
-                  print(f'YouTube fallback OK via {client["name"]}; sample={len(sample)} bytes')
-                  break
-              except Exception as exc:
-                  errors.append(f'{client["name"]}: {type(exc).__name__}: {exc}')
-          else:
-              raise SystemExit("YouTube native fallback probe failed: " + " | ".join(errors))
+          visitor = re.search(r'"(?:VISITOR_DATA|visitorData)":"([^"]+)"', page)
+          version = re.search(r'"INNERTUBE_CLIENT_VERSION":"([^"]+)"', page)
+          api_key = re.search(r'"INNERTUBE_API_KEY":"([^"]+)"', page)
+          if not visitor:
+              raise SystemExit("YouTube bootstrap did not expose visitorData")
+          if not version:
+              raise SystemExit("YouTube bootstrap did not expose client version")
+          if not api_key:
+              raise SystemExit("YouTube bootstrap did not expose API key")
+          print("YouTube bootstrap OK; visitor/client config available")
           PY
 
       - name: Build signed release APK
@@ -835,6 +763,13 @@ jobs:
           youtube_resolver = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/YouTubeNativeResolver.kt"
           ).read_text(encoding="utf-8")
+          gradle_app = Path("native/app/build.gradle.kts").read_text(encoding="utf-8")
+          for required in [
+              "com.github.ZemerTeam.zemer-cipher:library:f2dc0af7d5248351560d389e1a812214d73ba9d7",
+              "com.jakewharton.timber:timber:5.0.1"
+          ]:
+              if required not in gradle_app:
+                  raise SystemExit(f"SOHR 6.7.8 YouTube PoToken dependency regression: {required}")
 
           if "dragScrubActive" in gesture_overlay or "YouTube-style horizontal scrub" in gesture_overlay:
               raise SystemExit("SOHR 6.6.13 regression: direct drag seeking returned")
@@ -929,12 +864,19 @@ jobs:
               "YouTubeNetworkException",
               "cannot be watched anonymously",
               "mapFailure(error)",
-              "resolveViaInnerTube(video)",
-              "requestInnerTubePlayer(",
-              'name = "VISIONOS"',
-              'name = "TVHTML5"',
+              "resolveWithPoToken(video)",
+              "PoTokenGenerator",
+              "ZemerCipher.initialize(",
+              "CipherDeobfuscator.signatureTimestamp()",
+              "CipherDeobfuscator.deobfuscateStreamUrl(",
+              "CipherDeobfuscator.transformNParamInUrl(",
+              "playerRequestPoToken",
+              "streamingDataPoToken",
+              "serviceIntegrityDimensions",
+              "appendPoToken(",
               "isAgeRestrictedStatus(",
               "isDrmFormat(",
+              "X-Goog-Visitor-Id",
               "X-YouTube-Client-Name",
               "X-YouTube-Client-Version"
           ]:
@@ -1869,7 +1811,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.7.8 • YouTube-воспроизведение усилено многоступенчатым нативным resolver: NewPipe остаётся основным путём, а при антибот-проверке SOHR пробует прямые InnerTube VISIONOS и TVHTML5 потоки • никакого YouTube WebView/embed-плеера нет — успешный поток по-прежнему открывается в обычном Media3 PlayerScreen SOHR • возрастные ограничения и age verification не обходятся • добавлен живой CI-probe, который перед релизом проверяет player endpoint и доступность прямого медиапотока • исправления мгновенных ModernDialogs из 6.7.7 сохранены"
+            "notes": "SOHR 6.7.8 • YouTube-воспроизведение усилено полноценным локальным BotGuard/PO Token fallback: NewPipe остаётся первым путём, а при anti-bot проверке SOHR получает свежий visitorData, генерирует session/video PO Token на устройстве, использует актуальный signature timestamp и расшифровывает signature/n через закреплённый zemer-cipher • прямые video+audio потоки по-прежнему открываются только в нативном Media3 PlayerScreen SOHR без YouTube WebView-плеера • перед отдачей поток проверяется range-запросом • возрастные ограничения AGE_CHECK_REQUIRED/AGE_VERIFICATION_REQUIRED остаются заблокированы и не обходятся • исправления мгновенных ModernDialogs из 6.7.7 сохранены"
           }
           EOF
           cat update.json
