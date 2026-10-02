@@ -1382,7 +1382,7 @@ jobs:
               "native/app/src/main/java/com/unknokable/videosohranenki/YouTubeFeedUi.kt"
           ).read_text(encoding="utf-8")
           for required in [
-              '"Дата неизвестна"',
+              '"Недавно"',
               '"Сегодня, $time"',
               '"Вчера, $time"',
               '"d MMMM"',
