@@ -129,7 +129,6 @@ class MainActivity : AppCompatActivity() {
     private var twitchLoadJob: kotlinx.coroutines.Job? = null
     private var twitchAuthJob: kotlinx.coroutines.Job? = null
     private var twitchAuthDialog: Dialog? = null
-    private var youtubeAccountDialog: Dialog? = null
     private var youtubeWebPlayer: WebView? = null
     private var twitchLiveJob: kotlinx.coroutines.Job? = null
     private var t2x2WatchJob: kotlinx.coroutines.Job? = null
@@ -6663,23 +6662,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun youtubeWebSessionConnected(): Boolean {
-        val manager = CookieManager.getInstance()
-        val cookies = buildString {
-            append(manager.getCookie("https://www.youtube.com").orEmpty())
-            append(';')
-            append(manager.getCookie("https://m.youtube.com").orEmpty())
-            append(';')
-            append(manager.getCookie("https://accounts.google.com").orEmpty())
-        }
-        return listOf(
-            "LOGIN_INFO=",
-            "SID=",
-            "__Secure-1PSID=",
-            "__Secure-3PSID="
-        ).any { marker -> cookies.contains(marker) }
-    }
-
     private fun configureYouTubeWebView(webView: WebView) {
         webView.setBackgroundColor(Color.BLACK)
         webView.settings.javaScriptEnabled = true
@@ -6691,121 +6673,89 @@ class MainActivity : AppCompatActivity() {
         webView.settings.setSupportMultipleWindows(false)
         webView.settings.useWideViewPort = true
         webView.settings.loadWithOverviewMode = false
+    }
 
-        CookieManager.getInstance().apply {
-            setAcceptCookie(true)
-            setAcceptThirdPartyCookies(webView, true)
+    private fun defaultBrowserPackage(): String? {
+        val probe = Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse("https://accounts.google.com/")
+        ).apply {
+            addCategory(Intent.CATEGORY_BROWSABLE)
+        }
+        return packageManager
+            .resolveActivity(probe, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+            ?.activityInfo
+            ?.packageName
+            ?.takeIf { it.isNotBlank() && it != packageName }
+    }
+
+    private fun launchExternalBrowser(url: String): Boolean {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+            addCategory(Intent.CATEGORY_BROWSABLE)
+            defaultBrowserPackage()?.let(::setPackage)
+        }
+
+        return runCatching {
+            startActivity(intent)
+            true
+        }.getOrElse {
+            showMessage(
+                "Не удалось открыть браузер",
+                "Проверьте, что на устройстве установлен браузер, и попробуйте ещё раз."
+            )
+            false
         }
     }
 
-    private fun showYouTubeAccountDialog(onConnected: (() -> Unit)? = null) {
-        youtubeAccountDialog?.dismiss()
+    private fun youtubeAccountChooserUrl(targetUrl: String): String {
+        val encodedTarget = Uri.encode(targetUrl)
+        return "https://accounts.google.com/AccountChooser" +
+            "?service=youtube&continue=" + encodedTarget
+    }
 
-        val dialog = Dialog(this)
-        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
-
-        val page = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(bg)
-            setPadding(dp(12), dp(12), dp(12), dp(12))
-        }
-
-        val header = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-
-        val status = TextView(this).apply {
-            text = if (youtubeWebSessionConnected()) "YouTube подключён" else "Вход в YouTube"
-            textSize = 19f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(this@MainActivity.text)
-        }
-        header.addView(status, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-
-        val close = ImageButton(this).apply {
-            setImageResource(R.drawable.ic_close)
-            imageTintList = ColorStateList.valueOf(muted)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(11), dp(11), dp(11), dp(11))
-            background = roundedBg(palette.surfaceAlt, 18)
-            setOnClickListener { dialog.dismiss() }
-        }
-        header.addView(close, LinearLayout.LayoutParams(dp(42), dp(42)))
-        page.addView(header)
-
-        page.addView(TextView(this).apply {
-            text = "Войдите на официальной странице YouTube. SOHR использует эту сессию только как запасной путь для роликов, которым сам YouTube требует аккаунт."
-            textSize = 12.5f
-            setTextColor(muted)
-            setPadding(0, dp(7), 0, dp(10))
-        })
-
-        var callbackDelivered = false
-        val webView = WebView(this)
-        configureYouTubeWebView(webView)
-        webView.webViewClient = object : WebViewClient() {
-            override fun onPageFinished(view: WebView?, url: String?) {
-                super.onPageFinished(view, url)
-                val connected = youtubeWebSessionConnected()
-                status.text = if (connected) "YouTube подключён" else "Вход в YouTube"
-                if (connected) CookieManager.getInstance().flush()
-
-                if (connected && onConnected != null && !callbackDelivered) {
-                    callbackDelivered = true
-                    view?.postDelayed({
-                        if (dialog.isShowing) dialog.dismiss()
-                        onConnected.invoke()
-                    }, 650L)
-                }
-            }
-
-            override fun onReceivedError(
-                view: WebView?,
-                request: WebResourceRequest?,
-                error: WebResourceError?
-            ) {
-                super.onReceivedError(view, request, error)
-                if (request?.isForMainFrame != true) return
-                status.text = "Не удалось открыть YouTube"
+    private fun launchYouTubeBrowserAccount(
+        targetUrl: String = "https://m.youtube.com/"
+    ) {
+        val launched = launchExternalBrowser(youtubeAccountChooserUrl(targetUrl))
+        if (launched) {
+            // This flag means SOHR should use the browser for account-required
+            // playback. It does not claim access to browser cookies or passwords.
+            settings.youtubeBrowserConnected = true
+            if (isAccountScreen) {
+                root.postDelayed({
+                    if (!isFinishing && isAccountScreen) showAccount()
+                }, 350L)
             }
         }
+    }
 
-        val accountUrl = if (youtubeWebSessionConnected()) {
-            "https://m.youtube.com/account"
+    private fun openYouTubeInBrowser(
+        video: YouTubeFeedVideo,
+        returnView: View?,
+        chooseAccount: Boolean
+    ) {
+        youtubeResolveJob?.cancel()
+        youtubeResolveJob = null
+
+        isPlayerScreen = false
+        playerReturnView = null
+        pendingRootSlide = -1
+        suppressNextContentAnimation = true
+
+        if (returnView != null) {
+            replaceRoot(returnView)
         } else {
-            "https://m.youtube.com/"
+            videoSection = 2
+            showFeed(currentVideos)
         }
-        webView.loadUrl(accountUrl)
 
-        page.addView(
-            webView,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            ).apply { topMargin = dp(4) }
-        )
+        val target =
+            "https://m.youtube.com/watch?v=" + Uri.encode(video.videoId)
+        val url = if (chooseAccount) youtubeAccountChooserUrl(target) else target
 
-        dialog.setContentView(page)
-        dialog.setCanceledOnTouchOutside(false)
-        dialog.setOnDismissListener {
-            if (youtubeAccountDialog === dialog) youtubeAccountDialog = null
-            runCatching {
-                webView.stopLoading()
-                webView.loadUrl("about:blank")
-                webView.destroy()
-            }
-            if (isAccountScreen && !isFinishing) {
-                root.post { showAccount() }
-            }
+        if (launchExternalBrowser(url)) {
+            settings.youtubeBrowserConnected = true
         }
-        dialog.show()
-        dialog.window?.apply {
-            setBackgroundDrawable(ColorDrawable(bg))
-            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-        }
-        youtubeAccountDialog = dialog
     }
 
     private fun openYouTubeWebPlayer(
@@ -6933,17 +6883,27 @@ class MainActivity : AppCompatActivity() {
     ) {
         when (error) {
             is YouTubeAgeRestrictedException,
-            is YouTubeNetworkException -> showYouTubePlaybackError(video, error, returnView)
+            is YouTubeNetworkException ->
+                showYouTubePlaybackError(video, error, returnView)
 
-            is YouTubeSignInRequiredException -> {
-                if (youtubeWebSessionConnected()) {
-                    openYouTubeWebPlayer(video, returnView)
+            is YouTubeSignInRequiredException ->
+                openYouTubeInBrowser(
+                    video = video,
+                    returnView = returnView,
+                    chooseAccount = !settings.youtubeBrowserConnected
+                )
+
+            else -> {
+                if (settings.youtubeBrowserConnected) {
+                    openYouTubeInBrowser(
+                        video = video,
+                        returnView = returnView,
+                        chooseAccount = false
+                    )
                 } else {
-                    showYouTubePlaybackError(video, error, returnView)
+                    openYouTubeWebPlayer(video, returnView)
                 }
             }
-
-            else -> openYouTubeWebPlayer(video, returnView)
         }
     }
 
@@ -7052,7 +7012,7 @@ class MainActivity : AppCompatActivity() {
                     is YouTubeAgeRestrictedException ->
                         "YouTube подтвердил возрастное ограничение для этого ролика. SOHR его не обходит."
                     is YouTubeSignInRequiredException ->
-                        "YouTube действительно требует вход или проверку аккаунта для этого ролика. Нативный SOHR-плеер не обходит такую проверку."
+                        "YouTube требует аккаунт для этого ролика. Вход откроется в системном браузере, где можно выбрать уже сохранённый Google-аккаунт."
                     is YouTubeSessionInitException ->
                         "BotGuard-модуль не успел подготовить обычную гостевую сессию даже после повторной попытки. Это технический сбой, а не подтверждённое ограничение ролика."
                     is YouTubeNetworkException ->
@@ -7086,9 +7046,11 @@ class MainActivity : AppCompatActivity() {
                     isFocusable = true
                     setOnClickListener {
                         animatePress(this)
-                        showYouTubeAccountDialog {
-                            openYouTubeWebPlayer(video, returnView)
-                        }
+                        openYouTubeInBrowser(
+                            video = video,
+                            returnView = returnView,
+                            chooseAccount = true
+                        )
                     }
                 },
                 LinearLayout.LayoutParams(
@@ -9335,7 +9297,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(2), dp(20), 0, dp(10))
         })
 
-        val youtubeConnected = youtubeWebSessionConnected()
+        val youtubeConnected = settings.youtubeBrowserConnected
         val youtubeCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
@@ -9353,9 +9315,9 @@ class MainActivity : AppCompatActivity() {
 
         youtubeCard.addView(TextView(this).apply {
             text = if (youtubeConnected) {
-                "Сессия YouTube подключена"
+                "Вход через системный браузер настроен"
             } else {
-                "Подключите YouTube для роликов, которым нужен аккаунт"
+                "Вход откроется в браузере — без ввода данных внутри SOHR"
             }
             textSize = 12f
             gravity = Gravity.CENTER
@@ -9364,7 +9326,7 @@ class MainActivity : AppCompatActivity() {
         })
 
         val youtubeAction = TextView(this).apply {
-            text = if (youtubeConnected) "Открыть YouTube" else "Подключить YouTube"
+            text = if (youtubeConnected) "Сменить аккаунт" else "Подключить YouTube"
             textSize = 14f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
@@ -9374,7 +9336,7 @@ class MainActivity : AppCompatActivity() {
             isFocusable = true
             setOnClickListener {
                 animatePress(this)
-                showYouTubeAccountDialog()
+                launchYouTubeBrowserAccount()
             }
         }
         youtubeCard.addView(
@@ -9386,7 +9348,7 @@ class MainActivity : AppCompatActivity() {
         page.addView(youtubeCard)
 
         val privacy = TextView(this).apply {
-            text = "Аккаунты используются только для работы соответствующих источников. YouTube-сессия хранится системным WebView и не копируется в настройки SOHR."
+            text = "YouTube-вход выполняется в системном браузере. SOHR не видит пароль и не получает cookies браузера; ролики, которым нужен аккаунт, открываются через ту же браузерную сессию."
             textSize = 12f
             setTextColor(muted)
             setPadding(dp(4), dp(12), dp(4), 0)
@@ -10924,8 +10886,6 @@ class MainActivity : AppCompatActivity() {
         updateNotificationWatchJob = null
         twitchAuthJob?.cancel()
         twitchAuthJob = null
-        youtubeAccountDialog?.dismiss()
-        youtubeAccountDialog = null
         youtubeWebPlayer?.let { webView ->
             runCatching {
                 webView.stopLoading()
