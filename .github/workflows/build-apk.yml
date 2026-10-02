@@ -1115,6 +1115,20 @@ jobs:
           if "root.postDelayed(onCommit, 105L)" in sohr_main:
               raise SystemExit("SOHR 6.9.2 regression: mid-animation root rebuild returned")
 
+          section_transition = sohr_main.split(
+              "if (sectionCrossfade) {", 1
+          )[1].split("} else if (primaryTabTransition)", 1)[0]
+          for required in [
+              "if (old.parent === host) host.removeView(old)",
+              'findViewWithTag<View>("sohr_video_section_content")',
+              "setDuration(SohrMotion.NORMAL)"
+          ]:
+              if required not in section_transition:
+                  raise SystemExit(f"SOHR 6.9.2 stable section transition regression: {required}")
+          if "withEndAction {\n                                old.animate().cancel()" in section_transition:
+              raise SystemExit("SOHR 6.9.2 regression: old feed page survives until animation end")
+
+
           for required in [
               "private fun launchYouTubeCustomTab(",
               "CustomTabsIntent.Builder()",
@@ -1158,6 +1172,8 @@ jobs:
               "youtubeInitial",
               "settings.youtubeAccountName",
               '"Выйти из YouTube"',
+              "confirmYouTubeLogout()",
+              'title = "Выйти из YouTube?"',
               "settings.youtubeBrowserConnected = false",
               "settings.youtubeAccountName = null",
               "CookieManager.getInstance().removeAllCookies(null)",
@@ -2048,7 +2064,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.2 • возвращён один стабильный путь анимации «Главная / Лента / Просмотренные»: убрана промежуточная перестройка экрана на 105 мс, индикатор и содержимое теперь анимируются без пересечения двух страниц • YouTube-карточка в «Аккаунте» получила аккаунтный аватар-монограмму, имя/почту и отдельную кнопку «Выйти из YouTube», которая отключает привязку от SOHR и очищает внутреннюю WebView-сессию • Twitch-профиль загружается параллельно с таймаутом, чтобы экран аккаунта не зависал • релиз не должен использоваться для обхода возрастных/аккаунтных ограничений YouTube"
+            "notes": "SOHR 6.9.2 • исправлена анимация «Главная / Лента / Просмотренные»: старый feed-экран удаляется до старта новой анимации, поэтому больше нет двух наложенных страниц/рывка; индикатор вкладки плавно едет из предыдущего слота, анимируется только содержимое секции • YouTube-карточка приведена к стилю Telegram/Twitch: круглый аккаунтный аватар-монограмма, имя/почта и отдельная подтверждаемая кнопка «Выйти из YouTube» • выбранный системный Google-аккаунт передаётся браузерному AccountChooser как подсказка; SOHR не получает пароль/cookies браузера • account-required YouTube открывается через Custom Tab в SOHR-flow, обычные ролики остаются в нативном Media3 • Twitch-профиль загружается параллельно с таймаутом"
           }
           EOF
           cat update.json
