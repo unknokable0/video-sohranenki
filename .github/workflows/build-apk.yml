@@ -1086,7 +1086,7 @@ jobs:
               "private fun showYouTubePlaybackError(",
               "replaceRoot(errorRoot)",
               "firstResolve",
-              "delay(320L)",
+              "delay(220L)",
               "YouTubeUnavailableException",
               "YouTubeNetworkException",
               "mediaUrl = resolved.mediaUrl",
