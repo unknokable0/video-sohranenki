@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.9.4 version
+      - name: Assign SOHR 6.9.5 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690004" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.4" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690005" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.5" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -1196,13 +1196,24 @@ jobs:
           for required in [
               "if (old.parent === host) host.removeView(old)",
               'findViewWithTag<View>("sohr_video_section_content")',
-              "sectionBody.translationX = dp(10).toFloat() * direction",
-              ".setDuration(SohrMotion.NORMAL)"
+              "sectionBody.translationX = dp(9).toFloat() * direction",
+              ".setDuration(210L)"
           ]:
               if required not in section_transition:
-                  raise SystemExit(f"SOHR 6.9.4 smooth-section regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.5 smooth-section regression: {required}")
           if ".withEndAction" in section_transition and "host.removeView(old)" in section_transition.split(".withEndAction", 1)[1]:
               raise SystemExit("SOHR 6.9.4 regression: old feed shell survives until animation end")
+
+          tabs_render = sohr_main.split(
+              'tag = "sohr_video_tab_indicator"', 1
+          )[1].split("header.addView(", 1)[0]
+          for forbidden in [
+              "previousSection",
+              ".translationX(target)",
+              "ValueAnimator.ofFloat"
+          ]:
+              if forbidden in tabs_render:
+                  raise SystemExit(f"SOHR 6.9.5 regression: rebuilt tabs re-animate: {forbidden}")
 
           account_section = sohr_main.split(
               "private fun renderAccount(user:", 1
@@ -1646,17 +1657,22 @@ jobs:
                   raise SystemExit(f"SOHR 6.2.3 search-motion regression: {required}")
 
           for required in [
-              "pendingVideoSectionCrossfade = true",
-              "pendingVideoSectionDirection = if (section > videoSection) 1 else -1",
+              "val previousSection = videoSection",
+              "val direction = if (section > previousSection) 1 else -1",
+              'findViewWithTag<FrameLayout>("sohr_video_section_tabs")',
+              'findViewWithTag<View>("sohr_video_tab_indicator")',
+              'findViewWithTag<TextView>("sohr_video_section_label_$previousSection")',
+              'findViewWithTag<TextView>("sohr_video_section_label_$section")',
+              "root.postDelayed({ commitSectionChange() }, 170L)",
+              "tabIndicator.animate().cancel()",
               "suppressNextRootAnimation = true",
               "suppressNextContentAnimation = false",
-              "tabIndicator.animate().cancel()",
               "nav.clearAnimation()",
               "nav.scaleX = 1f",
               "nav.scaleY = 1f"
           ]:
               if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.9.3 smooth-tabs/nav regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.5 smooth-tabs/nav regression: {required}")
 
           for required in [
               "activeSearchInput: EditText?",
@@ -2111,7 +2127,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.4 • исправлена дёрганая анимация «Главная / Лента / Просмотренные»: старый и новый экран больше не лежат друг на друге, индикатор и цвет подписи двигаются синхронно, анимируется только содержимое секции • YouTube refresh больше не стирает аватарки и превью: добавлены visual/thumbnail cache и сохранение предыдущего валидного канала при частичной сетевой ошибке • YouTube-video tap больше не подменяет нативный SOHR-плеер полной web-страницей: перед финальной ошибкой выполняется clean reset visitorData/BotGuard/PO Token и второй native resolve • YouTube-карточка аккаунта получила account-style avatar с инициалом и маленьким YouTube-badge; красная кнопка «Выйти из YouTube» сохранена • реальные возрастные ограничения YouTube не обходятся"
+            "notes": "SOHR 6.9.5 • полностью исправлена анимация «Главная / Лента / Просмотренные»: индикатор и подписи теперь анимируются на уже видимой панели до перестройки контента, затем новый tab-bar сразу появляется в конечном положении и не запускает вторую анимацию • содержимое секции получает отдельный короткий горизонтальный transition без движения верхней панели • сохранены исправления 6.9.4: YouTube не выбрасывает наружу автоматически, аккаунт-карточка с выбранным Google-аккаунтом/выходом, clean-session retry, кэш YouTube-аватаров/обложек и параллельная загрузка аккаунтов"
           }
           EOF
           cat update.json
