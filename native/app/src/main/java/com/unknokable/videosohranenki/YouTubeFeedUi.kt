@@ -474,15 +474,32 @@ object YouTubeFeedUi {
         }
 
     private fun relativeTime(epochSeconds: Long): String {
-        if (epochSeconds <= 0L) return "недавно"
-        val age = ((System.currentTimeMillis() / 1000L) - epochSeconds).coerceAtLeast(0L)
+        if (epochSeconds <= 0L) return "Дата неизвестна"
+
+        val zone = java.time.ZoneId.systemDefault()
+        val published = java.time.Instant.ofEpochSecond(epochSeconds).atZone(zone)
+        val now = java.time.ZonedDateTime.now(zone)
+        val publishedDate = published.toLocalDate()
+        val today = now.toLocalDate()
+        val time = published.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+
         return when {
-            age < 60L -> "только что"
-            age < 60L * 60L -> "${age / 60L} мин назад"
-            age < 24L * 60L * 60L -> "${age / 3600L} ч назад"
-            age < 30L * 24L * 60L * 60L -> "${age / 86400L} дн назад"
-            age < 365L * 24L * 60L * 60L -> "${age / (30L * 86400L)} мес назад"
-            else -> "${age / (365L * 86400L)} г назад"
+            publishedDate == today -> "Сегодня, $time"
+            publishedDate == today.minusDays(1) -> "Вчера, $time"
+            publishedDate.year == today.year ->
+                published.format(
+                    java.time.format.DateTimeFormatter.ofPattern(
+                        "d MMMM",
+                        java.util.Locale("ru", "RU")
+                    )
+                )
+            else ->
+                published.format(
+                    java.time.format.DateTimeFormatter.ofPattern(
+                        "d MMMM yyyy",
+                        java.util.Locale("ru", "RU")
+                    )
+                )
         }
     }
 
