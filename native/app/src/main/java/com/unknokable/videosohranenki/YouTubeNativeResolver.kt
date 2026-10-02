@@ -102,9 +102,11 @@ object YouTubeNativeResolver {
                 val info = StreamInfo.getInfo(video.watchUrl)
                 return@withContext sourceFromNewPipe(video, info)
             } catch (error: Throwable) {
-                val mapped = mapFailure(error)
-                if (mapped is YouTubeAgeRestrictedException) throw mapped
-                firstFailure = mapped
+                // NewPipe can classify an anonymous/anti-bot response as age-restricted even
+                // when the same public video is playable through SOHR's authenticated BotGuard
+                // session. Treat NewPipe as a hint only and always let the stronger PO Token
+                // /player path make the final age-gate decision.
+                firstFailure = mapFailure(error)
             }
 
             if (!zemerInitialized) {
