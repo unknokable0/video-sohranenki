@@ -108,6 +108,13 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean("youtube_browser_connected", false)
         set(value) = prefs.edit().putBoolean("youtube_browser_connected", value).apply()
 
+    var youtubeAccountName: String?
+        get() = prefs.getString("youtube_account_name", null)
+        set(value) = prefs.edit().apply {
+            if (value.isNullOrBlank()) remove("youtube_account_name")
+            else putString("youtube_account_name", value)
+        }.apply()
+
     var collectionSort: CollectionSort
         get() = runCatching {
             CollectionSort.valueOf(prefs.getString("collection_sort", CollectionSort.NEWEST.name)!!)
