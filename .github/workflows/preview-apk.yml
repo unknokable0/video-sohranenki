@@ -1,4 +1,5 @@
 name: SOHR Preview Build
+# restart: 6.7.5 centered-dialog preview
 
 on:
   push:
