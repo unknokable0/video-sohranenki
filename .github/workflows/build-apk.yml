@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# SOHR 6.7.9: verified YouTube age fallback + clean feed loading layout
+# SOHR 6.8.0: stable YouTube BotGuard session recovery
 # Rebuild marker: test34 runner restart
 # Final release trigger: SOHR 6.0.15 playback fix
 on:
@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.7.9 version
+      - name: Assign SOHR 6.8.0 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=670009" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.7.9" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=680000" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.8.0" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -880,7 +880,10 @@ jobs:
               "cannot be watched anonymously",
               "mapFailure(error)",
               "resolveWithPoToken(video)",
-              "PoTokenGenerator",
+              "createStablePoTokens(",
+              "PoTokenWebView.getNewPoTokenGenerator",
+              "withTimeout(50_000L)",
+              "YouTubeSessionInitException",
               "ZemerCipher.initialize(",
               "CipherDeobfuscator.signatureTimestamp()",
               "CipherDeobfuscator.deobfuscateStreamUrl(",
@@ -898,13 +901,15 @@ jobs:
               if required not in youtube_resolver:
                   raise SystemExit(f"SOHR 6.7.1 native YouTube resolver regression: {required}")
           for forbidden in [
-              "WebView",
-              "iframe",
+              "android.webkit.WebView",
+              "youtube.com/embed",
               "youtube.com/iframe_api",
-              "YT.Player"
+              "YT.Player",
+              "PoTokenGenerator",
+              "getWebClientPoToken("
           ]:
               if forbidden in youtube_resolver:
-                  raise SystemExit(f"SOHR 6.7.1 regression: embedded YouTube player returned: {forbidden}")
+                  raise SystemExit(f"SOHR 6.8.0 YouTube resolver regression: {forbidden}")
 
           newpipe_resolve_section = youtube_resolver.split(
               "val info = StreamInfo.getInfo(video.watchUrl)", 1
@@ -952,6 +957,14 @@ jobs:
           ]:
               if required not in youtube_open_section:
                   raise SystemExit(f"SOHR 6.7.4 native Media3 YouTube wiring regression: {required}")
+
+          for required in [
+              "firstError is YouTubeSessionInitException",
+              'is YouTubeSessionInitException -> "Не удалось подготовить YouTube-сессию"',
+              "BotGuard/WebView не успел подготовить обычную гостевую сессию"
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.8.0 YouTube session UX regression: {required}")
 
           youtube_fallback_path = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/YouTubeFallbackPlayerScreen.kt"
@@ -1849,7 +1862,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.7.9 • исправлена ложная ошибка «Видео ограничено YouTube»: ответ NewPipe больше не может преждевременно остановить воспроизведение, SOHR всегда даёт более надёжному BotGuard/PO Token /player пути проверить ролик и только его финальный ответ считается основанием для ограничения • настоящий возрастной gate YouTube по-прежнему не обходится • загрузка YouTube-ленты выровнена: skeleton-карточки получили фиксированную высоту и интервалы, блок «Новые видео» больше не прижимается к ним • нативный Media3 PlayerScreen, PO Token/cipher и предыдущие исправления сохранены"
+            "notes": "SOHR 6.8.0 • исправлен технический сбой YouTube BotGuard на холодном старте: SOHR больше не использует 8-секундный PoTokenGenerator wrapper, а напрямую держит и переиспользует служебную PoTokenWebView-сессию с нормальным временем инициализации и одним автоматическим пересозданием при техническом падении • сбой подготовки BotGuard теперь отдельно отличается от реального LOGIN_REQUIRED/AGE_* и автоматически повторяется • настоящий вход/возрастное ограничение YouTube не обходится • нативный Media3 PlayerScreen и выровненная YouTube-лента сохранены"
           }
           EOF
           cat update.json
