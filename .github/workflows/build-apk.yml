@@ -905,7 +905,8 @@ jobs:
               "youtube.com/embed",
               "youtube.com/iframe_api",
               "YT.Player",
-              "PoTokenGenerator",
+              "import com.zemer.cipher.potoken.PoTokenGenerator",
+              "private val poTokenGenerator by lazy",
               "getWebClientPoToken("
           ]:
               if forbidden in youtube_resolver:
