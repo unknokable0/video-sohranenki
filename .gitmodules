@@ -1,0 +1,3 @@
+[submodule "native/vendor/zemer-cipher"]
+	path = native/vendor/zemer-cipher
+	url = https://github.com/ZemerTeam/zemer-cipher.git
