@@ -913,17 +913,19 @@ jobs:
 
           newpipe_resolve_section = youtube_resolver.split(
               "val info = StreamInfo.getInfo(video.watchUrl)", 1
-          )[1].split("if (!zemerInitialized)", 1)[0]
-          if "YouTubeAgeRestrictedException" in newpipe_resolve_section:
+          )[1].split("resolveWithVisionOs(video)", 1)[0]
+          if "throw YouTubeAgeRestrictedException" in newpipe_resolve_section:
               raise SystemExit(
-                  "SOHR 6.7.9 regression: NewPipe age classification blocks the stronger PoToken fallback"
+                  "SOHR 6.8.3 regression: NewPipe age classification blocks stronger client fallbacks"
               )
           for required in [
-              "firstFailure = mapFailure(error)",
+              "failures += mapFailure(error)",
+              "resolveWithVisionOs(video)",
+              "resolveWithWebSafariHls(video)",
               "resolveWithPoToken(video)"
           ]:
               if required not in youtube_resolver:
-                  raise SystemExit(f"SOHR 6.7.9 verified YouTube fallback regression: {required}")
+                  raise SystemExit(f"SOHR 6.8.3 verified YouTube fallback regression: {required}")
 
           for required in [
               "dp(activity, 92)",
