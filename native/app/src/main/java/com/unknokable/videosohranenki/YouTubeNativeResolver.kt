@@ -77,11 +77,16 @@ object YouTubeNativeResolver {
     private const val FALLBACK_WEB_API_KEY =
         "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
     private const val FALLBACK_WEB_VERSION = "2.20260708.00.00"
-    private const val WEB_CLIENT_NAME = 1
+    private const val MWEB_CLIENT_VERSION = "2.20260708.05.00"
+    private const val MWEB_CLIENT_NAME = 2
     private const val BOOTSTRAP_TTL_MS = 3L * 60L * 60L * 1000L
     private const val WEB_USER_AGENT =
         "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/141 Mobile Safari/537.36"
+    private const val MWEB_USER_AGENT =
+        "Mozilla/5.0 (iPad; CPU OS 16_7_10 like Mac OS X) " +
+            "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 " +
+            "Mobile/15E148 Safari/604.1,gzip(gfe)"
 
     private data class WebBootstrap(
         val visitorData: String,
@@ -235,23 +240,41 @@ object YouTubeNativeResolver {
             CipherDeobfuscator.signatureTimestamp()
         }.getOrNull()
 
-        val response = requestWebPlayer(
+        var response = requestMwebPlayer(
             videoId = video.videoId,
             bootstrap = bootstrap,
-            playerPoToken = poTokens.playerRequestPoToken,
+            playerPoToken = null,
             signatureTimestamp = signatureTimestamp
         )
 
-        val playability = response.optJSONObject("playabilityStatus")
-        val status = playability?.optString("status").orEmpty()
-        val detail = buildString {
-            append(playability?.optString("reason").orEmpty())
-            append(' ')
-            append(playability?.optJSONObject("errorScreen")?.toString().orEmpty())
-        }.lowercase(Locale.ROOT)
+        var playability = response.optJSONObject("playabilityStatus")
+        var status = playability?.optString("status").orEmpty()
+        var detail = playabilityDetail(playability)
 
         if (isAgeRestrictedStatus(status, detail)) {
             throw YouTubeAgeRestrictedException()
+        }
+
+        if (
+            status != "OK" &&
+            (
+                "not a bot" in detail ||
+                    "sign in to confirm" in detail
+            )
+        ) {
+            response = requestMwebPlayer(
+                videoId = video.videoId,
+                bootstrap = bootstrap,
+                playerPoToken = poTokens.streamingDataPoToken,
+                signatureTimestamp = signatureTimestamp
+            )
+            playability = response.optJSONObject("playabilityStatus")
+            status = playability?.optString("status").orEmpty()
+            detail = playabilityDetail(playability)
+
+            if (isAgeRestrictedStatus(status, detail)) {
+                throw YouTubeAgeRestrictedException()
+            }
         }
 
         if (status != "OK") {
@@ -470,15 +493,23 @@ object YouTubeNativeResolver {
         return appendPoToken(transformed, streamingPoToken)
     }
 
-    private fun requestWebPlayer(
+    private fun playabilityDetail(playability: JSONObject?): String =
+        buildString {
+            append(playability?.optString("reason").orEmpty())
+            append(' ')
+            append(playability?.optJSONObject("errorScreen")?.toString().orEmpty())
+        }.lowercase(Locale.ROOT)
+
+    private fun requestMwebPlayer(
         videoId: String,
         bootstrap: WebBootstrap,
-        playerPoToken: String,
+        playerPoToken: String?,
         signatureTimestamp: Int?
     ): JSONObject {
         val client = JSONObject()
-            .put("clientName", "WEB")
-            .put("clientVersion", bootstrap.clientVersion)
+            .put("clientName", "MWEB")
+            .put("clientVersion", MWEB_CLIENT_VERSION)
+            .put("userAgent", MWEB_USER_AGENT)
             .put("hl", "ru")
             .put("gl", "PL")
             .put("visitorData", bootstrap.visitorData)
@@ -488,10 +519,13 @@ object YouTubeNativeResolver {
             .put("videoId", videoId)
             .put("contentCheckOk", true)
             .put("racyCheckOk", true)
-            .put(
+
+        if (!playerPoToken.isNullOrBlank()) {
+            body.put(
                 "serviceIntegrityDimensions",
                 JSONObject().put("poToken", playerPoToken)
             )
+        }
 
         if (signatureTimestamp != null && signatureTimestamp > 0) {
             body.put(
@@ -517,14 +551,14 @@ object YouTubeNativeResolver {
             setRequestProperty("Content-Type", "application/json")
             setRequestProperty("Accept", "application/json")
             setRequestProperty("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.7")
-            setRequestProperty("User-Agent", WEB_USER_AGENT)
-            setRequestProperty("Origin", "https://www.youtube.com")
-            setRequestProperty("X-Origin", "https://www.youtube.com")
-            setRequestProperty("Referer", "https://www.youtube.com/")
+            setRequestProperty("User-Agent", MWEB_USER_AGENT)
+            setRequestProperty("Origin", "https://m.youtube.com")
+            setRequestProperty("X-Origin", "https://m.youtube.com")
+            setRequestProperty("Referer", "https://m.youtube.com/")
             setRequestProperty("X-Goog-Api-Format-Version", "1")
             setRequestProperty("X-Goog-Visitor-Id", bootstrap.visitorData)
-            setRequestProperty("X-YouTube-Client-Name", WEB_CLIENT_NAME.toString())
-            setRequestProperty("X-YouTube-Client-Version", bootstrap.clientVersion)
+            setRequestProperty("X-YouTube-Client-Name", MWEB_CLIENT_NAME.toString())
+            setRequestProperty("X-YouTube-Client-Version", MWEB_CLIENT_VERSION)
         }
 
         try {
@@ -670,7 +704,8 @@ object YouTubeNativeResolver {
                 requestMethod = "GET"
                 useCaches = false
                 setRequestProperty("Range", "bytes=0-1023")
-                setRequestProperty("User-Agent", WEB_USER_AGENT)
+                setRequestProperty("User-Agent", MWEB_USER_AGENT)
+                setRequestProperty("Referer", "https://m.youtube.com/")
                 setRequestProperty("Accept", "*/*")
             }
         }.getOrNull() ?: return false
