@@ -79,6 +79,10 @@ object YouTubeNativeResolver {
     private const val FALLBACK_WEB_VERSION = "2.20260708.00.00"
     private const val MWEB_CLIENT_VERSION = "2.20260708.05.00"
     private const val MWEB_CLIENT_NAME = 2
+    private const val VISIONOS_CLIENT_VERSION = "1.02"
+    private const val VISIONOS_CLIENT_NAME = 101
+    private const val WEB_SAFARI_CLIENT_VERSION = "2.20260708.00.00"
+    private const val WEB_SAFARI_CLIENT_NAME = 1
     private const val BOOTSTRAP_TTL_MS = 3L * 60L * 60L * 1000L
     private const val WEB_USER_AGENT =
         "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 " +
@@ -87,6 +91,12 @@ object YouTubeNativeResolver {
         "Mozilla/5.0 (iPad; CPU OS 16_7_10 like Mac OS X) " +
             "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 " +
             "Mobile/15E148 Safari/604.1,gzip(gfe)"
+    private const val VISIONOS_USER_AGENT =
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) " +
+            "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
+    private const val WEB_SAFARI_USER_AGENT =
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
+            "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15,gzip(gfe)"
 
     private data class WebBootstrap(
         val visitorData: String,
@@ -116,38 +126,46 @@ object YouTubeNativeResolver {
         withContext(Dispatchers.IO) {
             ensureNewPipeInitialized()
 
-            var firstFailure: YouTubeNativeResolveException? = null
+            val failures = mutableListOf<YouTubeNativeResolveException>()
+
             try {
                 val info = StreamInfo.getInfo(video.watchUrl)
                 return@withContext sourceFromNewPipe(video, info)
             } catch (error: Throwable) {
-                // NewPipe can classify an anonymous/anti-bot response as age-restricted even
-                // when the same public video is playable through SOHR's authenticated BotGuard
-                // session. Treat NewPipe as a hint only and always let the stronger PO Token
-                // /player path make the final age-gate decision.
-                firstFailure = mapFailure(error)
-            }
-
-            if (!zemerInitialized) {
-                throw firstFailure ?: YouTubeUnavailableException()
+                // NewPipe can confuse anti-bot responses with availability errors. Keep it as
+                // one candidate and let current Innertube clients make the final decision.
+                failures += mapFailure(error)
             }
 
             try {
-                resolveWithPoToken(video)
+                return@withContext resolveWithVisionOs(video)
             } catch (error: Throwable) {
                 val mapped = mapFailure(error)
                 if (mapped is YouTubeAgeRestrictedException) throw mapped
+                failures += mapped
+            }
 
-                throw when {
-                    mapped is YouTubeNetworkException &&
-                        firstFailure is YouTubeNetworkException -> mapped
-                    mapped is YouTubeSignInRequiredException -> mapped
-                    mapped is YouTubeUnavailableException &&
-                        firstFailure is YouTubeSignInRequiredException ->
-                            firstFailure ?: mapped
-                    else -> mapped
+            try {
+                return@withContext resolveWithWebSafariHls(video)
+            } catch (error: Throwable) {
+                val mapped = mapFailure(error)
+                if (mapped is YouTubeAgeRestrictedException) throw mapped
+                failures += mapped
+            }
+
+            if (zemerInitialized) {
+                try {
+                    return@withContext resolveWithPoToken(video)
+                } catch (error: Throwable) {
+                    val mapped = mapFailure(error)
+                    if (mapped is YouTubeAgeRestrictedException) throw mapped
+                    failures += mapped
                 }
             }
+
+            val signIn = failures.firstOrNull { it is YouTubeSignInRequiredException }
+            val network = failures.firstOrNull { it is YouTubeNetworkException }
+            throw signIn ?: network ?: YouTubeUnavailableException()
         }
 
     private fun sourceFromNewPipe(
@@ -227,6 +245,177 @@ object YouTubeNativeResolver {
             title = info.name.ifBlank { video.title },
             thumbnailUrl = video.thumbnailUrl
         )
+    }
+
+    private suspend fun resolveWithVisionOs(video: YouTubeFeedVideo): YouTubeNativeSource {
+        val bootstrap = loadWebBootstrap()
+        val response = requestVisionOsPlayer(video.videoId, bootstrap)
+        val playability = response.optJSONObject("playabilityStatus")
+        val status = playability?.optString("status").orEmpty()
+        val detail = playabilityDetail(playability)
+
+        if (isAgeRestrictedStatus(status, detail)) throw YouTubeAgeRestrictedException()
+        if (status != "OK") {
+            throw when {
+                status == "LOGIN_REQUIRED" ||
+                    "sign in to confirm" in detail ||
+                    "login required" in detail ->
+                        YouTubeSignInRequiredException()
+                else -> YouTubeUnavailableException()
+            }
+        }
+
+        return sourceFromPlayerResponse(
+            video = video,
+            response = response,
+            streamingPoToken = null,
+            userAgent = VISIONOS_USER_AGENT,
+            referer = "https://www.youtube.com/"
+        )
+    }
+
+    private suspend fun resolveWithWebSafariHls(video: YouTubeFeedVideo): YouTubeNativeSource {
+        val bootstrap = loadWebBootstrap()
+        val response = requestWebSafariPlayer(video.videoId, bootstrap)
+        val playability = response.optJSONObject("playabilityStatus")
+        val status = playability?.optString("status").orEmpty()
+        val detail = playabilityDetail(playability)
+
+        if (isAgeRestrictedStatus(status, detail)) throw YouTubeAgeRestrictedException()
+        if (status != "OK") {
+            throw when {
+                status == "LOGIN_REQUIRED" ||
+                    "sign in to confirm" in detail ||
+                    "login required" in detail ->
+                        YouTubeSignInRequiredException()
+                else -> YouTubeUnavailableException()
+            }
+        }
+
+        val streaming = response.optJSONObject("streamingData")
+            ?: throw YouTubeUnavailableException()
+        val hls = streaming.optString("hlsManifestUrl").takeIf(::isDirectHttpUrl)
+            ?: throw YouTubeUnavailableException()
+
+        if (!probeMediaUrl(hls, WEB_SAFARI_USER_AGENT, "https://www.youtube.com/")) {
+            throw YouTubeUnavailableException()
+        }
+
+        return sourceFromWebResponse(
+            video = video,
+            response = response,
+            mediaUrl = hls,
+            secondaryAudioUrl = null
+        )
+    }
+
+    private suspend fun sourceFromPlayerResponse(
+        video: YouTubeFeedVideo,
+        response: JSONObject,
+        streamingPoToken: String?,
+        userAgent: String,
+        referer: String
+    ): YouTubeNativeSource {
+        val streaming = response.optJSONObject("streamingData")
+            ?: throw YouTubeUnavailableException()
+        val formats = streaming.optJSONArray("formats").asObjects()
+        val adaptive = streaming.optJSONArray("adaptiveFormats").asObjects()
+
+        val progressiveCandidates = formats
+            .asSequence()
+            .filter(::isProgressiveVideo)
+            .filterNot(::isDrmFormat)
+            .sortedWith(webVideoComparator())
+            .take(8)
+            .toList()
+
+        val progressiveUrl = resolveFirstFormatUrl(
+            candidates = progressiveCandidates,
+            videoId = video.videoId,
+            streamingPoToken = streamingPoToken
+        )
+        if (
+            progressiveUrl != null &&
+            probeMediaUrl(progressiveUrl, userAgent, referer)
+        ) {
+            return sourceFromWebResponse(
+                video = video,
+                response = response,
+                mediaUrl = progressiveUrl,
+                secondaryAudioUrl = null
+            )
+        }
+
+        val splitVideoCandidates = adaptive
+            .asSequence()
+            .filter { it.optString("mimeType").startsWith("video/") }
+            .filterNot(::isDrmFormat)
+            .sortedWith(webVideoComparator())
+            .take(8)
+            .toList()
+        val splitAudioCandidates = adaptive
+            .asSequence()
+            .filter { it.optString("mimeType").startsWith("audio/") }
+            .filterNot(::isDrmFormat)
+            .sortedWith(
+                compareByDescending<JSONObject> {
+                    if (it.optString("mimeType").contains("mp4a")) 1 else 0
+                }.thenByDescending { it.optInt("bitrate", 0) }
+            )
+            .take(6)
+            .toList()
+
+        val splitVideoUrl = resolveFirstFormatUrl(
+            candidates = splitVideoCandidates,
+            videoId = video.videoId,
+            streamingPoToken = streamingPoToken
+        )
+        val splitAudioUrl = resolveFirstFormatUrl(
+            candidates = splitAudioCandidates,
+            videoId = video.videoId,
+            streamingPoToken = streamingPoToken
+        )
+        if (
+            splitVideoUrl != null &&
+            splitAudioUrl != null &&
+            probeMediaUrl(splitVideoUrl, userAgent, referer) &&
+            probeMediaUrl(splitAudioUrl, userAgent, referer)
+        ) {
+            return sourceFromWebResponse(
+                video = video,
+                response = response,
+                mediaUrl = splitVideoUrl,
+                secondaryAudioUrl = splitAudioUrl
+            )
+        }
+
+        val hls = streaming.optString("hlsManifestUrl").takeIf(::isDirectHttpUrl)
+        if (
+            hls != null &&
+            probeMediaUrl(hls, userAgent, referer)
+        ) {
+            return sourceFromWebResponse(
+                video = video,
+                response = response,
+                mediaUrl = hls,
+                secondaryAudioUrl = null
+            )
+        }
+
+        val dash = streaming.optString("dashManifestUrl").takeIf(::isDirectHttpUrl)
+        if (
+            dash != null &&
+            probeMediaUrl(dash, userAgent, referer)
+        ) {
+            return sourceFromWebResponse(
+                video = video,
+                response = response,
+                mediaUrl = dash,
+                secondaryAudioUrl = null
+            )
+        }
+
+        throw YouTubeUnavailableException()
     }
 
     private suspend fun resolveWithPoToken(video: YouTubeFeedVideo): YouTubeNativeSource {
@@ -456,7 +645,7 @@ object YouTubeNativeResolver {
     private suspend fun resolveFirstFormatUrl(
         candidates: List<JSONObject>,
         videoId: String,
-        streamingPoToken: String
+        streamingPoToken: String?
     ): String? {
         for (format in candidates) {
             val resolved = resolveFormatUrl(
@@ -472,7 +661,7 @@ object YouTubeNativeResolver {
     private suspend fun resolveFormatUrl(
         format: JSONObject,
         videoId: String,
-        streamingPoToken: String
+        streamingPoToken: String?
     ): String? {
         var url = format.optString("url").takeIf(::isDirectHttpUrl)
 
@@ -490,7 +679,11 @@ object YouTubeNativeResolver {
         if (!isDirectHttpUrl(url)) return null
 
         val transformed = CipherDeobfuscator.transformNParamInUrl(url!!)
-        return appendPoToken(transformed, streamingPoToken)
+        return if (streamingPoToken.isNullOrBlank()) {
+            transformed
+        } else {
+            appendPoToken(transformed, streamingPoToken)
+        }
     }
 
     private fun playabilityDetail(playability: JSONObject?): String =
@@ -499,6 +692,120 @@ object YouTubeNativeResolver {
             append(' ')
             append(playability?.optJSONObject("errorScreen")?.toString().orEmpty())
         }.lowercase(Locale.ROOT)
+
+    private fun requestVisionOsPlayer(
+        videoId: String,
+        bootstrap: WebBootstrap
+    ): JSONObject {
+        val client = JSONObject()
+            .put("clientName", "VISIONOS")
+            .put("clientVersion", VISIONOS_CLIENT_VERSION)
+            .put("deviceMake", "Apple")
+            .put("deviceModel", "RealityDevice17,1")
+            .put("userAgent", VISIONOS_USER_AGENT)
+            .put("osName", "visionOS")
+            .put("osVersion", "26.5.23O471")
+            .put("hl", "ru")
+            .put("gl", "PL")
+            .put("visitorData", bootstrap.visitorData)
+
+        return requestInnertubePlayer(
+            videoId = videoId,
+            bootstrap = bootstrap,
+            client = client,
+            clientNameId = VISIONOS_CLIENT_NAME,
+            clientVersion = VISIONOS_CLIENT_VERSION,
+            userAgent = VISIONOS_USER_AGENT,
+            origin = "https://www.youtube.com",
+            referer = "https://www.youtube.com/"
+        )
+    }
+
+    private fun requestWebSafariPlayer(
+        videoId: String,
+        bootstrap: WebBootstrap
+    ): JSONObject {
+        val client = JSONObject()
+            .put("clientName", "WEB")
+            .put("clientVersion", WEB_SAFARI_CLIENT_VERSION)
+            .put("userAgent", WEB_SAFARI_USER_AGENT)
+            .put("hl", "ru")
+            .put("gl", "PL")
+            .put("visitorData", bootstrap.visitorData)
+
+        return requestInnertubePlayer(
+            videoId = videoId,
+            bootstrap = bootstrap,
+            client = client,
+            clientNameId = WEB_SAFARI_CLIENT_NAME,
+            clientVersion = WEB_SAFARI_CLIENT_VERSION,
+            userAgent = WEB_SAFARI_USER_AGENT,
+            origin = "https://www.youtube.com",
+            referer = "https://www.youtube.com/"
+        )
+    }
+
+    private fun requestInnertubePlayer(
+        videoId: String,
+        bootstrap: WebBootstrap,
+        client: JSONObject,
+        clientNameId: Int,
+        clientVersion: String,
+        userAgent: String,
+        origin: String,
+        referer: String
+    ): JSONObject {
+        val body = JSONObject()
+            .put("context", JSONObject().put("client", client))
+            .put("videoId", videoId)
+            .put("contentCheckOk", true)
+            .put("racyCheckOk", true)
+
+        val endpoint =
+            "https://www.youtube.com/youtubei/v1/player" +
+                "?prettyPrint=false&key=" + bootstrap.apiKey
+
+        val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 10_000
+            readTimeout = 16_000
+            instanceFollowRedirects = true
+            requestMethod = "POST"
+            doOutput = true
+            useCaches = false
+            setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("Accept", "application/json")
+            setRequestProperty("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.7")
+            setRequestProperty("User-Agent", userAgent)
+            setRequestProperty("Origin", origin)
+            setRequestProperty("X-Origin", origin)
+            setRequestProperty("Referer", referer)
+            setRequestProperty("X-Goog-Api-Format-Version", "1")
+            setRequestProperty("X-Goog-Visitor-Id", bootstrap.visitorData)
+            setRequestProperty("X-YouTube-Client-Name", clientNameId.toString())
+            setRequestProperty("X-YouTube-Client-Version", clientVersion)
+        }
+
+        try {
+            connection.outputStream.use { output ->
+                output.write(body.toString().toByteArray(Charsets.UTF_8))
+            }
+
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val raw = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+
+            if (code !in 200..299) {
+                if (code == 408 || code == 429 || code >= 500) {
+                    throw YouTubeNetworkException()
+                }
+                throw YouTubeUnavailableException()
+            }
+
+            return JSONObject(raw)
+        } finally {
+            connection.disconnect()
+        }
+    }
 
     private fun requestMwebPlayer(
         videoId: String,
@@ -695,7 +1002,11 @@ object YouTubeNativeResolver {
             "confirm your age" in detail ||
             "age verification" in detail
 
-    private fun probeMediaUrl(url: String): Boolean {
+    private fun probeMediaUrl(
+        url: String,
+        userAgent: String = MWEB_USER_AGENT,
+        referer: String = "https://m.youtube.com/"
+    ): Boolean {
         val connection = runCatching {
             (URL(url).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 8_000
@@ -704,8 +1015,8 @@ object YouTubeNativeResolver {
                 requestMethod = "GET"
                 useCaches = false
                 setRequestProperty("Range", "bytes=0-1023")
-                setRequestProperty("User-Agent", MWEB_USER_AGENT)
-                setRequestProperty("Referer", "https://m.youtube.com/")
+                setRequestProperty("User-Agent", userAgent)
+                setRequestProperty("Referer", referer)
                 setRequestProperty("Accept", "*/*")
             }
         }.getOrNull() ?: return false
