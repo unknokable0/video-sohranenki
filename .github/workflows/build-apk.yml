@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.9.2 version
+      - name: Assign SOHR 6.9.3 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690002" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.2" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690003" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.3" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -1097,19 +1097,6 @@ jobs:
                   raise SystemExit(f"SOHR 6.9.0 native YouTube playback regression: {required}")
 
           for required in [
-              "private fun animateVisibleVideoTabsTo(",
-              'findViewWithTag<FrameLayout>("sohr_video_section_tabs")',
-              'findViewWithTag<View>("sohr_video_tab_indicator")',
-              'tag = "sohr_video_section_tabs"',
-              'tag = "sohr_video_tab_indicator"',
-              'tag = "sohr_video_section_label_$section"',
-              "root.postDelayed(onCommit, 105L)",
-              "pendingVideoSectionDirection = 0"
-          ]:
-              if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.9.2 video-tab animation regression: {required}")
-
-          for required in [
               "private fun launchYouTubeCustomTab(",
               "CustomTabsIntent.Builder()",
               "setUrlBarHidingEnabled(true)",
@@ -1125,10 +1112,24 @@ jobs:
 
           for forbidden in [
               "private fun launchExternalBrowser(",
-              "private fun openYouTubeInBrowser("
+              "private fun openYouTubeInBrowser(",
+              "root.postDelayed(onCommit, 105L)",
+              "animateVisibleVideoTabsTo("
           ]:
               if forbidden in sohr_main:
-                  raise SystemExit(f"SOHR 6.9.2 regression: external YouTube redirect returned: {forbidden}")
+                  raise SystemExit(f"SOHR 6.9.3 removed-flow regression: {forbidden}")
+
+          tabs_switch_section = sohr_main.split(
+              "private fun switchVideoSection(", 1
+          )[1].split("\n    private fun showFeed", 1)[0]
+          for required in [
+              "pendingVideoSectionDirection = if (section > videoSection) 1 else -1",
+              "suppressNextRootAnimation = true",
+              "videoSection = section",
+              "showFeed(currentVideos)"
+          ]:
+              if required not in tabs_switch_section:
+                  raise SystemExit(f"SOHR 6.9.3 smooth-tabs regression: {required}")
 
           failure_section = sohr_main.split(
               "private fun handleYouTubeNativeFailure(", 1
@@ -1137,26 +1138,36 @@ jobs:
               "YouTubeAgeRestrictedException",
               "YouTubeNetworkException",
               "YouTubeSignInRequiredException",
-              "openYouTubeAccountRequired(",
               "openYouTubeWebPlayer(video, returnView)"
           ]:
               if required not in failure_section:
-                  raise SystemExit(f"SOHR 6.9.2 YouTube fallback routing regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.3 in-app YouTube fallback regression: {required}")
+          if "openYouTubeAccountRequired(" in failure_section or "launchYouTubeCustomTab(" in failure_section:
+              raise SystemExit("SOHR 6.9.3 regression: video tap can still leave SOHR")
 
           account_section = sohr_main.split(
               "private fun renderAccount(user:", 1
           )[1].split("\n    private fun maskPhone", 1)[0]
           for required in [
               "youtubeAvatarFrame",
-              "youtubeAvatar",
+              "val youtubeAvatar = TextView(this).apply",
               "settings.youtubeAccountName",
-              '"Сменить аккаунт"',
+              '"Выйти из YouTube"',
+              "confirmYouTubeLogout()",
               "launchYouTubeAccountPicker()",
               '"YouTube не подключён"',
               '"$youtubeAccount • YouTube"'
           ]:
               if required not in account_section:
-                  raise SystemExit(f"SOHR 6.9.2 YouTube account-card regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.3 YouTube account-card regression: {required}")
+
+          for required in [
+              "private fun confirmYouTubeLogout()",
+              "settings.youtubeBrowserConnected = false",
+              "settings.youtubeAccountName = null"
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.9.3 YouTube logout regression: {required}")
 
           show_account_section = sohr_main.split(
               "private fun showAccount()", 1
@@ -1573,18 +1584,17 @@ jobs:
                   raise SystemExit(f"SOHR 6.2.3 search-motion regression: {required}")
 
           for required in [
-              "private fun animateVisibleVideoTabsTo(",
               "pendingVideoSectionCrossfade = true",
+              "pendingVideoSectionDirection = if (section > videoSection) 1 else -1",
               "suppressNextRootAnimation = true",
               "suppressNextContentAnimation = false",
-              "indicator.animate().cancel()",
               "tabIndicator.animate().cancel()",
               "nav.clearAnimation()",
               "nav.scaleX = 1f",
               "nav.scaleY = 1f"
           ]:
               if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.9.2 smooth-tabs/nav regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.3 smooth-tabs/nav regression: {required}")
 
           for required in [
               "activeSearchInput: EditText?",
@@ -2039,7 +2049,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.2 • исправлена анимация «Главная / Лента / Просмотренные»: существующий индикатор теперь начинает движение до перестройки контента, поэтому переход на «Ленту» больше не пропадает и не дёргается • YouTube-карточка в «Аккаунте» приведена к стилю Telegram/Twitch: круглый аватар, имя выбранного Google-аккаунта, подпись и кнопка смены аккаунта • добавлен системный Google Account picker без ввода пароля в SOHR • ролики с LOGIN_REQUIRED открываются через SOHR-styled Android Custom Tab вместо обычного внешнего ACTION_VIEW, публичные ролики по-прежнему сначала идут через Media3 и внутренний SOHR fallback • Twitch-профиль на экране аккаунта теперь грузится параллельно с таймаутом, чтобы весь экран не зависал"
+            "notes": "SOHR 6.9.3 • исправлена дёрганая анимация «Главная / Лента / Просмотренные»: удалён двухэтапный hand-off с задержкой 105 мс, секция перестраивается сразу, индикатор плавно едет из предыдущего слота, анимируется только содержимое под вкладками • YouTube-карточка в «Аккаунте» приведена к стилю Telegram/Twitch: пользовательский круглый avatar-style блок с инициалом выбранного аккаунта, имя/e-mail и отдельная красная кнопка «Выйти из YouTube» • logout очищает привязку SOHR, не затрагивая Google-аккаунт в системном браузере • нажатие YouTube-видео больше не запускает Custom Tab/внешний YouTube: direct Media3 остаётся первым, технический fallback остаётся внутри SOHR; возрастные ограничения YouTube не обходятся"
           }
           EOF
           cat update.json
