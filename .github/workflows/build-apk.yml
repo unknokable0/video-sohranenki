@@ -1005,8 +1005,9 @@ jobs:
 
           for required in [
               "channelIdCache",
-              'Regex("\\"browseId\\":\\"(UC[^\\"]+)\\"")',
-              'Regex("\\"externalId\\":\\"(UC[^\\"]+)\\"")'
+              "browseId",
+              "externalId",
+              "youtube.com/channel/"
           ]:
               if required not in youtube_feed_repo:
                   raise SystemExit(f"SOHR 6.8.2 channel resolver regression: {required}")
