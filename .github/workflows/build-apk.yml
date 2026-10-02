@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.8.2 version
+      - name: Assign SOHR 6.8.3 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=680002" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.8.2" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=680003" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.8.3" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -1036,6 +1036,34 @@ jobs:
               raise SystemExit("SOHR 6.8.2 regression: age gate is not checked before and after MWEB retry")
 
 
+          for required in [
+              'private const val VISIONOS_CLIENT_VERSION = "1.02"',
+              "private const val VISIONOS_CLIENT_NAME = 101",
+              'put("clientName", "VISIONOS")',
+              "requestVisionOsPlayer(",
+              "resolveWithVisionOs(video)",
+              'private const val WEB_SAFARI_CLIENT_VERSION = "2.20260708.00.00"',
+              "requestWebSafariPlayer(",
+              "resolveWithWebSafariHls(video)",
+              "sourceFromPlayerResponse(",
+              "dashManifestUrl"
+          ]:
+              if required not in youtube_resolver:
+                  raise SystemExit(f"SOHR 6.8.3 multi-client YouTube regression: {required}")
+
+          resolve_section = youtube_resolver.split(
+              "suspend fun resolve(video: YouTubeFeedVideo)", 1
+          )[1].split("\n    private fun sourceFromNewPipe", 1)[0]
+          expected_order = [
+              "StreamInfo.getInfo(video.watchUrl)",
+              "resolveWithVisionOs(video)",
+              "resolveWithWebSafariHls(video)",
+              "resolveWithPoToken(video)"
+          ]
+          positions = [resolve_section.find(marker) for marker in expected_order]
+          if any(pos < 0 for pos in positions) or positions != sorted(positions):
+              raise SystemExit("SOHR 6.8.3 regression: YouTube fallback order changed")
+
           youtube_fallback_path = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/YouTubeFallbackPlayerScreen.kt"
           )
@@ -1933,7 +1961,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.8.2 • исправлен реальный бесконечный цикл YouTube-ленты: после сетевой ошибки SOHR больше не запускает загрузку заново мгновенно, показывает понятное состояние с ручным повтором и использует cooldown перед автоматическим retry • Channel ID теперь определяется по channelId/browseId/externalId/canonical и кэшируется, поэтому обновления RSS не зависят от одного HTML-шаблона • переход Главная ↔ Лента больше не анимирует весь экран: верх SOHR и вкладки остаются стабильными, плавно появляется только содержимое секции • нативный YouTube fallback переведён с SABR-only WEB на MWEB 2.20260708.05.00: сначала обычный MWEB /player, при anti-bot selective challenge повтор с video-bound PO Token, прямые media URL получают video-bound pot • настоящие возрастные ограничения YouTube по-прежнему не обходятся"
+            "notes": "SOHR 6.8.3 • YouTube-плеер получил многоклиентный нативный resolver: NewPipe → VISIONOS direct → WEB_SAFARI HLS → MWEB + video-bound PO Token • VISIONOS используется как отдельный прямой путь для обычных роликов, поэтому SABR-эксперимент одного web-клиента больше не обрывает воспроизведение • Safari fallback принимает pre-merged HLS, который Media3 воспроизводит в том же интерфейсе SOHR • MWEB + BotGuard/PO Token сохранён как дополнительный путь • реальные возрастные/аккаунтные ограничения YouTube не обходятся"
           }
           EOF
           cat update.json
