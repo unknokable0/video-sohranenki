@@ -1123,13 +1123,16 @@ jobs:
               "private fun switchVideoSection(", 1
           )[1].split("\n    private fun showFeed", 1)[0]
           for required in [
-              "pendingVideoSectionDirection = if (section > videoSection) 1 else -1",
+              "val previousSection = videoSection",
+              "val direction = if (section > previousSection) 1 else -1",
+              "pendingVideoSectionDirection = direction",
               "suppressNextRootAnimation = true",
               "videoSection = section",
-              "showFeed(currentVideos)"
+              "showFeed(currentVideos)",
+              "root.postDelayed({ commitSectionChange() }, 170L)"
           ]:
               if required not in tabs_switch_section:
-                  raise SystemExit(f"SOHR 6.9.3 smooth-tabs regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.5 smooth-tabs regression: {required}")
 
           failure_section = sohr_main.split(
               "private fun handleYouTubeNativeFailure(", 1
