@@ -1,6 +1,7 @@
 package com.unknokable.videosohranenki
 
 import android.Manifest
+import android.accounts.AccountManager
 import android.app.Dialog
 import android.app.Notification
 import android.app.NotificationChannel
@@ -55,6 +56,7 @@ import android.webkit.WebViewClient
 import androidx.activity.BackEventCompat
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -494,6 +496,30 @@ class MainActivity : AppCompatActivity() {
             }
         }
         if (!handleTwitchAuthIntent(intent, loadAfter = true)) handleSharedIntent(intent)
+    }
+
+    @Deprecated("Activity result API kept for the platform Google account picker")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == YOUTUBE_ACCOUNT_PICK_REQUEST) {
+            if (resultCode == RESULT_OK) {
+                val accountName = data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                settings.youtubeAccountName = accountName
+                settings.youtubeBrowserConnected = true
+
+                // Warm the browser YouTube session without moving playback out of SOHR.
+                launchYouTubeCustomTab("https://m.youtube.com/account")
+
+                if (isAccountScreen) {
+                    root.postDelayed({
+                        if (!isFinishing && isAccountScreen) showAccount()
+                    }, 240L)
+                }
+            }
+            return
+        }
+        super.onActivityResult(requestCode, resultCode, data)
     }
 
     override fun onResume() {
@@ -2708,36 +2734,74 @@ class MainActivity : AppCompatActivity() {
         return removed
     }
 
+    private fun animateVisibleVideoTabsTo(
+        targetSection: Int,
+        onCommit: () -> Unit
+    ) {
+        if (!settings.animations) {
+            onCommit()
+            return
+        }
+
+        val tabs = root.findViewWithTag<FrameLayout>("sohr_video_section_tabs")
+        val indicator = root.findViewWithTag<View>("sohr_video_tab_indicator")
+        if (tabs == null || indicator == null || tabs.width <= 0) {
+            onCommit()
+            return
+        }
+
+        val usable = tabs.width - tabs.paddingLeft - tabs.paddingRight
+        val slot = (usable / 3f).coerceAtLeast(0f)
+        val targetX = slot * (targetSection - 1)
+
+        for (index in 1..3) {
+            root.findViewWithTag<TextView>("sohr_video_section_label_$index")?.apply {
+                animate().cancel()
+                setTextColor(if (index == targetSection) Color.WHITE else muted)
+                alpha = 1f
+            }
+        }
+
+        indicator.animate().cancel()
+        indicator.animate()
+            .translationX(targetX)
+            .setDuration(190L)
+            .setInterpolator(SohrMotion.smooth())
+            .start()
+
+        // Rebuild the section shortly after the indicator has visibly started moving.
+        // The new page is placed at the final indicator position, so there is no jump.
+        root.postDelayed(onCommit, 105L)
+    }
+
     private fun switchVideoSection(section: Int) {
         if (section !in 1..3 || videoSection == section) return
 
         if (videoSectionSwitchLocked) {
-            // Never drop a fast second tap. Keep only the latest requested tab
-            // and apply it as soon as the current lightweight rebuild settles.
             pendingVideoSectionTarget = section
             return
         }
 
         videoSectionSwitchLocked = true
         pendingVideoSectionCrossfade = true
-        pendingVideoSectionDirection = if (section > videoSection) 1 else -1
         pendingRootSlide = 0
-
-        // Section tabs already animate their own content/indicator. Suppress the
-        // outer root transition so the header never jumps or double-animates.
         suppressNextRootAnimation = true
         suppressNextContentAnimation = false
-        videoSection = section
-        showFeed(currentVideos)
 
-        root.postDelayed({
-            videoSectionSwitchLocked = false
-            val queued = pendingVideoSectionTarget
-            pendingVideoSectionTarget = null
-            if (queued != null && queued != videoSection) {
-                switchVideoSection(queued)
-            }
-        }, if (settings.animations) SohrMotion.NORMAL + 24L else 16L)
+        animateVisibleVideoTabsTo(section) {
+            pendingVideoSectionDirection = 0
+            videoSection = section
+            showFeed(currentVideos)
+
+            root.postDelayed({
+                videoSectionSwitchLocked = false
+                val queued = pendingVideoSectionTarget
+                pendingVideoSectionTarget = null
+                if (queued != null && queued != videoSection) {
+                    switchVideoSection(queued)
+                }
+            }, if (settings.animations) 165L else 16L)
+        }
     }
 
     private fun showFeed(videos: List<VideoItem>) {
@@ -2921,12 +2985,14 @@ class MainActivity : AppCompatActivity() {
         )
 
         val tabs = FrameLayout(this).apply {
+            tag = "sohr_video_section_tabs"
             setPadding(dp(3), dp(3), dp(3), dp(3))
             background = roundedBg(palette.surfaceAlt, 18)
             clipChildren = true
             clipToPadding = true
         }
         val tabIndicator = View(this).apply {
+            tag = "sohr_video_tab_indicator"
             background = roundedBg(purple, 15)
             elevation = 0f
         }
@@ -2980,6 +3046,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             val labelView = TextView(this).apply {
+                tag = "sohr_video_section_label_$section"
                 text = label
                 textSize = 12f
                 gravity = Gravity.CENTER
@@ -6689,19 +6756,29 @@ class MainActivity : AppCompatActivity() {
             ?.takeIf { it.isNotBlank() && it != packageName }
     }
 
-    private fun launchExternalBrowser(url: String): Boolean {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-            addCategory(Intent.CATEGORY_BROWSABLE)
-            defaultBrowserPackage()?.let(::setPackage)
-        }
+    private fun launchYouTubeCustomTab(url: String): Boolean {
+        val colorScheme =
+            if (settings.lightTheme) CustomTabsIntent.COLOR_SCHEME_LIGHT
+            else CustomTabsIntent.COLOR_SCHEME_DARK
+
+        val customTab = CustomTabsIntent.Builder()
+            .setShowTitle(false)
+            .setUrlBarHidingEnabled(true)
+            .setShareState(CustomTabsIntent.SHARE_STATE_OFF)
+            .setToolbarColor(bg)
+            .setNavigationBarColor(bg)
+            .setColorScheme(colorScheme)
+            .build()
+
+        defaultBrowserPackage()?.let { customTab.intent.setPackage(it) }
 
         return runCatching {
-            startActivity(intent)
+            customTab.launchUrl(this, Uri.parse(url))
             true
         }.getOrElse {
             showMessage(
-                "Не удалось открыть браузер",
-                "Проверьте, что на устройстве установлен браузер, и попробуйте ещё раз."
+                "Не удалось открыть YouTube",
+                "Проверьте браузер по умолчанию и попробуйте ещё раз."
             )
             false
         }
@@ -6713,23 +6790,28 @@ class MainActivity : AppCompatActivity() {
             "?service=youtube&continue=" + encodedTarget
     }
 
-    private fun launchYouTubeBrowserAccount(
-        targetUrl: String = "https://m.youtube.com/"
-    ) {
-        val launched = launchExternalBrowser(youtubeAccountChooserUrl(targetUrl))
-        if (launched) {
-            // This flag means SOHR should use the browser for account-required
-            // playback. It does not claim access to browser cookies or passwords.
-            settings.youtubeBrowserConnected = true
-            if (isAccountScreen) {
-                root.postDelayed({
-                    if (!isFinishing && isAccountScreen) showAccount()
-                }, 350L)
+    private fun launchYouTubeAccountPicker() {
+        val chooser = AccountManager.newChooseAccountIntent(
+            null,
+            null,
+            arrayOf("com.google"),
+            "Выберите Google-аккаунт для YouTube",
+            null,
+            null,
+            null
+        )
+
+        runCatching {
+            startActivityForResult(chooser, YOUTUBE_ACCOUNT_PICK_REQUEST)
+        }.getOrElse {
+            // Devices without a compatible account picker still get the browser chooser.
+            if (launchYouTubeCustomTab(youtubeAccountChooserUrl("https://m.youtube.com/"))) {
+                settings.youtubeBrowserConnected = true
             }
         }
     }
 
-    private fun openYouTubeInBrowser(
+    private fun openYouTubeAccountRequired(
         video: YouTubeFeedVideo,
         returnView: View?,
         chooseAccount: Boolean
@@ -6749,14 +6831,13 @@ class MainActivity : AppCompatActivity() {
             showFeed(currentVideos)
         }
 
-        val target =
-            "https://m.youtube.com/watch?v=" + Uri.encode(video.videoId)
+        val target = "https://m.youtube.com/watch?v=" + Uri.encode(video.videoId)
         val url = if (chooseAccount) youtubeAccountChooserUrl(target) else target
-
-        if (launchExternalBrowser(url)) {
+        if (launchYouTubeCustomTab(url)) {
             settings.youtubeBrowserConnected = true
         }
     }
+
 
     private fun openYouTubeWebPlayer(
         video: YouTubeFeedVideo,
@@ -6887,23 +6968,15 @@ class MainActivity : AppCompatActivity() {
                 showYouTubePlaybackError(video, error, returnView)
 
             is YouTubeSignInRequiredException ->
-                openYouTubeInBrowser(
+                openYouTubeAccountRequired(
                     video = video,
                     returnView = returnView,
                     chooseAccount = !settings.youtubeBrowserConnected
                 )
 
-            else -> {
-                if (settings.youtubeBrowserConnected) {
-                    openYouTubeInBrowser(
-                        video = video,
-                        returnView = returnView,
-                        chooseAccount = false
-                    )
-                } else {
-                    openYouTubeWebPlayer(video, returnView)
-                }
-            }
+            else ->
+                // Public video fallback stays visually inside SOHR.
+                openYouTubeWebPlayer(video, returnView)
         }
     }
 
@@ -7046,11 +7119,15 @@ class MainActivity : AppCompatActivity() {
                     isFocusable = true
                     setOnClickListener {
                         animatePress(this)
-                        openYouTubeInBrowser(
-                            video = video,
-                            returnView = returnView,
-                            chooseAccount = true
-                        )
+                        if (settings.youtubeAccountName.isNullOrBlank()) {
+                            launchYouTubeAccountPicker()
+                        } else {
+                            openYouTubeAccountRequired(
+                                video = video,
+                                returnView = returnView,
+                                chooseAccount = true
+                            )
+                        }
                     }
                 },
                 LinearLayout.LayoutParams(
@@ -8957,22 +9034,26 @@ class MainActivity : AppCompatActivity() {
                     }.getOrNull()
                 }
 
-                val twitchProfile = if (!token.isNullOrBlank()) {
-                    try {
-                        TwitchApi.loadCurrentUser(BuildConfig.TWITCH_CLIENT_ID.trim(), token).also {
-                            settings.twitchLogin = it.login.takeIf(String::isNotBlank)
-                        }
-                    } catch (_: TwitchAuthException) {
-                        settings.twitchAccessToken = null
-                        settings.twitchOauthState = null
-                        settings.twitchLogin = null
-                        null
-                    } catch (_: Exception) {
-                        null
-                    }
-                } else null
+                val twitchProfile = async(Dispatchers.IO) {
+                    if (token.isNullOrBlank()) return@async null
 
-                renderAccount(user, telegramAvatar.await(), twitchProfile)
+                    kotlinx.coroutines.withTimeoutOrNull(5_000L) {
+                        try {
+                            TwitchApi.loadCurrentUser(BuildConfig.TWITCH_CLIENT_ID.trim(), token).also {
+                                settings.twitchLogin = it.login.takeIf(String::isNotBlank)
+                            }
+                        } catch (_: TwitchAuthException) {
+                            settings.twitchAccessToken = null
+                            settings.twitchOauthState = null
+                            settings.twitchLogin = null
+                            null
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
+                }
+
+                renderAccount(user, telegramAvatar.await(), twitchProfile.await())
             } catch (e: Exception) {
                 showMessage("Не удалось открыть аккаунт", e.message ?: "Ошибка Telegram")
             }
@@ -9298,31 +9379,65 @@ class MainActivity : AppCompatActivity() {
         })
 
         val youtubeConnected = settings.youtubeBrowserConnected
+        val youtubeAccount = settings.youtubeAccountName?.takeIf { it.isNotBlank() }
+        val youtubeName = youtubeAccount
+            ?.substringBefore('@')
+            ?.replace('.', ' ')
+            ?.replace('_', ' ')
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: "YouTube"
+
         val youtubeCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(18), dp(18), dp(18), dp(18))
+            setPadding(dp(18), dp(20), dp(18), dp(18))
             background = roundedBg(panel, 24)
         }
 
+        val youtubeAvatarFrame = FrameLayout(this).apply {
+            background = roundedBg(Color.parseColor("#FF0033"), 46)
+            setPadding(dp(3), dp(3), dp(3), dp(3))
+        }
+        val youtubeAvatar = ImageView(this).apply {
+            setImageResource(R.drawable.ic_play)
+            imageTintList = ColorStateList.valueOf(Color.WHITE)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(24), dp(24), dp(24), dp(24))
+            background = roundedBg(Color.parseColor("#E60023"), 42)
+        }
+        youtubeAvatarFrame.addView(
+            youtubeAvatar,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+        youtubeCard.addView(youtubeAvatarFrame, LinearLayout.LayoutParams(dp(92), dp(92)))
+
         youtubeCard.addView(TextView(this).apply {
-            text = "YouTube"
+            text = youtubeName
             textSize = 21f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(this@MainActivity.text)
+            setPadding(0, dp(12), 0, dp(3))
         })
 
         youtubeCard.addView(TextView(this).apply {
-            text = if (youtubeConnected) {
-                "Вход через системный браузер настроен"
-            } else {
-                "Вход откроется в браузере — без ввода данных внутри SOHR"
+            text = when {
+                youtubeConnected && !youtubeAccount.isNullOrBlank() ->
+                    "$youtubeAccount • YouTube"
+                youtubeConnected ->
+                    "Google-аккаунт выбран • YouTube"
+                else ->
+                    "YouTube не подключён"
             }
             textSize = 12f
             gravity = Gravity.CENTER
             setTextColor(if (youtubeConnected) muted else palette.accent)
-            setPadding(dp(8), dp(5), dp(8), 0)
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
         })
 
         val youtubeAction = TextView(this).apply {
@@ -9331,12 +9446,15 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
-            background = roundedBg(purple, 15)
+            background = roundedBg(
+                if (youtubeConnected) palette.surfaceAlt else Color.parseColor("#E60023"),
+                15
+            )
             isClickable = true
             isFocusable = true
             setOnClickListener {
                 animatePress(this)
-                launchYouTubeBrowserAccount()
+                launchYouTubeAccountPicker()
             }
         }
         youtubeCard.addView(
@@ -9348,7 +9466,7 @@ class MainActivity : AppCompatActivity() {
         page.addView(youtubeCard)
 
         val privacy = TextView(this).apply {
-            text = "YouTube-вход выполняется в системном браузере. SOHR не видит пароль и не получает cookies браузера; ролики, которым нужен аккаунт, открываются через ту же браузерную сессию."
+            text = "SOHR не видит пароль Google. Для роликов, которым YouTube требует аккаунт, используется защищённая браузерная сессия в Custom Tab; обычные ролики остаются в нативном SOHR-плеере."
             textSize = 12f
             setTextColor(muted)
             setPadding(dp(4), dp(12), dp(4), 0)
@@ -9374,6 +9492,8 @@ class MainActivity : AppCompatActivity() {
             twitchCard.translationY = dp(12).toFloat()
             youtubeCard.alpha = 0f
             youtubeCard.translationY = dp(12).toFloat()
+            youtubeAvatar.scaleX = 0.88f
+            youtubeAvatar.scaleY = 0.88f
             telegramAvatar.scaleX = 0.88f
             telegramAvatar.scaleY = 0.88f
             twitchAvatar.scaleX = 0.88f
@@ -9417,6 +9537,13 @@ class MainActivity : AppCompatActivity() {
                     .translationY(0f)
                     .setStartDelay(145L)
                     .setDuration(270L)
+                    .setInterpolator(ease)
+                    .start()
+                youtubeAvatar.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setStartDelay(185L)
+                    .setDuration(260L)
                     .setInterpolator(ease)
                     .start()
             }
@@ -10905,5 +11032,6 @@ class MainActivity : AppCompatActivity() {
         private const val T2X2_NOTIFICATION_ID = 2202
         private const val UPDATE_NOTIFICATION_ID = 6304
         private const val T2X2_NOTIFICATION_PERMISSION_REQUEST = 2203
+        private const val YOUTUBE_ACCOUNT_PICK_REQUEST = 6902
     }
 }
