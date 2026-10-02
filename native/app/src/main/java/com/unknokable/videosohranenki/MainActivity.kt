@@ -2798,8 +2798,9 @@ class MainActivity : AppCompatActivity() {
                 interpolator = SohrMotion.smooth()
                 addUpdateListener { animator ->
                     val progress = animator.animatedFraction
-                    val fromColor = android.graphics.ColorUtils.blendARGB(Color.WHITE, muted, progress)
-                    val toColor = android.graphics.ColorUtils.blendARGB(muted, Color.WHITE, progress)
+                    val evaluator = android.animation.ArgbEvaluator()
+                    val fromColor = evaluator.evaluate(progress, Color.WHITE, muted) as Int
+                    val toColor = evaluator.evaluate(progress, muted, Color.WHITE) as Int
                     fromLabel?.setTextColor(fromColor)
                     toLabel?.setTextColor(toColor)
                 }
