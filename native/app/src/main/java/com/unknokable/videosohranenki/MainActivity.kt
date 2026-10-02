@@ -129,6 +129,8 @@ class MainActivity : AppCompatActivity() {
     private var twitchLoadJob: kotlinx.coroutines.Job? = null
     private var twitchAuthJob: kotlinx.coroutines.Job? = null
     private var twitchAuthDialog: Dialog? = null
+    private var youtubeAccountDialog: Dialog? = null
+    private var youtubeWebPlayer: WebView? = null
     private var twitchLiveJob: kotlinx.coroutines.Job? = null
     private var t2x2WatchJob: kotlinx.coroutines.Job? = null
     private var t2x2LiveSlot: FrameLayout? = null
@@ -663,6 +665,8 @@ class MainActivity : AppCompatActivity() {
         playerReturnView = null
         val outgoingTwitchPlayer = twitchPlayerScreen
         val outgoingTwitchLivePlayer = twitchLivePlayerScreen
+        val outgoingYouTubeWebPlayer = youtubeWebPlayer
+        youtubeWebPlayer = null
 
         outgoingPlayer?.flushPlaybackPosition()
         outgoingTwitchLivePlayer?.prepareForExit()
@@ -698,6 +702,13 @@ class MainActivity : AppCompatActivity() {
                 outgoingPlayer?.destroy()
                 outgoingTwitchPlayer?.destroy()
                 outgoingTwitchLivePlayer?.destroy()
+                outgoingYouTubeWebPlayer?.let { webView ->
+                    runCatching {
+                        webView.stopLoading()
+                        webView.loadUrl("about:blank")
+                        webView.destroy()
+                    }
+                }
                 currentStreamingItem?.let { streamed -> streamServer?.release(streamed) }
                 currentStreamingItem = null
             } finally {
@@ -6585,12 +6596,12 @@ class MainActivity : AppCompatActivity() {
                         YouTubeNativeResolver.resolve(video)
                     }.getOrElse { retryError ->
                         youtubeResolveJob = null
-                        showYouTubePlaybackError(video, retryError, returnView)
+                        handleYouTubeNativeFailure(video, retryError, returnView)
                         return@launch
                     }
                 } else {
                     youtubeResolveJob = null
-                    showYouTubePlaybackError(video, firstError, returnView)
+                    handleYouTubeNativeFailure(video, firstError, returnView)
                     return@launch
                 }
             }
@@ -6649,6 +6660,290 @@ class MainActivity : AppCompatActivity() {
             playerScreen = createdPlayer
             pendingRootSlide = 1
             replaceRoot(createdPlayer.root)
+        }
+    }
+
+    private fun youtubeWebSessionConnected(): Boolean {
+        val manager = CookieManager.getInstance()
+        val cookies = buildString {
+            append(manager.getCookie("https://www.youtube.com").orEmpty())
+            append(';')
+            append(manager.getCookie("https://m.youtube.com").orEmpty())
+            append(';')
+            append(manager.getCookie("https://accounts.google.com").orEmpty())
+        }
+        return listOf(
+            "LOGIN_INFO=",
+            "SID=",
+            "__Secure-1PSID=",
+            "__Secure-3PSID="
+        ).any { marker -> cookies.contains(marker) }
+    }
+
+    private fun configureYouTubeWebView(webView: WebView) {
+        webView.setBackgroundColor(Color.BLACK)
+        webView.settings.javaScriptEnabled = true
+        webView.settings.domStorageEnabled = true
+        webView.settings.databaseEnabled = true
+        webView.settings.loadsImagesAutomatically = true
+        webView.settings.mediaPlaybackRequiresUserGesture = false
+        webView.settings.javaScriptCanOpenWindowsAutomatically = false
+        webView.settings.setSupportMultipleWindows(false)
+        webView.settings.useWideViewPort = true
+        webView.settings.loadWithOverviewMode = false
+
+        CookieManager.getInstance().apply {
+            setAcceptCookie(true)
+            setAcceptThirdPartyCookies(webView, true)
+        }
+    }
+
+    private fun showYouTubeAccountDialog(onConnected: (() -> Unit)? = null) {
+        youtubeAccountDialog?.dismiss()
+
+        val dialog = Dialog(this)
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(bg)
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+        }
+
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        val status = TextView(this).apply {
+            text = if (youtubeWebSessionConnected()) "YouTube подключён" else "Вход в YouTube"
+            textSize = 19f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+        }
+        header.addView(status, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+        val close = ImageButton(this).apply {
+            setImageResource(R.drawable.ic_close)
+            imageTintList = ColorStateList.valueOf(muted)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(11), dp(11), dp(11), dp(11))
+            background = roundedBg(palette.surfaceAlt, 18)
+            setOnClickListener { dialog.dismiss() }
+        }
+        header.addView(close, LinearLayout.LayoutParams(dp(42), dp(42)))
+        page.addView(header)
+
+        page.addView(TextView(this).apply {
+            text = "Войдите на официальной странице YouTube. SOHR использует эту сессию только как запасной путь для роликов, которым сам YouTube требует аккаунт."
+            textSize = 12.5f
+            setTextColor(muted)
+            setPadding(0, dp(7), 0, dp(10))
+        })
+
+        var callbackDelivered = false
+        val webView = WebView(this)
+        configureYouTubeWebView(webView)
+        webView.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                val connected = youtubeWebSessionConnected()
+                status.text = if (connected) "YouTube подключён" else "Вход в YouTube"
+                if (connected) CookieManager.getInstance().flush()
+
+                if (connected && onConnected != null && !callbackDelivered) {
+                    callbackDelivered = true
+                    view?.postDelayed({
+                        if (dialog.isShowing) dialog.dismiss()
+                        onConnected.invoke()
+                    }, 650L)
+                }
+            }
+
+            override fun onReceivedError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                error: WebResourceError?
+            ) {
+                super.onReceivedError(view, request, error)
+                if (request?.isForMainFrame != true) return
+                status.text = "Не удалось открыть YouTube"
+            }
+        }
+
+        val accountUrl = if (youtubeWebSessionConnected()) {
+            "https://m.youtube.com/account"
+        } else {
+            "https://m.youtube.com/"
+        }
+        webView.loadUrl(accountUrl)
+
+        page.addView(
+            webView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            ).apply { topMargin = dp(4) }
+        )
+
+        dialog.setContentView(page)
+        dialog.setCanceledOnTouchOutside(false)
+        dialog.setOnDismissListener {
+            if (youtubeAccountDialog === dialog) youtubeAccountDialog = null
+            runCatching {
+                webView.stopLoading()
+                webView.loadUrl("about:blank")
+                webView.destroy()
+            }
+            if (isAccountScreen && !isFinishing) {
+                root.post { showAccount() }
+            }
+        }
+        dialog.show()
+        dialog.window?.apply {
+            setBackgroundDrawable(ColorDrawable(bg))
+            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        }
+        youtubeAccountDialog = dialog
+    }
+
+    private fun openYouTubeWebPlayer(
+        video: YouTubeFeedVideo,
+        returnView: View?
+    ) {
+        youtubeResolveJob?.cancel()
+        youtubeResolveJob = null
+        youtubeWebPlayer?.let { old ->
+            runCatching {
+                old.stopLoading()
+                old.loadUrl("about:blank")
+                old.destroy()
+            }
+        }
+        youtubeWebPlayer = null
+
+        isSettingsScreen = false
+        isAccountScreen = false
+        isStreakScreen = false
+        isPlayerScreen = true
+        playerReturnView = returnView
+        fullScreen = false
+        setFullscreen(false)
+
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(10), dp(14), dp(12))
+            setBackgroundColor(bg)
+        }
+
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        val back = ImageButton(this).apply {
+            setImageResource(R.drawable.ic_back)
+            imageTintList = ColorStateList.valueOf(text)
+            background = roundedBg(palette.surfaceAlt, 18)
+            setPadding(dp(11), dp(11), dp(11), dp(11))
+            contentDescription = "Назад"
+            setOnClickListener { closeCurrentPlayerScreen() }
+        }
+        header.addView(back, LinearLayout.LayoutParams(dp(44), dp(44)))
+
+        header.addView(
+            TextView(this).apply {
+                text = video.title
+                textSize = 16.5f
+                maxLines = 2
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                includeFontPadding = false
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(this@MainActivity.text)
+                setPadding(dp(12), 0, dp(4), 0)
+            },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        )
+        page.addView(header)
+
+        val webView = WebView(this)
+        configureYouTubeWebView(webView)
+        webView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                val url = request?.url?.toString().orEmpty()
+                return if (
+                    url.startsWith("https://www.youtube.com/", ignoreCase = true) ||
+                    url.startsWith("https://m.youtube.com/", ignoreCase = true) ||
+                    url.startsWith("https://accounts.google.com/", ignoreCase = true)
+                ) {
+                    false
+                } else {
+                    true
+                }
+            }
+
+            @Suppress("DEPRECATION")
+            override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                val value = url.orEmpty()
+                return !(
+                    value.startsWith("https://www.youtube.com/", ignoreCase = true) ||
+                        value.startsWith("https://m.youtube.com/", ignoreCase = true) ||
+                        value.startsWith("https://accounts.google.com/", ignoreCase = true)
+                    )
+            }
+
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                CookieManager.getInstance().flush()
+            }
+        }
+        youtubeWebPlayer = webView
+
+        page.addView(
+            webView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            ).apply { topMargin = dp(12) }
+        )
+
+        webView.loadUrl("https://m.youtube.com/watch?v=" + Uri.encode(video.videoId))
+
+        val webRoot = FrameLayout(this).apply {
+            setBackgroundColor(bg)
+            addView(
+                page,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
+        }
+
+        suppressNextContentAnimation = true
+        replaceRoot(webRoot)
+    }
+
+    private fun handleYouTubeNativeFailure(
+        video: YouTubeFeedVideo,
+        error: Throwable,
+        returnView: View?
+    ) {
+        when (error) {
+            is YouTubeAgeRestrictedException,
+            is YouTubeNetworkException -> showYouTubePlaybackError(video, error, returnView)
+
+            is YouTubeSignInRequiredException -> {
+                if (youtubeWebSessionConnected()) {
+                    openYouTubeWebPlayer(video, returnView)
+                } else {
+                    showYouTubePlaybackError(video, error, returnView)
+                }
+            }
+
+            else -> openYouTubeWebPlayer(video, returnView)
         }
     }
 
@@ -6777,6 +7072,31 @@ class MainActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
         )
+
+        if (error is YouTubeSignInRequiredException) {
+            message.addView(
+                TextView(this).apply {
+                    text = "Подключить YouTube"
+                    textSize = 14f
+                    gravity = Gravity.CENTER
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(Color.WHITE)
+                    background = roundedBg(purple, 15)
+                    isClickable = true
+                    isFocusable = true
+                    setOnClickListener {
+                        animatePress(this)
+                        showYouTubeAccountDialog {
+                            openYouTubeWebPlayer(video, returnView)
+                        }
+                    }
+                },
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dp(48)
+                ).apply { topMargin = dp(18) }
+            )
+        }
 
         playerCard.addView(
             message,
@@ -8769,7 +9089,7 @@ class MainActivity : AppCompatActivity() {
             setTextColor(this@MainActivity.text)
         }
         val subtitle = TextView(this).apply {
-            text = "Telegram и Twitch"
+            text = "Telegram, Twitch и YouTube"
             textSize = 13f
             setTextColor(muted)
             setPadding(0, dp(4), 0, dp(18))
@@ -9007,8 +9327,66 @@ class MainActivity : AppCompatActivity() {
 
         page.addView(twitchCard)
 
+        page.addView(TextView(this).apply {
+            text = "YouTube"
+            textSize = 15f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+            setPadding(dp(2), dp(20), 0, dp(10))
+        })
+
+        val youtubeConnected = youtubeWebSessionConnected()
+        val youtubeCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(18), dp(18), dp(18), dp(18))
+            background = roundedBg(panel, 24)
+        }
+
+        youtubeCard.addView(TextView(this).apply {
+            text = "YouTube"
+            textSize = 21f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+        })
+
+        youtubeCard.addView(TextView(this).apply {
+            text = if (youtubeConnected) {
+                "Сессия YouTube подключена"
+            } else {
+                "Подключите YouTube для роликов, которым нужен аккаунт"
+            }
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setTextColor(if (youtubeConnected) muted else palette.accent)
+            setPadding(dp(8), dp(5), dp(8), 0)
+        })
+
+        val youtubeAction = TextView(this).apply {
+            text = if (youtubeConnected) "Открыть YouTube" else "Подключить YouTube"
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            background = roundedBg(purple, 15)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                animatePress(this)
+                showYouTubeAccountDialog()
+            }
+        }
+        youtubeCard.addView(
+            youtubeAction,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply {
+                topMargin = dp(16)
+            }
+        )
+        page.addView(youtubeCard)
+
         val privacy = TextView(this).apply {
-            text = "Аккаунты используются только для работы соответствующих источников в SOHR."
+            text = "Аккаунты используются только для работы соответствующих источников. YouTube-сессия хранится системным WebView и не копируется в настройки SOHR."
             textSize = 12f
             setTextColor(muted)
             setPadding(dp(4), dp(12), dp(4), 0)
@@ -9032,6 +9410,8 @@ class MainActivity : AppCompatActivity() {
             telegramCard.translationY = dp(10).toFloat()
             twitchCard.alpha = 0f
             twitchCard.translationY = dp(12).toFloat()
+            youtubeCard.alpha = 0f
+            youtubeCard.translationY = dp(12).toFloat()
             telegramAvatar.scaleX = 0.88f
             telegramAvatar.scaleY = 0.88f
             twitchAvatar.scaleX = 0.88f
@@ -9067,6 +9447,13 @@ class MainActivity : AppCompatActivity() {
                     .scaleX(1f)
                     .scaleY(1f)
                     .setStartDelay(130L)
+                    .setDuration(270L)
+                    .setInterpolator(ease)
+                    .start()
+                youtubeCard.animate()
+                    .alpha(1f)
+                    .translationY(0f)
+                    .setStartDelay(145L)
                     .setDuration(270L)
                     .setInterpolator(ease)
                     .start()
@@ -10537,6 +10924,16 @@ class MainActivity : AppCompatActivity() {
         updateNotificationWatchJob = null
         twitchAuthJob?.cancel()
         twitchAuthJob = null
+        youtubeAccountDialog?.dismiss()
+        youtubeAccountDialog = null
+        youtubeWebPlayer?.let { webView ->
+            runCatching {
+                webView.stopLoading()
+                webView.loadUrl("about:blank")
+                webView.destroy()
+            }
+        }
+        youtubeWebPlayer = null
         streamServer?.stop()
         if (::client.isInitialized) client.close()
         super.onDestroy()
