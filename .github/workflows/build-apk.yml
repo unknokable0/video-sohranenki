@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.9.24 version
+      - name: Assign SOHR 6.9.25 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690024" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.24" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690025" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.25" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -809,7 +809,7 @@ jobs:
               "minOf(width, height).toFloat() / 184f"
           ]:
               if required not in morph_view:
-                  raise SystemExit(f"SOHR 6.9.24 opaque parametric morph regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.25 opaque parametric morph regression: {required}")
           for forbidden in [
               "Drawable",
               "ContextCompat.getDrawable",
@@ -1785,7 +1785,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.24 • onboarding-иконки больше не выглядят прозрачными: основные формы стали плотнее, контрастнее и заметно ярче на тёмном фоне • облако исправлено: четыре параметрические части теперь используют один общий градиент и визуально сливаются в цельную форму без видимых пересечений кругов • hero увеличен примерно на 20%, лишнее плавание уменьшено • календарь очищен от фоновой grid-геометрии, flame стал ярким и читаемым • cloud Play теперь тёмный как на утверждённом референсе, player Play остаётся светлым • software rendering удалён, тени сделаны аппаратно-дружелюбными для более стабильного FPS • GitHub очищается автоматически: старый test release удаляется, а в sohr-latest сохраняются только SOHR.apk, update.json и максимум три последних numbered APK"
+            "notes": "SOHR 6.9.25 • onboarding renderer разделён на exact final states и transition-only morph geometry • на остановленной странице рисуется только одна готовая иконка без ghost/morph-слоёв • Cloud теперь один цельный Path-силуэт без пересекающихся кругов • Feed получил чистые layered cards с непрозрачной передней карточкой и приглушённой глубиной • Player получил ровный rounded frame, clipped artwork с тремя слоями гор, центрированный Play и аккуратный timeline/thumb • Calendar состоит только из корпуса, header, двух одинаковых креплений и одного flame • Settings состоит только из панели, двух tracks и двух thumbs • endpoint guard 0.001 гарантирует exact start/target icon при завершении свайпа • остальной onboarding не изменён"
           }
           EOF
           cat update.json
