@@ -6605,7 +6605,7 @@ class MainActivity : AppCompatActivity() {
         fullScreen = false
         setFullscreen(false)
 
-        // Never replace SOHR playback with YouTube's embedded WebView player.
+        // Never replace SOHR playback with YouTube's embedded player.
         // Available videos stay on the native Media3 PlayerScreen. When YouTube
         // refuses to expose a playable stream, keep the user inside the same
         // SOHR visual language and explain the failure without external buttons.
