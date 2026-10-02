@@ -1032,8 +1032,11 @@ jobs:
           ]:
               if required not in youtube_resolver:
                   raise SystemExit(f"SOHR 6.8.2 MWEB playback regression: {required}")
-          if 'put("clientName", "WEB")' in youtube_resolver:
-              raise SystemExit("SOHR 6.8.2 regression: direct fallback returned to SABR-only WEB client")
+          mweb_request_section = youtube_resolver.split(
+              "private fun requestMwebPlayer(", 1
+          )[1].split("\n    private fun ", 1)[0]
+          if 'put("clientName", "WEB")' in mweb_request_section:
+              raise SystemExit("SOHR 6.8.3 regression: MWEB fallback returned to plain WEB client")
           if youtube_resolver.count("isAgeRestrictedStatus(status, detail)") < 2:
               raise SystemExit("SOHR 6.8.2 regression: age gate is not checked before and after MWEB retry")
 
