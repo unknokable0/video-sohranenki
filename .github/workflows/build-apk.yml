@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.9.30 version
+      - name: Assign SOHR 6.9.31 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690030" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.30" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690031" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.31" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -809,17 +809,21 @@ jobs:
               "if (t <= 0f) return a",
               "if (t >= 1f) return b",
               "mixPoints(",
-              "drawShape(",
+              "drawPrimaryShape(",
+              "drawDepthShape(",
+              "drawBrightBox(",
               "drawArtwork(",
               "drawTimeline(",
               "drawGlyph(",
               "roundedTrianglePoints(",
               "flamePoints(",
               "smoothClosedPath(",
+              "PointF(82f, 42f)",
+              "PointF(80f, 119f)",
               "minOf(width, height).toFloat() / 112f"
           ]:
               if required not in morph_view:
-                  raise SystemExit(f"SOHR 6.9.30 unified onboarding-state regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.31 unified onboarding-state regression: {required}")
           for forbidden in [
               "Drawable",
               "ContextCompat.getDrawable",
@@ -846,7 +850,7 @@ jobs:
               "LAYER_TYPE_SOFTWARE"
           ]:
               if forbidden in morph_view:
-                  raise SystemExit(f"SOHR 6.9.30 duplicate/final-snap renderer returned: {forbidden}")
+                  raise SystemExit(f"SOHR 6.9.31 duplicate/final-snap renderer returned: {forbidden}")
           for forbidden in [
               "ambientAnimators",
               "startAmbientMotion(",
@@ -858,7 +862,7 @@ jobs:
               "morphView.animate()\n                    .alpha(1f)"
           ]:
               if forbidden in onboarding:
-                  raise SystemExit(f"SOHR 6.9.30 dimmed icon-view regression: {forbidden}")
+                  raise SystemExit(f"SOHR 6.9.31 dimmed icon-view regression: {forbidden}")
 
           for required in [
               "private var telegramLogoutInProgress = false",
@@ -1814,7 +1818,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.30 • onboarding renderer очищен от glass/translucent стиля: основные Cloud/Feed/Player/Calendar/Settings поверхности теперь плотные opaque premium gradients без полупрозрачного стекла и ghost-слоёв • depth cards Feed/Player стали полноценными тёмными непрозрачными слоями вместо прозрачных призраков • Cloud получил более ровный симметричный silhouette и более заметный тёмный Play • Player artwork стал ярче, pink/lavender sky и mountains контрастнее • Calendar flame увеличен и сделан плотным, Settings tracks/thumbs стали яркими и непрозрачными • canonical state/interpolate/render архитектура сохранена, поэтому post-morph snap не возвращается • остальной onboarding UI не изменён"
+            "notes": "SOHR 6.9.31 • onboarding-иконки переделаны с приоритетом на ровную статичную геометрию: Cloud получил новый симметричный 16-точечный контур, а rounded panels переведены на ту же 16-точечную топологию для чистого morph • renderer разделён по визуальным ролям: primary body, depth layers и bright controls теперь рисуются разными непрозрачными стилями вместо одного универсального тёмного градиента • основные корпуса стали светлее и насыщеннее, depth cards остаются тёмными, но не прозрачными, sliders/bindings/text lines/thumbs стали яркими lavender-purple • Calendar и Settings больше не используют ту же грязную окраску, что основной body • canonical state/interpolate/render архитектура сохранена без post-morph snap • остальной onboarding UI не изменён"
           }
           EOF
           cat update.json
