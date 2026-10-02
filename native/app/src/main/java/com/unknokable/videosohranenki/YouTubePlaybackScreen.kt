@@ -251,7 +251,7 @@ class YouTubePlaybackScreen(
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
-            mediaPlaybackRequiresUserGesture = true
+            mediaPlaybackRequiresUserGesture = false
             useWideViewPort = true
             loadWithOverviewMode = true
             cacheMode = WebSettings.LOAD_DEFAULT
@@ -264,7 +264,7 @@ class YouTubePlaybackScreen(
                     gestureDownX = event.x
                     gestureDownY = event.y
                     gestureConsumed = false
-                    // Own the entire gesture stream so the embedded Twitch page
+                    // Own the entire gesture stream so the embedded playback page
                     // never receives a drag that could change the playback time.
                     return@setOnTouchListener true
                 }
@@ -686,7 +686,7 @@ class YouTubePlaybackScreen(
     private fun buildDetails(): LinearLayout = LinearLayout(activity).apply {
         orientation = LinearLayout.VERTICAL
         addView(TextView(activity).apply {
-            text = item.title.ifBlank { item.title.ifBlank { "YouTube" } }
+            text = item.title.ifBlank { "YouTube" }
             textSize = 18f
             maxLines = 2
             ellipsize = android.text.TextUtils.TruncateAt.END
