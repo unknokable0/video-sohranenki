@@ -3093,9 +3093,35 @@ class MainActivity : AppCompatActivity() {
             params.width = slot.toInt()
             params.height = dp(40)
             tabIndicator.layoutParams = params
+
             val target = slot * (videoSection - 1)
             if (sectionTransitionDirection != 0 && settings.animations) {
-                val previousSection = (videoSection - sectionTransitionDirection).coerceIn(1, 3)
+                val previousSection =
+                    (videoSection - sectionTransitionDirection).coerceIn(1, 3)
+
+                val previousLabel =
+                    tabs.findViewWithTag<TextView>("sohr_video_section_label_$previousSection")
+                val targetLabel =
+                    tabs.findViewWithTag<TextView>("sohr_video_section_label_$videoSection")
+
+                previousLabel?.setTextColor(Color.WHITE)
+                targetLabel?.setTextColor(muted)
+
+                val colorAnimator = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+                    duration = SohrMotion.NORMAL
+                    interpolator = SohrMotion.smooth()
+                    addUpdateListener { animator ->
+                        val progress = animator.animatedValue as Float
+                        val evaluator = android.animation.ArgbEvaluator()
+                        previousLabel?.setTextColor(
+                            evaluator.evaluate(progress, Color.WHITE, muted) as Int
+                        )
+                        targetLabel?.setTextColor(
+                            evaluator.evaluate(progress, muted, Color.WHITE) as Int
+                        )
+                    }
+                }
+
                 tabIndicator.translationX = slot * (previousSection - 1)
                 tabIndicator.animate().cancel()
                 tabIndicator.animate()
@@ -3103,6 +3129,7 @@ class MainActivity : AppCompatActivity() {
                     .setDuration(SohrMotion.NORMAL)
                     .setInterpolator(SohrMotion.smooth())
                     .start()
+                colorAnimator.start()
             } else {
                 tabIndicator.translationX = target
             }
@@ -6448,6 +6475,66 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun stabilizeYouTubeSnapshot(
+        incoming: YouTubeFeedSnapshot
+    ): YouTubeFeedSnapshot {
+        val previousChannelsByHandle =
+            youtubeChannels.associateBy { it.handle.lowercase(Locale.ROOT) }
+        val previousVideosById =
+            youtubeFeedVideos.associateBy { it.videoId }
+
+        fun stabilizeVideo(video: YouTubeFeedVideo): YouTubeFeedVideo {
+            val previous = previousVideosById[video.videoId]
+            return video.copy(
+                title = video.title.ifBlank { previous?.title.orEmpty() },
+                description = video.description.ifBlank { previous?.description.orEmpty() },
+                thumbnailUrl = video.thumbnailUrl.ifBlank { previous?.thumbnailUrl.orEmpty() },
+                channelTitle = video.channelTitle.ifBlank { previous?.channelTitle.orEmpty() },
+                handle = video.handle.ifBlank { previous?.handle.orEmpty() },
+                durationSeconds =
+                    if (video.durationSeconds > 0) {
+                        video.durationSeconds
+                    } else {
+                        previous?.durationSeconds ?: 0
+                    }
+            )
+        }
+
+        val refreshedChannels = incoming.channels.map { channel ->
+            val previous = previousChannelsByHandle[channel.handle.lowercase(Locale.ROOT)]
+            channel.copy(
+                title = channel.title.ifBlank { previous?.title.orEmpty() },
+                avatarUrl = channel.avatarUrl.ifBlank { previous?.avatarUrl.orEmpty() },
+                videos = channel.videos.map(::stabilizeVideo)
+            )
+        }
+
+        val refreshedHandles =
+            refreshedChannels.mapTo(linkedSetOf()) { it.handle.lowercase(Locale.ROOT) }
+
+        // A single failed source must never blank a channel/card that was already
+        // visible. Keep the previous channel until that source returns valid data.
+        val preservedChannels =
+            youtubeChannels.filterNot {
+                refreshedHandles.contains(it.handle.lowercase(Locale.ROOT))
+            }
+
+        val mergedChannels = refreshedChannels + preservedChannels
+        val mergedVideos = buildList {
+            mergedChannels.forEach { channel ->
+                channel.videos.forEach { add(stabilizeVideo(it)) }
+            }
+            incoming.videos.forEach { add(stabilizeVideo(it)) }
+        }
+            .distinctBy { it.videoId }
+            .sortedByDescending { it.publishedAt }
+
+        return YouTubeFeedSnapshot(
+            channels = mergedChannels,
+            videos = mergedVideos
+        )
+    }
+
     private fun loadYouTubeFeed(
         force: Boolean = false,
         quiet: Boolean = false
@@ -6477,7 +6564,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         youtubeFeedJob = lifecycleScope.launch {
-            val snapshot = try {
+            val rawSnapshot = try {
                 kotlinx.coroutines.withTimeout(10_000L) {
                     withContext(Dispatchers.IO) { YouTubeFeedRepository.loadAll() }
                 }
@@ -6488,6 +6575,9 @@ class MainActivity : AppCompatActivity() {
                 youtubeFeedJob = null
                 lastYoutubeFeedRefreshAt = System.currentTimeMillis()
             }
+
+            val snapshot =
+                if (hadContent) stabilizeYouTubeSnapshot(rawSnapshot) else rawSnapshot
 
             val changed =
                 snapshot.channels != youtubeChannels ||
@@ -6515,14 +6605,17 @@ class MainActivity : AppCompatActivity() {
                 youtubeDurationEnrichJob?.isActive != true
             ) {
                 youtubeDurationEnrichJob = lifecycleScope.launch {
-                    val enriched = runCatching {
+                    val enrichedRaw = runCatching {
                         kotlinx.coroutines.withTimeout(22_000L) {
                             YouTubeFeedRepository.enrichSnapshotDurations(snapshot)
                         }
                     }.getOrNull()
 
                     youtubeDurationEnrichJob = null
-                    if (enriched == null || enriched == snapshot) return@launch
+                    if (enrichedRaw == null) return@launch
+
+                    val enriched = stabilizeYouTubeSnapshot(enrichedRaw)
+                    if (enriched == snapshot) return@launch
 
                     val durationChanged = enriched.videos != youtubeFeedVideos
                     youtubeChannels = enriched.channels
@@ -6616,9 +6709,11 @@ class MainActivity : AppCompatActivity() {
                 if (
                     firstError is YouTubeNetworkException ||
                     firstError is YouTubeUnavailableException ||
-                    firstError is YouTubeSessionInitException
+                    firstError is YouTubeSessionInitException ||
+                    firstError is YouTubeSignInRequiredException
                 ) {
-                    delay(320L)
+                    runCatching { YouTubeNativeResolver.resetPlaybackSession() }
+                    delay(220L)
                     runCatching {
                         YouTubeNativeResolver.resolve(video)
                     }.getOrElse { retryError ->
@@ -6923,20 +7018,9 @@ class MainActivity : AppCompatActivity() {
         error: Throwable,
         returnView: View?
     ) {
-        when (error) {
-            is YouTubeAgeRestrictedException,
-            is YouTubeNetworkException ->
-                showYouTubePlaybackError(video, error, returnView)
-
-            is YouTubeSignInRequiredException ->
-                // Never throw the user into YouTube/Chrome from a video tap.
-                // Keep the fallback inside SOHR. YouTube itself still decides
-                // whether the watch page can play without an age/account gate.
-                openYouTubeWebPlayer(video, returnView)
-
-            else ->
-                openYouTubeWebPlayer(video, returnView)
-        }
+        // Keep one visual playback path. A failed native resolve must never be
+        // replaced automatically by the full YouTube watch page.
+        showYouTubePlaybackError(video, error, returnView)
     }
 
     private fun showYouTubePlaybackError(
@@ -9359,7 +9443,7 @@ class MainActivity : AppCompatActivity() {
 
         val youtubeAvatarFrame = FrameLayout(this).apply {
             background = roundedBg(
-                if (youtubeConnected) Color.parseColor("#FF0033") else palette.accentSoft,
+                if (youtubeConnected) palette.accentSoft else palette.surfaceAlt,
                 46
             )
             setPadding(dp(3), dp(3), dp(3), dp(3))
@@ -9379,7 +9463,7 @@ class MainActivity : AppCompatActivity() {
             setTextColor(Color.WHITE)
             includeFontPadding = false
             background = roundedBg(
-                if (youtubeConnected) palette.surfaceAlt else panel,
+                if (youtubeConnected) purple else panel,
                 42
             )
         }
@@ -9390,6 +9474,24 @@ class MainActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         )
+
+        val youtubeBadge = TextView(this).apply {
+            text = "▶"
+            textSize = 10f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            includeFontPadding = false
+            background = roundedBg(Color.parseColor("#FF0033"), 12)
+        }
+        youtubeAvatarFrame.addView(
+            youtubeBadge,
+            FrameLayout.LayoutParams(dp(26), dp(26), Gravity.END or Gravity.BOTTOM).apply {
+                marginEnd = dp(1)
+                bottomMargin = dp(1)
+            }
+        )
+
         youtubeCard.addView(youtubeAvatarFrame, LinearLayout.LayoutParams(dp(92), dp(92)))
 
         youtubeCard.addView(TextView(this).apply {
@@ -9447,7 +9549,7 @@ class MainActivity : AppCompatActivity() {
         page.addView(youtubeCard)
 
         val privacy = TextView(this).apply {
-            text = "SOHR не видит пароль Google. Выбранный аккаунт используется только как настройка YouTube в приложении; обычные доступные ролики открываются внутри SOHR."
+            text = "SOHR не видит пароль Google и не импортирует cookies браузера. Выбранный аккаунт показывается в профиле YouTube; доступные прямые потоки открываются в нативном плеере SOHR."
             textSize = 12f
             setTextColor(muted)
             setPadding(dp(4), dp(12), dp(4), 0)
@@ -9653,6 +9755,7 @@ class MainActivity : AppCompatActivity() {
         suppressNextContentAnimation = false
         val animateContent = settings.animations && !skipContentAnimation && old != null && old !== content
         val sectionCrossfade = pendingVideoSectionCrossfade
+        val sectionDirection = pendingVideoSectionDirection
         pendingVideoSectionCrossfade = false
         pendingVideoSectionDirection = 0
         content.alpha = 1f
@@ -9680,49 +9783,43 @@ class MainActivity : AppCompatActivity() {
 
                 val telegramInterpolator = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
                 if (sectionCrossfade) {
-                    // Keep the top SOHR/header/tabs visually stable. Only the section-specific
-                    // content below the tabs gets a lightweight entrance animation.
+                    // Never animate two complete feed screens on top of each other.
+                    // Remove the old shell immediately; only the new section body moves.
+                    old.animate().cancel()
+                    old.alpha = 1f
+                    old.translationX = 0f
+                    old.translationY = 0f
+                    old.setLayerType(View.LAYER_TYPE_NONE, null)
+                    if (old.parent === host) host.removeView(old)
+
                     content.alpha = 1f
                     content.translationX = 0f
                     content.translationY = 0f
                     content.scaleX = 1f
                     content.scaleY = 1f
-                    old.alpha = 1f
-                    old.translationX = 0f
-                    old.translationY = 0f
+                    content.setLayerType(View.LAYER_TYPE_NONE, null)
 
                     val sectionBody = content.findViewWithTag<View>("sohr_video_section_content")
                     if (sectionBody != null) {
+                        val direction =
+                            if (sectionDirection >= 0) 1f else -1f
+
                         sectionBody.animate().cancel()
-                        sectionBody.alpha = 0f
-                        sectionBody.translationY = dp(7).toFloat()
-                        sectionBody.scaleX = 0.996f
-                        sectionBody.scaleY = 0.996f
+                        sectionBody.alpha = 0.94f
+                        sectionBody.translationX = dp(10).toFloat() * direction
+                        sectionBody.translationY = 0f
+                        sectionBody.scaleX = 1f
+                        sectionBody.scaleY = 1f
                         sectionBody.animate()
                             .alpha(1f)
-                            .translationY(0f)
-                            .scaleX(1f)
-                            .scaleY(1f)
-                            .setDuration(220L)
+                            .translationX(0f)
+                            .setDuration(SohrMotion.NORMAL)
                             .setInterpolator(SohrMotion.smooth())
                             .withEndAction {
-                                old.animate().cancel()
-                                old.alpha = 1f
-                                old.translationX = 0f
-                                old.translationY = 0f
                                 sectionBody.alpha = 1f
-                                sectionBody.translationY = 0f
-                                sectionBody.scaleX = 1f
-                                sectionBody.scaleY = 1f
-                                old.setLayerType(View.LAYER_TYPE_NONE, null)
-                                content.setLayerType(View.LAYER_TYPE_NONE, null)
-                                if (old.parent === host) host.removeView(old)
+                                sectionBody.translationX = 0f
                             }
                             .start()
-                    } else {
-                        old.setLayerType(View.LAYER_TYPE_NONE, null)
-                        content.setLayerType(View.LAYER_TYPE_NONE, null)
-                        if (old.parent === host) host.removeView(old)
                     }
                 } else if (primaryTabTransition) {
                     val direction = if (slide >= 0) 1f else -1f
