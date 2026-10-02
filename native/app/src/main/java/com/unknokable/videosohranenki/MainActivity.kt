@@ -3093,9 +3093,35 @@ class MainActivity : AppCompatActivity() {
             params.width = slot.toInt()
             params.height = dp(40)
             tabIndicator.layoutParams = params
+
             val target = slot * (videoSection - 1)
             if (sectionTransitionDirection != 0 && settings.animations) {
-                val previousSection = (videoSection - sectionTransitionDirection).coerceIn(1, 3)
+                val previousSection =
+                    (videoSection - sectionTransitionDirection).coerceIn(1, 3)
+
+                val previousLabel =
+                    tabs.findViewWithTag<TextView>("sohr_video_section_label_$previousSection")
+                val targetLabel =
+                    tabs.findViewWithTag<TextView>("sohr_video_section_label_$videoSection")
+
+                previousLabel?.setTextColor(Color.WHITE)
+                targetLabel?.setTextColor(muted)
+
+                val colorAnimator = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+                    duration = SohrMotion.NORMAL
+                    interpolator = SohrMotion.smooth()
+                    addUpdateListener { animator ->
+                        val progress = animator.animatedValue as Float
+                        val evaluator = android.animation.ArgbEvaluator()
+                        previousLabel?.setTextColor(
+                            evaluator.evaluate(progress, Color.WHITE, muted) as Int
+                        )
+                        targetLabel?.setTextColor(
+                            evaluator.evaluate(progress, muted, Color.WHITE) as Int
+                        )
+                    }
+                }
+
                 tabIndicator.translationX = slot * (previousSection - 1)
                 tabIndicator.animate().cancel()
                 tabIndicator.animate()
@@ -3103,6 +3129,7 @@ class MainActivity : AppCompatActivity() {
                     .setDuration(SohrMotion.NORMAL)
                     .setInterpolator(SohrMotion.smooth())
                     .start()
+                colorAnimator.start()
             } else {
                 tabIndicator.translationX = target
             }
@@ -9737,49 +9764,43 @@ class MainActivity : AppCompatActivity() {
 
                 val telegramInterpolator = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
                 if (sectionCrossfade) {
-                    // Keep the top SOHR/header/tabs visually stable. Only the section-specific
-                    // content below the tabs gets a lightweight entrance animation.
+                    // Never animate two complete feed screens on top of each other.
+                    // Remove the old shell immediately; only the new section body moves.
+                    old.animate().cancel()
+                    old.alpha = 1f
+                    old.translationX = 0f
+                    old.translationY = 0f
+                    old.setLayerType(View.LAYER_TYPE_NONE, null)
+                    if (old.parent === host) host.removeView(old)
+
                     content.alpha = 1f
                     content.translationX = 0f
                     content.translationY = 0f
                     content.scaleX = 1f
                     content.scaleY = 1f
-                    old.alpha = 1f
-                    old.translationX = 0f
-                    old.translationY = 0f
+                    content.setLayerType(View.LAYER_TYPE_NONE, null)
 
                     val sectionBody = content.findViewWithTag<View>("sohr_video_section_content")
                     if (sectionBody != null) {
+                        val direction =
+                            if (sectionTransitionDirection >= 0) 1f else -1f
+
                         sectionBody.animate().cancel()
-                        sectionBody.alpha = 0f
-                        sectionBody.translationY = dp(7).toFloat()
-                        sectionBody.scaleX = 0.996f
-                        sectionBody.scaleY = 0.996f
+                        sectionBody.alpha = 0.94f
+                        sectionBody.translationX = dp(10).toFloat() * direction
+                        sectionBody.translationY = 0f
+                        sectionBody.scaleX = 1f
+                        sectionBody.scaleY = 1f
                         sectionBody.animate()
                             .alpha(1f)
-                            .translationY(0f)
-                            .scaleX(1f)
-                            .scaleY(1f)
-                            .setDuration(220L)
+                            .translationX(0f)
+                            .setDuration(SohrMotion.NORMAL)
                             .setInterpolator(SohrMotion.smooth())
                             .withEndAction {
-                                old.animate().cancel()
-                                old.alpha = 1f
-                                old.translationX = 0f
-                                old.translationY = 0f
                                 sectionBody.alpha = 1f
-                                sectionBody.translationY = 0f
-                                sectionBody.scaleX = 1f
-                                sectionBody.scaleY = 1f
-                                old.setLayerType(View.LAYER_TYPE_NONE, null)
-                                content.setLayerType(View.LAYER_TYPE_NONE, null)
-                                if (old.parent === host) host.removeView(old)
+                                sectionBody.translationX = 0f
                             }
                             .start()
-                    } else {
-                        old.setLayerType(View.LAYER_TYPE_NONE, null)
-                        content.setLayerType(View.LAYER_TYPE_NONE, null)
-                        if (old.parent === host) host.removeView(old)
                     }
                 } else if (primaryTabTransition) {
                     val direction = if (slide >= 0) 1f else -1f
