@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.9.22 version
+      - name: Assign SOHR 6.9.23 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690022" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.22" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690023" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.23" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -787,25 +787,31 @@ jobs:
               "SohrThemeTransition.reveal("
           ]:
               if required not in onboarding:
-                  raise SystemExit(f"SOHR 6.9.22 exact-style onboarding regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.23 single-canvas onboarding regression: {required}")
           for required in [
               "class SohrIntroMorphView",
-              "R.drawable.ill_intro_cloud_morph",
-              "R.drawable.ill_intro_feed_morph",
-              "R.drawable.ill_intro_watch_morph",
-              "R.drawable.ill_intro_streak_morph",
-              "R.drawable.ill_intro_tune_morph",
-              "drawTransition(",
-              "drawMorphCore(",
-              "drawTransformedIcon(",
-              "COLLAPSE_END = 0.44f",
-              "EXPAND_START = 0.56f",
+              "private data class Part(",
+              "private val backOne = arrayOf(",
+              "private val mainShell = arrayOf(",
+              "private val primaryGlyph = arrayOf(",
+              "drawGlassPart(",
+              "interpolatePoints(",
+              "referenceEase(",
+              "SCENE_SIZE = 200f",
               "setPageProgress(",
-              "ValueAnimator.ofFloat(0f, 1f)",
-              "smooth(raw)"
+              "ValueAnimator.ofFloat(0f, 1f)"
           ]:
               if required not in morph_view:
-                  raise SystemExit(f"SOHR 6.9.22 two-phase morph regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.23 geometry morph regression: {required}")
+          for forbidden in [
+              "android.graphics.drawable.Drawable",
+              "R.drawable.ill_intro_",
+              "ContextCompat.getDrawable",
+              "drawMorphCore(",
+              "drawTransformedIcon("
+          ]:
+              if forbidden in morph_view:
+                  raise SystemExit(f"SOHR 6.9.23 rendered-icon swap returned: {forbidden}")
           for forbidden in [
               "ambientAnimators",
               "startAmbientMotion(",
@@ -1769,7 +1775,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.22 • onboarding-иконки перерисованы в точном стиле последних утверждённых макетов: мягкие голубо-фиолетовые градиенты, светлые детали, одинаковый визуальный размер и фиксированный центр; облако с play, стопка карточек ленты, мини-плеер, календарь с читаемым пламенем и блок с тремя ползунками • устранено главное наложение перехода: готовая старая и готовая новая иконка больше никогда не рисуются в одном кадре • morph теперь двухфазный: старая форма схлопывается, в центральной зоне остаётся одна промежуточная градиентная форма, затем из неё раскрывается новая иконка • swipe и кнопка «Дальше» используют один и тот же progress, поэтому переход одинаковый в обе стороны и без второго старого эффекта"
+            "notes": "SOHR 6.9.23 • onboarding полностью переведён на одну Canvas-сцену без PNG, drawable-подмены и crossfade: Cloud → Feed → Player → Streak → Settings используют общие оболочки, линии, Path-контуры и ползунки в единой системе координат • каждое движение пальца напрямую деформирует текущую геометрию, а обратный свайп проходит тем же путём назад • сохранены фиксированный центр и визуальный размер, мягкие фиолетово-лавандровые glass-градиенты, аккуратная глубина и читаемые детали пяти утверждённых иконок • устранены пустая промежуточная полоска, наложение готовых иконок, flicker и обрезка при быстрых переходах"
           }
           EOF
           cat update.json
