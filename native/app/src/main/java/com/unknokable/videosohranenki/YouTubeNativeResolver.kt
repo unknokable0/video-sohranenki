@@ -126,6 +126,21 @@ object YouTubeNativeResolver {
         }
     }
 
+    suspend fun resetPlaybackSession() {
+        withContext(Dispatchers.IO) {
+            synchronized(bootstrapLock) {
+                cachedBootstrap = null
+            }
+            poTokenLock.withLock {
+                poTokenWebView?.close()
+                poTokenWebView = null
+                poTokenSessionId = null
+                poTokenSessionPot = null
+            }
+            runCatching { CipherDeobfuscator.onStreamRejected() }
+        }
+    }
+
     suspend fun resolve(video: YouTubeFeedVideo): YouTubeNativeSource =
         withContext(Dispatchers.IO) {
             ensureNewPipeInitialized()
