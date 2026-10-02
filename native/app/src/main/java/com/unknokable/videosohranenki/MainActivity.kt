@@ -1093,19 +1093,23 @@ class MainActivity : AppCompatActivity() {
         startupStatusView = null
         val phoneUtil = PhoneNumberUtil.getInstance()
 
-        // Start neutrally. Country is chosen explicitly or the calling code can be typed.
-        var selected = PhoneCountry(region = "ZZ", name = "", dialCode = 0, flag = "")
+        var selected = PhoneCountry(
+            region = "ZZ",
+            name = "",
+            dialCode = 0,
+            flag = ""
+        )
 
         val container = NestedScrollView(this).apply {
             isFillViewport = true
-            setBackgroundColor(bg)
             overScrollMode = View.OVER_SCROLL_NEVER
+            setBackgroundColor(bg)
         }
 
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(22), dp(16), dp(22), dp(26))
+            setPadding(dp(24), dp(16), dp(24), dp(24))
         }
         container.addView(
             content,
@@ -1115,35 +1119,23 @@ class MainActivity : AppCompatActivity() {
             )
         )
 
-        val topRow = LinearLayout(this).apply {
+        val top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
 
-        val languageButton = TextView(this).apply {
-            text = AppLanguages.byCode(settings.languageCode).shortLabel
-            textSize = 13f
-            gravity = Gravity.CENTER
+        val brand = TextView(this).apply {
+            text = "SOHR"
+            textSize = 18f
+            includeFontPadding = false
+            gravity = Gravity.CENTER_VERTICAL
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(this@MainActivity.text)
-            background = roundedBg(palette.surfaceAlt, 14)
-            setOnClickListener {
-                animatePress(this)
-                ModernDialogs.showChoices(
-                    context = this@MainActivity,
-                    palette = palette,
-                    title = t("choose_language"),
-                    options = AppLanguages.all.map { it.label },
-                    selected = AppLanguages.all.indexOfFirst {
-                        it.code == settings.languageCode
-                    }.coerceAtLeast(0)
-                ) { which ->
-                    settings.languageCode = AppLanguages.all[which].code
-                    suppressNextRootAnimation = true
-                    renderPhoneLogin(regions)
-                }
-            }
         }
+        top.addView(
+            brand,
+            LinearLayout.LayoutParams(0, dp(42), 1f)
+        )
 
         val themeButton = ImageView(this).apply {
             setImageResource(
@@ -1153,7 +1145,7 @@ class MainActivity : AppCompatActivity() {
             imageTintList = ColorStateList.valueOf(this@MainActivity.text)
             background = roundedBg(palette.surfaceAlt, 14)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(11), dp(11), dp(11), dp(11))
+            setPadding(dp(10), dp(10), dp(10), dp(10))
             contentDescription = "Сменить тему"
             setOnClickListener {
                 animatePress(this)
@@ -1168,81 +1160,97 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-
-        topRow.addView(
-            TextView(this).apply {
-                text = "SOHR"
-                textSize = 18f
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(this@MainActivity.text)
-                includeFontPadding = false
-                gravity = Gravity.CENTER_VERTICAL
-            },
-            LinearLayout.LayoutParams(0, dp(44), 1f)
-        )
-        topRow.addView(
+        top.addView(
             themeButton,
-            LinearLayout.LayoutParams(dp(44), dp(44)).apply {
+            LinearLayout.LayoutParams(dp(42), dp(42)).apply {
                 marginEnd = dp(8)
             }
         )
-        topRow.addView(
+
+        val languageButton = TextView(this).apply {
+            text = AppLanguages.byCode(settings.languageCode).shortLabel
+            textSize = 13f
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+            background = roundedBg(palette.surfaceAlt, 14)
+            setOnClickListener {
+                animatePress(this)
+                ModernDialogs.showChoices(
+                    context = this@MainActivity,
+                    palette = palette,
+                    title = t("choose_language"),
+                    options = AppLanguages.all.map { it.label },
+                    selected = AppLanguages.all.indexOfFirst {
+                        it.code == settings.languageCode
+                    }.coerceAtLeast(0)
+                ) { which ->
+                    settings.languageCode =
+                        AppLanguages.all[which].code
+                    suppressNextRootAnimation = true
+                    renderPhoneLogin(regions)
+                }
+            }
+        }
+        top.addView(
             languageButton,
-            LinearLayout.LayoutParams(dp(58), dp(44))
+            LinearLayout.LayoutParams(dp(56), dp(42))
         )
         content.addView(
-            topRow,
+            top,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(44)
+                dp(42)
             )
         )
 
-        val artwork = SohrLoginArtworkView(this).apply {
-            setPalette(palette)
+        val telegramIcon = ImageView(this).apply {
+            setImageResource(R.drawable.ic_auth_telegram_code)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            contentDescription = "Telegram"
         }
         content.addView(
-            artwork,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(176)
-            ).apply {
-                topMargin = dp(18)
+            telegramIcon,
+            LinearLayout.LayoutParams(dp(82), dp(82)).apply {
+                topMargin = dp(28)
             }
         )
 
         val title = TextView(this).apply {
-            text = "Вход в SOHR"
-            textSize = 27f
+            text = "Вход через Telegram"
+            textSize = 26f
             gravity = Gravity.CENTER
-            setTextColor(this@MainActivity.text)
-            setTypeface(typeface, Typeface.BOLD)
             includeFontPadding = false
-            setPadding(dp(8), dp(8), dp(8), 0)
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+            setPadding(dp(8), dp(16), dp(8), 0)
         }
         content.addView(title)
 
         val subtitle = TextView(this).apply {
-            text = "Telegram нужен только для входа и синхронизации сохранённых видео."
-            textSize = 13.7f
+            text = "Номер нужен для входа и синхронизации сохранённых видео."
+            textSize = 13.8f
             gravity = Gravity.CENTER
-            setTextColor(muted)
-            setLineSpacing(0f, 1.08f)
             includeFontPadding = false
-            setPadding(dp(16), dp(8), dp(16), dp(20))
+            setLineSpacing(0f, 1.06f)
+            setTextColor(muted)
+            setPadding(dp(18), dp(8), dp(18), dp(24))
         }
         content.addView(subtitle)
 
-        val countryLabel = TextView(this).apply {
-            text = "Страна"
-            textSize = 11.5f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(muted)
-            includeFontPadding = false
-            setPadding(dp(4), 0, 0, dp(7))
-        }
+        fun fieldLabel(label: String): TextView =
+            TextView(this).apply {
+                text = label
+                textSize = 11.5f
+                includeFontPadding = false
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(muted)
+                setPadding(dp(3), 0, 0, dp(7))
+            }
+
         content.addView(
-            countryLabel,
+            fieldLabel("Страна"),
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -1250,7 +1258,9 @@ class MainActivity : AppCompatActivity() {
         )
 
         val country = TextView(this).apply {
+            text = "Выбрать страну                                  ›"
             textSize = 15f
+            includeFontPadding = false
             gravity = Gravity.CENTER_VERTICAL
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(this@MainActivity.text)
@@ -1267,162 +1277,118 @@ class MainActivity : AppCompatActivity() {
             )
         )
 
-        val phoneLabel = TextView(this).apply {
-            text = "Телефон"
-            textSize = 11.5f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(muted)
-            includeFontPadding = false
-            setPadding(dp(4), dp(14), 0, dp(7))
-        }
         content.addView(
-            phoneLabel,
+            fieldLabel("Телефон"),
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-            )
+            ).apply {
+                topMargin = dp(14)
+            }
         )
 
         var prefixUpdating = false
+        var formatting = false
+        var formatter = phoneUtil.getAsYouTypeFormatter("ZZ")
 
-        val prefixBox = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(7), dp(10), dp(5))
-            background = roundedBg(palette.surfaceAlt, 17)
-        }
-        val prefixCaption = TextView(this).apply {
-            text = "Код страны"
-            textSize = 10.5f
-            setTextColor(muted)
-            includeFontPadding = false
-        }
-        val prefix = EditText(this).apply {
-            hint = "+48"
-            textSize = 17f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(this@MainActivity.text)
-            setHintTextColor(androidx.core.graphics.ColorUtils.setAlphaComponent(muted, 185))
-            setPadding(0, 0, 0, 0)
-            inputType = InputType.TYPE_CLASS_PHONE
-            setSingleLine(true)
-            gravity = Gravity.CENTER_VERTICAL
-            background = null
-        }
-        prefixBox.addView(prefixCaption)
-        prefixBox.addView(
-            prefix,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            )
-        )
-
-        val numberBox = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(7), dp(10), dp(5))
-            background = roundedBg(palette.surfaceAlt, 17)
-        }
-        val numberCaption = TextView(this).apply {
-            text = "Номер телефона"
-            textSize = 10.5f
-            setTextColor(muted)
-            includeFontPadding = false
-        }
-        val input = EditText(this).apply {
-            hint = "123 456 789"
-            textSize = 17f
-            inputType = InputType.TYPE_CLASS_PHONE
-            setTextColor(this@MainActivity.text)
-            setHintTextColor(androidx.core.graphics.ColorUtils.setAlphaComponent(muted, 185))
-            setPadding(0, 0, 0, 0)
-            setSingleLine(true)
-            background = null
-        }
-        numberBox.addView(numberCaption)
-        numberBox.addView(
-            input,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            )
-        )
-
-        val phoneRow = LinearLayout(this).apply {
+        val phoneField = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(13), 0, dp(13), 0)
+            background = roundedBg(palette.surfaceAlt, 17)
         }
-        phoneRow.addView(
-            prefixBox,
-            LinearLayout.LayoutParams(dp(112), dp(62))
+
+        val prefix = EditText(this).apply {
+            hint = "+48"
+            textSize = 16.5f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+            setHintTextColor(
+                androidx.core.graphics.ColorUtils.setAlphaComponent(
+                    muted,
+                    170
+                )
+            )
+            setPadding(0, 0, 0, 0)
+            inputType = InputType.TYPE_CLASS_PHONE
+            setSingleLine(true)
+            gravity = Gravity.CENTER_VERTICAL
+            background = null
+            contentDescription = "Код страны"
+        }
+        phoneField.addView(
+            prefix,
+            LinearLayout.LayoutParams(dp(78), dp(56))
         )
-        phoneRow.addView(
-            numberBox,
-            LinearLayout.LayoutParams(
-                0,
-                dp(62),
-                1f
-            ).apply {
-                marginStart = dp(8)
+
+        val divider = View(this).apply {
+            setBackgroundColor(
+                androidx.core.graphics.ColorUtils.setAlphaComponent(
+                    muted,
+                    45
+                )
+            )
+        }
+        phoneField.addView(
+            divider,
+            LinearLayout.LayoutParams(dp(1), dp(26)).apply {
+                marginEnd = dp(12)
             }
         )
-        content.addView(
-            phoneRow,
+
+        val input = EditText(this).apply {
+            hint = "Номер телефона"
+            textSize = 16.5f
+            setTextColor(this@MainActivity.text)
+            setHintTextColor(
+                androidx.core.graphics.ColorUtils.setAlphaComponent(
+                    muted,
+                    170
+                )
+            )
+            setPadding(0, 0, 0, 0)
+            inputType = InputType.TYPE_CLASS_PHONE
+            setSingleLine(true)
+            gravity = Gravity.CENTER_VERTICAL
+            background = null
+        }
+        phoneField.addView(
+            input,
             LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(62)
+                0,
+                dp(56),
+                1f
             )
         )
 
-        val phoneHelp = TextView(this).apply {
-            text = "Код страны можно выбрать выше или ввести вручную, например +48."
-            textSize = 11.5f
-            setTextColor(muted)
-            includeFontPadding = false
-            setLineSpacing(0f, 1.08f)
-            setPadding(dp(4), dp(8), dp(4), 0)
-        }
-        content.addView(phoneHelp)
+        content.addView(
+            phoneField,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(56)
+            )
+        )
 
-        var formatter = phoneUtil.getAsYouTypeFormatter("ZZ")
-        var formatting = false
-
-        fun applyCountry() {
+        fun refreshCountry() {
             val hasCountry =
                 selected.dialCode > 0 && selected.region != "ZZ"
 
             country.text = if (hasCountry) {
-                "${selected.flag}  ${selected.name}   +${selected.dialCode}     ›"
+                "${selected.flag}  ${selected.name}   +${selected.dialCode}          ›"
             } else {
-                "Выбрать страну                                      ›"
+                "Выбрать страну                                  ›"
             }
 
             prefixUpdating = true
-            val prefixValue =
-                if (hasCountry) "+${selected.dialCode}" else "+"
-            prefix.setText(prefixValue)
-            prefix.setSelection(prefixValue.length)
+            val prefixText =
+                if (hasCountry) "+${selected.dialCode}" else ""
+            prefix.setText(prefixText)
+            prefix.setSelection(prefixText.length)
             prefixUpdating = false
 
             formatter = phoneUtil.getAsYouTypeFormatter(
                 if (hasCountry) selected.region else "ZZ"
             )
-
-            val digits = input.text.toString().filter { it.isDigit() }
-            if (digits.isNotEmpty()) {
-                formatting = true
-                formatter.clear()
-                var formatted = ""
-                digits.forEach { ch ->
-                    formatted = formatter.inputDigit(ch)
-                }
-                input.setText(formatted)
-                input.setSelection(formatted.length)
-                formatting = false
-            }
         }
 
         country.setOnClickListener {
@@ -1432,7 +1398,7 @@ class MainActivity : AppCompatActivity() {
                 selected = selected
             ) { picked ->
                 selected = picked
-                applyCountry()
+                refreshCountry()
             }
         }
 
@@ -1459,8 +1425,9 @@ class MainActivity : AppCompatActivity() {
                         s?.toString().orEmpty()
                             .filter { it.isDigit() }
                             .take(4)
+
                     val normalized =
-                        if (digits.isBlank()) "+" else "+$digits"
+                        if (digits.isBlank()) "" else "+$digits"
 
                     if (normalized != s?.toString().orEmpty()) {
                         prefixUpdating = true
@@ -1481,17 +1448,14 @@ class MainActivity : AppCompatActivity() {
                     )
 
                     country.text = if (match != null) {
-                        "${match.flag}  ${match.name}   +${match.dialCode}     ›"
-                    } else if (code > 0) {
-                        "Код +$code введён вручную                         ›"
+                        "${match.flag}  ${match.name}   +${match.dialCode}          ›"
                     } else {
-                        "Выбрать страну                                      ›"
+                        "Выбрать страну                                  ›"
                     }
 
-                    formatter =
-                        phoneUtil.getAsYouTypeFormatter(
-                            match?.region ?: "ZZ"
-                        )
+                    formatter = phoneUtil.getAsYouTypeFormatter(
+                        match?.region ?: "ZZ"
+                    )
                 }
             }
         )
@@ -1514,13 +1478,15 @@ class MainActivity : AppCompatActivity() {
 
                 override fun afterTextChanged(s: Editable?) {
                     if (formatting) return
+
                     val digits =
                         s?.toString().orEmpty()
                             .filter { it.isDigit() }
+                            .take(18)
 
                     formatter.clear()
                     var formatted = ""
-                    digits.take(18).forEach { ch ->
+                    digits.forEach { ch ->
                         formatted = formatter.inputDigit(ch)
                     }
 
@@ -1536,10 +1502,10 @@ class MainActivity : AppCompatActivity() {
 
         val error = TextView(this).apply {
             textSize = 12.5f
+            includeFontPadding = false
             setTextColor(Color.parseColor("#FF6B81"))
             visibility = View.GONE
-            includeFontPadding = false
-            setPadding(dp(4), dp(9), dp(4), 0)
+            setPadding(dp(3), dp(8), dp(3), 0)
         }
         authErrorView = error
         content.addView(error)
@@ -1561,6 +1527,7 @@ class MainActivity : AppCompatActivity() {
                     error.visibility = View.VISIBLE
                     return@setOnClickListener
                 }
+
                 if (national.isBlank()) {
                     error.text = t("phone_empty")
                     error.visibility = View.VISIBLE
@@ -1576,10 +1543,15 @@ class MainActivity : AppCompatActivity() {
                     try {
                         val parsed = phoneUtil.parse(
                             normalized,
-                            selected.region.takeIf { it != "ZZ" } ?: "ZZ"
+                            selected.region.takeIf {
+                                it != "ZZ"
+                            } ?: "ZZ"
                         )
+
                         if (!phoneUtil.isValidNumber(parsed)) {
-                            throw IllegalArgumentException(t("phone_check"))
+                            throw IllegalArgumentException(
+                                t("phone_check")
+                            )
                         }
 
                         requestedPhoneNumber = normalized
@@ -1604,7 +1576,8 @@ class MainActivity : AppCompatActivity() {
                             )
                         )
                     } catch (e: Exception) {
-                        error.text = friendlyAuthError(e.message)
+                        error.text =
+                            friendlyAuthError(e.message)
                         error.visibility = View.VISIBLE
                         isEnabled = true
                         alpha = 1f
@@ -1619,17 +1592,18 @@ class MainActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(52)
             ).apply {
-                topMargin = dp(14)
+                topMargin = dp(16)
             }
         )
 
         val guest = TextView(this).apply {
             text = "Продолжить как гость"
             textSize = 14f
+            includeFontPadding = false
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(purple)
-            background = roundedBg(palette.surfaceAlt, 18)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
             isClickable = true
             isFocusable = true
             setOnClickListener {
@@ -1641,25 +1615,20 @@ class MainActivity : AppCompatActivity() {
             guest,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(48)
+                dp(46)
             ).apply {
-                topMargin = dp(8)
+                topMargin = dp(5)
             }
         )
 
-        applyCountry()
-
         if (settings.animations) {
-            artwork.alpha = 0f
-            artwork.scaleX = 0.92f
-            artwork.scaleY = 0.92f
+            telegramIcon.alpha = 0f
+            telegramIcon.scaleX = 0.9f
+            telegramIcon.scaleY = 0.9f
             title.alpha = 0f
             subtitle.alpha = 0f
-            countryLabel.alpha = 0f
             country.alpha = 0f
-            phoneLabel.alpha = 0f
-            phoneRow.alpha = 0f
-            phoneHelp.alpha = 0f
+            phoneField.alpha = 0f
             submit.alpha = 0f
             guest.alpha = 0f
         }
@@ -1667,7 +1636,7 @@ class MainActivity : AppCompatActivity() {
         replaceRoot(container)
 
         if (settings.animations) {
-            artwork.post {
+            telegramIcon.post {
                 val ease =
                     android.view.animation.PathInterpolator(
                         0.22f,
@@ -1676,33 +1645,30 @@ class MainActivity : AppCompatActivity() {
                         1f
                     )
 
-                artwork.animate()
+                telegramIcon.animate()
                     .alpha(1f)
                     .scaleX(1f)
                     .scaleY(1f)
-                    .setDuration(360L)
+                    .setDuration(300L)
                     .setInterpolator(ease)
                     .start()
 
                 val staged = listOf<View>(
                     title,
                     subtitle,
-                    countryLabel,
                     country,
-                    phoneLabel,
-                    phoneRow,
-                    phoneHelp,
+                    phoneField,
                     submit,
                     guest
                 )
 
                 staged.forEachIndexed { index, view ->
-                    view.translationY = dp(7).toFloat()
+                    view.translationY = dp(6).toFloat()
                     view.animate()
                         .alpha(1f)
                         .translationY(0f)
-                        .setStartDelay(65L + index * 24L)
-                        .setDuration(255L)
+                        .setStartDelay(60L + index * 28L)
+                        .setDuration(250L)
                         .setInterpolator(ease)
                         .start()
                 }

@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.9.17 version
+      - name: Assign SOHR 6.9.18 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690017" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.17" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690018" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.18" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -771,48 +771,36 @@ jobs:
           for required in [
               "class SohrOnboarding(",
               "ViewPager(activity).apply",
-              "addOnPageChangeListener(",
-              "onPageScrolled(",
-              "artwork.setPageProgress(progress)",
-              "dots.setPageProgress(progress)",
-              "SohrThemeTransition.reveal(",
-              "SohrIntroArtworkView(activity)",
               "SohrIntroDotsView(activity)",
-              '"Добро пожаловать в SOHR"',
+              "SohrThemeTransition.reveal(",
+              "R.drawable.ic_intro_library_clean",
+              "R.drawable.ic_intro_feed_clean",
+              "R.drawable.ic_intro_watch_clean",
+              "R.drawable.ic_intro_streak_clean",
+              "R.drawable.ic_intro_tune_clean",
+              '"Всё важное в SOHR"',
               '"Лента без лишнего"',
               '"Удобный просмотр"',
               '"Streak и прогресс"',
-              '"Персонализация SOHR"',
+              '"Настройте под себя"',
               '"Пропустить"',
               '"Дальше"',
-              '"Начать"'
+              '"Начать"',
+              "val glow = View(activity).apply",
+              "dp(168)",
+              "dp(92)"
           ]:
               if required not in onboarding:
-                  raise SystemExit(f"SOHR 6.9.16 Nekogram-style onboarding regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.18 clean onboarding regression: {required}")
           for forbidden in [
-              "R.drawable.sohr_brand_logo",
-              "iconPlate",
-              "outerRing",
-              "middleGlow",
-              "chipLeft",
-              "chipRight"
-          ]:
-              if forbidden in onboarding:
-                  raise SystemExit(f"SOHR 6.9.16 framed onboarding returned: {forbidden}")
-          for required in [
-              "class SohrIntroArtworkView",
+              "SohrIntroArtworkView(activity)",
               "drawCloud(",
-              "drawFeed(",
               "drawPlayer(",
               "drawStreak(",
-              "drawCustomize(",
-              "pageProgress",
-              "ValueAnimator.ofFloat(0f, 1f)",
-              "drawScene(",
-              "for (i in 0 until 7)"
+              "drawCustomize("
           ]:
-              if required not in intro_artwork:
-                  raise SystemExit(f"SOHR 6.9.17 artwork renderer regression: {required}")
+              if forbidden in onboarding:
+                  raise SystemExit(f"SOHR 6.9.18 custom canvas onboarding returned: {forbidden}")
           for required in [
               "class SohrIntroDotsView",
               "setPageProgress(",
@@ -862,25 +850,25 @@ jobs:
               "private fun renderPhoneLogin(regions: List<PhoneCountry>)", 1
           )[1].split("\n    private data class PhoneCountry", 1)[0]
           for required in [
-              'text = "Вход в SOHR"',
-              "SohrLoginArtworkView(this)",
-              'text = "Код страны"',
+              'text = "Вход через Telegram"',
+              "R.drawable.ic_auth_telegram_code",
+              'fieldLabel("Страна")',
+              'fieldLabel("Телефон")',
               'hint = "+48"',
-              'text = "Номер телефона"',
-              'hint = "123 456 789"',
-              '"Код страны можно выбрать выше или ввести вручную, например +48."',
+              'hint = "Номер телефона"',
+              'contentDescription = "Код страны"',
               "SohrThemeTransition.reveal(",
-              "suppressNextRootAnimation = true"
+              "setPadding(dp(13), 0, dp(13), 0)"
           ]:
               if required not in phone_login:
-                  raise SystemExit(f"SOHR 6.9.17 auth clarity regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.18 compact login regression: {required}")
           for forbidden in [
-              "R.drawable.sohr_brand_logo",
-              "heroHalo",
-              "heroIcon"
+              "SohrLoginArtworkView(this)",
+              '"Код страны можно выбрать выше или ввести вручную, например +48."',
+              'background = roundedBg(palette.surfaceAlt, 18)'
           ]:
               if forbidden in phone_login:
-                  raise SystemExit(f"SOHR 6.9.17 old login artwork returned: {forbidden}")
+                  raise SystemExit(f"SOHR 6.9.18 cluttered login returned: {forbidden}")
           for required in [
               "class SohrLoginArtworkView",
               "drawTelegramBubble(",
@@ -1784,7 +1772,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.17 • первый запуск и вход выровнены как одна система: все onboarding-сцены используют одну геометрию и одинаковый визуальный центр; облако стало читаемым знаком SOHR с play-символом, Лента — аккуратными карточками, просмотр — чистым плеером без случайной стрелки, Streak — кольцом прогресса с огнём и 7 днями, оформление — ровными контролами • экран входа больше не использует квадратный bitmap-логотип и тяжёлую карточку: вместо него новая анимированная сцена Telegram → SOHR без рамки • ввод телефона разделён на понятные поля «Код страны» с примером +48 и «Номер телефона» с примером; страна остаётся отдельным выбором, а короткая подсказка объясняет ручной код • автофокус/всплывающая клавиатура при открытии убраны • переключение светлой/тёмной темы в onboarding и на входе теперь выполняется круговым reveal-переходом от кнопки темы"
+            "notes": "SOHR 6.9.18 • первый запуск полностью упрощён под актуальную Material 3-иерархию: удалены все самодельные Canvas-иллюстрации, вместо них пять крупных стандартных понятных символов одинакового размера и положения — медиатека, лента, просмотр, Streak и настройки; страницы используют одну сетку, фиксированную высоту hero/title/description и спокойный fade/slide • экран входа стал компактнее: убрана декоративная Telegram→SOHR картинка, оставлен официальный понятный Telegram-знак, страна и телефон собраны без лишних карточек; код страны и номер находятся в одном поле с разделителем, +48 служит понятным примером • гостевой вход превращён в лёгкое текстовое действие вместо второй большой кнопки • круговой переход темы сохранён"
           }
           EOF
           cat update.json
