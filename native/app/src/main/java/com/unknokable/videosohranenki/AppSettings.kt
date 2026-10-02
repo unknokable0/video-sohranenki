@@ -104,6 +104,10 @@ class AppSettings(context: Context) {
             if (value.isNullOrBlank()) remove("twitch_login") else putString("twitch_login", value)
         }.apply()
 
+    var youtubeBrowserConnected: Boolean
+        get() = prefs.getBoolean("youtube_browser_connected", false)
+        set(value) = prefs.edit().putBoolean("youtube_browser_connected", value).apply()
+
     var collectionSort: CollectionSort
         get() = runCatching {
             CollectionSort.valueOf(prefs.getString("collection_sort", CollectionSort.NEWEST.name)!!)
