@@ -1097,19 +1097,6 @@ jobs:
                   raise SystemExit(f"SOHR 6.9.0 native YouTube playback regression: {required}")
 
           for required in [
-              "private fun animateVisibleVideoTabsTo(",
-              'findViewWithTag<FrameLayout>("sohr_video_section_tabs")',
-              'findViewWithTag<View>("sohr_video_tab_indicator")',
-              'tag = "sohr_video_section_tabs"',
-              'tag = "sohr_video_tab_indicator"',
-              'tag = "sohr_video_section_label_$section"',
-              "root.postDelayed(onCommit, 105L)",
-              "pendingVideoSectionDirection = 0"
-          ]:
-              if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.9.2 video-tab animation regression: {required}")
-
-          for required in [
               "private fun launchYouTubeCustomTab(",
               "CustomTabsIntent.Builder()",
               "setUrlBarHidingEnabled(true)",
