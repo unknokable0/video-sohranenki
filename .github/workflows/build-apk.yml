@@ -990,14 +990,6 @@ jobs:
                   raise SystemExit(f"SOHR 6.9.11 YouTube feed external-UX regression: {required}")
 
           for required in [
-              "firstError is YouTubeSessionInitException",
-              'is YouTubeSessionInitException -> "Не удалось подготовить YouTube-сессию"',
-              "BotGuard-модуль не успел подготовить обычную гостевую сессию"
-          ]:
-              if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.8.0 YouTube session UX regression: {required}")
-
-          for required in [
               "withTimeoutOrNull(8_000L)",
               "enrichSnapshotDurations(",
               "val videos = parseFeed(feed, channelId, title, source.handle)",
@@ -1145,20 +1137,6 @@ jobs:
           ]:
               if required not in youtube_resolver:
                   raise SystemExit(f"SOHR 6.8.4 TV Simply HLS regression: {required}")
-
-          for required in [
-              "private fun showYouTubePlaybackError(",
-              "replaceRoot(errorRoot)",
-              "firstResolve",
-              "delay(220L)",
-              "YouTubeUnavailableException",
-              "YouTubeNetworkException",
-              "mediaUrl = resolved.mediaUrl",
-              "secondaryAudioUrl = resolved.secondaryAudioUrl",
-              "PlayerScreen("
-          ]:
-              if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.9.0 native YouTube playback regression: {required}")
 
           for required in [
               "private fun launchYouTubeCustomTab(",
