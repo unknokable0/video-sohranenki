@@ -1097,17 +1097,23 @@ jobs:
                   raise SystemExit(f"SOHR 6.9.0 native YouTube playback regression: {required}")
 
           for required in [
-              "private fun animateVisibleVideoTabsTo(",
-              'findViewWithTag<FrameLayout>("sohr_video_section_tabs")',
-              'findViewWithTag<View>("sohr_video_tab_indicator")',
+              "pendingVideoSectionCrossfade = true",
+              "pendingVideoSectionDirection = if (section > videoSection) 1 else -1",
+              "suppressNextRootAnimation = true",
+              "suppressNextContentAnimation = false",
               'tag = "sohr_video_section_tabs"',
               'tag = "sohr_video_tab_indicator"',
               'tag = "sohr_video_section_label_$section"',
-              "root.postDelayed(onCommit, 105L)",
-              "pendingVideoSectionDirection = 0"
+              "val previousSection = (videoSection - sectionTransitionDirection).coerceIn(1, 3)",
+              "tabIndicator.animate().cancel()"
           ]:
               if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.9.2 video-tab animation regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.2 single-path video-tab regression: {required}")
+
+          if "private fun animateVisibleVideoTabsTo(" in sohr_main:
+              raise SystemExit("SOHR 6.9.2 regression: delayed pre-animation helper returned")
+          if "root.postDelayed(onCommit, 105L)" in sohr_main:
+              raise SystemExit("SOHR 6.9.2 regression: mid-animation root rebuild returned")
 
           for required in [
               "private fun launchYouTubeCustomTab(",
@@ -1149,8 +1155,12 @@ jobs:
           for required in [
               "youtubeAvatarFrame",
               "youtubeAvatar",
+              "youtubeInitial",
               "settings.youtubeAccountName",
-              '"Сменить аккаунт"',
+              '"Выйти из YouTube"',
+              "settings.youtubeBrowserConnected = false",
+              "settings.youtubeAccountName = null",
+              "CookieManager.getInstance().removeAllCookies(null)",
               "launchYouTubeAccountPicker()",
               '"YouTube не подключён"',
               '"$youtubeAccount • YouTube"'
@@ -1573,11 +1583,10 @@ jobs:
                   raise SystemExit(f"SOHR 6.2.3 search-motion regression: {required}")
 
           for required in [
-              "private fun animateVisibleVideoTabsTo(",
               "pendingVideoSectionCrossfade = true",
+              "pendingVideoSectionDirection = if (section > videoSection) 1 else -1",
               "suppressNextRootAnimation = true",
               "suppressNextContentAnimation = false",
-              "indicator.animate().cancel()",
               "tabIndicator.animate().cancel()",
               "nav.clearAnimation()",
               "nav.scaleX = 1f",
@@ -2039,7 +2048,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.2 • исправлена анимация «Главная / Лента / Просмотренные»: существующий индикатор теперь начинает движение до перестройки контента, поэтому переход на «Ленту» больше не пропадает и не дёргается • YouTube-карточка в «Аккаунте» приведена к стилю Telegram/Twitch: круглый аватар, имя выбранного Google-аккаунта, подпись и кнопка смены аккаунта • добавлен системный Google Account picker без ввода пароля в SOHR • ролики с LOGIN_REQUIRED открываются через SOHR-styled Android Custom Tab вместо обычного внешнего ACTION_VIEW, публичные ролики по-прежнему сначала идут через Media3 и внутренний SOHR fallback • Twitch-профиль на экране аккаунта теперь грузится параллельно с таймаутом, чтобы весь экран не зависал"
+            "notes": "SOHR 6.9.2 • возвращён один стабильный путь анимации «Главная / Лента / Просмотренные»: убрана промежуточная перестройка экрана на 105 мс, индикатор и содержимое теперь анимируются без пересечения двух страниц • YouTube-карточка в «Аккаунте» получила аккаунтный аватар-монограмму, имя/почту и отдельную кнопку «Выйти из YouTube», которая отключает привязку от SOHR и очищает внутреннюю WebView-сессию • Twitch-профиль загружается параллельно с таймаутом, чтобы экран аккаунта не зависал • релиз не должен использоваться для обхода возрастных/аккаунтных ограничений YouTube"
           }
           EOF
           cat update.json
