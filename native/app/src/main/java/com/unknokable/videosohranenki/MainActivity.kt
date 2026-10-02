@@ -1302,7 +1302,7 @@ class MainActivity : AppCompatActivity() {
             textSize = 17f
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(this@MainActivity.text)
-            setHintTextColor(ColorUtils.setAlphaComponent(muted, 185))
+            setHintTextColor(androidx.core.graphics.ColorUtils.setAlphaComponent(muted, 185))
             setPadding(0, 0, 0, 0)
             inputType = InputType.TYPE_CLASS_PHONE
             setSingleLine(true)
@@ -1336,7 +1336,7 @@ class MainActivity : AppCompatActivity() {
             textSize = 17f
             inputType = InputType.TYPE_CLASS_PHONE
             setTextColor(this@MainActivity.text)
-            setHintTextColor(ColorUtils.setAlphaComponent(muted, 185))
+            setHintTextColor(androidx.core.graphics.ColorUtils.setAlphaComponent(muted, 185))
             setPadding(0, 0, 0, 0)
             setSingleLine(true)
             background = null
