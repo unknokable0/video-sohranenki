@@ -6973,11 +6973,10 @@ class MainActivity : AppCompatActivity() {
                 showYouTubePlaybackError(video, error, returnView)
 
             is YouTubeSignInRequiredException ->
-                openYouTubeAccountRequired(
-                    video = video,
-                    returnView = returnView,
-                    chooseAccount = !settings.youtubeBrowserConnected
-                )
+                // Never throw the user out of SOHR automatically. Account-required
+                // playback stays on the SOHR error/player surface until the user
+                // explicitly chooses an account action.
+                showYouTubePlaybackError(video, error, returnView)
 
             else ->
                 // Public video fallback stays visually inside SOHR.
@@ -7114,7 +7113,11 @@ class MainActivity : AppCompatActivity() {
         if (error is YouTubeSignInRequiredException) {
             message.addView(
                 TextView(this).apply {
-                    text = "Подключить YouTube"
+                    text = if (settings.youtubeBrowserConnected) {
+                        "Продолжить через YouTube"
+                    } else {
+                        "Подключить YouTube"
+                    }
                     textSize = 14f
                     gravity = Gravity.CENTER
                     setTypeface(typeface, Typeface.BOLD)
@@ -7124,13 +7127,13 @@ class MainActivity : AppCompatActivity() {
                     isFocusable = true
                     setOnClickListener {
                         animatePress(this)
-                        if (settings.youtubeAccountName.isNullOrBlank()) {
+                        if (!settings.youtubeBrowserConnected) {
                             launchYouTubeAccountPicker()
                         } else {
                             openYouTubeAccountRequired(
                                 video = video,
                                 returnView = returnView,
-                                chooseAccount = true
+                                chooseAccount = false
                             )
                         }
                     }
