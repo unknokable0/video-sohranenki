@@ -6682,9 +6682,11 @@ class MainActivity : AppCompatActivity() {
                 if (
                     firstError is YouTubeNetworkException ||
                     firstError is YouTubeUnavailableException ||
-                    firstError is YouTubeSessionInitException
+                    firstError is YouTubeSessionInitException ||
+                    firstError is YouTubeSignInRequiredException
                 ) {
-                    delay(320L)
+                    runCatching { YouTubeNativeResolver.resetPlaybackSession() }
+                    delay(220L)
                     runCatching {
                         YouTubeNativeResolver.resolve(video)
                     }.getOrElse { retryError ->
@@ -6989,20 +6991,9 @@ class MainActivity : AppCompatActivity() {
         error: Throwable,
         returnView: View?
     ) {
-        when (error) {
-            is YouTubeAgeRestrictedException,
-            is YouTubeNetworkException ->
-                showYouTubePlaybackError(video, error, returnView)
-
-            is YouTubeSignInRequiredException ->
-                // Never throw the user into YouTube/Chrome from a video tap.
-                // Keep the fallback inside SOHR. YouTube itself still decides
-                // whether the watch page can play without an age/account gate.
-                openYouTubeWebPlayer(video, returnView)
-
-            else ->
-                openYouTubeWebPlayer(video, returnView)
-        }
+        // Keep one visual playback path. A failed native resolve must never be
+        // replaced automatically by the full YouTube watch page.
+        showYouTubePlaybackError(video, error, returnView)
     }
 
     private fun showYouTubePlaybackError(
