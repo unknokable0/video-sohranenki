@@ -83,12 +83,18 @@ object YouTubeFeedUi {
             }
         } else if (channels.isEmpty()) {
             root.addView(TextView(activity).apply {
-                text = "Не удалось загрузить YouTube-каналы"
+                text = "Не удалось загрузить YouTube-каналы\nНажмите, чтобы повторить"
                 textSize = 13f
                 gravity = Gravity.CENTER
                 setTextColor(palette.muted)
                 background = rounded(palette.surfaceAlt, 18)
-                setPadding(dp(activity, 16), dp(activity, 24), dp(activity, 16), dp(activity, 24))
+                setPadding(dp(activity, 16), dp(activity, 22), dp(activity, 16), dp(activity, 22))
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    SohrMotion.press(this, settings.animations)
+                    onRefresh()
+                }
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         } else {
             channels.forEachIndexed { index, channel ->
