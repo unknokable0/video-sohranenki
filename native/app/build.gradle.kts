@@ -65,6 +65,8 @@ dependencies {
     implementation("androidx.media3:media3-session:1.11.1")
     implementation("io.coil-kt:coil:2.7.0")
     implementation("com.github.teamnewpipe:NewPipeExtractor:v0.26.5")
+    implementation(project(":zemerCipher"))
+    implementation("com.jakewharton.timber:timber:5.0.1")
     implementation("com.googlecode.libphonenumber:libphonenumber:8.13.55")
     implementation("org.nanohttpd:nanohttpd:2.3.1")
     implementation("io.github.tdlib-android:core:0.1.1")
