@@ -25,6 +25,8 @@ data class YouTubeFeedVideo(
     val channelId: String,
     val channelTitle: String,
     val handle: String,
+    val publishedLabel: String = "",
+    val publishedExact: Boolean = false,
     val durationSeconds: Int = 0
 ) {
     val watchUrl: String get() = "https://www.youtube.com/watch?v=$videoId"
@@ -287,7 +289,8 @@ object YouTubeFeedRepository {
                             thumbnailUrl = stableThumbnail,
                             channelId = channelId,
                             channelTitle = channelTitle,
-                            handle = handle
+                            handle = handle,
+                            publishedExact = published > 0L
                         )
                     }
                     inEntry = false
@@ -314,12 +317,6 @@ object YouTubeFeedRepository {
         if (rendererMatches.isEmpty()) return emptyList()
 
         val existing = channel.videos.associateBy { it.videoId }
-        var fallbackEpoch =
-            channel.videos
-                .map { it.publishedAt }
-                .filter { it > 0L }
-                .minOrNull()
-                ?: Instant.now().epochSecond
 
         return rendererMatches.mapNotNull { match ->
             val videoId = match.groupValues.getOrNull(1).orEmpty()
@@ -364,19 +361,22 @@ object YouTubeFeedRepository {
                         maxDistance = 12_000
                     )
 
-            val parsedPublished =
+            val publishedLabel =
                 publishedRaw
                     ?.let(::decodeJsonEscapes)
                     ?.let(::decodeHtml)
+                    ?.trim()
+                    .orEmpty()
+
+            val parsedPublished =
+                publishedLabel
+                    .takeIf { it.isNotBlank() }
                     ?.let(::parsePublishedTimeText)
 
             val publishedAt =
                 base?.publishedAt?.takeIf { it > 0L }
                     ?: parsedPublished
-                    ?: run {
-                        fallbackEpoch = (fallbackEpoch - 86_400L).coerceAtLeast(0L)
-                        fallbackEpoch
-                    }
+                    ?: 0L
 
             val durationRaw =
                 readJsonStringAfter(
@@ -423,6 +423,10 @@ object YouTubeFeedRepository {
                 channelId = channel.channelId,
                 channelTitle = channel.title,
                 handle = channel.handle,
+                publishedLabel =
+                    base?.publishedLabel?.takeIf { it.isNotBlank() }
+                        ?: publishedLabel,
+                publishedExact = base?.publishedExact == true,
                 durationSeconds =
                     parsedDuration.takeIf { it > 0 }
                         ?: base?.durationSeconds
@@ -541,6 +545,11 @@ object YouTubeFeedRepository {
                     publishedAt =
                         current.publishedAt.takeIf { it > 0L }
                             ?: candidate.publishedAt,
+                    publishedLabel =
+                        current.publishedLabel.takeIf { it.isNotBlank() }
+                            ?: candidate.publishedLabel,
+                    publishedExact =
+                        current.publishedExact || candidate.publishedExact,
                     durationSeconds =
                         candidate.durationSeconds.takeIf { it > 0 }
                             ?: current.durationSeconds

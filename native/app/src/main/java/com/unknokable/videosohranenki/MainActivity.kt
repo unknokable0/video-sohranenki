@@ -924,7 +924,22 @@ class MainActivity : AppCompatActivity() {
         when (state) {
             is TdApi.AuthorizationStateWaitPhoneNumber -> runOnUiThread {
                 pendingCodeState = null
-                showPhoneLogin()
+                if (!settings.postLoginTourSeen && !onboardingActive) {
+                    onboardingActive = true
+                    val onboarding = SohrOnboarding(
+                        activity = this,
+                        settings = settings,
+                        onFinished = {
+                            settings.postLoginTourSeen = true
+                            onboardingActive = false
+                            suppressNextRootAnimation = true
+                            showPhoneLogin()
+                        }
+                    )
+                    replaceRoot(onboarding.root)
+                } else if (!onboardingActive) {
+                    showPhoneLogin()
+                }
             }
             is TdApi.AuthorizationStateWaitCode -> runOnUiThread {
                 pendingCodeState = state
@@ -9261,7 +9276,7 @@ class MainActivity : AppCompatActivity() {
             setTextColor(this@MainActivity.text)
         }
         val subtitle = TextView(this).apply {
-            text = "Telegram, Twitch и YouTube"
+            text = "Telegram и Twitch"
             textSize = 13f
             setTextColor(muted)
             setPadding(0, dp(4), 0, dp(18))
@@ -9499,149 +9514,6 @@ class MainActivity : AppCompatActivity() {
 
         page.addView(twitchCard)
 
-        page.addView(TextView(this).apply {
-            text = "YouTube"
-            textSize = 15f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(this@MainActivity.text)
-            setPadding(dp(2), dp(20), 0, dp(10))
-        })
-
-        val youtubeConnected = settings.youtubeBrowserConnected
-        val youtubeAccount = settings.youtubeAccountName?.takeIf { it.isNotBlank() }
-        val youtubeName = youtubeAccount
-            ?.substringBefore('@')
-            ?.replace('.', ' ')
-            ?.replace('_', ' ')
-            ?.trim()
-            ?.takeIf { it.isNotBlank() }
-            ?.replaceFirstChar { ch ->
-                if (ch.isLowerCase()) ch.titlecase(Locale.getDefault()) else ch.toString()
-            }
-            ?: "YouTube"
-
-        val youtubeCard = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(18), dp(20), dp(18), dp(18))
-            background = roundedBg(panel, 24)
-        }
-
-        val youtubeAvatarFrame = FrameLayout(this).apply {
-            background = roundedBg(
-                if (youtubeConnected) palette.accentSoft else palette.surfaceAlt,
-                46
-            )
-            setPadding(dp(3), dp(3), dp(3), dp(3))
-        }
-        val youtubeAvatar = TextView(this).apply {
-            val initial = youtubeAccount
-                ?.substringBefore('@')
-                ?.trim()
-                ?.firstOrNull()
-                ?.uppercaseChar()
-                ?.toString()
-                ?: "Y"
-            text = initial
-            textSize = 34f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            includeFontPadding = false
-            background = roundedBg(
-                if (youtubeConnected) purple else panel,
-                42
-            )
-        }
-        youtubeAvatarFrame.addView(
-            youtubeAvatar,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        )
-
-        val youtubeBadge = TextView(this).apply {
-            text = "▶"
-            textSize = 10f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            includeFontPadding = false
-            background = roundedBg(Color.parseColor("#FF0033"), 12)
-        }
-        youtubeAvatarFrame.addView(
-            youtubeBadge,
-            FrameLayout.LayoutParams(dp(26), dp(26), Gravity.END or Gravity.BOTTOM).apply {
-                marginEnd = dp(1)
-                bottomMargin = dp(1)
-            }
-        )
-
-        youtubeCard.addView(youtubeAvatarFrame, LinearLayout.LayoutParams(dp(92), dp(92)))
-
-        youtubeCard.addView(TextView(this).apply {
-            text = youtubeName
-            textSize = 21f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(this@MainActivity.text)
-            setPadding(0, dp(12), 0, dp(3))
-        })
-
-        youtubeCard.addView(TextView(this).apply {
-            text = when {
-                youtubeConnected && !youtubeAccount.isNullOrBlank() ->
-                    "$youtubeAccount • YouTube"
-                youtubeConnected ->
-                    "Google-аккаунт • YouTube"
-                else ->
-                    "YouTube не подключён"
-            }
-            textSize = 12f
-            gravity = Gravity.CENTER
-            setTextColor(if (youtubeConnected) muted else palette.accent)
-            maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
-        })
-
-        val youtubeAction = TextView(this).apply {
-            text = if (youtubeConnected) "Выйти из YouTube" else "Подключить YouTube"
-            textSize = 14f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            background = roundedBg(
-                if (youtubeConnected) Color.parseColor("#D9435F") else Color.parseColor("#E60023"),
-                15
-            )
-            isClickable = true
-            isFocusable = true
-            setOnClickListener {
-                animatePress(this)
-                if (youtubeConnected) {
-                    confirmYouTubeLogout()
-                } else {
-                    launchYouTubeAccountPicker()
-                }
-            }
-        }
-        youtubeCard.addView(
-            youtubeAction,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply {
-                topMargin = dp(16)
-            }
-        )
-        page.addView(youtubeCard)
-
-        val privacy = TextView(this).apply {
-            text = "SOHR не видит пароль Google и не импортирует cookies браузера. Выбранный аккаунт показывается в профиле YouTube; доступные прямые потоки открываются в нативном плеере SOHR."
-            textSize = 12f
-            setTextColor(muted)
-            setPadding(dp(4), dp(12), dp(4), 0)
-        }
-        page.addView(privacy)
-
         val scroll = ScrollView(this).apply {
             isVerticalScrollBarEnabled = false
             isHorizontalScrollBarEnabled = false
@@ -9659,10 +9531,6 @@ class MainActivity : AppCompatActivity() {
             telegramCard.translationY = dp(10).toFloat()
             twitchCard.alpha = 0f
             twitchCard.translationY = dp(12).toFloat()
-            youtubeCard.alpha = 0f
-            youtubeCard.translationY = dp(12).toFloat()
-            youtubeAvatar.scaleX = 0.88f
-            youtubeAvatar.scaleY = 0.88f
             telegramAvatar.scaleX = 0.88f
             telegramAvatar.scaleY = 0.88f
             twitchAvatar.scaleX = 0.88f
@@ -9699,20 +9567,6 @@ class MainActivity : AppCompatActivity() {
                     .scaleY(1f)
                     .setStartDelay(130L)
                     .setDuration(270L)
-                    .setInterpolator(ease)
-                    .start()
-                youtubeCard.animate()
-                    .alpha(1f)
-                    .translationY(0f)
-                    .setStartDelay(145L)
-                    .setDuration(270L)
-                    .setInterpolator(ease)
-                    .start()
-                youtubeAvatar.animate()
-                    .scaleX(1f)
-                    .scaleY(1f)
-                    .setStartDelay(185L)
-                    .setDuration(260L)
                     .setInterpolator(ease)
                     .start()
             }

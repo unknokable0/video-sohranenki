@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.9.12 version
+      - name: Assign SOHR 6.9.13 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690012" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.12" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690013" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.13" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -759,6 +759,32 @@ jobs:
           youtube_feed_ui = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/YouTubeFeedUi.kt"
           ).read_text(encoding="utf-8")
+          onboarding = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/SohrOnboarding.kt"
+          ).read_text(encoding="utf-8")
+          for required in [
+              "class SohrOnboarding(",
+              '"Добро пожаловать в SOHR"',
+              '"Лента без лишнего шума"',
+              '"Смотреть удобно"',
+              '"Сохраняй Streak"',
+              '"Сделай SOHR своим"',
+              '"Дальше"',
+              '"Начать"',
+              "GestureDetector(",
+              "settings.lightTheme = !settings.lightTheme",
+              ".setInterpolator(ease)"
+          ]:
+              if required not in onboarding:
+                  raise SystemExit(f"SOHR 6.9.13 onboarding regression: {required}")
+          for required in [
+              "!settings.postLoginTourSeen && !onboardingActive",
+              "val onboarding = SohrOnboarding(",
+              "settings.postLoginTourSeen = true",
+              "replaceRoot(onboarding.root)"
+          ]:
+              if required not in sohr_main:
+                  raise SystemExit(f"SOHR 6.9.13 onboarding wiring regression: {required}")
           youtube_feed_repo = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/YouTubeFeed.kt"
           ).read_text(encoding="utf-8")
@@ -767,637 +793,32 @@ jobs:
           ).read_text(encoding="utf-8")
           gradle_app = Path("native/app/build.gradle.kts").read_text(encoding="utf-8")
           for required in [
-              "implementation(project(\":zemerCipher\"))",
-              "com.jakewharton.timber:timber:5.0.1"
-          ]:
-              if required not in gradle_app:
-                  raise SystemExit(f"SOHR 6.7.8 YouTube PoToken dependency regression: {required}")
-          settings_gradle = Path("native/settings.gradle.kts").read_text(encoding="utf-8")
-          gitmodules = Path(".gitmodules").read_text(encoding="utf-8")
-          for required in [
-              'include(":zemerCipher")',
-              'file("vendor/zemer-cipher/library")'
-          ]:
-              if required not in settings_gradle:
-                  raise SystemExit(f"SOHR 6.7.8 pinned cipher module regression: {required}")
-          if "native/vendor/zemer-cipher" not in gitmodules:
-              raise SystemExit("SOHR 6.7.8 zemer-cipher submodule is not pinned in .gitmodules")
-          if not Path("native/vendor/zemer-cipher/library/src/main/kotlin/com/zemer/cipher/ZemerCipher.kt").is_file():
-              raise SystemExit("SOHR 6.7.8 pinned zemer-cipher source was not checked out")
-
-          if "dragScrubActive" in gesture_overlay or "YouTube-style horizontal scrub" in gesture_overlay:
-              raise SystemExit("SOHR 6.6.13 regression: direct drag seeking returned")
-          if "horizontalThreshold" in twitch_player and "seekBy(if (dx > 0f)" in twitch_player:
-              raise SystemExit("SOHR 6.6.13 regression: Twitch horizontal swipe seeking returned")
-          if '"-unmuted." in lower ||' in twitch_resolver:
-              raise SystemExit("SOHR 6.6.15 regression: unmuted HLS segments marked as muted")
-          for required in [
-              '("-muted." in lower && "-unmuted." !in lower)',
-              '"index-muted" in lower',
-              "suspend fun resolveMutedSegmentsFromMaster(",
-              "Reuse the exact HLS master URL"
-          ]:
-              if required not in twitch_resolver:
-                  raise SystemExit(f"SOHR 6.6.15 muted detection regression: {required}")
-
-          for required in [
-              "private val twitchVideoId: String? = null",
-              "private var twitchMutedRanges: List<TwitchMutedRange>",
-              "private fun buildTwitchMutedNotice()",
-              "private fun loadTwitchMutedRanges()",
-              "private fun updateTwitchMutedUi()",
-              "TwitchVodResolver.resolveMutedSegmentsFromMaster(mediaUrl)",
-              'text = "Звук вырезан Twitch"',
-              '"Выделенные участки — звук вырезан Twitch"',
-              "seekBar.setMutedRanges("
-          ]:
-              if required not in player_screen:
-                  raise SystemExit(f"SOHR 6.6.15 active native Twitch muted UI regression: {required}")
-
-          if "twitchVideoId = videoId" not in sohr_main:
-              raise SystemExit("SOHR 6.6.15 regression: Twitch VOD does not enable native muted-range mode")
-
-          for required in [
-              "Own the entire gesture stream",
-              "return@setOnTouchListener true",
-              "private lateinit var mutedLegend: TextView",
-              '"Жёлтые участки — звук вырезан Twitch"',
-              "mutedLegend.visibility = if (ranges.isEmpty()) View.GONE else View.VISIBLE"
-          ]:
-              if required not in twitch_player:
-                  raise SystemExit(f"SOHR 6.6.14 Twitch drag/muted UX regression: {required}")
-
-          time_bar = Path(
-              "native/app/src/main/java/com/unknokable/videosohranenki/SohrTimeBar.kt"
-          ).read_text(encoding="utf-8")
-          for required in [
-              "private val mutedBackdropPaint",
-              "color = accentColor",
-              "private fun finePositionFor(x: Float): Long",
-              "* msPerPixel * 0.12",
-              "whole seconds",
-              "if (!canceled && !fineScrub)"
-          ]:
-              if required not in time_bar:
-                  raise SystemExit(f"SOHR 6.7.0 themed muted/fine scrub regression: {required}")
-
-          for required in [
-              'Source("@wt2x2"',
-              'Source("@beerloga_t2x2"',
-              "private fun deduplicate(",
-              "input.distinctBy { it.videoId }",
-              "suspend fun expandSnapshotVideos(",
-              'channel.channelUrl + "/videos?hl=ru&gl=PL"',
-              "parseVideosPage(",
-              "mergeChannelVideos(",
-              "YouTubeFeedSnapshot"
-          ]:
-              if required not in youtube_feed:
-                  raise SystemExit(f"SOHR 6.9.6 YouTube full-catalog regression: {required}")
-          for forbidden in [
-              "titleScore >=",
-              "descriptionScore >=",
-              "private fun isDuplicate("
-          ]:
-              if forbidden in youtube_feed:
-                  raise SystemExit(f"SOHR 6.9.6 fuzzy-dedup regression: {forbidden}")
-
-          for required in [
-              "fun buildDirectory(",
-              "fun buildChannel(",
-              '"Просмотр — в YouTube • список и каналы остаются в SOHR"',
-              "videoCard(",
-              "formatDuration(video.durationSeconds)",
-              "cornerRadius = radiusDp *"
-          ]:
-              if required not in youtube_feed_ui:
-                  raise SystemExit(f"SOHR 6.7.0 YouTube UI regression: {required}")
-
-          for required in [
-              "object YouTubeNativeResolver",
-              "StreamInfo.getInfo(video.watchUrl)",
-              "NewPipe.init(",
-              "info.videoStreams",
-              "!it.isVideoOnly",
-              "info.audioStreams",
-              "secondaryAudioUrl",
-              "info.hlsUrl",
-              "info.dashMpdUrl",
-              "SohrExtractorDownloader",
-              "YouTubeAgeRestrictedException",
-              "YouTubeSignInRequiredException",
-              "YouTubeNetworkException",
-              "cannot be watched anonymously",
-              "mapFailure(error)",
-              "resolveWithPoToken(video)",
-              "createStablePoTokens(",
-              "PoTokenWebView.getNewPoTokenGenerator",
-              "withTimeout(50_000L)",
-              "YouTubeSessionInitException",
-              "ZemerCipher.initialize(",
-              "CipherDeobfuscator.signatureTimestamp()",
-              "CipherDeobfuscator.deobfuscateStreamUrl(",
-              "CipherDeobfuscator.transformNParamInUrl(",
-              "playerRequestPoToken",
-              "streamingDataPoToken",
-              "serviceIntegrityDimensions",
-              "appendPoToken(",
-              "isAgeRestrictedStatus(",
-              "isDrmFormat(",
-              "X-Goog-Visitor-Id",
-              "X-YouTube-Client-Name",
-              "X-YouTube-Client-Version"
-          ]:
-              if required not in youtube_resolver:
-                  raise SystemExit(f"SOHR 6.7.1 native YouTube resolver regression: {required}")
-          for forbidden in [
-              "android.webkit.WebView",
-              "youtube.com/iframe_api",
-              "YT.Player",
-              "import com.zemer.cipher.potoken.PoTokenGenerator",
-              "private val poTokenGenerator by lazy",
-              "getWebClientPoToken("
-          ]:
-              if forbidden in youtube_resolver:
-                  raise SystemExit(f"SOHR 6.8.0 YouTube resolver regression: {forbidden}")
-
-          newpipe_resolve_section = youtube_resolver.split(
-              "val info = StreamInfo.getInfo(video.watchUrl)", 1
-          )[1].split("resolveWithVisionOs(video)", 1)[0]
-          if "throw YouTubeAgeRestrictedException" in newpipe_resolve_section:
-              raise SystemExit(
-                  "SOHR 6.8.3 regression: NewPipe age classification blocks stronger client fallbacks"
-              )
-          for required in [
-              "failures += mapFailure(error)",
-              "resolveWithVisionOs(video)",
-              "resolveWithWebEmbedded(video)",
-              "resolveWithWebSafariHls(video)",
-              "resolveWithPoToken(video)"
-          ]:
-              if required not in youtube_resolver:
-                  raise SystemExit(f"SOHR 6.8.3 verified YouTube fallback regression: {required}")
-
-          for required in [
-              "dp(activity, 92)",
-              "if (index > 0) topMargin = dp(activity, 10)",
-              "setPadding(dp(activity, 2), dp(activity, 26), dp(activity, 2), dp(activity, 12))"
-          ]:
-              if required not in youtube_feed_ui:
-                  raise SystemExit(f"SOHR 6.7.9 YouTube feed loading layout regression: {required}")
-
-
-          youtube_open_section = sohr_main.split(
-              "private fun openYouTubeVideo(video: YouTubeFeedVideo)", 1
-          )[1].split("\n    private fun ", 1)[0]
-          for required in [
-              "ModernDialogs.showConfirm(",
-              'title = "Открыть в YouTube?"',
-              'confirm = "Открыть YouTube"',
-              "launchYouTubeVideo(video)"
-          ]:
-              if required not in youtube_open_section:
-                  raise SystemExit(f"SOHR 6.9.11 external YouTube confirmation regression: {required}")
-          for forbidden in [
-              "YouTubeNativeResolver.resolve(video)",
-              "PlayerScreen(",
-              "openYouTubePlaybackFallback(",
-              "youtubePlaybackScreen"
-          ]:
-              if forbidden in youtube_open_section:
-                  raise SystemExit(f"SOHR 6.9.11 regression: feed video still starts internal YouTube playback: {forbidden}")
-
-          youtube_launch_section = sohr_main.split(
-              "private fun launchYouTubeVideo(video: YouTubeFeedVideo)", 1
-          )[1].split("\n    private fun ", 1)[0]
-          for required in [
-              '"https://www.youtube.com/watch?v="',
-              'setPackage("com.google.android.youtube")',
-              "Intent.ACTION_VIEW",
-              "Intent.CATEGORY_BROWSABLE",
-              "startActivity(youtubeIntent)",
-              "startActivity(genericIntent)"
-          ]:
-              if required not in youtube_launch_section:
-                  raise SystemExit(f"SOHR 6.9.11 YouTube launch regression: {required}")
-
-          for required in [
-              '"Просмотр — в YouTube • список и каналы остаются в SOHR"',
-              "R.drawable.ic_action_open",
-              'contentDescription = "Открывается в YouTube"'
-          ]:
-              if required not in youtube_feed_ui:
-                  raise SystemExit(f"SOHR 6.9.11 YouTube feed external-UX regression: {required}")
-
-          for required in [
-              "readBestThumbnailAfter(",
-              "parsePublishedTimeText(",
-              "parseDurationText(",
-              "publishedTimeText",
-              "lengthText",
-              "sharpThumbnailUrl(videoId)",
-              "sortedByDescending { it.publishedAt }"
-          ]:
-              if required not in youtube_feed:
-                  raise SystemExit(f"SOHR 6.9.12 YouTube metadata/thumbnail regression: {required}")
-
-          for required in [
-              "loadVideoThumbnail(",
-              "maxresdefault.jpg",
-              "sddefault.jpg",
-              "hqdefault.jpg",
-              "animateEntrance(",
-              ".setStartDelay(index.coerceIn(0, maxStagger) * 24L)",
-              'return "Недавно"'
-          ]:
-              if required not in youtube_feed_ui:
-                  raise SystemExit(f"SOHR 6.9.12 YouTube feed polish regression: {required}")
-
-          for required in [
-              "withTimeoutOrNull(8_000L)",
-              "enrichSnapshotDurations(",
-              "val videos = parseFeed(feed, channelId, title, source.handle)",
-              "connectTimeout = 4_500",
-              "readTimeout = 6_500"
-          ]:
-              if required not in youtube_feed_repo:
-                  raise SystemExit(f"SOHR 6.8.1 fast YouTube feed regression: {required}")
-          if "enrichDurations(parseFeed(" in youtube_feed_repo:
-              raise SystemExit("SOHR 6.8.1 regression: initial YouTube feed blocks on duration enrichment")
-
-          for required in [
-              "youtubeDurationEnrichJob",
-              "withTimeout(10_000L)",
-              "YouTubeFeedRepository.enrichSnapshotDurations(snapshot)",
-              "pendingVideoSectionCrossfade = true",
-              "suppressNextRootAnimation = true",
-              "suppressNextContentAnimation = false"
-          ]:
-              if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.8.1 feed transition/loading regression: {required}")
-          if "body.alpha = 0.92f" in sohr_main:
-              raise SystemExit("SOHR 6.8.1 regression: duplicate body alpha animation returned")
-
-
-          for required in [
-              "youtubeFeedInitialAttempted",
-              "lastYoutubeFeedAttemptAt",
-              "youtubeFeedRetryCooldownMs = 30_000L",
-              "youtubeNow - lastYoutubeFeedAttemptAt >= youtubeFeedRetryCooldownMs",
-              'tag = "sohr_video_section_content"',
-              'findViewWithTag<View>("sohr_video_section_content")'
-          ]:
-              if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.8.2 YouTube retry/motion regression: {required}")
-
-          for required in [
-              "channelIdCache",
-              "browseId",
-              "externalId"
-          ]:
-              if required not in youtube_feed_repo:
-                  raise SystemExit(f"SOHR 6.8.2 channel resolver regression: {required}")
-
-          for required in [
-              '"Не удалось загрузить YouTube-каналы\\nНажмите, чтобы повторить"',
-              "onRefresh()"
-          ]:
-              if required not in youtube_feed_ui:
-                  raise SystemExit(f"SOHR 6.8.2 feed error-state regression: {required}")
-
-          for required in [
-              'private const val MWEB_CLIENT_VERSION = "2.20260708.05.00"',
-              "private const val MWEB_CLIENT_NAME = 2",
-              'put("clientName", "MWEB")',
-              "requestMwebPlayer(",
-              "playerPoToken = null",
-              "playerPoToken = poTokens.streamingDataPoToken",
-              'setRequestProperty("X-YouTube-Client-Name", MWEB_CLIENT_NAME.toString())',
-              'setRequestProperty("X-YouTube-Client-Version", MWEB_CLIENT_VERSION)'
-          ]:
-              if required not in youtube_resolver:
-                  raise SystemExit(f"SOHR 6.8.2 MWEB playback regression: {required}")
-          mweb_request_section = youtube_resolver.split(
-              "private fun requestMwebPlayer(", 1
-          )[1].split("\n    private fun ", 1)[0]
-          if 'put("clientName", "WEB")' in mweb_request_section:
-              raise SystemExit("SOHR 6.8.3 regression: MWEB fallback returned to plain WEB client")
-          if youtube_resolver.count("isAgeRestrictedStatus(status, detail)") < 2:
-              raise SystemExit("SOHR 6.8.2 regression: age gate is not checked before and after MWEB retry")
-
-
-          for required in [
-              'private const val VISIONOS_CLIENT_VERSION = "1.02"',
-              "private const val VISIONOS_CLIENT_NAME = 101",
-              'put("clientName", "VISIONOS")',
-              "requestVisionOsPlayer(",
-              "resolveWithVisionOs(video)",
-              'private const val WEB_SAFARI_CLIENT_VERSION = "2.20260708.00.00"',
-              "requestWebSafariPlayer(",
-              "resolveWithWebSafariHls(video)",
-              "sourceFromPlayerResponse(",
-              "dashManifestUrl"
-          ]:
-              if required not in youtube_resolver:
-                  raise SystemExit(f"SOHR 6.8.3 multi-client YouTube regression: {required}")
-
-          resolve_section = youtube_resolver.split(
-              "suspend fun resolve(video: YouTubeFeedVideo)", 1
-          )[1].split("\n    private fun sourceFromNewPipe", 1)[0]
-          expected_order = [
-              "StreamInfo.getInfo(video.watchUrl)",
-              "resolveWithTv(video)",
-              "resolveWithVisionOs(video)",
-              "resolveWithWebEmbedded(video)",
-              "resolveWithWebSafariHls(video)",
-              "resolveWithTvSimplyHls(video)",
-              "resolveWithPoToken(video)"
-          ]
-          positions = [resolve_section.find(marker) for marker in expected_order]
-          if any(pos < 0 for pos in positions) or positions != sorted(positions):
-              raise SystemExit("SOHR 6.8.4 regression: YouTube fallback order changed")
-
-          for required in [
-              'private const val TV_CLIENT_VERSION = "7.20260707.07.00"',
-              "private const val TV_CLIENT_NAME = 7",
-              'put("clientName", "TVHTML5")',
-              "requestTvPlayer(",
-              "resolveWithTv(video)",
-              "TV_USER_AGENT",
-              "guestCookieHeader(bootstrap)",
-              "captureGuestCookies(connection, bootstrap.cookies)",
-              "warmGuestSession(video.videoId, bootstrap)",
-              '"PREF" to "hl=ru&gl=PL&tz=Europe.Warsaw"',
-              "status == \"LOGIN_REQUIRED\"",
-              "YouTubeSessionInitException()"
-          ]:
-              if required not in youtube_resolver:
-                  raise SystemExit(f"SOHR 6.9.8 guest-session/TV regression: {required}")
-
-          for required in [
-              'private const val WEB_EMBEDDED_CLIENT_VERSION = "2.20260708.00.00"',
-              "private const val WEB_EMBEDDED_CLIENT_NAME = 56",
-              'put("clientName", "WEB_EMBEDDED_PLAYER")',
-              "requestWebEmbeddedPlayer(",
-              "resolveWithWebEmbedded(video)",
-              'JSONObject().put("embedUrl", thirdPartyEmbedUrl)',
-              '"https://www.reddit.com/"',
-              "classifyPlayabilityFailure(",
-              "isAntiBotStatus(",
-              '"signinconfirmnotbot" in classChain',
-              "YouTubeSessionInitException()"
-          ]:
-              if required not in youtube_resolver:
-                  raise SystemExit(f"SOHR 6.9.7 embedded/anti-bot regression: {required}")
-
-          for required in [
-              'private const val TV_SIMPLY_CLIENT_VERSION = "1.0"',
-              "private const val TV_SIMPLY_CLIENT_NAME = 75",
-              'put("clientName", "TVHTML5_SIMPLY")',
-              "requestTvSimplyPlayer(",
-              "resolveWithTvSimplyHls(video)",
-              'streaming.optString("hlsManifestUrl")',
-              'probeMediaUrl(hls, TV_SIMPLY_USER_AGENT, "https://www.youtube.com/tv")'
-          ]:
-              if required not in youtube_resolver:
-                  raise SystemExit(f"SOHR 6.8.4 TV Simply HLS regression: {required}")
-
-          for required in [
-              "private fun launchYouTubeCustomTab(",
-              "CustomTabsIntent.Builder()",
-              "setUrlBarHidingEnabled(true)",
-              "setShareState(CustomTabsIntent.SHARE_STATE_OFF)",
-              "private fun launchYouTubeAccountPicker()",
-              "AccountManager.newChooseAccountIntent(",
-              "YOUTUBE_ACCOUNT_PICK_REQUEST",
-              "settings.youtubeAccountName",
-              "openYouTubeAccountRequired("
-          ]:
-              if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.9.2 YouTube account/custom-tab regression: {required}")
-
-          for forbidden in [
-              "private fun launchExternalBrowser(",
-              "private fun openYouTubeInBrowser(",
-              "root.postDelayed(onCommit, 105L)",
-              "animateVisibleVideoTabsTo("
-          ]:
-              if forbidden in sohr_main:
-                  raise SystemExit(f"SOHR 6.9.3 removed-flow regression: {forbidden}")
-
-          tabs_switch_section = sohr_main.split(
-              "private fun switchVideoSection(", 1
-          )[1].split("\n    private fun showFeed", 1)[0]
-          for required in [
-              "pendingVideoSectionCrossfade = true",
-              "pendingVideoSectionDirection = if (section > videoSection) 1 else -1",
-              "suppressNextRootAnimation = true",
-              "videoSection = section",
-              "showFeed(currentVideos)"
-          ]:
-              if required not in tabs_switch_section:
-                  raise SystemExit(f"SOHR 6.9.6 immediate-tabs regression: {required}")
-
-          failure_section = sohr_main.split(
-              "private fun handleYouTubeNativeFailure(", 1
-          )[1].split("\n    private fun ", 1)[0]
-          for required in [
-              "YouTubeAgeRestrictedException",
-              "YouTubeNetworkException",
-              "openYouTubePlaybackFallback(video, returnView)"
-          ]:
-              if required not in failure_section:
-                  raise SystemExit(f"SOHR 6.9.9 YouTube fallback routing regression: {required}")
-          for forbidden in [
-              "openYouTubeWebPlayer(",
-              "openYouTubeAccountRequired(",
-              "launchYouTubeCustomTab("
-          ]:
-              if forbidden in failure_section:
-                  raise SystemExit(f"SOHR 6.9.9 regression: fallback leaves SOHR UI: {forbidden}")
-
-          youtube_playback = Path(
-              "native/app/src/main/java/com/unknokable/videosohranenki/YouTubePlaybackScreen.kt"
-          ).read_text(encoding="utf-8")
-          youtube_player_page = Path("native/app/src/main/assets/youtube_player.html").read_text(encoding="utf-8")
-          for required in [
-              "class YouTubePlaybackScreen(",
-              "SohrTimeBar(activity, palette.accent)",
-              "window.sohr&&window.sohr.play()",
-              "window.sohr&&window.sohr.pause()",
-              "window.sohr&&window.sohr.seek(",
-              "setFullscreenMode(",
-              "prepareForPictureInPicture()",
-              'open("youtube_player.html")'
-          ]:
-              if required not in youtube_playback:
-                  raise SystemExit(f"SOHR 6.9.9 custom YouTube player regression: {required}")
-          for required in [
-              "https://www.youtube.com/iframe_api",
-              "controls:0",
-              "disablekb:1",
-              "playsinline:1",
-              'origin:"https://com.unknokable.videosohranenki"',
-              'widget_referrer:"https://com.unknokable.videosohranenki/"',
-              "window.sohr",
-              "getCurrentTime()",
-              "getDuration()",
-              "getVideoLoadedFraction()"
-          ]:
-              if required not in youtube_player_page:
-                  raise SystemExit(f"SOHR 6.9.10 YouTube engine page regression: {required}")
-
-          for required in [
-              'activity.assets',
-              'open("youtube_player.html")',
-              'webView.loadDataWithBaseURL(',
-              '"https://com.unknokable.videosohranenki/"',
-              'mediaPlaybackRequiresUserGesture = false'
-          ]:
-              if required not in youtube_playback:
-                  raise SystemExit(f"SOHR 6.9.10 local YouTube engine regression: {required}")
-
-          youtube_resolver = Path(
-              "native/app/src/main/java/com/unknokable/videosohranenki/YouTubeNativeResolver.kt"
-          ).read_text(encoding="utf-8")
-          for required in [
-              "suspend fun resetPlaybackSession()",
-              "cachedBootstrap = null",
-              "poTokenWebView?.close()",
-              "poTokenSessionId = null",
-              "poTokenSessionPot = null"
-          ]:
-              if required not in youtube_resolver:
-                  raise SystemExit(f"SOHR 6.9.4 YouTube clean-session retry regression: {required}")
-
-          youtube_feed_repo = Path(
-              "native/app/src/main/java/com/unknokable/videosohranenki/YouTubeFeed.kt"
-          ).read_text(encoding="utf-8")
-          for required in [
-              "channelVisualCache",
-              "thumbnailCache",
-              "cachedVisual?.avatarUrl",
-              "thumbnailCache[videoId] = stableThumbnail"
-          ]:
-              if required not in youtube_feed_repo:
-                  raise SystemExit(f"SOHR 6.9.4 YouTube artwork cache regression: {required}")
-
-          for required in [
-              "private fun stabilizeYouTubeSnapshot(",
-              "avatarUrl = channel.avatarUrl.ifBlank",
-              "thumbnailUrl = video.thumbnailUrl.ifBlank",
-              "preservedChannels",
-              "distinctBy { it.videoId }"
-          ]:
-              if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.9.4 refresh-stability regression: {required}")
-
-          for required in [
-              "youtubeCatalogExpandJob",
-              "YouTubeFeedRepository.expandSnapshotVideos(snapshot)",
-              "mergedChannelVideos",
-              ".take(30)",
-              "refreshOpenYouTubeChannelIfVisible()"
-          ]:
-              if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.9.6 YouTube catalog wiring regression: {required}")
-
-
-          section_transition = sohr_main.split(
-              "if (sectionCrossfade) {", 1
-          )[1].split("} else if (primaryTabTransition)", 1)[0]
-          for required in [
-              "if (old.parent === host) host.removeView(old)",
-              'findViewWithTag<View>("sohr_video_section_content")',
-              "sectionBody.translationX = dp(10).toFloat() * direction",
-              ".setDuration(SohrMotion.NORMAL)"
-          ]:
-              if required not in section_transition:
-                  raise SystemExit(f"SOHR 6.9.5 smooth-section regression: {required}")
-          if ".withEndAction" in section_transition and "host.removeView(old)" in section_transition.split(".withEndAction", 1)[1]:
-              raise SystemExit("SOHR 6.9.4 regression: old feed shell survives until animation end")
-
-          tabs_render = sohr_main.split(
-              'tag = "sohr_video_tab_indicator"', 1
-          )[1].split("header.addView(", 1)[0]
-          for required in [
-              "previousSection",
-              ".translationX(target)",
-              "ValueAnimator.ofFloat",
-              "previousLabel?.setTextColor(Color.WHITE)",
-              "targetLabel?.setTextColor(muted)"
-          ]:
-              if required not in tabs_render:
-                  raise SystemExit(f"SOHR 6.9.6 rebuilt-tabs animation regression: {required}")
-
-          account_section = sohr_main.split(
-              "private fun renderAccount(user:", 1
-          )[1].split("\n    private fun maskPhone", 1)[0]
-          for required in [
-              "youtubeAvatarFrame",
-              "val youtubeAvatar = TextView(this).apply",
-              "val youtubeBadge = TextView(this).apply",
-              'text = "▶"',
-              'background = roundedBg(Color.parseColor("#FF0033"), 12)',
-              "settings.youtubeAccountName",
-              '"Выйти из YouTube"',
-              "confirmYouTubeLogout()",
-              "launchYouTubeAccountPicker()",
-              '"YouTube не подключён"',
-              '"$youtubeAccount • YouTube"'
-          ]:
-              if required not in account_section:
-                  raise SystemExit(f"SOHR 6.9.4 YouTube account-card regression: {required}")
-
-          for required in [
-              "private fun confirmYouTubeLogout()",
-              "settings.youtubeBrowserConnected = false",
-              "settings.youtubeAccountName = null"
-          ]:
-              if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.9.3 YouTube logout regression: {required}")
-
-          show_account_section = sohr_main.split(
-              "private fun showAccount()", 1
-          )[1].split("\n    private fun renderGuestAccount", 1)[0]
-          for required in [
-              "async(Dispatchers.IO)",
-              "withTimeoutOrNull(5_000L)",
-              "twitchProfile.await()"
-          ]:
-              if required not in show_account_section:
-                  raise SystemExit(f"SOHR 6.9.2 account-loading optimization regression: {required}")
-
-          app_gradle = Path("native/app/build.gradle.kts").read_text(encoding="utf-8")
-          if 'implementation("androidx.browser:browser:1.10.0")' not in app_gradle:
-              raise SystemExit("SOHR 6.9.2 Custom Tabs dependency regression")
-
-          app_settings = Path(
-              "native/app/src/main/java/com/unknokable/videosohranenki/AppSettings.kt"
-          ).read_text(encoding="utf-8")
-          if "var youtubeAccountName: String?" not in app_settings:
-              raise SystemExit("SOHR 6.9.2 selected YouTube account persistence regression")
-
-          youtube_feed_ui = Path(
-              "native/app/src/main/java/com/unknokable/videosohranenki/YouTubeFeedUi.kt"
-          ).read_text(encoding="utf-8")
-          for required in [
-              '"Недавно"',
+              "publicationText(video)",
+              "video.publishedExact",
+              "video.publishedLabel",
               '"Сегодня, $time"',
               '"Вчера, $time"',
-              '"d MMMM"',
-              '"d MMMM yyyy"'
+              '"d MMMM, HH:mm"',
+              '"d MMMM yyyy, HH:mm"',
+              '"Дата не указана"'
           ]:
               if required not in youtube_feed_ui:
-                  raise SystemExit(f"SOHR 6.7.7 publication-date regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.13 publication-date regression: {required}")
           for forbidden in [
-              'return "недавно"',
-              '" мин назад"',
-              '" ч назад"',
-              '" дн назад"'
+              'return "Недавно"',
+              '"Дата неизвестна"'
           ]:
               if forbidden in youtube_feed_ui:
-                  raise SystemExit(f"SOHR 6.7.7 vague publication-date regression: {forbidden}")
+                  raise SystemExit(f"SOHR 6.9.13 vague publication-date regression: {forbidden}")
+
+          for required in [
+              "publishedLabel",
+              "publishedExact",
+              "publishedExact = published > 0L",
+              "publishedTimeText"
+          ]:
+              if required not in youtube_feed:
+                  raise SystemExit(f"SOHR 6.9.13 YouTube publication metadata regression: {required}")
 
           for required in [
               '2 -> "YouTube • каналы и новые видео"',
@@ -2249,7 +1670,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.12 • улучшена Лента YouTube: превью теперь берутся в максимально доступном качестве из thumbnails страницы канала, а при недоступном maxres автоматически переключаются на sd/hq без пустых карточек • для догруженных роликов читаются реальные publishedTimeText и lengthText вместо технической даты-заглушки, поэтому исчезает «Дата неизвестна» и корректнее показываются дата/время и длительность • карточки и каналы получили лёгкое stagger-появление при включённых анимациях, без изменения существующих переходов вкладок • внешний просмотр YouTube из 6.9.11 сохранён"
+            "notes": "SOHR 6.9.13 • исправлена дата YouTube-видео: RSS-время считается точным и показывается как «Сегодня, 17:42», «Вчера, 21:08» или «1 октября, 18:31»; для роликов, где YouTube отдаёт только относительную дату, SOHR показывает исходный текст YouTube вместо выдуманного «Недавно» • добавлен новый первый запуск в стиле SOHR: 5 плавных экранов с возможностями приложения, свайпами, точками, темой и кнопками «Дальше/Начать»; показывается один раз перед первым входом • из вкладки «Аккаунт» полностью удалён YouTube-блок — остаются Telegram и Twitch • улучшения превью и внешний просмотр YouTube из предыдущих версий сохранены"
           }
           EOF
           cat update.json

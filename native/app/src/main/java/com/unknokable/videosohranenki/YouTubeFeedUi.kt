@@ -466,7 +466,7 @@ object YouTubeFeedUi {
             setLineSpacing(0f, 1.04f)
         })
         textBox.addView(TextView(activity).apply {
-            text = video.channelTitle + " • " + relativeTime(video.publishedAt)
+            text = video.channelTitle + " • " + publicationText(video)
             textSize = 11.2f
             setTextColor(palette.muted)
             includeFontPadding = false
@@ -581,14 +581,28 @@ object YouTubeFeedUi {
         }
     }
 
-    private fun relativeTime(epochSeconds: Long): String {
-        if (epochSeconds <= 0L) return "Недавно"
+    private fun publicationText(video: YouTubeFeedVideo): String {
+        if (video.publishedExact && video.publishedAt > 0L) {
+            return exactPublicationTime(video.publishedAt)
+        }
 
+        val youtubeLabel = video.publishedLabel.trim()
+        if (youtubeLabel.isNotBlank()) {
+            return youtubeLabel
+        }
+
+        if (video.publishedAt > 0L) {
+            return exactPublicationTime(video.publishedAt)
+        }
+
+        return "Дата не указана"
+    }
+
+    private fun exactPublicationTime(epochSeconds: Long): String {
         val zone = java.time.ZoneId.systemDefault()
         val published = java.time.Instant.ofEpochSecond(epochSeconds).atZone(zone)
-        val now = java.time.ZonedDateTime.now(zone)
+        val today = java.time.ZonedDateTime.now(zone).toLocalDate()
         val publishedDate = published.toLocalDate()
-        val today = now.toLocalDate()
         val time = published.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
 
         return when {
@@ -597,14 +611,14 @@ object YouTubeFeedUi {
             publishedDate.year == today.year ->
                 published.format(
                     java.time.format.DateTimeFormatter.ofPattern(
-                        "d MMMM",
+                        "d MMMM, HH:mm",
                         java.util.Locale("ru", "RU")
                     )
                 )
             else ->
                 published.format(
                     java.time.format.DateTimeFormatter.ofPattern(
-                        "d MMMM yyyy",
+                        "d MMMM yyyy, HH:mm",
                         java.util.Locale("ru", "RU")
                     )
                 )
