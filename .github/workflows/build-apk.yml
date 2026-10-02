@@ -1153,7 +1153,7 @@ jobs:
               '"Сменить аккаунт"',
               "launchYouTubeAccountPicker()",
               '"YouTube не подключён"',
-              '"• YouTube"'
+              '"$youtubeAccount • YouTube"'
           ]:
               if required not in account_section:
                   raise SystemExit(f"SOHR 6.9.2 YouTube account-card regression: {required}")
