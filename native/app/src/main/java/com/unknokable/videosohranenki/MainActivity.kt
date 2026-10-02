@@ -508,8 +508,14 @@ class MainActivity : AppCompatActivity() {
                 settings.youtubeAccountName = accountName
                 settings.youtubeBrowserConnected = true
 
-                // Warm the browser YouTube session without moving playback out of SOHR.
-                launchYouTubeCustomTab("https://m.youtube.com/account")
+                // Open the browser-backed chooser with the selected account hinted.
+                // The browser owns the real YouTube session; SOHR only keeps the label.
+                launchYouTubeCustomTab(
+                    youtubeAccountChooserUrl(
+                        targetUrl = "https://m.youtube.com/account",
+                        accountName = accountName
+                    )
+                )
 
                 if (isAccountScreen) {
                     root.postDelayed({
@@ -6744,10 +6750,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun youtubeAccountChooserUrl(targetUrl: String): String {
+    private fun youtubeAccountChooserUrl(
+        targetUrl: String,
+        accountName: String? = settings.youtubeAccountName
+    ): String {
         val encodedTarget = Uri.encode(targetUrl)
+        val emailHint = accountName
+            ?.takeIf { it.isNotBlank() }
+            ?.let { "&Email=" + Uri.encode(it) }
+            .orEmpty()
         return "https://accounts.google.com/AccountChooser" +
-            "?service=youtube&continue=" + encodedTarget
+            "?service=youtube&continue=" + encodedTarget + emailHint
     }
 
     private fun launchYouTubeAccountPicker() {
@@ -9424,13 +9437,7 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener {
                 animatePress(this)
                 if (youtubeConnected) {
-                    settings.youtubeBrowserConnected = false
-                    settings.youtubeAccountName = null
-                    CookieManager.getInstance().removeAllCookies(null)
-                    CookieManager.getInstance().flush()
-                    suppressNextRootAnimation = true
-                    suppressNextContentAnimation = true
-                    showAccount()
+                    confirmYouTubeLogout()
                 } else {
                     launchYouTubeAccountPicker()
                 }
@@ -9678,49 +9685,43 @@ class MainActivity : AppCompatActivity() {
 
                 val telegramInterpolator = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
                 if (sectionCrossfade) {
-                    // Keep the top SOHR/header/tabs visually stable. Only the section-specific
-                    // content below the tabs gets a lightweight entrance animation.
+                    // Never keep two feed pages stacked during Home / Feed / Watched.
+                    // The new header is already complete and its indicator starts from the
+                    // previous slot, so remove the old page immediately and animate only body.
                     content.alpha = 1f
                     content.translationX = 0f
                     content.translationY = 0f
                     content.scaleX = 1f
                     content.scaleY = 1f
-                    old.alpha = 1f
-                    old.translationX = 0f
-                    old.translationY = 0f
+
+                    old.animate().cancel()
+                    old.setLayerType(View.LAYER_TYPE_NONE, null)
+                    if (old.parent === host) host.removeView(old)
 
                     val sectionBody = content.findViewWithTag<View>("sohr_video_section_content")
                     if (sectionBody != null) {
                         sectionBody.animate().cancel()
                         sectionBody.alpha = 0f
-                        sectionBody.translationY = dp(7).toFloat()
-                        sectionBody.scaleX = 0.996f
-                        sectionBody.scaleY = 0.996f
+                        sectionBody.translationY = dp(5).toFloat()
+                        sectionBody.scaleX = 0.998f
+                        sectionBody.scaleY = 0.998f
                         sectionBody.animate()
                             .alpha(1f)
                             .translationY(0f)
                             .scaleX(1f)
                             .scaleY(1f)
-                            .setDuration(220L)
+                            .setDuration(SohrMotion.NORMAL)
                             .setInterpolator(SohrMotion.smooth())
                             .withEndAction {
-                                old.animate().cancel()
-                                old.alpha = 1f
-                                old.translationX = 0f
-                                old.translationY = 0f
                                 sectionBody.alpha = 1f
                                 sectionBody.translationY = 0f
                                 sectionBody.scaleX = 1f
                                 sectionBody.scaleY = 1f
-                                old.setLayerType(View.LAYER_TYPE_NONE, null)
                                 content.setLayerType(View.LAYER_TYPE_NONE, null)
-                                if (old.parent === host) host.removeView(old)
                             }
                             .start()
                     } else {
-                        old.setLayerType(View.LAYER_TYPE_NONE, null)
                         content.setLayerType(View.LAYER_TYPE_NONE, null)
-                        if (old.parent === host) host.removeView(old)
                     }
                 } else if (primaryTabTransition) {
                     val direction = if (slide >= 0) 1f else -1f
@@ -9855,6 +9856,34 @@ class MainActivity : AppCompatActivity() {
 
 
 
+
+    private fun confirmYouTubeLogout() {
+        ModernDialogs.showConfirm(
+            context = this,
+            palette = palette,
+            title = "Выйти из YouTube?",
+            message = "SOHR отключит выбранный YouTube-аккаунт. Ваш Google-аккаунт в браузере останется без изменений.",
+            confirm = "Выйти",
+            destructive = true
+        ) {
+            settings.youtubeBrowserConnected = false
+            settings.youtubeAccountName = null
+            CookieManager.getInstance().removeAllCookies(null)
+            CookieManager.getInstance().flush()
+            suppressNextRootAnimation = true
+            suppressNextContentAnimation = true
+            showAccount()
+            root.postDelayed({
+                ModernDialogs.showNotice(
+                    context = this@MainActivity,
+                    palette = palette,
+                    title = "YouTube отключён",
+                    message = "YouTube-аккаунт отключён от SOHR.",
+                    button = "Готово"
+                )
+            }, 180L)
+        }
+    }
 
     private fun confirmTwitchLogout() {
         ModernDialogs.showConfirm(
