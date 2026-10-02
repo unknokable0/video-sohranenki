@@ -39,6 +39,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
 
       - name: Set up Java
         uses: actions/setup-java@v5
@@ -765,11 +768,23 @@ jobs:
           ).read_text(encoding="utf-8")
           gradle_app = Path("native/app/build.gradle.kts").read_text(encoding="utf-8")
           for required in [
-              "com.github.ZemerTeam.zemer-cipher:library:f2dc0af7d5248351560d389e1a812214d73ba9d7",
+              "implementation(project(\":zemerCipher\"))",
               "com.jakewharton.timber:timber:5.0.1"
           ]:
               if required not in gradle_app:
                   raise SystemExit(f"SOHR 6.7.8 YouTube PoToken dependency regression: {required}")
+          settings_gradle = Path("native/settings.gradle.kts").read_text(encoding="utf-8")
+          gitmodules = Path(".gitmodules").read_text(encoding="utf-8")
+          for required in [
+              'include(":zemerCipher")',
+              'file("vendor/zemer-cipher/library")'
+          ]:
+              if required not in settings_gradle:
+                  raise SystemExit(f"SOHR 6.7.8 pinned cipher module regression: {required}")
+          if "native/vendor/zemer-cipher" not in gitmodules:
+              raise SystemExit("SOHR 6.7.8 zemer-cipher submodule is not pinned in .gitmodules")
+          if not Path("native/vendor/zemer-cipher/library/src/main/kotlin/com/zemer/cipher/ZemerCipher.kt").is_file():
+              raise SystemExit("SOHR 6.7.8 pinned zemer-cipher source was not checked out")
 
           if "dragScrubActive" in gesture_overlay or "YouTube-style horizontal scrub" in gesture_overlay:
               raise SystemExit("SOHR 6.6.13 regression: direct drag seeking returned")
