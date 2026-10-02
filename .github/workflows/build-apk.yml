@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.9.15 version
+      - name: Assign SOHR 6.9.16 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690015" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.15" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690016" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.16" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -762,39 +762,63 @@ jobs:
           onboarding = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/SohrOnboarding.kt"
           ).read_text(encoding="utf-8")
+          intro_artwork = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/SohrIntroArtworkView.kt"
+          ).read_text(encoding="utf-8")
+          intro_dots = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/SohrIntroDotsView.kt"
+          ).read_text(encoding="utf-8")
           for required in [
               "class SohrOnboarding(",
-              "R.drawable.ic_onboarding_cloud",
-              "R.drawable.ic_onboarding_feed",
-              "R.drawable.ic_onboarding_watch",
-              "R.drawable.ic_onboarding_streak",
-              "R.drawable.ic_onboarding_customize",
+              "ViewPager(activity).apply",
+              "addOnPageChangeListener(",
+              "onPageScrolled(",
+              "artwork.setPageProgress(progress)",
+              "dots.setPageProgress(progress)",
+              "SohrIntroArtworkView(activity)",
+              "SohrIntroDotsView(activity)",
               '"Добро пожаловать в SOHR"',
               '"Лента без лишнего"',
-              '"Просмотр без лишних экранов"',
+              '"Удобный просмотр"',
               '"Streak и прогресс"',
               '"Персонализация SOHR"',
               '"Пропустить"',
               '"Дальше"',
-              '"Начать"',
-              "GestureDetector(",
-              "settings.lightTheme = !settings.lightTheme",
-              "val outerRing = View(activity).apply",
-              "val iconPlate = FrameLayout(activity).apply",
-              ".scaleX(1.035f)",
-              ".setStartDelay(195L)",
-              ".setInterpolator(ease)"
+              '"Начать"'
           ]:
               if required not in onboarding:
-                  raise SystemExit(f"SOHR 6.9.15 premium onboarding regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.16 Nekogram-style onboarding regression: {required}")
           for forbidden in [
               "R.drawable.sohr_brand_logo",
-              "val chipLeft",
-              "val chipRight",
-              "elevation = dp(3).toFloat()"
+              "iconPlate",
+              "outerRing",
+              "middleGlow",
+              "chipLeft",
+              "chipRight"
           ]:
               if forbidden in onboarding:
-                  raise SystemExit(f"SOHR 6.9.15 old onboarding visual returned: {forbidden}")
+                  raise SystemExit(f"SOHR 6.9.16 framed onboarding returned: {forbidden}")
+          for required in [
+              "class SohrIntroArtworkView",
+              "drawCloud(",
+              "drawFeed(",
+              "drawWatch(",
+              "drawStreak(",
+              "drawCustomize(",
+              "pageProgress",
+              "ValueAnimator.ofFloat(0f, 1f)",
+              "drawScene("
+          ]:
+              if required not in intro_artwork:
+                  raise SystemExit(f"SOHR 6.9.16 artwork renderer regression: {required}")
+          for required in [
+              "class SohrIntroDotsView",
+              "setPageProgress(",
+              "progress - i",
+              "canvas.drawLine("
+          ]:
+              if required not in intro_dots:
+                  raise SystemExit(f"SOHR 6.9.16 dots motion regression: {required}")
           for required in [
               "!settings.postLoginTourSeen && !onboardingActive",
               "val onboarding = SohrOnboarding(",
@@ -1722,7 +1746,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.15 • onboarding полностью переработан по мотивам присланного референса: убрана огромная прямоугольная карточка и квадратная bitmap-фотка логотипа, вместо неё используется чистый векторный знак SOHR и единый набор outline-иконок для Ленты, просмотра, Streak и оформления • центральная иллюстрация теперь построена из лёгких концентрических слоёв и микроэлементов без тяжёлых бейджей • добавлен аккуратный «Пропустить», уменьшены и выровнены точки, кнопка и верхняя панель • переходы между страницами переведены на короткий shared-axis/fade, а внутренняя иллюстрация получает мягкий scale/glow/stagger без вращения основного логотипа • светлая/тёмная тема и свайпы сохранены"
+            "notes": "SOHR 6.9.16 • onboarding перестроен по той же архитектурной идее, что используется в IntroActivity Nekogram/Telegram: одна фиксированная зона иллюстрации всегда остаётся на одной высоте, а текст листается отдельно через ViewPager; onPageScrolled передаёт непрерывный offset в собственный SOHR renderer • все иллюстрации увеличены и полностью лишены круглых/прямоугольных рамок: облако SOHR, карточки Ленты, плеер, Streak и оформление рисуются как отдельные большие сцены • картинки плавно переходят друг в друга прямо за пальцем, а не пересоздаются после свайпа • точки тоже интерполируются непрерывно • добавлен лёгкий ambient-motion внутри сцен без вертикальных прыжков"
           }
           EOF
           cat update.json
