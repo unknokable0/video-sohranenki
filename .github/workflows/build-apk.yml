@@ -54,11 +54,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.9.20 version
+      - name: Assign SOHR 6.9.21 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690020" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.20" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690021" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.21" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
@@ -768,59 +768,49 @@ jobs:
           intro_dots = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/SohrIntroDotsView.kt"
           ).read_text(encoding="utf-8")
+          morph_view = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/SohrIntroMorphView.kt"
+          ).read_text(encoding="utf-8")
           for required in [
               "class SohrOnboarding(",
+              "SohrIntroMorphView(activity)",
+              "morphView.setPageProgress(progress)",
+              "dots.setPageProgress(progress)",
               "ViewPager(activity).apply",
-              "SohrIntroDotsView(activity)",
-              "SohrThemeTransition.reveal(",
-              "R.drawable.ill_intro_library",
-              "R.drawable.ill_intro_feed",
-              "R.drawable.ill_intro_watch",
-              "R.drawable.ill_intro_streak",
-              "R.drawable.ill_intro_customize",
-              '"Всё важное в SOHR"',
+              '"Добро пожаловать в SOHR"',
               '"Лента без лишнего"',
               '"Удобный просмотр"',
               '"Streak и прогресс"',
               '"Настройте под себя"',
-              '"Пропустить"',
               '"Дальше"',
               '"Начать"',
-              "imageTintList = null",
-              "dp(218)",
-              "dp(264)",
-              "startAmbientMotion(",
-              "ValueAnimator.ofFloat(0f, 1f)",
-              '"intro_hero_$position"',
-              '"intro_hero_$currentPage"'
+              "SohrThemeTransition.reveal("
           ]:
               if required not in onboarding:
-                  raise SystemExit(f"SOHR 6.9.20 animated illustration regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.21 morph onboarding regression: {required}")
+          for required in [
+              "class SohrIntroMorphView",
+              "R.drawable.ill_intro_cloud_morph",
+              "R.drawable.ill_intro_feed_morph",
+              "R.drawable.ill_intro_watch_morph",
+              "R.drawable.ill_intro_streak_morph",
+              "R.drawable.ill_intro_tune_morph",
+              "drawBridge(",
+              "drawIcon(",
+              "setPageProgress(",
+              "ValueAnimator.ofFloat(0f, 1f)",
+              "smooth(raw)"
+          ]:
+              if required not in morph_view:
+                  raise SystemExit(f"SOHR 6.9.21 morph renderer regression: {required}")
           for forbidden in [
-              "SohrIntroArtworkView(activity)",
-              "drawCloud(",
-              "drawPlayer(",
-              "drawStreak(",
-              "drawCustomize("
+              "ambientAnimators",
+              "startAmbientMotion(",
+              "intro_hero_",
+              "dp(218)"
           ]:
               if forbidden in onboarding:
-                  raise SystemExit(f"SOHR 6.9.18 custom canvas onboarding returned: {forbidden}")
-          for required in [
-              "class SohrIntroDotsView",
-              "setPageProgress(",
-              "progress - i",
-              "canvas.drawLine("
-          ]:
-              if required not in intro_dots:
-                  raise SystemExit(f"SOHR 6.9.16 dots motion regression: {required}")
-          for required in [
-              "!settings.postLoginTourSeen && !onboardingActive",
-              "val onboarding = SohrOnboarding(",
-              "settings.postLoginTourSeen = true",
-              "replaceRoot(onboarding.root)"
-          ]:
-              if required not in sohr_main:
-                  raise SystemExit(f"SOHR 6.9.13 onboarding wiring regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.21 old per-page hero returned: {forbidden}")
 
           for required in [
               "private var telegramLogoutInProgress = false",
@@ -1776,7 +1766,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.20 • onboarding-иллюстрации увеличены до 218dp и больше не зажаты в большой фиолетовый круг: круг-подложка полностью удалён, поэтому сами сцены занимают hero-зону и читаются крупнее • Streak перерисован: календарь получил нормальное узнаваемое асимметричное пламя с внешним и внутренним языком вместо формы, похожей на каплю • каждой странице добавлена своя спокойная микроанимация: медиатека и лента слегка плавают, плеер мягко дышит, Streak пульсирует, настройки едва смещаются • hero-теги сделаны уникальными по странице, поэтому анимация выбранного экрана больше не может случайно примениться к соседней странице • swipe transition стал мягче и менее резким"
+            "notes": "SOHR 6.9.21 • onboarding переделан под настоящий единый morph-flow: hero-иконка теперь существует в одной фиксированной сцене на одной высоте, а текст листается отдельно; onPageScrolled напрямую управляет прогрессом превращения, поэтому свайп пальцем и кнопка «Дальше» дают одну и ту же плавную анимацию • облако → лента → плеер → Streak → настройки переходят через сжатие/растяжение, лёгкий поворот, смещение и общий accent-bridge в центре вместо резкого исчезновения/появления • добавлен новый спокойный набор иконок без неона, рамок и тяжёлых панелей; размеры 148–154dp и выровнены по одному центру • тексты сокращены, точки и кнопка остаются строго на месте • переключение темы сохраняет текущую страницу и точный progress morph-анимации"
           }
           EOF
           cat update.json

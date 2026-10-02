@@ -21,7 +21,6 @@ class SohrOnboarding(
     private val onFinished: () -> Unit
 ) {
     private data class Page(
-        val icon: Int,
         val title: String,
         val description: String
     )
@@ -30,40 +29,35 @@ class SohrOnboarding(
 
     private val pages = listOf(
         Page(
-            R.drawable.ill_intro_library,
-            "Всё важное в SOHR",
-            "Видео, источники и прогресс собраны в одном месте."
+            "Добро пожаловать в SOHR",
+            "Видео, лента и прогресс — в одном месте."
         ),
         Page(
-            R.drawable.ill_intro_feed,
             "Лента без лишнего",
-            "Новые видео, понятные даты и быстрый доступ к выбранным каналам."
+            "Новые видео и понятные даты."
         ),
         Page(
-            R.drawable.ill_intro_watch,
             "Удобный просмотр",
-            "Telegram и Twitch — внутри SOHR. YouTube открывается на нужном ролике."
+            "Telegram и Twitch — внутри SOHR."
         ),
         Page(
-            R.drawable.ill_intro_streak,
             "Streak и прогресс",
-            "Просмотр по дням помогает видеть привычку без лишних экранов."
+            "Смотрите прогресс по дням."
         ),
         Page(
-            R.drawable.ill_intro_customize,
             "Настройте под себя",
-            "Тема, акцент, уведомления и обновления — в одном разделе."
+            "Тема и акценты — в одном месте."
         )
     )
 
     private lateinit var pager: ViewPager
+    private lateinit var morphView: SohrIntroMorphView
     private lateinit var dots: SohrIntroDotsView
     private lateinit var nextButton: TextView
     private lateinit var skipButton: TextView
 
     private var currentPage = 0
-    private val ambientAnimators =
-        mutableMapOf<View, android.animation.ValueAnimator>()
+    private var currentProgress = 0f
 
     private val ease = PathInterpolator(0.22f, 1f, 0.36f, 1f)
 
@@ -98,9 +92,9 @@ class SohrOnboarding(
             TextView(activity).apply {
                 text = "SOHR"
                 textSize = 17f
-                setTypeface(typeface, Typeface.BOLD)
                 includeFontPadding = false
                 gravity = Gravity.CENTER_VERTICAL
+                setTypeface(typeface, Typeface.BOLD)
                 setTextColor(palette().text)
             },
             LinearLayout.LayoutParams(0, dp(42), 1f)
@@ -123,7 +117,9 @@ class SohrOnboarding(
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 dp(40)
-            ).apply { marginEnd = dp(8) }
+            ).apply {
+                marginEnd = dp(8)
+            }
         )
 
         val themeButton = ImageView(activity).apply {
@@ -139,6 +135,8 @@ class SohrOnboarding(
             setOnClickListener {
                 press(this)
                 val page = currentPage
+                val progress = currentProgress
+
                 SohrThemeTransition.reveal(
                     host = root,
                     anchor = this,
@@ -147,25 +145,54 @@ class SohrOnboarding(
                     settings.lightTheme = !settings.lightTheme
                     build()
                     pager.setCurrentItem(page, false)
-                    dots.setPageProgress(page.toFloat())
+                    currentPage = page
+                    currentProgress = progress
+                    morphView.setPageProgress(progress)
+                    dots.setPageProgress(progress)
+                    updateChrome()
                 }
             }
         }
-        top.addView(themeButton, LinearLayout.LayoutParams(dp(40), dp(40)))
+        top.addView(
+            themeButton,
+            LinearLayout.LayoutParams(dp(40), dp(40))
+        )
         column.addView(top)
+
+        morphView = SohrIntroMorphView(activity).apply {
+            setPalette(palette())
+            setAnimationsEnabled(settings.animations)
+            setPageProgress(currentProgress)
+        }
+        column.addView(
+            morphView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(228)
+            ).apply {
+                topMargin = dp(18)
+            }
+        )
 
         pager = ViewPager(activity).apply {
             id = View.generateViewId()
             offscreenPageLimit = 1
             adapter = IntroPagerAdapter()
+
             setPageTransformer(false) { page, position ->
-                val distance = kotlin.math.abs(position).coerceIn(0f, 1f)
-                page.alpha = 1f - distance * 0.28f
-                page.translationX = -position * dp(18).toFloat()
-                val scale = 1f - distance * 0.018f
+                val distance =
+                    kotlin.math.abs(position).coerceIn(0f, 1f)
+
+                page.alpha = 1f - distance * 0.32f
+                page.translationX =
+                    -position * dp(14).toFloat()
+
+                val scale =
+                    1f - distance * 0.012f
                 page.scaleX = scale
                 page.scaleY = scale
             }
+
             addOnPageChangeListener(
                 object : ViewPager.OnPageChangeListener {
                     override fun onPageScrolled(
@@ -173,19 +200,26 @@ class SohrOnboarding(
                         positionOffset: Float,
                         positionOffsetPixels: Int
                     ) {
-                        dots.setPageProgress(
+                        val progress =
                             (position + positionOffset)
-                                .coerceIn(0f, (pages.size - 1).toFloat())
-                        )
+                                .coerceIn(
+                                    0f,
+                                    (pages.size - 1).toFloat()
+                                )
+
+                        currentProgress = progress
+                        morphView.setPageProgress(progress)
+                        dots.setPageProgress(progress)
                     }
 
                     override fun onPageSelected(position: Int) {
                         currentPage = position
                         updateChrome()
-                        animateSelectedHero()
                     }
 
-                    override fun onPageScrollStateChanged(state: Int) = Unit
+                    override fun onPageScrollStateChanged(
+                        state: Int
+                    ) = Unit
                 }
             )
         }
@@ -193,11 +227,8 @@ class SohrOnboarding(
             pager,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            ).apply {
-                topMargin = dp(6)
-            }
+                dp(176)
+            )
         )
 
         dots = SohrIntroDotsView(activity).apply {
@@ -206,7 +237,7 @@ class SohrOnboarding(
                 active = palette().accent,
                 inactive = palette().muted
             )
-            setPageProgress(0f)
+            setPageProgress(currentProgress)
         }
         column.addView(
             dots,
@@ -214,8 +245,18 @@ class SohrOnboarding(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(28)
             ).apply {
-                bottomMargin = dp(10)
+                topMargin = dp(2)
+                bottomMargin = dp(8)
             }
+        )
+
+        column.addView(
+            View(activity),
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
         )
 
         nextButton = TextView(activity).apply {
@@ -226,12 +267,17 @@ class SohrOnboarding(
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
             background = roundedDrawable(palette().accent, 18)
+
             setOnClickListener {
                 press(this)
+
                 if (currentPage == pages.lastIndex) {
                     onFinished()
                 } else {
-                    pager.setCurrentItem(currentPage + 1, true)
+                    pager.setCurrentItem(
+                        currentPage + 1,
+                        true
+                    )
                 }
             }
         }
@@ -243,33 +289,47 @@ class SohrOnboarding(
             )
         )
 
+        pager.setCurrentItem(currentPage, false)
+        morphView.setPageProgress(currentProgress)
         updateChrome()
 
         if (settings.animations) {
+            morphView.alpha = 0f
+            morphView.scaleX = 0.94f
+            morphView.scaleY = 0.94f
             pager.alpha = 0f
-            pager.translationY = dp(8).toFloat()
+            pager.translationY = dp(7).toFloat()
             dots.alpha = 0f
             nextButton.alpha = 0f
-            nextButton.translationY = dp(8).toFloat()
+            nextButton.translationY = dp(7).toFloat()
 
-            pager.post {
+            morphView.post {
+                morphView.animate()
+                    .alpha(1f)
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(360L)
+                    .setInterpolator(ease)
+                    .start()
+
                 pager.animate()
                     .alpha(1f)
                     .translationY(0f)
-                    .setDuration(300L)
+                    .setStartDelay(65L)
+                    .setDuration(280L)
                     .setInterpolator(ease)
                     .start()
 
                 dots.animate()
                     .alpha(1f)
-                    .setStartDelay(80L)
+                    .setStartDelay(110L)
                     .setDuration(220L)
                     .start()
 
                 nextButton.animate()
                     .alpha(1f)
                     .translationY(0f)
-                    .setStartDelay(130L)
+                    .setStartDelay(150L)
                     .setDuration(270L)
                     .setInterpolator(ease)
                     .start()
@@ -280,8 +340,10 @@ class SohrOnboarding(
     private inner class IntroPagerAdapter : PagerAdapter() {
         override fun getCount(): Int = pages.size
 
-        override fun isViewFromObject(view: View, obj: Any): Boolean =
-            view === obj
+        override fun isViewFromObject(
+            view: View,
+            obj: Any
+        ): Boolean = view === obj
 
         override fun instantiateItem(
             container: ViewGroup,
@@ -289,38 +351,12 @@ class SohrOnboarding(
         ): Any {
             val page = pages[position]
 
-            val root = LinearLayout(activity).apply {
+            val content = LinearLayout(activity).apply {
                 orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER_HORIZONTAL
-                setPadding(dp(14), dp(18), dp(14), 0)
+                gravity =
+                    Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                setPadding(dp(10), dp(2), dp(10), 0)
             }
-
-            val hero = FrameLayout(activity).apply {
-                tag = "intro_hero_$position"
-            }
-
-            val icon = ImageView(activity).apply {
-                setImageResource(page.icon)
-                imageTintList = null
-                scaleType = ImageView.ScaleType.CENTER_INSIDE
-                contentDescription = page.title
-            }
-            hero.addView(
-                icon,
-                FrameLayout.LayoutParams(
-                    dp(218),
-                    dp(218),
-                    Gravity.CENTER
-                )
-            )
-
-            root.addView(
-                hero,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(264)
-                )
-            )
 
             val title = TextView(activity).apply {
                 text = page.title
@@ -331,11 +367,11 @@ class SohrOnboarding(
                 setTypeface(typeface, Typeface.BOLD)
                 setTextColor(palette().text)
             }
-            root.addView(
+            content.addView(
                 title,
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(72)
+                    dp(74)
                 )
             )
 
@@ -343,49 +379,28 @@ class SohrOnboarding(
                 text = page.description
                 textSize = 14f
                 gravity = Gravity.CENTER
-                maxLines = 3
+                maxLines = 2
                 includeFontPadding = false
                 setLineSpacing(dp(2).toFloat(), 1.04f)
                 setTextColor(palette().muted)
-                setPadding(dp(8), dp(8), dp(8), 0)
+                setPadding(dp(14), dp(6), dp(14), 0)
             }
-            root.addView(
+            content.addView(
                 description,
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(84)
+                    dp(74)
                 )
             )
 
             container.addView(
-                root,
+                content,
                 ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
             )
-
-            if (settings.animations) {
-                hero.scaleX = 0.92f
-                hero.scaleY = 0.92f
-                hero.alpha = 0f
-                hero.post {
-                    hero.animate()
-                        .alpha(1f)
-                        .scaleX(1f)
-                        .scaleY(1f)
-                        .setDuration(330L)
-                        .setInterpolator(ease)
-                        .withEndAction {
-                            startAmbientMotion(root, icon, position)
-                        }
-                        .start()
-                }
-            } else {
-                startAmbientMotion(root, icon, position)
-            }
-
-            return root
+            return content
         }
 
         override fun destroyItem(
@@ -393,110 +408,33 @@ class SohrOnboarding(
             position: Int,
             obj: Any
         ) {
-            val view = obj as View
-            ambientAnimators.remove(view)?.cancel()
-            container.removeView(view)
+            container.removeView(obj as View)
         }
-    }
-
-    private fun startAmbientMotion(
-        owner: View,
-        icon: View,
-        position: Int
-    ) {
-        if (!settings.animations) return
-
-        ambientAnimators.remove(owner)?.cancel()
-
-        val animator =
-            android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
-                duration =
-                    when (position) {
-                        0 -> 4200L
-                        1 -> 4600L
-                        2 -> 3600L
-                        3 -> 3000L
-                        else -> 4400L
-                    }
-                repeatCount = android.animation.ValueAnimator.INFINITE
-                interpolator =
-                    android.view.animation.LinearInterpolator()
-                addUpdateListener {
-                    val t = it.animatedValue as Float
-                    val angle =
-                        t * kotlin.math.PI.toFloat() * 2f
-
-                    when (position) {
-                        0 -> {
-                            icon.translationY =
-                                kotlin.math.sin(angle) * dp(2).toFloat()
-                            icon.rotation =
-                                kotlin.math.sin(angle) * 0.55f
-                        }
-                        1 -> {
-                            icon.translationY =
-                                kotlin.math.sin(angle) * dp(2).toFloat()
-                            icon.rotation =
-                                kotlin.math.sin(angle + 0.7f) * 0.45f
-                        }
-                        2 -> {
-                            val pulse =
-                                1f + kotlin.math.sin(angle) * 0.008f
-                            icon.scaleX = pulse
-                            icon.scaleY = pulse
-                        }
-                        3 -> {
-                            val pulse =
-                                1f + kotlin.math.sin(angle) * 0.016f
-                            icon.scaleX = pulse
-                            icon.scaleY = pulse
-                            icon.translationY =
-                                kotlin.math.sin(angle + 0.4f) * dp(1).toFloat()
-                        }
-                        else -> {
-                            icon.translationX =
-                                kotlin.math.sin(angle) * dp(1).toFloat()
-                            icon.translationY =
-                                kotlin.math.cos(angle) * dp(1).toFloat()
-                        }
-                    }
-                }
-            }
-
-        ambientAnimators[owner] = animator
-        animator.start()
-    }
-
-    private fun animateSelectedHero() {
-        if (!settings.animations) return
-        val page =
-            pager.findViewWithTag<View>("intro_hero_$currentPage")
-                ?: return
-        page.animate().cancel()
-        page.scaleX = 0.985f
-        page.scaleY = 0.985f
-        page.animate()
-            .scaleX(1f)
-            .scaleY(1f)
-            .setDuration(220L)
-            .setInterpolator(ease)
-            .start()
     }
 
     private fun updateChrome() {
         if (::nextButton.isInitialized) {
             nextButton.text =
-                if (currentPage == pages.lastIndex) "Начать" else "Дальше"
+                if (currentPage == pages.lastIndex) {
+                    "Начать"
+                } else {
+                    "Дальше"
+                }
         }
+
         if (::skipButton.isInitialized) {
             skipButton.visibility =
-                if (currentPage == pages.lastIndex) View.INVISIBLE
-                else View.VISIBLE
+                if (currentPage == pages.lastIndex) {
+                    View.INVISIBLE
+                } else {
+                    View.VISIBLE
+                }
         }
     }
 
     private fun press(view: View) {
         if (!settings.animations) return
+
         view.animate().cancel()
         view.animate()
             .scaleX(0.965f)
@@ -518,7 +456,8 @@ class SohrOnboarding(
         radiusDp: Int
     ): android.graphics.drawable.GradientDrawable =
         android.graphics.drawable.GradientDrawable().apply {
-            shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+            shape =
+                android.graphics.drawable.GradientDrawable.RECTANGLE
             cornerRadius = dp(radiusDp).toFloat()
             setColor(color)
         }
@@ -527,7 +466,8 @@ class SohrOnboarding(
         color: Int
     ): android.graphics.drawable.GradientDrawable =
         android.graphics.drawable.GradientDrawable().apply {
-            shape = android.graphics.drawable.GradientDrawable.OVAL
+            shape =
+                android.graphics.drawable.GradientDrawable.OVAL
             setColor(color)
         }
 
