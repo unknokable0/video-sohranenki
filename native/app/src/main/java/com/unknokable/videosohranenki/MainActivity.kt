@@ -9443,7 +9443,7 @@ class MainActivity : AppCompatActivity() {
 
         val youtubeAvatarFrame = FrameLayout(this).apply {
             background = roundedBg(
-                if (youtubeConnected) Color.parseColor("#FF0033") else palette.accentSoft,
+                if (youtubeConnected) palette.accentSoft else palette.surfaceAlt,
                 46
             )
             setPadding(dp(3), dp(3), dp(3), dp(3))
@@ -9463,7 +9463,7 @@ class MainActivity : AppCompatActivity() {
             setTextColor(Color.WHITE)
             includeFontPadding = false
             background = roundedBg(
-                if (youtubeConnected) palette.surfaceAlt else panel,
+                if (youtubeConnected) purple else panel,
                 42
             )
         }
@@ -9474,6 +9474,24 @@ class MainActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         )
+
+        val youtubeBadge = TextView(this).apply {
+            text = "▶"
+            textSize = 10f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            includeFontPadding = false
+            background = roundedBg(Color.parseColor("#FF0033"), 12)
+        }
+        youtubeAvatarFrame.addView(
+            youtubeBadge,
+            FrameLayout.LayoutParams(dp(26), dp(26), Gravity.END or Gravity.BOTTOM).apply {
+                marginEnd = dp(1)
+                bottomMargin = dp(1)
+            }
+        )
+
         youtubeCard.addView(youtubeAvatarFrame, LinearLayout.LayoutParams(dp(92), dp(92)))
 
         youtubeCard.addView(TextView(this).apply {
@@ -9531,7 +9549,7 @@ class MainActivity : AppCompatActivity() {
         page.addView(youtubeCard)
 
         val privacy = TextView(this).apply {
-            text = "SOHR не видит пароль Google. Выбранный аккаунт используется только как настройка YouTube в приложении; обычные доступные ролики открываются внутри SOHR."
+            text = "SOHR не видит пароль Google и не импортирует cookies браузера. Выбранный аккаунт показывается в профиле YouTube; доступные прямые потоки открываются в нативном плеере SOHR."
             textSize = 12f
             setTextColor(muted)
             setPadding(dp(4), dp(12), dp(4), 0)
