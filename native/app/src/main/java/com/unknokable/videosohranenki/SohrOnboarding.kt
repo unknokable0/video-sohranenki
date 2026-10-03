@@ -57,7 +57,7 @@ class SohrOnboarding(
         }
 
         private companion object {
-            const val MORPH_DURATION_MS = 320
+            const val MORPH_DURATION_MS = 292
         }
     }
 

@@ -165,34 +165,34 @@ class SohrIntroMorphView(context: Context) : View(context) {
     // ---------------------------------------------------------------------
 
     private fun cloudState(): CanonicalState {
-        val center = PointF(80f, 82f)
+        val center = PointF(80f, 80f)
         return CanonicalState(
             main = shape(
-                cloudPoints(),
+                circlePoints(80f, 80f, 52f),
                 rotation = 0f,
                 alpha = 1f,
-                tone = 1f,
+                tone = 0.98f,
                 brightness = 1f,
-                shadow = 0.88f
+                shadow = 0.86f
             ),
             depth1 = hiddenShape(center.x, center.y),
             depth2 = hiddenShape(center.x, center.y),
-            preview = hiddenBox(81f, 85f),
+            preview = hiddenBox(80f, 80f),
             artworkAlpha = 0f,
-            line1 = hiddenBox(88f, 80f),
-            line2 = hiddenBox(88f, 92f),
+            line1 = hiddenBox(80f, 80f),
+            line2 = hiddenBox(80f, 92f),
             accentBar = hiddenBox(80f, 48f),
-            timeline = hiddenBox(80f, 116f),
+            timeline = hiddenBox(80f, 110f),
             timelineProgress = 0f,
-            timelineThumb = hiddenDot(80f, 116f),
-            pill1 = hiddenBox(57f, 27f),
-            pill2 = hiddenBox(103f, 27f),
+            timelineThumb = hiddenDot(80f, 110f),
+            pill1 = hiddenBox(58f, 34f),
+            pill2 = hiddenBox(102f, 34f),
             glyph = glyph(
-                outer = roundedTrianglePoints(80f, 84f, 39f),
-                inner = roundedTrianglePoints(80f, 84f, 1f),
+                outer = roundedTrianglePoints(81f, 80f, 34f),
+                inner = roundedTrianglePoints(81f, 80f, 1f),
                 alpha = 1f,
                 innerAlpha = 0f,
-                darkness = 1f
+                darkness = 0.90f
             )
         )
     }
@@ -200,57 +200,57 @@ class SohrIntroMorphView(context: Context) : View(context) {
     private fun feedState(): CanonicalState {
         return CanonicalState(
             main = shape(
-                roundedPanelPoints(82f, 83f, 132f, 64f),
-                rotation = -4f,
+                roundedPanelPoints(80f, 82f, 116f, 58f),
+                rotation = -3f,
                 alpha = 1f,
-                tone = 0.98f,
-                brightness = 1f,
-                shadow = 0.92f
+                tone = 0.96f,
+                brightness = 0.98f,
+                shadow = 0.86f
             ),
             depth1 = shape(
-                roundedPanelPoints(82f, 52f, 114f, 47f),
-                rotation = -9f,
-                alpha = 1f,
-                tone = 0.58f,
-                brightness = 0.44f,
-                shadow = 0.34f
+                roundedPanelPoints(81f, 57f, 98f, 38f),
+                rotation = -7f,
+                alpha = 0.92f,
+                tone = 0.56f,
+                brightness = 0.48f,
+                shadow = 0.26f
             ),
             depth2 = shape(
-                roundedPanelPoints(80f, 114f, 110f, 43f),
-                rotation = 5f,
-                alpha = 1f,
-                tone = 0.50f,
-                brightness = 0.38f,
-                shadow = 0.28f
+                roundedPanelPoints(79f, 107f, 94f, 34f),
+                rotation = 4f,
+                alpha = 0.78f,
+                tone = 0.48f,
+                brightness = 0.40f,
+                shadow = 0.20f
             ),
             preview = box(
-                48f, 83f, 45f, 43f,
-                10f, -4f, 1f,
-                1f, 1f, 0.08f
+                49f, 82f, 36f, 34f,
+                8f, -3f, 1f,
+                1f, 0.98f, 0.05f
             ),
             artworkAlpha = 1f,
             line1 = box(
-                104f, 72f, 51f, 8f,
-                4f, -4f, 1f,
-                1f, 1f, 0f
+                101f, 73f, 42f, 7f,
+                3.5f, -3f, 1f,
+                1f, 0.96f, 0f
             ),
             line2 = box(
-                99f, 93f, 38f, 7f,
-                3.5f, -4f, 1f,
-                0.92f, 0.96f, 0f
+                97f, 91f, 34f, 6f,
+                3f, -3f, 1f,
+                0.90f, 0.90f, 0f
             ),
             accentBar = hiddenBox(80f, 48f),
-            timeline = hiddenBox(80f, 116f),
+            timeline = hiddenBox(80f, 110f),
             timelineProgress = 0f,
-            timelineThumb = hiddenDot(80f, 116f),
-            pill1 = hiddenBox(57f, 27f),
-            pill2 = hiddenBox(103f, 27f),
+            timelineThumb = hiddenDot(80f, 110f),
+            pill1 = hiddenBox(58f, 34f),
+            pill2 = hiddenBox(102f, 34f),
             glyph = glyph(
-                outer = roundedTrianglePoints(48f, 83f, 7f),
-                inner = roundedTrianglePoints(48f, 83f, 1f),
+                outer = roundedTrianglePoints(49f, 82f, 6f),
+                inner = roundedTrianglePoints(49f, 82f, 1f),
                 alpha = 0f,
                 innerAlpha = 0f,
-                darkness = 0.35f
+                darkness = 0.32f
             )
         )
     }
@@ -258,53 +258,53 @@ class SohrIntroMorphView(context: Context) : View(context) {
     private fun playerState(): CanonicalState {
         return CanonicalState(
             main = shape(
-                roundedPanelPoints(80f, 82f, 142f, 91f),
+                roundedPanelPoints(80f, 80f, 118f, 78f),
                 rotation = 0f,
                 alpha = 1f,
                 tone = 0.88f,
-                brightness = 0.90f,
-                shadow = 0.92f
+                brightness = 0.92f,
+                shadow = 0.88f
             ),
             depth1 = shape(
-                roundedPanelPoints(68f, 80f, 127f, 82f),
-                rotation = -6f,
-                alpha = 1f,
+                roundedPanelPoints(71f, 80f, 103f, 68f),
+                rotation = -4f,
+                alpha = 0.82f,
                 tone = 0.50f,
-                brightness = 0.38f,
-                shadow = 0.32f
+                brightness = 0.40f,
+                shadow = 0.24f
             ),
             depth2 = shape(
-                roundedPanelPoints(92f, 80f, 125f, 81f),
-                rotation = 5f,
-                alpha = 1f,
+                roundedPanelPoints(89f, 80f, 103f, 68f),
+                rotation = 4f,
+                alpha = 0.70f,
                 tone = 0.44f,
-                brightness = 0.34f,
-                shadow = 0.26f
+                brightness = 0.35f,
+                shadow = 0.18f
             ),
             preview = box(
-                80f, 64f, 130f, 62f,
-                16f, 0f, 1f,
-                1f, 1f, 0.06f
+                80f, 68f, 108f, 50f,
+                13f, 0f, 1f,
+                1f, 1f, 0.05f
             ),
             artworkAlpha = 1f,
-            line1 = hiddenBox(104f, 80f),
-            line2 = hiddenBox(99f, 94f),
+            line1 = hiddenBox(100f, 80f),
+            line2 = hiddenBox(96f, 92f),
             accentBar = hiddenBox(80f, 48f),
             timeline = box(
-                80f, 117f, 120f, 7.5f,
-                3.75f, 0f, 1f,
+                80f, 108f, 98f, 6f,
+                3f, 0f, 1f,
                 0.36f, 0.28f, 0f
             ),
-            timelineProgress = 0.62f,
+            timelineProgress = 0.61f,
             timelineThumb = dot(
-                94f, 117f, 7f,
+                91f, 108f, 5.5f,
                 1f, 1f
             ),
-            pill1 = hiddenBox(57f, 27f),
-            pill2 = hiddenBox(103f, 27f),
+            pill1 = hiddenBox(58f, 34f),
+            pill2 = hiddenBox(102f, 34f),
             glyph = glyph(
-                outer = roundedTrianglePoints(80f, 64f, 34f),
-                inner = roundedTrianglePoints(80f, 64f, 1f),
+                outer = roundedTrianglePoints(80f, 68f, 27f),
+                inner = roundedTrianglePoints(80f, 68f, 1f),
                 alpha = 1f,
                 innerAlpha = 0f,
                 darkness = 0f
@@ -315,40 +315,40 @@ class SohrIntroMorphView(context: Context) : View(context) {
     private fun calendarState(): CanonicalState {
         return CanonicalState(
             main = shape(
-                roundedPanelPoints(80f, 83f, 106f, 101f),
+                roundedPanelPoints(80f, 82f, 96f, 96f),
                 rotation = 0f,
                 alpha = 1f,
                 tone = 0.74f,
-                brightness = 0.76f,
-                shadow = 0.90f
+                brightness = 0.78f,
+                shadow = 0.86f
             ),
-            depth1 = hiddenShape(80f, 83f),
-            depth2 = hiddenShape(80f, 83f),
-            preview = hiddenBox(80f, 64f),
+            depth1 = hiddenShape(80f, 82f),
+            depth2 = hiddenShape(80f, 82f),
+            preview = hiddenBox(80f, 66f),
             artworkAlpha = 0f,
-            line1 = hiddenBox(80f, 64f),
-            line2 = hiddenBox(80f, 99f),
+            line1 = hiddenBox(80f, 66f),
+            line2 = hiddenBox(80f, 98f),
             accentBar = box(
-                80f, 47f, 106f, 27f,
-                15f, 0f, 1f,
+                80f, 49f, 96f, 24f,
+                12f, 0f, 1f,
+                0.96f, 0.94f, 0.07f
+            ),
+            timeline = hiddenBox(80f, 108f),
+            timelineProgress = 0f,
+            timelineThumb = hiddenDot(80f, 108f),
+            pill1 = box(
+                58f, 34f, 10f, 22f,
+                5f, 0f, 1f,
                 1f, 1f, 0.10f
             ),
-            timeline = hiddenBox(80f, 112f),
-            timelineProgress = 0f,
-            timelineThumb = hiddenDot(80f, 112f),
-            pill1 = box(
-                57f, 27f, 12f, 26f,
-                6f, 0f, 1f,
-                1f, 1f, 0.14f
-            ),
             pill2 = box(
-                103f, 27f, 12f, 26f,
-                6f, 0f, 1f,
-                1f, 1f, 0.14f
+                102f, 34f, 10f, 22f,
+                5f, 0f, 1f,
+                1f, 1f, 0.10f
             ),
             glyph = glyph(
-                outer = flamePoints(80f, 84f, 51f),
-                inner = flamePoints(80f, 93f, 18f),
+                outer = flamePoints(80f, 83f, 38f),
+                inner = flamePoints(80f, 90f, 13f),
                 alpha = 1f,
                 innerAlpha = 1f,
                 darkness = 0f
@@ -359,40 +359,40 @@ class SohrIntroMorphView(context: Context) : View(context) {
     private fun settingsState(): CanonicalState {
         return CanonicalState(
             main = shape(
-                roundedPanelPoints(80f, 82f, 107f, 107f),
+                roundedPanelPoints(80f, 82f, 96f, 96f),
                 rotation = 0f,
                 alpha = 1f,
-                tone = 0.96f,
-                brightness = 0.94f,
-                shadow = 0.94f
+                tone = 0.94f,
+                brightness = 0.92f,
+                shadow = 0.88f
             ),
             depth1 = hiddenShape(80f, 82f),
             depth2 = hiddenShape(80f, 82f),
-            preview = hiddenBox(80f, 64f),
+            preview = hiddenBox(80f, 66f),
             artworkAlpha = 0f,
-            line1 = hiddenBox(80f, 64f),
+            line1 = hiddenBox(80f, 66f),
             line2 = box(
-                80f, 99f, 78f, 10f,
-                5f, 0f, 1f,
-                1f, 1f, 0f
+                80f, 98f, 70f, 8f,
+                4f, 0f, 1f,
+                0.98f, 1f, 0f
             ),
             accentBar = box(
-                80f, 64f, 78f, 10f,
-                5f, 0f, 1f,
-                1f, 1f, 0f
+                80f, 66f, 70f, 8f,
+                4f, 0f, 1f,
+                0.98f, 1f, 0f
             ),
-            timeline = hiddenBox(80f, 112f),
+            timeline = hiddenBox(80f, 108f),
             timelineProgress = 0f,
-            timelineThumb = hiddenDot(80f, 112f),
+            timelineThumb = hiddenDot(80f, 108f),
             pill1 = box(
-                104f, 64f, 28f, 28f,
-                14f, 0f, 1f,
-                1f, 1f, 0.20f
+                101f, 66f, 24f, 24f,
+                12f, 0f, 1f,
+                1f, 1f, 0.14f
             ),
             pill2 = box(
-                58f, 99f, 28f, 28f,
-                14f, 0f, 1f,
-                1f, 1f, 0.20f
+                59f, 98f, 24f, 24f,
+                12f, 0f, 1f,
+                1f, 1f, 0.14f
             ),
             glyph = glyph(
                 outer = flamePoints(80f, 84f, 1f),
@@ -1216,24 +1216,33 @@ class SohrIntroMorphView(context: Context) : View(context) {
     // GEOMETRY
     // ---------------------------------------------------------------------
 
-    private fun cloudPoints(): List<PointF> = listOf(
-        PointF(82f, 42f),
-        PointF(96f, 47f),
-        PointF(106f, 59f),
-        PointF(111f, 70f),
-        PointF(127f, 70f),
-        PointF(139f, 82f),
-        PointF(142f, 95f),
-        PointF(135f, 109f),
-        PointF(121f, 117f),
-        PointF(80f, 119f),
-        PointF(39f, 118f),
-        PointF(24f, 109f),
-        PointF(18f, 95f),
-        PointF(22f, 82f),
-        PointF(34f, 72f),
-        PointF(53f, 68f)
-    )
+    private fun circlePoints(
+        cx: Float,
+        cy: Float,
+        radius: Float
+    ): List<PointF> {
+        val k = 0.9238795f
+        val s = 0.7071068f
+        val r = radius
+        return listOf(
+            PointF(cx, cy - r),
+            PointF(cx + r * s, cy - r * s),
+            PointF(cx + r * k, cy - r * 0.3826834f),
+            PointF(cx + r, cy),
+            PointF(cx + r * k, cy + r * 0.3826834f),
+            PointF(cx + r * s, cy + r * s),
+            PointF(cx, cy + r),
+            PointF(cx - r * s, cy + r * s),
+            PointF(cx - r * k, cy + r * 0.3826834f),
+            PointF(cx - r, cy),
+            PointF(cx - r * k, cy - r * 0.3826834f),
+            PointF(cx - r * s, cy - r * s),
+            PointF(cx, cy - r),
+            PointF(cx + r * 0.3826834f, cy - r * k),
+            PointF(cx + r * s, cy - r * s),
+            PointF(cx + r * k, cy - r * 0.3826834f)
+        )
+    }
 
     private fun roundedPanelPoints(
         cx: Float,
@@ -1496,11 +1505,10 @@ class SohrIntroMorphView(context: Context) : View(context) {
         )
     }
 
-    // Larger logical canvas than 6.9.26: the shapes themselves are also
-    // widened, producing roughly 20–25% more visual weight without scaling
-    // the Canvas or changing the onboarding layout.
+    // Safe 136-unit logical canvas keeps every icon, loop, shadow and thumb
+    // inside the fixed hero area while preserving equal visual weight.
     private fun unit() =
-        minOf(width, height).toFloat() / 112f
+        minOf(width, height).toFloat() / 136f
 
     private fun px(x: Float) =
         width / 2f +
