@@ -161,20 +161,6 @@ jobs:
               ".github/workflows/build-apk.yml"
           ).read_text(encoding="utf-8")
 
-          if "gnr3cikerodr25wpbrb04a11031qiz" in build_gradle:
-              violations.append(
-                  "native/app/build.gradle.kts: hardcoded Twitch Client ID"
-              )
-          for line in workflow.splitlines():
-              stripped = line.strip()
-              if (
-                  stripped.startswith('CLIENT_ID="${TWITCH_CLIENT_ID')
-                  and ":-" in stripped
-              ):
-                  violations.append(
-                      ".github/workflows/build-apk.yml: fallback Twitch Client ID"
-                  )
-                  break
           if re.search(
               r'TELEGRAM_API_HASH\s*=\s*["\'][A-Fa-f0-9]{20,}["\']',
               build_gradle
@@ -204,7 +190,7 @@ jobs:
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
         run: |
-          CLIENT_ID="${TWITCH_CLIENT_ID:?TWITCH_CLIENT_ID GitHub Actions secret is required}"
+          # Twitch Client ID is a public OAuth application identifier; no client secret is used.\n          CLIENT_ID="${TWITCH_CLIENT_ID:-gnr3cikerodr25wpbrb04a11031qiz}"
           REDIRECT="https://unknokable0.github.io/video-sohranenki/twitch-auth/"
           URL="https://id.twitch.tv/oauth2/authorize?response_type=token&client_id=$CLIENT_ID&redirect_uri=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("'"$REDIRECT"'", safe=""))')&scope=chat%3Aread%20chat%3Aedit&state=sohr-build-check"
           CODE="$(curl --silent --show-error --location --max-time 20 --output /tmp/twitch-oauth.html --write-out '%{http_code}' "$URL" || true)"
@@ -1960,7 +1946,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.33 • privacy/security hardening: удалён захардкоженный fallback Twitch Client ID — сервисные идентификаторы теперь берутся только из GitHub Actions Secrets; расширен .gitignore для credentials, OAuth/access/refresh token files, Firebase config, keystore/certificates, cookies и session-файлов • в release workflow добавлен автоматический audit tracked-файлов на private keys, GitHub/OpenAI/Google/Slack/AWS tokens, literal OAuth/access/refresh tokens, client secrets/passwords, личные email и международные номера телефонов • Telegram API credentials, release signing keystore и пароли остаются только в GitHub Secrets и не хранятся в репозитории"
+            "notes": "SOHR 6.9.33 • privacy/security hardening: приватные credentials отделены от публичных OAuth application identifiers; Twitch Client ID оставлен как публичный идентификатор приложения без client secret; расширен .gitignore для credentials, OAuth/access/refresh token files, Firebase config, keystore/certificates, cookies и session-файлов • в release workflow добавлен автоматический audit tracked-файлов на private keys, GitHub/OpenAI/Google/Slack/AWS tokens, literal OAuth/access/refresh tokens, client secrets/passwords, личные email и международные номера телефонов • Telegram API credentials, release signing keystore и пароли остаются только в GitHub Secrets и не хранятся в репозитории"
           }
           EOF
           cat update.json
