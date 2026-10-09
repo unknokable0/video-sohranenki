@@ -165,10 +165,16 @@ jobs:
               violations.append(
                   "native/app/build.gradle.kts: hardcoded Twitch Client ID"
               )
-          if "TWITCH_CLIENT_ID:-" in workflow:
-              violations.append(
-                  ".github/workflows/build-apk.yml: fallback Twitch Client ID"
-              )
+          for line in workflow.splitlines():
+              stripped = line.strip()
+              if (
+                  stripped.startswith('CLIENT_ID="${TWITCH_CLIENT_ID')
+                  and ":-" in stripped
+              ):
+                  violations.append(
+                      ".github/workflows/build-apk.yml: fallback Twitch Client ID"
+                  )
+                  break
           if re.search(
               r'TELEGRAM_API_HASH\s*=\s*["\'][A-Fa-f0-9]{20,}["\']',
               build_gradle
