@@ -74,8 +74,6 @@ object YouTubeNativeResolver {
     @Volatile
     private var applicationContext: Context? = null
 
-    private const val FALLBACK_WEB_API_KEY =
-        "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
     private const val FALLBACK_WEB_VERSION = "2.20260708.00.00"
     private const val MWEB_CLIENT_VERSION = "2.20260708.05.00"
     private const val MWEB_CLIENT_NAME = 2
@@ -1143,7 +1141,7 @@ object YouTubeNativeResolver {
                 Regex("""\"INNERTUBE_API_KEY\":\"([^\"]+)\"""")
             )?.let(::decodeBootstrapValue)
                 ?.takeIf { it.isNotBlank() }
-                ?: FALLBACK_WEB_API_KEY
+                ?: throw YouTubeSessionInitException()
 
             val clientVersion = firstGroup(
                 page,
