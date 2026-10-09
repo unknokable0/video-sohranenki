@@ -54,16 +54,151 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Assign SOHR 6.9.32 version
+      - name: Audit repository for secrets and private data
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690032" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.32" >> "$GITHUB_ENV"
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import subprocess
+
+          tracked = subprocess.check_output(
+              ["git", "ls-files", "-z"]
+          ).decode("utf-8", "replace").split("\0")
+          tracked = [p for p in tracked if p]
+
+          forbidden_paths = [
+              re.compile(r"(^|/)\.env($|\.)", re.I),
+              re.compile(r"\.(jks|keystore|p12|pfx|pem|key)$", re.I),
+              re.compile(r"(^|/)google-services\.json$", re.I),
+              re.compile(r"(^|/)(local|secrets|keystore|key)\.properties$", re.I),
+              re.compile(r"(^|/)credentials\.json$", re.I),
+              re.compile(r"(^|/)client_secret[^/]*\.json$", re.I),
+              re.compile(r"(^|/)tdlib_session_", re.I),
+              re.compile(r"(^|/)(cookies|session)\.(txt|json|db|sqlite)$", re.I),
+          ]
+
+          path_violations = []
+          for path in tracked:
+              if path.endswith(".env.example"):
+                  continue
+              if any(rx.search(path) for rx in forbidden_paths):
+                  path_violations.append(path)
+
+          if path_violations:
+              raise SystemExit(
+                  "Sensitive file(s) are tracked:\n" +
+                  "\n".join(path_violations)
+              )
+
+          secret_patterns = [
+              ("private key", re.compile(
+                  r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"
+              )),
+              ("GitHub token", re.compile(
+                  r"gh[pousr]_[A-Za-z0-9]{20,}"
+              )),
+              ("OpenAI key", re.compile(
+                  r"sk-(?:proj-)?[A-Za-z0-9_-]{20,}"
+              )),
+              ("Google API key", re.compile(
+                  r"AIza[0-9A-Za-z_-]{20,}"
+              )),
+              ("Slack token", re.compile(
+                  r"xox[baprs]-[A-Za-z0-9-]{10,}"
+              )),
+              ("AWS access key", re.compile(
+                  r"AKIA[0-9A-Z]{16}"
+              )),
+              ("literal access token", re.compile(
+                  r"""(?i)(?:access|refresh|oauth)[_-]?token\s*[:=]\s*["'][^"'\n]{12,}["']"""
+              )),
+              ("literal client secret", re.compile(
+                  r"""(?i)client[_-]?secret\s*[:=]\s*["'][^"'\n]{8,}["']"""
+              )),
+              ("literal password", re.compile(
+                  r"""(?i)(?:store|key)?password\s*[:=]\s*["'][^"'\n]{8,}["']"""
+              )),
+              ("personal email", re.compile(
+                  r"""(?i)[A-Z0-9._%+-]+@(gmail|outlook|hotmail|icloud|yahoo|protonmail|proton)\.[A-Z]{2,}"""
+              )),
+              ("international phone", re.compile(
+                  r"""(?<!\d)\+[1-9]\d{7,14}(?!\d)"""
+              )),
+          ]
+
+          text_suffixes = {
+              ".kt", ".kts", ".java", ".xml", ".json", ".js",
+              ".ts", ".html", ".md", ".yml", ".yaml", ".properties",
+              ".gradle", ".txt", ".sh"
+          }
+
+          violations = []
+          for path in tracked:
+              p = Path(path)
+              if p.suffix.lower() not in text_suffixes and p.name not in {
+                  ".gitignore", ".gitmodules"
+              }:
+                  continue
+              try:
+                  data = p.read_text(encoding="utf-8")
+              except UnicodeDecodeError:
+                  continue
+              for label, rx in secret_patterns:
+                  match = rx.search(data)
+                  if match:
+                      value = match.group(0)
+                      if "@users.noreply.github.com" in value:
+                          continue
+                      violations.append(f"{path}: {label}")
+                      break
+
+          build_gradle = Path(
+              "native/app/build.gradle.kts"
+          ).read_text(encoding="utf-8")
+          workflow = Path(
+              ".github/workflows/build-apk.yml"
+          ).read_text(encoding="utf-8")
+
+          if "gnr3cikerodr25wpbrb04a11031qiz" in build_gradle:
+              violations.append(
+                  "native/app/build.gradle.kts: hardcoded Twitch Client ID"
+              )
+          if "TWITCH_CLIENT_ID:-" in workflow:
+              violations.append(
+                  ".github/workflows/build-apk.yml: fallback Twitch Client ID"
+              )
+          if re.search(
+              r'TELEGRAM_API_HASH\s*=\s*["\'][A-Fa-f0-9]{20,}["\']',
+              build_gradle
+          ):
+              violations.append(
+                  "native/app/build.gradle.kts: hardcoded Telegram API hash"
+              )
+
+          if violations:
+              raise SystemExit(
+                  "Repository privacy/security audit failed:\n" +
+                  "\n".join(sorted(set(violations)))
+              )
+
+          print(
+              f"Repository privacy/security audit passed "
+              f"({len(tracked)} tracked files)"
+          )
+          PY
+
+      - name: Assign SOHR 6.9.33 version
+        shell: bash
+        run: |
+          echo "SOHR_BUILD_NUMBER=690033" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.33" >> "$GITHUB_ENV"
 
       - name: Verify Twitch OAuth authorize endpoint
         shell: bash
         run: |
-          CLIENT_ID="${TWITCH_CLIENT_ID:-gnr3cikerodr25wpbrb04a11031qiz}"
+          CLIENT_ID="${TWITCH_CLIENT_ID:?TWITCH_CLIENT_ID GitHub Actions secret is required}"
           REDIRECT="https://unknokable0.github.io/video-sohranenki/twitch-auth/"
           URL="https://id.twitch.tv/oauth2/authorize?response_type=token&client_id=$CLIENT_ID&redirect_uri=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("'"$REDIRECT"'", safe=""))')&scope=chat%3Aread%20chat%3Aedit&state=sohr-build-check"
           CODE="$(curl --silent --show-error --location --max-time 20 --output /tmp/twitch-oauth.html --write-out '%{http_code}' "$URL" || true)"
@@ -1819,7 +1954,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.32 • все пять onboarding-иконок заново выровнены по единой безопасной геометрии: первая иконка теперь аккуратный круг с Play вместо облака; лента, плеер, календарь и настройки имеют одинаковый визуальный центр и сопоставимую массу • внутренний logical canvas уменьшен с /112 до /136, поэтому петли календаря, тени, scrubber и slider thumbs больше не упираются в края hero-зоны и не обрезаются • календарь и настройки приведены к одинаковой 96×96 базе, пламя уменьшено и центрировано, slider-линии и thumbs выровнены • лента и плеер уменьшены до безопасной ширины и сохранили depth-слои без выхода за границы • morph остаётся единым path-interpolation без наложения отдельных картинок; settle-анимация ускорена до 292 ms для более плавного и отзывчивого ощущения"
+            "notes": "SOHR 6.9.33 • privacy/security hardening: удалён захардкоженный fallback Twitch Client ID — сервисные идентификаторы теперь берутся только из GitHub Actions Secrets; расширен .gitignore для credentials, OAuth/access/refresh token files, Firebase config, keystore/certificates, cookies и session-файлов • в release workflow добавлен автоматический audit tracked-файлов на private keys, GitHub/OpenAI/Google/Slack/AWS tokens, literal OAuth/access/refresh tokens, client secrets/passwords, личные email и международные номера телефонов • Telegram API credentials, release signing keystore и пароли остаются только в GitHub Secrets и не хранятся в репозитории"
           }
           EOF
           cat update.json
