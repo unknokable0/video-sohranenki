@@ -112,13 +112,13 @@ jobs:
                   r"AKIA[0-9A-Z]{16}"
               )),
               ("literal access token", re.compile(
-                  r"""(?i)(?:access|refresh|oauth)[_-]?token\s*[:=]\s*["'][^"'\n]{12,}["']"""
+                  r"""(?i)(?:access|refresh|oauth)[_-]?token\s*[:=]\s*["'](?!\$)[^"'\n]{12,}["']"""
               )),
               ("literal client secret", re.compile(
-                  r"""(?i)client[_-]?secret\s*[:=]\s*["'][^"'\n]{8,}["']"""
+                  r"""(?i)client[_-]?secret\s*[:=]\s*["'](?!\$)[^"'\n]{8,}["']"""
               )),
               ("literal password", re.compile(
-                  r"""(?i)(?:store|key)?password\s*[:=]\s*["'][^"'\n]{8,}["']"""
+                  r"""(?i)(?:store|key)?password\s*[:=]\s*["'](?!\$)[^"'\n]{8,}["']"""
               )),
               ("personal email", re.compile(
                   r"""(?i)[A-Z0-9._%+-]+@(gmail|outlook|hotmail|icloud|yahoo|protonmail|proton)\.[A-Z]{2,}"""
