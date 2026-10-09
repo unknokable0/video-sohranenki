@@ -46,3 +46,18 @@ yarn-error.log*
 *.zip
 *.rar
 *.7z
+
+
+# Never commit account/service credentials
+**/google-services.json
+**/credentials.json
+**/client_secret*.json
+**/*access-token*
+**/*refresh-token*
+**/*oauth-token*
+*.pfx
+id_rsa
+id_rsa.*
+cookies.txt
+cookies.json
+*.session
