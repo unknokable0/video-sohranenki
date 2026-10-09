@@ -6,7 +6,9 @@ plugins {
 
 val telegramApiId = System.getenv("TELEGRAM_API_ID") ?: "0"
 val telegramApiHash = System.getenv("TELEGRAM_API_HASH") ?: ""
-// Twitch Client IDs are public OAuth application identifiers; no client secret is embedded.\nval twitchClientId = System.getenv("TWITCH_CLIENT_ID")?.takeIf { it.isNotBlank() }\n    ?: "gnr3cikerodr25wpbrb04a11031qiz"
+// Twitch Client IDs are public OAuth application identifiers; no client secret is embedded.
+val twitchClientId = System.getenv("TWITCH_CLIENT_ID")?.takeIf { it.isNotBlank() }
+    ?: "gnr3cikerodr25wpbrb04a11031qiz"
 val sohrBuildNumber = System.getenv("SOHR_BUILD_NUMBER")?.toIntOrNull()
 val sohrVersionName = System.getenv("SOHR_VERSION_NAME")
 
