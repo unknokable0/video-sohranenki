@@ -187,24 +187,40 @@ jobs:
           echo "SOHR_BUILD_NUMBER=690033" >> "$GITHUB_ENV"
           echo "SOHR_VERSION_NAME=6.9.33" >> "$GITHUB_ENV"
 
-      - name: Verify Twitch OAuth authorize endpoint
+      - name: Verify Twitch device-code endpoint
         shell: bash
         run: |
-          # Twitch Client ID is a public OAuth application identifier; no client secret is used.\n          CLIENT_ID="${TWITCH_CLIENT_ID:-gnr3cikerodr25wpbrb04a11031qiz}"
-          REDIRECT="https://unknokable0.github.io/video-sohranenki/twitch-auth/"
-          URL="https://id.twitch.tv/oauth2/authorize?response_type=token&client_id=$CLIENT_ID&redirect_uri=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("'"$REDIRECT"'", safe=""))')&scope=chat%3Aread%20chat%3Aedit&state=sohr-build-check"
-          CODE="$(curl --silent --show-error --location --max-time 20 --output /tmp/twitch-oauth.html --write-out '%{http_code}' "$URL" || true)"
-          if [ "$CODE" -ge 400 ] || [ "$CODE" -lt 200 ]; then
-            echo "Twitch OAuth authorize endpoint failed with HTTP $CODE" >&2
-            cat /tmp/twitch-oauth.html >&2 || true
+          set -euo pipefail
+          # Twitch Client ID is a public OAuth application identifier; no client secret is used.
+          CLIENT_ID="${TWITCH_CLIENT_ID:-gnr3cikerodr25wpbrb04a11031qiz}"
+
+          CODE="$(curl --silent --show-error --max-time 20 \
+            --request POST \
+            --header 'Content-Type: application/x-www-form-urlencoded' \
+            --data-urlencode "client_id=$CLIENT_ID" \
+            --data-urlencode "scopes=chat:read chat:edit" \
+            --output /tmp/twitch-device.json \
+            --write-out '%{http_code}' \
+            'https://id.twitch.tv/oauth2/device' || true)"
+
+          if [ "$CODE" -lt 200 ] || [ "$CODE" -ge 300 ]; then
+            echo "Twitch device-code endpoint failed with HTTP $CODE" >&2
             exit 1
           fi
-          if grep -Eqi 'invalid redirect|redirect uri.*invalid|invalid client' /tmp/twitch-oauth.html; then
-            echo "Twitch rejected OAuth client or redirect URI" >&2
-            cat /tmp/twitch-oauth.html >&2
-            exit 1
-          fi
-          echo "Twitch OAuth authorize endpoint reachable (HTTP $CODE)"
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          data = json.loads(Path("/tmp/twitch-device.json").read_text())
+          required = ("device_code", "user_code", "verification_uri")
+          missing = [key for key in required if not data.get(key)]
+          if missing:
+              raise SystemExit(
+                  "Twitch device-code response missing: " + ", ".join(missing)
+              )
+          print("Twitch device-code endpoint verified")
+          PY
 
       - name: Verify YouTube bootstrap endpoint
         shell: bash
