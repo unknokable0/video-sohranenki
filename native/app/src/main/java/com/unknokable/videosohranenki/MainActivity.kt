@@ -1286,7 +1286,7 @@ class MainActivity : AppCompatActivity() {
             imageTintList = ColorStateList.valueOf(this@MainActivity.text)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             contentDescription = null
-            isImportantForAccessibility = false
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
         country.addView(
             countryChevron,
