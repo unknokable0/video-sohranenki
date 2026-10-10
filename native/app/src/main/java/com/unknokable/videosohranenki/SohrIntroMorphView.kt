@@ -168,7 +168,7 @@ class SohrIntroMorphView(context: Context) : View(context) {
         val center = PointF(80f, 80f)
         return CanonicalState(
             main = shape(
-                circlePoints(80f, 80f, 52f),
+                circlePoints(80f, 80f, 54f),
                 rotation = 0f,
                 alpha = 1f,
                 tone = 0.98f,
@@ -374,12 +374,12 @@ class SohrIntroMorphView(context: Context) : View(context) {
             line2 = box(
                 80f, 98f, 70f, 8f,
                 4f, 0f, 1f,
-                0.98f, 1f, 0f
+                0.22f, 1f, 0f
             ),
             accentBar = box(
                 80f, 66f, 70f, 8f,
                 4f, 0f, 1f,
-                0.98f, 1f, 0f
+                0.22f, 1f, 0f
             ),
             timeline = hiddenBox(80f, 108f),
             timelineProgress = 0f,
@@ -463,7 +463,7 @@ class SohrIntroMorphView(context: Context) : View(context) {
         canvas.translate(0f, dp(4f))
         fill.shader = null
         fill.color = Color.argb(
-            (58f * layer.shadow).toInt().coerceIn(0, 58),
+            (58f * layer.shadow * layer.alpha).toInt().coerceIn(0, 58),
             0, 0, 0
         )
         canvas.drawPath(shapePath, fill)
@@ -485,6 +485,7 @@ class SohrIntroMorphView(context: Context) : View(context) {
             0.28f + layer.tone.coerceIn(0f, 1f) * 0.46f
         )
 
+        fill.color = Color.WHITE
         fill.shader = LinearGradient(
             bounds.left,
             bounds.top,
@@ -499,6 +500,7 @@ class SohrIntroMorphView(context: Context) : View(context) {
 
         canvas.save()
         canvas.clipPath(shapePath)
+        fill.color = Color.WHITE
         fill.shader = LinearGradient(
             bounds.left,
             bounds.top,
@@ -541,19 +543,26 @@ class SohrIntroMorphView(context: Context) : View(context) {
         canvas.translate(0f, dp(3f))
         fill.shader = null
         fill.color = Color.argb(
-            (42f * layer.shadow).toInt().coerceIn(0, 42),
+            (42f * layer.shadow * layer.alpha).toInt().coerceIn(0, 42),
             0, 0, 0
         )
         canvas.drawPath(shapePath, fill)
         canvas.restore()
 
+        fill.color = Color.WHITE
         fill.shader = LinearGradient(
             bounds.left,
             bounds.top,
             bounds.right,
             bounds.bottom,
-            Color.rgb(101, 75, 160),
-            Color.rgb(48, 37, 94),
+            ColorUtils.setAlphaComponent(
+                Color.rgb(163, 113, 221),
+                (255f * layer.alpha).toInt().coerceIn(0, 255)
+            ),
+            ColorUtils.setAlphaComponent(
+                Color.rgb(91, 61, 161),
+                (255f * layer.alpha).toInt().coerceIn(0, 255)
+            ),
             Shader.TileMode.CLAMP
         )
         canvas.drawPath(shapePath, fill)
@@ -591,7 +600,7 @@ class SohrIntroMorphView(context: Context) : View(context) {
             shadowRect.offset(0f, dp(2f))
             fill.shader = null
             fill.color = Color.argb(
-                (34f * layer.shadow).toInt().coerceIn(0, 34),
+                (34f * layer.shadow * layer.alpha).toInt().coerceIn(0, 34),
                 0, 0, 0
             )
             canvas.drawRoundRect(
@@ -603,17 +612,28 @@ class SohrIntroMorphView(context: Context) : View(context) {
         }
 
         val bright = layer.brightness.coerceIn(0f, 1f)
+        // Give sliders readable dark tracks without breaking continuous morphing.
+        val trackMix = (1f - layer.tone).coerceIn(0f, 1f)
         val top = ColorUtils.blendARGB(
-            Color.rgb(192, 139, 247),
-            Color.rgb(255, 231, 255),
-            0.36f + bright * 0.50f
+            ColorUtils.blendARGB(
+                Color.rgb(192, 139, 247),
+                Color.rgb(255, 231, 255),
+                0.36f + bright * 0.50f
+            ),
+            Color.rgb(103, 68, 175),
+            trackMix
         )
         val bottom = ColorUtils.blendARGB(
-            Color.rgb(133, 79, 224),
-            Color.rgb(170, 101, 255),
-            0.36f + bright * 0.40f
+            ColorUtils.blendARGB(
+                Color.rgb(133, 79, 224),
+                Color.rgb(170, 101, 255),
+                0.36f + bright * 0.40f
+            ),
+            Color.rgb(73, 48, 139),
+            trackMix
         )
 
+        fill.color = Color.WHITE
         fill.shader = LinearGradient(
             rect.left,
             rect.top,
@@ -637,8 +657,11 @@ class SohrIntroMorphView(context: Context) : View(context) {
         )
         fill.shader = null
 
-        if (layer.alpha > 0.95f) {
-            fill.color = Color.argb(62, 255, 255, 255)
+        if (layer.alpha > 0.002f) {
+            fill.color = Color.argb(
+                (62f * layer.alpha * layer.tone).toInt().coerceIn(0, 62),
+                255, 255, 255
+            )
             val highlight = RectF(
                 rect.left + rect.width() * 0.10f,
                 rect.top + rect.height() * 0.10f,
@@ -693,6 +716,7 @@ class SohrIntroMorphView(context: Context) : View(context) {
 
         val a = alpha.coerceIn(0f, 1f)
 
+        fill.color = Color.WHITE
         fill.shader = LinearGradient(
             rect.left,
             rect.top,
@@ -766,6 +790,7 @@ class SohrIntroMorphView(context: Context) : View(context) {
             )
         )
 
+        fill.color = Color.WHITE
         fill.shader = LinearGradient(
             rect.left,
             rect.top,
@@ -893,6 +918,7 @@ class SohrIntroMorphView(context: Context) : View(context) {
                 ),
                 rect.bottom
             )
+            fill.color = Color.WHITE
             fill.shader = LinearGradient(
                 played.left,
                 played.top,
@@ -962,6 +988,7 @@ class SohrIntroMorphView(context: Context) : View(context) {
             fill
         )
 
+        fill.color = Color.WHITE
         fill.shader = LinearGradient(
             cx - r,
             cy - r,
@@ -1038,6 +1065,7 @@ class SohrIntroMorphView(context: Context) : View(context) {
             dark
         )
 
+        fill.color = Color.WHITE
         fill.shader = LinearGradient(
             bounds.left,
             bounds.top,
@@ -1216,31 +1244,17 @@ class SohrIntroMorphView(context: Context) : View(context) {
     // GEOMETRY
     // ---------------------------------------------------------------------
 
+    // Sixteen ordered vertices; the old circle crossed itself near its top.
+    // Same 16 points as the panels preserve uninterrupted shape interpolation.
     private fun circlePoints(
         cx: Float,
         cy: Float,
         radius: Float
-    ): List<PointF> {
-        val k = 0.9238795f
-        val s = 0.7071068f
-        val r = radius
-        return listOf(
-            PointF(cx, cy - r),
-            PointF(cx + r * s, cy - r * s),
-            PointF(cx + r * k, cy - r * 0.3826834f),
-            PointF(cx + r, cy),
-            PointF(cx + r * k, cy + r * 0.3826834f),
-            PointF(cx + r * s, cy + r * s),
-            PointF(cx, cy + r),
-            PointF(cx - r * s, cy + r * s),
-            PointF(cx - r * k, cy + r * 0.3826834f),
-            PointF(cx - r, cy),
-            PointF(cx - r * k, cy - r * 0.3826834f),
-            PointF(cx - r * s, cy - r * s),
-            PointF(cx, cy - r),
-            PointF(cx + r * 0.3826834f, cy - r * k),
-            PointF(cx + r * s, cy - r * s),
-            PointF(cx + r * k, cy - r * 0.3826834f)
+    ): List<PointF> = List(16) { index ->
+        val angle = -Math.PI / 2.0 + index * (Math.PI * 2.0 / 16.0)
+        PointF(
+            cx + (kotlin.math.cos(angle) * radius).toFloat(),
+            cy + (kotlin.math.sin(angle) * radius).toFloat()
         )
     }
 

@@ -181,11 +181,11 @@ jobs:
           )
           PY
 
-      - name: Assign SOHR 6.9.33 version
+      - name: Assign SOHR 6.9.34 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690033" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.33" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690034" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.34" >> "$GITHUB_ENV"
 
       - name: Verify Twitch device-code endpoint
         shell: bash
@@ -1962,7 +1962,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.33 • privacy/security hardening: приватные credentials отделены от публичных OAuth application identifiers; Twitch Client ID оставлен как публичный идентификатор приложения без client secret; расширен .gitignore для credentials, OAuth/access/refresh token files, Firebase config, keystore/certificates, cookies и session-файлов • в release workflow добавлен автоматический audit tracked-файлов на private keys, GitHub/OpenAI/Google/Slack/AWS tokens, literal OAuth/access/refresh tokens, client secrets/passwords, личные email и международные номера телефонов • Telegram API credentials, release signing keystore и пароли остаются только в GitHub Secrets и не хранятся в репозитории"
+            "notes": "SOHR 6.9.34 • исправлены форма круглой иконки, прозрачность градиентов и слоёв, плавность morph-переходов, контраст панели настроек и адаптация экрана приветствия к высоте телефона"
           }
           EOF
           cat update.json

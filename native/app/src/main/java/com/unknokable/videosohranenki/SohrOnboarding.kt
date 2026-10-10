@@ -79,7 +79,7 @@ class SohrOnboarding(
         ),
         Page(
             "Удобный просмотр",
-            "Telegram и Twitch — внутри SOHR."
+            "Видео и эфиры — в удобном плеере."
         ),
         Page(
             "Streak и прогресс",
@@ -205,13 +205,18 @@ class SohrOnboarding(
             setAnimationsEnabled(settings.animations)
             setPageProgress(currentProgress)
         }
+        // Keep the artwork and primary action visible on shorter devices.
+        val screenHeightDp =
+            activity.resources.displayMetrics.heightPixels /
+                activity.resources.displayMetrics.density
+        val heroHeightDp = (screenHeightDp - 422f).toInt().coerceIn(166, 238)
         column.addView(
             morphView,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(228)
+                dp(heroHeightDp)
             ).apply {
-                topMargin = dp(18)
+                topMargin = dp(12)
             }
         )
 
