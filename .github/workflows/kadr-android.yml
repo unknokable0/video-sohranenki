@@ -1,6 +1,12 @@
 name: KADR Android APK
 
 on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'android/**'
+      - '.github/workflows/kadr-android.yml'
   push:
     branches:
       - cinema-prototype
