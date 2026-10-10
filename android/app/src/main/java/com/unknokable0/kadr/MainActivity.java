@@ -6,6 +6,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Build;
 import android.graphics.Color;
+import android.widget.FrameLayout;
 import android.view.View;
 import android.view.WindowInsets;
 import android.webkit.WebChromeClient;
@@ -19,6 +20,9 @@ import androidx.webkit.WebViewAssetLoader;
 
 public final class MainActivity extends Activity {
     private WebView webView;
+    private View customVideoView;
+    private FrameLayout customVideoHost;
+    private WebChromeClient.CustomViewCallback customVideoCallback;
     private ValueCallback<Uri[]> fileChooserCallback;
     private static final int PICK_VIDEO = 9032;
     private static final String APP_HOST = "appassets.androidplatform.net";
@@ -46,6 +50,28 @@ public final class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= 26) settings.setSafeBrowsingEnabled(true);
 
         webView.setWebChromeClient(new WebChromeClient() {
+            @Override public void onShowCustomView(View view, CustomViewCallback callback) {
+                if (customVideoView != null) {
+                    callback.onCustomViewHidden();
+                    return;
+                }
+                customVideoView = view;
+                customVideoCallback = callback;
+                customVideoHost = findViewById(android.R.id.content);
+                customVideoHost.addView(view, new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT));
+                view.setBackgroundColor(Color.BLACK);
+                getWindow().getDecorView().setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_FULLSCREEN |
+                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+            }
+
+            @Override public void onHideCustomView() {
+                hideFullscreenVideo();
+            }
+
             @Override
             public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback,
                     FileChooserParams params) {
@@ -71,13 +97,22 @@ public final class MainActivity extends Activity {
             }
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                // External iframe resources must load inside WebView.
+                if (!request.isForMainFrame()) return false;
                 if (APP_HOST.equalsIgnoreCase(request.getUrl().getHost())) return false;
                 Uri uri = request.getUrl();
                 String host = uri.getHost();
                 if ("https".equalsIgnoreCase(uri.getScheme()) &&
                     ("www.justwatch.com".equalsIgnoreCase(host) ||
                      "commons.wikimedia.org".equalsIgnoreCase(host) ||
-                     "www.tvmaze.com".equalsIgnoreCase(host))) {
+                     "www.tvmaze.com".equalsIgnoreCase(host) ||
+                     "www.youtube.com".equalsIgnoreCase(host) ||
+                     "m.youtube.com".equalsIgnoreCase(host) ||
+                     "youtube.com".equalsIgnoreCase(host) ||
+                     "youtu.be".equalsIgnoreCase(host) ||
+                     "www.youtube-nocookie.com".equalsIgnoreCase(host) ||
+                     "rutube.ru".equalsIgnoreCase(host) ||
+                     "www.rutube.ru".equalsIgnoreCase(host))) {
                     try {
                         Intent intent = new Intent(Intent.ACTION_VIEW, uri);
                         startActivity(intent);
@@ -118,7 +153,21 @@ public final class MainActivity extends Activity {
         if (webView != null) webView.onResume();
     }
 
+    private void hideFullscreenVideo() {
+        if (customVideoView == null) return;
+        if (customVideoHost != null) customVideoHost.removeView(customVideoView);
+        customVideoView = null;
+        customVideoHost = null;
+        getWindow().getDecorView().setSystemUiVisibility(0);
+        if (customVideoCallback != null) {
+            WebChromeClient.CustomViewCallback callback = customVideoCallback;
+            customVideoCallback = null;
+            callback.onCustomViewHidden();
+        }
+    }
+
     @Override public void onBackPressed() {
+        if (customVideoView != null) { hideFullscreenVideo(); return; }
         if (webView == null) { super.onBackPressed(); return; }
         webView.evaluateJavascript(
             "(function(){if(document.querySelector('.overlay')){" +
@@ -134,6 +183,7 @@ public final class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        hideFullscreenVideo();
         if (fileChooserCallback != null) {
             fileChooserCallback.onReceiveValue(null);
             fileChooserCallback = null;
