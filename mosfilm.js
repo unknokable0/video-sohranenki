@@ -30,7 +30,7 @@ function kadrEmbedUrl(x,provider){
 function kadrSourceSection(){
  return '<section class="section kadr-official-section"><div class="section-heading"><div><h2>Смотреть прямо сейчас</h2><p>Полные русскоязычные фильмы от правообладателя</p></div><span class="kadr-free-label">БЕСПЛАТНО</span></div><div class="rail">'+kadrOfficialMedia.map(card).join("")+'</div><p class="kadr-provider-disclaimer">Официальные плееры «Мосфильма». Доступность воспроизведения зависит от Польши, YouTube/RuTube и разрешений правообладателя.</p></section>';
 }
-home=function(){return kadrSourceSection()+kadrPreviousHome()};
+home=function(){const base=kadrPreviousHome();return base.replace("</section>","</section>"+kadrSourceSection())};
 details=function(){
  const old=kadrPreviousDetails();if(!selected||!kadrById[selected])return old;
  const x=kadrById[selected];
