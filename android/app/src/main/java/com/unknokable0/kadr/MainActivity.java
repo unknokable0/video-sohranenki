@@ -1,6 +1,8 @@
 package com.unknokable0.kadr;
 
 import android.app.Activity;
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Build;
 import android.graphics.Color;
@@ -10,12 +12,15 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
+import android.webkit.ValueCallback;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import androidx.webkit.WebViewAssetLoader;
 
 public final class MainActivity extends Activity {
     private WebView webView;
+    private ValueCallback<Uri[]> fileChooserCallback;
+    private static final int PICK_VIDEO = 9032;
     private static final String APP_HOST = "appassets.androidplatform.net";
     private static final String HOME = "https://" + APP_HOST + "/assets/index.html";
 
@@ -40,7 +45,25 @@ public final class MainActivity extends Activity {
         settings.setMediaPlaybackRequiresUserGesture(true);
         if (Build.VERSION.SDK_INT >= 26) settings.setSafeBrowsingEnabled(true);
 
-        webView.setWebChromeClient(new WebChromeClient());
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback,
+                    FileChooserParams params) {
+                if (fileChooserCallback != null) fileChooserCallback.onReceiveValue(null);
+                fileChooserCallback = callback;
+                try {
+                    Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                    intent.setType("video/*");
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    startActivityForResult(intent, PICK_VIDEO);
+                    return true;
+                } catch (Exception e) {
+                    fileChooserCallback = null;
+                    callback.onReceiveValue(null);
+                    return false;
+                }
+            }
+        });
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
@@ -48,7 +71,19 @@ public final class MainActivity extends Activity {
             }
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                return !APP_HOST.equalsIgnoreCase(request.getUrl().getHost());
+                if (APP_HOST.equalsIgnoreCase(request.getUrl().getHost())) return false;
+                Uri uri = request.getUrl();
+                String host = uri.getHost();
+                if ("https".equalsIgnoreCase(uri.getScheme()) &&
+                    ("www.justwatch.com".equalsIgnoreCase(host) ||
+                     "commons.wikimedia.org".equalsIgnoreCase(host) ||
+                     "www.tvmaze.com".equalsIgnoreCase(host))) {
+                    try {
+                        Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+                        startActivity(intent);
+                    } catch (Exception ignored) { }
+                }
+                return true;
             }
         });
 
@@ -62,6 +97,25 @@ public final class MainActivity extends Activity {
         }
         setContentView(webView);
         webView.loadUrl(HOME);
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == PICK_VIDEO && fileChooserCallback != null) {
+            Uri[] result = WebChromeClient.FileChooserParams.parseResult(resultCode, data);
+            fileChooserCallback.onReceiveValue(result);
+            fileChooserCallback = null;
+        }
+    }
+
+    @Override protected void onPause() {
+        if (webView != null) webView.onPause();
+        super.onPause();
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        if (webView != null) webView.onResume();
     }
 
     @Override public void onBackPressed() {
@@ -80,6 +134,10 @@ public final class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        if (fileChooserCallback != null) {
+            fileChooserCallback.onReceiveValue(null);
+            fileChooserCallback = null;
+        }
         if (webView != null) {
             webView.stopLoading();
             webView.destroy();
