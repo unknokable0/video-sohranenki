@@ -264,7 +264,18 @@ class SohrOnboarding(
 
                     override fun onPageScrollStateChanged(
                         state: Int
-                    ) = Unit
+                    ) {
+                        // ViewPager may emit its last fractional scroll callback
+                        // before becoming idle. Snap the artwork and dots to
+                        // the selected page once the animation has finished.
+                        if (state == ViewPager.SCROLL_STATE_IDLE) {
+                            currentPage = pager.currentItem
+                            currentProgress = currentPage.toFloat()
+                            morphView.setPageProgress(currentProgress)
+                            dots.setPageProgress(currentProgress)
+                            updateChrome()
+                        }
+                    }
                 }
             )
         }

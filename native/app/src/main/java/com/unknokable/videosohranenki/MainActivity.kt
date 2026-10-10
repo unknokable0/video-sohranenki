@@ -1324,7 +1324,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val prefix = EditText(this).apply {
-            hint = "+48"
+            hint = "+…"
             textSize = 16.5f
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(this@MainActivity.text)
@@ -1550,7 +1550,7 @@ class MainActivity : AppCompatActivity() {
                     prefix.text.toString().filter { it.isDigit() }
 
                 if (dialDigits.isBlank()) {
-                    error.text = "Введите код страны, например +48"
+                    error.text = "Выберите страну или введите её телефонный код"
                     error.visibility = View.VISIBLE
                     return@setOnClickListener
                 }

@@ -181,11 +181,11 @@ jobs:
           )
           PY
 
-      - name: Assign SOHR 6.9.40 version
+      - name: Assign SOHR 6.9.41 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690040" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.40" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690041" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.41" >> "$GITHUB_ENV"
 
       - name: Verify Twitch device-code endpoint
         shell: bash
@@ -954,21 +954,34 @@ jobs:
               if hashlib.sha256(data).hexdigest() != sha256:
                   raise SystemExit(f"SOHR 6.9.40 artwork checksum mismatch: {name}")
 
+          # Five stable preloaded artwork layers. No drawable swaps or
+          # WebP decompression during ViewPager scroll callbacks.
           for required in [
               "class SohrIntroMorphView(context: Context) : FrameLayout(context)",
               "ImageView.ScaleType.FIT_CENTER",
+              "private val layers: Array<ImageView>",
+              "layers.forEachIndexed { index, image ->",
+              "image.setImageResource(artwork[index])",
+              "private fun updateArtwork()",
+              "View.INVISIBLE",
+              "View.VISIBLE",
+              "if (abs(image.alpha - targetAlpha) > 0.001f)",
+              "index == from -> if (from == to) 1f else 1f - fraction",
+              "index == to -> fraction",
               "R.drawable.sohr_intro_saved",
               "R.drawable.sohr_intro_streak",
               "R.drawable.sohr_intro_player",
               "R.drawable.sohr_intro_downloads",
-              "R.drawable.sohr_intro_settings",
-              "current.setImageResource(artwork[from])",
-              "upcoming.setImageResource(artwork[next])",
-              "current.alpha = 1f - amount",
-              "upcoming.alpha = if (from == next) 0f else amount"
+              "R.drawable.sohr_intro_settings"
           ]:
               if required not in morph_view:
-                  raise SystemExit(f"SOHR 6.9.40 original artwork renderer regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.41 stable onboarding layer missing: {required}")
+          if morph_view.count("setImageResource(") != 1:
+              raise SystemExit("SOHR 6.9.41 image swapping during scroll returned")
+          if "currentIndex" in morph_view or "upcomingIndex" in morph_view:
+              raise SystemExit("SOHR 6.9.41 two-image swap flicker returned")
+          if "state == ViewPager.SCROLL_STATE_IDLE" not in onboarding:
+              raise SystemExit("SOHR 6.9.41 ViewPager idle snap missing")
           for forbidden in [
               "BitmapFactory", "Canvas(", "drawBitmap(",
               "frameBetween(", "interpolateFrame(",
@@ -1035,7 +1048,7 @@ jobs:
               "R.drawable.ic_auth_telegram_code",
               'fieldLabel("Страна")',
               'fieldLabel("Телефон")',
-              'hint = "+48"',
+              'hint = "+…"',
               'hint = "Номер телефона"',
               'contentDescription = "Код страны"',
               "SohrThemeTransition.reveal(",
@@ -1953,7 +1966,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.40 • пять оригинальных 3D-иллюстраций точно из одобренного макета, каждая 1254×1254 с прозрачностью • WebP lossless сохраняет пиксели PNG один в один, без апскейла, перерисовки или мыльного атласа • пять отдельных ресурсов Android drawable-nodpi и FIT_CENTER с плавным crossfade • контрольные SHA-256 всех иллюстраций на каждой сборке"
+            "notes": "SOHR 6.9.41 • исправлены рывки и появление старой 3D-иконки при перелистывании: все пять оригинальных изображений заранее загружаются один раз, во время свайпа меняется только прозрачность, после завершения перелистывания точно фиксируется выбранный экран • для входа в Telegram убран пример конкретной страны из поля кода и сообщения проверки, теперь универсальная подсказка +…"
           }
           EOF
           cat update.json
