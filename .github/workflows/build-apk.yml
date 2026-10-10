@@ -181,11 +181,11 @@ jobs:
           )
           PY
 
-      - name: Assign SOHR 6.9.36 version
+      - name: Assign SOHR 6.9.37 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690036" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.36" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690037" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.37" >> "$GITHUB_ENV"
 
       - name: Verify Twitch device-code endpoint
         shell: bash
@@ -933,26 +933,35 @@ jobs:
           ]:
               if required not in onboarding:
                   raise SystemExit(f"SOHR 6.9.23 parametric onboarding regression: {required}")
-          # Each icon is independent; the ViewPager drives an alpha
-          # crossfade only. Never interpolate unrelated silhouettes.
+          # The original reference artwork is stored as six ordered,
+          # base64-encoded WebP chunks. Check exact pixels and integrity.
+          import base64
+          import hashlib
+          atlas_b64 = "".join(
+              Path(
+                  f"native/app/src/main/assets/sohr_intro_reference_{part}.b64"
+              ).read_text(encoding="ascii").strip()
+              for part in range(1, 7)
+          )
+          atlas_bytes = base64.b64decode(atlas_b64, validate=True)
+          if len(atlas_b64) != 16196:
+              raise SystemExit("SOHR 6.9.37: incomplete onboarding art")
+          if hashlib.sha256(atlas_bytes).hexdigest() != (
+              "fc41c57c741bc22acad5cbcae36548f82ebcb2f128e1d8dc1a0e33655ff18ebd"
+          ):
+              raise SystemExit("SOHR 6.9.37: onboarding artwork differs from reference")
           for required in [
               "class SohrIntroMorphView",
               "fun setPageProgress(value: Float)",
               "fun setAnimationsEnabled(value: Boolean)",
-              "canvas.saveLayerAlpha(",
-              "drawSavedVideos(canvas, accent)",
-              "drawProgressCalendar(canvas, accent)",
-              "drawVideoPlayer(canvas, accent)",
-              "drawDownloads(canvas, accent)",
-              "drawPersonalize(canvas, accent)",
-              "private fun drawGear(",
-              "private fun drawFlame(",
-              "private fun drawLandscape(",
-              "drawIcon(canvas, left, 1f - fraction, theme)",
-              "drawIcon(canvas, right, fraction, theme)"
+              "BitmapFactory.decodeByteArray(",
+              "canvas.drawBitmap(atlas, source, destination, bitmapPaint)",
+              "context.assets.open(file)",
+              "drawIcon(canvas, atlas, from, 1f - fraction)",
+              "drawIcon(canvas, atlas, to, fraction)"
           ]:
               if required not in morph_view:
-                  raise SystemExit(f"SOHR 6.9.36 independent onboarding icons regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.37 reference imagery missing: {required}")
           for forbidden in [
               "frameBetween(",
               "interpolateFrame(",
@@ -1965,7 +1974,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.36 • полностью новый набор из пяти отдельных иллюстраций по референсу: стопка сохранённых видео, календарь Streak, видеоплеер, облако загрузки и панель настроек • мягкие сиреневые градиенты без неона и кривых форм • вместо морфинга только плавная смена отдельных иконок • сохранено исправление стрелки страны при входе в Telegram"
+            "notes": "SOHR 6.9.37 • пять иллюстраций onboarding взяты непосредственно из утверждённого пользователем оригинального превью, без перерисовки и самодельных векторов • высококачественные изображения воспроизводятся на экране с точными пропорциями и плавной сменой без морфинга • целостность графических ресурсов проверяется по SHA-256 при сборке"
           }
           EOF
           cat update.json
