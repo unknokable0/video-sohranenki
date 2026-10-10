@@ -181,11 +181,11 @@ jobs:
           )
           PY
 
-      - name: Assign SOHR 6.9.37 version
+      - name: Assign SOHR 6.9.38 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690037" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.37" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690038" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.38" >> "$GITHUB_ENV"
 
       - name: Verify Twitch device-code endpoint
         shell: bash
@@ -933,35 +933,29 @@ jobs:
           ]:
               if required not in onboarding:
                   raise SystemExit(f"SOHR 6.9.23 parametric onboarding regression: {required}")
-          # The original reference artwork is stored as six ordered,
-          # base64-encoded WebP chunks. Check exact pixels and integrity.
-          import base64
+          # One genuine high-quality precomposed image resource,
+          # 3x the old 254-pixel tiles, with black matte removed.
           import hashlib
-          atlas_b64 = "".join(
-              Path(
-                  f"native/app/src/main/assets/sohr_intro_reference_{part}.b64"
-              ).read_text(encoding="ascii").strip()
-              for part in range(1, 7)
-          )
-          atlas_bytes = base64.b64decode(atlas_b64, validate=True)
-          if len(atlas_b64) != 16196:
-              raise SystemExit("SOHR 6.9.37: incomplete onboarding art")
-          if hashlib.sha256(atlas_bytes).hexdigest() != (
-              "fc41c57c741bc22acad5cbcae36548f82ebcb2f128e1d8dc1a0e33655ff18ebd"
-          ):
-              raise SystemExit("SOHR 6.9.37: onboarding artwork differs from reference")
+          art_path = Path("native/app/src/main/assets/sohr_intro_highquality.webp")
+          art_bytes = art_path.read_bytes()
+          expected_sha256 = "f101332c13e4f90cf0b159be14381a3880774bc9eabe09174eaf48687661ab5b"
+          if len(art_bytes) < 650000:
+              raise SystemExit("SOHR 6.9.38: high-resolution artwork is missing or compressed")
+          if hashlib.sha256(art_bytes).hexdigest() != expected_sha256:
+              raise SystemExit("SOHR 6.9.38: artwork SHA-256 mismatch")
           for required in [
               "class SohrIntroMorphView",
               "fun setPageProgress(value: Float)",
               "fun setAnimationsEnabled(value: Boolean)",
-              "BitmapFactory.decodeByteArray(",
+              'context.assets.open("sohr_intro_highquality.webp")',
+              "BitmapFactory.decodeStream(",
+              "atlas.width == 3_810 && atlas.height == 744",
               "canvas.drawBitmap(atlas, source, destination, bitmapPaint)",
-              "context.assets.open(file)",
               "drawIcon(canvas, atlas, from, 1f - fraction)",
               "drawIcon(canvas, atlas, to, fraction)"
           ]:
               if required not in morph_view:
-                  raise SystemExit(f"SOHR 6.9.37 reference imagery missing: {required}")
+                  raise SystemExit(f"SOHR 6.9.38 high-quality onboarding regression: {required}")
           for forbidden in [
               "frameBetween(",
               "interpolateFrame(",
@@ -1974,7 +1968,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.37 • пять иллюстраций onboarding взяты непосредственно из утверждённого пользователем оригинального превью, без перерисовки и самодельных векторов • высококачественные изображения воспроизводятся на экране с точными пропорциями и плавной сменой без морфинга • целостность графических ресурсов проверяется по SHA-256 при сборке"
+            "notes": "SOHR 6.9.38 • исправлена низкая чёткость пяти иллюстраций экрана приветствия: новый 3× графический ресурс высокого качества вместо WebP-атласа на 14 КБ • убран тёмный прямоугольный фон вокруг иконок • правильная пропорциональная отрисовка без размытия от лишнего сжатия, без морфинга • проверка целостности изображения SHA-256 при сборке"
           }
           EOF
           cat update.json
