@@ -181,11 +181,11 @@ jobs:
           )
           PY
 
-      - name: Assign SOHR 6.9.38 version
+      - name: Assign SOHR 6.9.39 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690038" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.38" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690039" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.39" >> "$GITHUB_ENV"
 
       - name: Verify Twitch device-code endpoint
         shell: bash
@@ -933,29 +933,38 @@ jobs:
           ]:
               if required not in onboarding:
                   raise SystemExit(f"SOHR 6.9.23 parametric onboarding regression: {required}")
-          # One genuine high-quality precomposed image resource,
-          # 3x the old 254-pixel tiles, with black matte removed.
-          import hashlib
-          art_path = Path("native/app/src/main/assets/sohr_intro_highquality.webp")
-          art_bytes = art_path.read_bytes()
-          expected_sha256 = "f101332c13e4f90cf0b159be14381a3880774bc9eabe09174eaf48687661ab5b"
-          if len(art_bytes) < 650000:
-              raise SystemExit("SOHR 6.9.38: high-resolution artwork is missing or compressed")
-          if hashlib.sha256(art_bytes).hexdigest() != expected_sha256:
-              raise SystemExit("SOHR 6.9.38: artwork SHA-256 mismatch")
+          # Real native Android vector drawing, no compressed screenshot tiles.
           for required in [
               "class SohrIntroMorphView",
               "fun setPageProgress(value: Float)",
               "fun setAnimationsEnabled(value: Boolean)",
-              'context.assets.open("sohr_intro_highquality.webp")',
-              "BitmapFactory.decodeStream(",
-              "atlas.width == 3_810 && atlas.height == 744",
-              "canvas.drawBitmap(atlas, source, destination, bitmapPaint)",
-              "drawIcon(canvas, atlas, from, 1f - fraction)",
-              "drawIcon(canvas, atlas, to, fraction)"
+              "private fun savedVideos(",
+              "private fun calendar(",
+              "private fun player(",
+              "private fun cloud(",
+              "private fun customize(",
+              "private fun panel(",
+              "private fun landscape(",
+              "canvas.saveLayerAlpha(",
+              "canvas.drawPath(",
+              "canvas.drawRoundRect(",
+              "canvas.clipPath(",
+              "paint.shader = LinearGradient(",
+              "drawPage(canvas, from, 1f - t, theme.accent)",
+              "drawPage(canvas, to, t, theme.accent)"
           ]:
               if required not in morph_view:
-                  raise SystemExit(f"SOHR 6.9.38 high-quality onboarding regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.39 native vector icon regression: {required}")
+          for forbidden in [
+              "BitmapFactory", "decodeStream(", "drawBitmap(",
+              "context.assets.open(", "sohr_intro_highquality.webp",
+              "val iconAtlas", "private val bitmapPaint",
+              "frameBetween(", "interpolateFrame("
+          ]:
+              if forbidden in morph_view:
+                  raise SystemExit(f"SOHR 6.9.39: blurry atlas or morph returned: {forbidden}")
+          if Path("native/app/src/main/assets/sohr_intro_highquality.webp").exists():
+              raise SystemExit("SOHR 6.9.39: old screenshot atlas still packaged")
           for forbidden in [
               "frameBetween(",
               "interpolateFrame(",
@@ -1968,7 +1977,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.38 • исправлена низкая чёткость пяти иллюстраций экрана приветствия: новый 3× графический ресурс высокого качества вместо WebP-атласа на 14 КБ • убран тёмный прямоугольный фон вокруг иконок • правильная пропорциональная отрисовка без размытия от лишнего сжатия, без морфинга • проверка целостности изображения SHA-256 при сборке"
+            "notes": "SOHR 6.9.39 • полностью переработаны пять иллюстраций приветствия: нативная векторная отрисовка вместо размытого WebP-атласа • чёткие края и настоящая прозрачность при любом разрешении • мягкие фиолетовые градиенты без неона, аккуратные отдельные иконки • плавные переходы без морфинга"
           }
           EOF
           cat update.json
