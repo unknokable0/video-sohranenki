@@ -181,11 +181,11 @@ jobs:
           )
           PY
 
-      - name: Assign SOHR 6.9.39 version
+      - name: Assign SOHR 6.9.40 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690039" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.39" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690040" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.40" >> "$GITHUB_ENV"
 
       - name: Verify Twitch device-code endpoint
         shell: bash
@@ -933,73 +933,49 @@ jobs:
           ]:
               if required not in onboarding:
                   raise SystemExit(f"SOHR 6.9.23 parametric onboarding regression: {required}")
-          # Real native Android vector drawing, no compressed screenshot tiles.
+          # Five original independent 1254px illustrations, losslessly
+          # encoded as WebP (confirmed pixel-equal to generated PNG sources).
+          import hashlib
+          assets_dir = Path("native/app/src/main/res/drawable-nodpi")
+          original_artworks = {
+              "sohr_intro_saved.webp": "ae5271584284f97368dd36641547b344d622a39f66988deffbdef42e49b3b94c",
+              "sohr_intro_streak.webp": "f1e825cb44b83c286f9435c78cf4a04a65ae51bd5eb5caa2e78068d188e11f5b",
+              "sohr_intro_player.webp": "3f2bbdd6332af4dc807cc24cc1ee9b13cd3a1ef78f6c110a5ea10ef5ee54f6ce",
+              "sohr_intro_downloads.webp": "e2093ba6edb67e819548bdfaeddc2e88b983e15cf28a88a6d2f12ab3d0b5ada1",
+              "sohr_intro_settings.webp": "30c2178a3400ad492c687589d41a0b418d7b9a7279946f48faed81be56fef275",
+          }
+          for name, sha256 in original_artworks.items():
+              path = assets_dir / name
+              if not path.is_file():
+                  raise SystemExit(f"SOHR 6.9.40 missing original artwork: {name}")
+              data = path.read_bytes()
+              if not data.startswith(b"RIFF") or data[8:12] != b"WEBP":
+                  raise SystemExit(f"SOHR 6.9.40 invalid WebP: {name}")
+              if hashlib.sha256(data).hexdigest() != sha256:
+                  raise SystemExit(f"SOHR 6.9.40 artwork checksum mismatch: {name}")
+
           for required in [
-              "class SohrIntroMorphView",
-              "fun setPageProgress(value: Float)",
-              "fun setAnimationsEnabled(value: Boolean)",
-              "private fun savedVideos(",
-              "private fun calendar(",
-              "private fun player(",
-              "private fun cloud(",
-              "private fun customize(",
-              "private fun panel(",
-              "private fun landscape(",
-              "canvas.saveLayerAlpha(",
-              "canvas.drawPath(",
-              "canvas.drawRoundRect(",
-              "canvas.clipPath(",
-              "paint.shader = LinearGradient(",
-              "drawPage(canvas, from, 1f - t, theme.accent)",
-              "drawPage(canvas, to, t, theme.accent)"
+              "class SohrIntroMorphView(context: Context) : FrameLayout(context)",
+              "ImageView.ScaleType.FIT_CENTER",
+              "R.drawable.sohr_intro_saved",
+              "R.drawable.sohr_intro_streak",
+              "R.drawable.sohr_intro_player",
+              "R.drawable.sohr_intro_downloads",
+              "R.drawable.sohr_intro_settings",
+              "current.setImageResource(artwork[from])",
+              "upcoming.setImageResource(artwork[next])",
+              "current.alpha = 1f - amount",
+              "upcoming.alpha = if (from == next) 0f else amount"
           ]:
               if required not in morph_view:
-                  raise SystemExit(f"SOHR 6.9.39 native vector icon regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.40 original artwork renderer regression: {required}")
           for forbidden in [
-              "BitmapFactory", "decodeStream(", "drawBitmap(",
-              "context.assets.open(", "sohr_intro_highquality.webp",
-              "val iconAtlas", "private val bitmapPaint",
-              "frameBetween(", "interpolateFrame("
+              "BitmapFactory", "Canvas(", "drawBitmap(",
+              "frameBetween(", "interpolateFrame(",
+              "sohr_intro_highquality.webp"
           ]:
               if forbidden in morph_view:
-                  raise SystemExit(f"SOHR 6.9.39: blurry atlas or morph returned: {forbidden}")
-          if Path("native/app/src/main/assets/sohr_intro_highquality.webp").exists():
-              raise SystemExit("SOHR 6.9.39: old screenshot atlas still packaged")
-          for forbidden in [
-              "frameBetween(",
-              "interpolateFrame(",
-              "morphState(",
-              "private data class HeroFrame("
-          ]:
-              if forbidden in morph_view:
-                  raise SystemExit(f"SOHR 6.9.36 geometry morph returned: {forbidden}")
-          for forbidden in [
-              "Drawable",
-              "ContextCompat.getDrawable",
-              "R.drawable.ill_intro_",
-              "drawTransformedIcon(",
-              "drawMorphCore(",
-              "drawFinalCloud(",
-              "drawFinalFeed(",
-              "drawFinalPlayer(",
-              "drawFinalCalendar(",
-              "drawFinalSettings(",
-              "drawCloudToFeed(",
-              "drawFeedToPlayer(",
-              "drawPlayerToCalendar(",
-              "drawCalendarToSettings(",
-              "private data class Scene(",
-              "interpolateScene(",
-              "drawGlassBox(",
-              "ENDPOINT_EPS",
-              "ValueAnimator",
-              "ambientAnimator",
-              "COLLAPSE_END",
-              "EXPAND_START",
-              "LAYER_TYPE_SOFTWARE"
-          ]:
-              if forbidden in morph_view:
-                  raise SystemExit(f"SOHR 6.9.32 duplicate/final-snap renderer returned: {forbidden}")
+                  raise SystemExit(f"SOHR 6.9.40 old blurry renderer returned: {forbidden}")
           for forbidden in [
               "ambientAnimators",
               "startAmbientMotion(",
@@ -1977,7 +1953,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.39 • полностью переработаны пять иллюстраций приветствия: нативная векторная отрисовка вместо размытого WebP-атласа • чёткие края и настоящая прозрачность при любом разрешении • мягкие фиолетовые градиенты без неона, аккуратные отдельные иконки • плавные переходы без морфинга"
+            "notes": "SOHR 6.9.40 • пять оригинальных 3D-иллюстраций точно из одобренного макета, каждая 1254×1254 с прозрачностью • WebP lossless сохраняет пиксели PNG один в один, без апскейла, перерисовки или мыльного атласа • пять отдельных ресурсов Android drawable-nodpi и FIT_CENTER с плавным crossfade • контрольные SHA-256 всех иллюстраций на каждой сборке"
           }
           EOF
           cat update.json
