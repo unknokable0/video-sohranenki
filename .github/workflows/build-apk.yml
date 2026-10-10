@@ -181,11 +181,11 @@ jobs:
           )
           PY
 
-      - name: Assign SOHR 6.9.35 version
+      - name: Assign SOHR 6.9.36 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690035" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.35" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690036" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.36" >> "$GITHUB_ENV"
 
       - name: Verify Twitch device-code endpoint
         shell: bash
@@ -920,39 +920,47 @@ jobs:
               "morphView.setPageProgress(progress)",
               "dots.setPageProgress(progress)",
               "SohrIntroPager(activity).apply",
-              "MORPH_DURATION_MS = 292",
-              '"Добро пожаловать в SOHR"',
-              '"Лента без лишнего"',
-              '"Удобный просмотр"',
+              "PAGE_FADE_DURATION_MS = 292",
+              '"Сохранение видео и эфиров"',
               '"Streak и прогресс"',
-              '"Настройте под себя"',
+              '"Удобный просмотр"',
+              '"Загрузки и коллекции"',
+              '"Streak и прогресс"',
+              '"Настройка под себя"',
               '"Дальше"',
               '"Начать"',
               "SohrThemeTransition.reveal("
           ]:
               if required not in onboarding:
                   raise SystemExit(f"SOHR 6.9.23 parametric onboarding regression: {required}")
-          # Five precisely drawn vector icons and a continuous frame morph.
-          # Verify the current implementation, not obsolete spline-layer names.
+          # Each icon is independent; the ViewPager drives an alpha
+          # crossfade only. Never interpolate unrelated silhouettes.
           for required in [
               "class SohrIntroMorphView",
-              "private data class HeroFrame(",
               "fun setPageProgress(value: Float)",
               "fun setAnimationsEnabled(value: Boolean)",
-              "frameBetween(frames[from], frames[to], t)",
               "canvas.saveLayerAlpha(",
-              "drawWelcome(canvas)",
-              "drawFeed(canvas, theme)",
-              "drawPlayer(canvas, theme)",
-              "drawCalendar(canvas, theme)",
-              "drawSettings(canvas, theme)",
-              "private fun landscape(",
-              "private fun triangle(",
-              "private fun smooth(value: Float)",
-              "No neon, distorted polygon morphs or timers."
+              "drawSavedVideos(canvas, accent)",
+              "drawProgressCalendar(canvas, accent)",
+              "drawVideoPlayer(canvas, accent)",
+              "drawDownloads(canvas, accent)",
+              "drawPersonalize(canvas, accent)",
+              "private fun drawGear(",
+              "private fun drawFlame(",
+              "private fun drawLandscape(",
+              "drawIcon(canvas, left, 1f - fraction, theme)",
+              "drawIcon(canvas, right, fraction, theme)"
           ]:
               if required not in morph_view:
-                  raise SystemExit(f"SOHR 6.9.35 vector onboarding regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.36 independent onboarding icons regression: {required}")
+          for forbidden in [
+              "frameBetween(",
+              "interpolateFrame(",
+              "morphState(",
+              "private data class HeroFrame("
+          ]:
+              if forbidden in morph_view:
+                  raise SystemExit(f"SOHR 6.9.36 geometry morph returned: {forbidden}")
           for forbidden in [
               "Drawable",
               "ContextCompat.getDrawable",
@@ -1957,7 +1965,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.35 • все пять onboarding-иконок заменены на аккуратные ровные векторные изображения с мягкими градиентами без неона; непрерывная анимация формы между экранами без деформаций • на экране Telegram входа исправлена строка выбора страны: правильная фиксированная справа векторная стрелка вместо символа с пробелами"
+            "notes": "SOHR 6.9.36 • полностью новый набор из пяти отдельных иллюстраций по референсу: стопка сохранённых видео, календарь Streak, видеоплеер, облако загрузки и панель настроек • мягкие сиреневые градиенты без неона и кривых форм • вместо морфинга только плавная смена отдельных иконок • сохранено исправление стрелки страны при входе в Telegram"
           }
           EOF
           cat update.json

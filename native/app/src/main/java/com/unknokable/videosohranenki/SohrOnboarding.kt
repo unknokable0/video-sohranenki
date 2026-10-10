@@ -24,9 +24,8 @@ class SohrOnboarding(
 ) {
     private class SohrIntroPager(context: Context) : ViewPager(context) {
         init {
-            // ViewPager owns the only page-settle animation. Pinning its
-            // scroller to 320 ms keeps forward and backward morphs symmetric
-            // without starting a second animation on the icon view.
+            // ViewPager owns the only transition timing. The five distinct
+            // illustrations crossfade during a swipe; no path morph is used.
             runCatching {
                 val field = ViewPager::class.java.getDeclaredField("mScroller")
                 field.isAccessible = true
@@ -48,7 +47,7 @@ class SohrOnboarding(
                                 startY,
                                 dx,
                                 dy,
-                                MORPH_DURATION_MS
+                                PAGE_FADE_DURATION_MS
                             )
                         }
                     }
@@ -57,7 +56,7 @@ class SohrOnboarding(
         }
 
         private companion object {
-            const val MORPH_DURATION_MS = 292
+            const val PAGE_FADE_DURATION_MS = 292
         }
     }
 
@@ -70,24 +69,24 @@ class SohrOnboarding(
 
     private val pages = listOf(
         Page(
-            "Добро пожаловать в SOHR",
-            "Видео, лента и прогресс — в одном месте."
-        ),
-        Page(
-            "Лента без лишнего",
-            "Новые видео и понятные даты."
-        ),
-        Page(
-            "Удобный просмотр",
-            "Видео и эфиры — в удобном плеере."
+            "Сохранение видео и эфиров",
+            "Любимые видео и эфиры — в одном месте."
         ),
         Page(
             "Streak и прогресс",
-            "Смотрите прогресс по дням."
+            "Следите за сериями и активностью по дням."
         ),
         Page(
-            "Настройте под себя",
-            "Тема и акценты — в одном месте."
+            "Удобный просмотр",
+            "Видео и эфиры — в удобном встроенном плеере."
+        ),
+        Page(
+            "Загрузки и коллекции",
+            "Сохраняйте видео и собирайте коллекции."
+        ),
+        Page(
+            "Настройка под себя",
+            "Выбирайте тему, цвета и удобные параметры."
         )
     )
 
@@ -339,9 +338,8 @@ class SohrOnboarding(
         morphView.setPageProgress(currentProgress)
         updateChrome()
 
-        // The icon renderer must always stay fully opaque and at its exact
-        // geometry. A separate ViewPropertyAnimator on morphView used to leave
-        // the premium artwork visually dimmed in real devices/recordings.
+        // Keep the icon canvas at full opacity; only its five drawings
+        // crossfade internally on each ViewPager scroll event.
         morphView.animate().cancel()
         morphView.alpha = 1f
         morphView.scaleX = 1f
@@ -398,12 +396,12 @@ class SohrOnboarding(
                 orientation = LinearLayout.VERTICAL
                 gravity =
                     Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                setPadding(dp(10), dp(2), dp(10), 0)
+                setPadding(dp(4), dp(2), dp(4), 0)
             }
 
             val title = TextView(activity).apply {
                 text = page.title
-                textSize = 27f
+                textSize = 25f
                 gravity = Gravity.CENTER
                 maxLines = 2
                 includeFontPadding = false

@@ -10,258 +10,347 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.view.View
 import androidx.core.graphics.ColorUtils
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
-/** Crisp five-icon SOHR vector onboarding. No neon, distorted polygon morphs or timers. */
+/**
+ * Five independent, consistently sized illustrations for SOHR onboarding.
+ * Each page has its own hand-drawn vector artwork; nothing morphs between
+ * unrelated shapes. Page changes use only a subtle alpha crossfade.
+ */
 class SohrIntroMorphView(context: Context) : View(context) {
-    private data class HeroFrame(val l: Float, val t: Float, val r: Float, val b: Float, val radius: Float)
-    private val frames = listOf(
-        HeroFrame(24f, 24f, 136f, 136f, 56f),
-        HeroFrame(20f, 43f, 140f, 123f, 20f),
-        HeroFrame(18f, 26f, 142f, 134f, 22f),
-        HeroFrame(26f, 30f, 134f, 136f, 20f),
-        HeroFrame(27f, 24f, 133f, 136f, 23f)
-    )
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val outline = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = 0.9f
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
+
     private var palette: ThemePalette? = null
-    private var progress = 0f
+    private var pageProgress = 0f
     private var animationsEnabled = true
 
     fun setPalette(value: ThemePalette) { palette = value; invalidate() }
     fun setAnimationsEnabled(value: Boolean) { animationsEnabled = value; invalidate() }
-    fun setPageProgress(value: Float) { progress = value.coerceIn(0f, 4f); invalidate() }
+    fun setPageProgress(value: Float) {
+        pageProgress = value.coerceIn(0f, 4f)
+        invalidate()
+    }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val theme = palette ?: return
         if (width == 0 || height == 0) return
         val saved = canvas.save()
-        val unit = minOf(width, height).toFloat() / 160f
+        val scale = minOf(width, height) / 160f
         canvas.translate(width / 2f, height / 2f)
-        canvas.scale(unit, unit)
+        canvas.scale(scale, scale)
         canvas.translate(-80f, -80f)
 
-        val page = if (animationsEnabled) progress else progress.roundToInt().toFloat()
-        val from = floor(page).toInt().coerceIn(0, 4)
-        val to = (from + 1).coerceAtMost(4)
-        val t = smooth(page - from)
-        drawFrame(canvas, frameBetween(frames[from], frames[to], t), theme)
-        if (from == to || t == 0f) {
-            drawContent(canvas, from, 1f, theme)
+        val progress = if (animationsEnabled) pageProgress
+            else pageProgress.roundToInt().toFloat()
+        val left = floor(progress).toInt().coerceIn(0, 4)
+        val right = (left + 1).coerceAtMost(4)
+        val fraction = (progress - left).coerceIn(0f, 1f)
+        if (left == right || fraction <= 0.001f) {
+            drawIcon(canvas, left, 1f, theme)
         } else {
-            drawContent(canvas, from, 1f - t, theme)
-            drawContent(canvas, to, t, theme)
+            drawIcon(canvas, left, 1f - fraction, theme)
+            drawIcon(canvas, right, fraction, theme)
         }
         canvas.restoreToCount(saved)
     }
 
-    private fun drawFrame(canvas: Canvas, f: HeroFrame, theme: ThemePalette) {
-        fill.color = Color.WHITE
-        fill.shader = LinearGradient(
-            f.l, f.t, f.r, f.b,
-            intArrayOf(
-                ColorUtils.blendARGB(theme.accent, Color.WHITE, 0.68f),
-                ColorUtils.blendARGB(theme.accent, Color.WHITE, 0.12f),
-                ColorUtils.blendARGB(theme.accent, Color.rgb(58, 32, 118), 0.34f)
-            ),
-            floatArrayOf(0f, 0.52f, 1f),
-            Shader.TileMode.CLAMP
+    private fun drawIcon(canvas: Canvas, page: Int, alpha: Float, theme: ThemePalette) {
+        if (alpha <= 0f) return
+        val layer = canvas.saveLayerAlpha(
+            0f, 0f, 160f, 160f,
+            (255f * alpha).roundToInt().coerceIn(0, 255)
         )
-        val rect = RectF(f.l, f.t, f.r, f.b)
-        canvas.drawRoundRect(rect, f.radius, f.radius, fill)
-        fill.shader = null
-        stroke.color = ColorUtils.setAlphaComponent(Color.WHITE, 30)
-        canvas.drawRoundRect(rect, f.radius, f.radius, stroke)
-    }
-
-    private fun drawContent(canvas: Canvas, page: Int, opacity: Float, theme: ThemePalette) {
-        if (opacity <= 0.001f) return
-        val layer = canvas.saveLayerAlpha(0f, 0f, 160f, 160f,
-            (255f * opacity).roundToInt().coerceIn(0, 255))
+        val accent = theme.accent
         when (page) {
-            0 -> drawWelcome(canvas)
-            1 -> drawFeed(canvas, theme)
-            2 -> drawPlayer(canvas, theme)
-            3 -> drawCalendar(canvas, theme)
-            4 -> drawSettings(canvas, theme)
+            0 -> drawSavedVideos(canvas, accent)
+            1 -> drawProgressCalendar(canvas, accent)
+            2 -> drawVideoPlayer(canvas, accent)
+            3 -> drawDownloads(canvas, accent)
+            else -> drawPersonalize(canvas, accent)
         }
         canvas.restoreToCount(layer)
     }
 
-    private fun drawWelcome(canvas: Canvas) {
-        triangle(canvas, 84f, 80f, 29f)
-    }
+    private fun light(accent: Int, amount: Float) =
+        ColorUtils.blendARGB(accent, Color.WHITE, amount)
+    private fun deep(accent: Int, amount: Float) =
+        ColorUtils.blendARGB(accent, Color.rgb(40, 24, 86), amount)
 
-    private fun drawFeed(canvas: Canvas, theme: ThemePalette) {
-        val light = ColorUtils.blendARGB(theme.accent, Color.WHITE, 0.82f)
-        rounded(canvas, 29f, 53f, 82f, 112f, 10f,
-            ColorUtils.blendARGB(theme.accent, Color.WHITE, 0.55f))
-        landscape(canvas, RectF(33f, 57f, 78f, 108f), theme)
-        rounded(canvas, 91f, 64f, 131f, 70f, 3f, light)
-        rounded(canvas, 91f, 78f, 124f, 83f, 2.5f,
-            ColorUtils.setAlphaComponent(light, 220))
-        rounded(canvas, 91f, 91f, 116f, 96f, 2.5f,
-            ColorUtils.setAlphaComponent(light, 190))
-        rounded(canvas, 91f, 105f, 106f, 109f, 2f,
-            ColorUtils.setAlphaComponent(Color.WHITE, 150))
-    }
-
-    private fun drawPlayer(canvas: Canvas, theme: ThemePalette) {
-        landscape(canvas, RectF(27f, 36f, 133f, 102f), theme)
-        triangle(canvas, 83f, 69f, 23f)
-        val track = ColorUtils.blendARGB(theme.accent, Color.BLACK, 0.50f)
-        val played = ColorUtils.blendARGB(theme.accent, Color.WHITE, 0.78f)
-        rounded(canvas, 31f, 114f, 129f, 120f, 3f, track)
-        rounded(canvas, 31f, 114f, 88f, 120f, 3f, played)
-        circle(canvas, 88f, 117f, 6.5f, Color.WHITE)
-        circle(canvas, 88f, 117f, 5.2f,
-            ColorUtils.blendARGB(theme.accent, Color.WHITE, 0.42f))
-    }
-
-    private fun drawCalendar(canvas: Canvas, theme: ThemePalette) {
-        val pale = ColorUtils.blendARGB(theme.accent, Color.WHITE, 0.80f)
-        rounded(canvas, 26f, 30f, 134f, 61f, 18f, pale)
-        rounded(canvas, 26f, 46f, 134f, 61f, 3f,
-            ColorUtils.blendARGB(theme.accent, Color.WHITE, 0.54f))
-        rounded(canvas, 43f, 17f, 54f, 48f, 5f, pale)
-        rounded(canvas, 106f, 17f, 117f, 48f, 5f, pale)
-        rounded(canvas, 42f, 57f, 118f, 60f, 1.5f,
-            ColorUtils.setAlphaComponent(Color.WHITE, 82))
-        // Hand-authored cubic flame. A polygonal spline used to turn this
-        // symbol into a warped apple-shaped blob.
-        val flame = Path().apply {
-            moveTo(82f, 65f)
-            cubicTo(82f, 78f, 96f, 83f, 96f, 95f)
-            cubicTo(103f, 90f, 106f, 85f, 105f, 80f)
-            cubicTo(119f, 93f, 119f, 110f, 107f, 120f)
-            cubicTo(94f, 132f, 68f, 130f, 56f, 118f)
-            cubicTo(44f, 106f, 49f, 92f, 62f, 81f)
-            cubicTo(72f, 73f, 79f, 70f, 82f, 65f)
-            close()
-        }
-        fill.color = Color.WHITE
-        fill.shader = LinearGradient(
-            60f, 70f, 106f, 125f,
-            ColorUtils.blendARGB(theme.accent, Color.WHITE, 0.95f),
-            ColorUtils.blendARGB(theme.accent, Color.WHITE, 0.58f),
-            Shader.TileMode.CLAMP
-        )
-        canvas.drawPath(flame, fill)
-        fill.shader = null
-        val inner = Path().apply {
-            moveTo(83f, 96f)
-            cubicTo(86f, 103f, 94f, 107f, 91f, 115f)
-            cubicTo(87f, 125f, 73f, 122f, 70f, 113f)
-            cubicTo(68f, 106f, 78f, 98f, 83f, 96f)
-            close()
-        }
-        fill.color = ColorUtils.blendARGB(theme.accent, Color.rgb(56, 31, 111), 0.64f)
-        canvas.drawPath(inner, fill)
-    }
-
-    private fun drawSettings(canvas: Canvas, theme: ThemePalette) {
-        val pale = ColorUtils.blendARGB(theme.accent, Color.WHITE, 0.83f)
-        val track = ColorUtils.blendARGB(theme.accent, Color.BLACK, 0.49f)
-        rounded(canvas, 42f, 44f, 118f, 48f, 2f,
-            ColorUtils.setAlphaComponent(pale, 175))
-        rounded(canvas, 43f, 69f, 117f, 76f, 3.5f, track)
-        rounded(canvas, 43f, 69f, 93f, 76f, 3.5f, pale)
-        circle(canvas, 93f, 72.5f, 10f, Color.WHITE)
-        circle(canvas, 93f, 72.5f, 8f, pale)
-        rounded(canvas, 43f, 104f, 117f, 111f, 3.5f, track)
-        rounded(canvas, 43f, 104f, 66f, 111f, 3.5f, pale)
-        circle(canvas, 66f, 107.5f, 10f, Color.WHITE)
-        circle(canvas, 66f, 107.5f, 8f, pale)
-    }
-
-    private fun landscape(canvas: Canvas, rect: RectF, theme: ThemePalette) {
-        val saved = canvas.save()
-        val clip = Path().apply { addRoundRect(rect, 9f, 9f, Path.Direction.CW) }
-        canvas.clipPath(clip)
-        fill.color = Color.WHITE
-        fill.shader = LinearGradient(
-            rect.left, rect.top, rect.right, rect.bottom,
-            ColorUtils.blendARGB(theme.accent, Color.WHITE, 0.86f),
-            ColorUtils.blendARGB(theme.accent, Color.WHITE, 0.32f),
-            Shader.TileMode.CLAMP
-        )
-        canvas.drawRect(rect, fill)
-        fill.shader = null
-        circle(canvas, rect.left + rect.width() * 0.77f,
-            rect.top + rect.height() * 0.26f,
-            rect.height() * 0.11f,
-            ColorUtils.blendARGB(theme.accent, Color.WHITE, 0.93f))
-        fun hill(height: Float, peak: Float, color: Int) {
-            val y = rect.top + rect.height() * height
-            val p = Path().apply {
-                moveTo(rect.left, rect.bottom)
-                lineTo(rect.left, y)
-                cubicTo(rect.left + rect.width() * 0.16f, y - peak,
-                    rect.left + rect.width() * 0.25f, y - peak,
-                    rect.left + rect.width() * 0.42f, y)
-                cubicTo(rect.left + rect.width() * 0.60f, y + peak * 0.52f,
-                    rect.left + rect.width() * 0.80f, y - peak * 0.72f,
-                    rect.right, y - peak * 0.12f)
-                lineTo(rect.right, rect.bottom)
-                close()
-            }
-            fill.color = color
-            canvas.drawPath(p, fill)
-        }
-        hill(0.60f, rect.height() * 0.27f,
-            ColorUtils.blendARGB(theme.accent, Color.WHITE, 0.40f))
-        hill(0.81f, rect.height() * 0.19f,
-            ColorUtils.blendARGB(theme.accent, Color.BLACK, 0.25f))
-        hill(0.99f, rect.height() * 0.15f,
-            ColorUtils.blendARGB(theme.accent, Color.BLACK, 0.51f))
-        canvas.restoreToCount(saved)
-    }
-
-    private fun triangle(canvas: Canvas, x: Float, y: Float, size: Float) {
-        val p = Path().apply {
-            moveTo(x - size * 0.48f, y - size * 0.62f)
-            quadTo(x - size * 0.48f, y - size * 0.75f,
-                x - size * 0.20f, y - size * 0.60f)
-            lineTo(x + size * 0.63f, y - size * 0.13f)
-            quadTo(x + size * 0.86f, y, x + size * 0.63f, y + size * 0.13f)
-            lineTo(x - size * 0.20f, y + size * 0.60f)
-            quadTo(x - size * 0.48f, y + size * 0.75f,
-                x - size * 0.48f, y + size * 0.62f)
-            close()
-        }
-        fill.color = Color.WHITE
-        fill.shader = null
-        canvas.drawPath(p, fill)
-    }
-
-    private fun rounded(canvas: Canvas, l: Float, t: Float, r: Float, b: Float,
-                        rad: Float, color: Int) {
+    private fun solid(canvas: Canvas, box: RectF, radius: Float, color: Int) {
         fill.shader = null
         fill.color = color
-        canvas.drawRoundRect(l, t, r, b, rad, rad, fill)
+        canvas.drawRoundRect(box, radius, radius, fill)
     }
 
-    private fun circle(canvas: Canvas, x: Float, y: Float, radius: Float, color: Int) {
+    private fun solid(canvas: Canvas, l: Float, t: Float, r: Float, b: Float,
+                      radius: Float, color: Int) {
+        solid(canvas, RectF(l, t, r, b), radius, color)
+    }
+
+    private fun disc(canvas: Canvas, x: Float, y: Float, radius: Float, color: Int) {
         fill.shader = null
         fill.color = color
         canvas.drawCircle(x, y, radius, fill)
     }
 
-    private fun frameBetween(a: HeroFrame, b: HeroFrame, t: Float) = HeroFrame(
-        mix(a.l, b.l, t), mix(a.t, b.t, t),
-        mix(a.r, b.r, t), mix(a.b, b.b, t),
-        mix(a.radius, b.radius, t)
-    )
-    private fun mix(a: Float, b: Float, t: Float) = a + (b - a) * t
-    private fun smooth(value: Float): Float {
-        val t = value.coerceIn(0f, 1f)
-        return t * t * (3f - 2f * t)
+    private fun gradient(canvas: Canvas, box: RectF, radius: Float,
+                         top: Int, bottom: Int, border: Boolean = true) {
+        fill.color = Color.WHITE
+        fill.shader = LinearGradient(
+            box.left, box.top, box.right, box.bottom,
+            top, bottom, Shader.TileMode.CLAMP
+        )
+        canvas.drawRoundRect(box, radius, radius, fill)
+        fill.shader = null
+        if (border) {
+            outline.color = ColorUtils.setAlphaComponent(Color.WHITE, 52)
+            outline.strokeWidth = 0.8f
+            canvas.drawRoundRect(box, radius, radius, outline)
+        }
+    }
+
+    private fun card(canvas: Canvas, l: Float, t: Float, r: Float, b: Float,
+                     radius: Float, accent: Int, brightness: Float = 0f) {
+        val box = RectF(l, t, r, b)
+        val depth = RectF(l, t + 3f, r, b + 3f)
+        solid(canvas, depth, radius, ColorUtils.setAlphaComponent(deep(accent, 0.88f), 205))
+        gradient(
+            canvas, box, radius,
+            light(accent, 0.28f + brightness * 0.45f),
+            deep(accent, 0.55f - brightness * 0.25f)
+        )
+    }
+
+    private fun triangle(canvas: Canvas, x: Float, y: Float, size: Float,
+                         color: Int = Color.WHITE) {
+        val p = Path().apply {
+            moveTo(x - size * 0.38f, y - size * 0.56f)
+            quadTo(x - size * 0.39f, y - size * 0.66f,
+                x - size * 0.17f, y - size * 0.58f)
+            lineTo(x + size * 0.64f, y - size * 0.11f)
+            quadTo(x + size * 0.83f, y,
+                x + size * 0.64f, y + size * 0.11f)
+            lineTo(x - size * 0.17f, y + size * 0.58f)
+            quadTo(x - size * 0.39f, y + size * 0.66f,
+                x - size * 0.38f, y + size * 0.56f)
+            close()
+        }
+        fill.shader = null
+        fill.color = color
+        canvas.drawPath(p, fill)
+    }
+
+    // Page 1: three clearly separated stacked media cards, not one blob.
+    private fun drawSavedVideos(canvas: Canvas, accent: Int) {
+        canvas.save()
+        canvas.rotate(7f, 84f, 79f)
+        card(canvas, 43f, 29f, 137f, 119f, 21f, accent, 0.27f)
+        canvas.restore()
+
+        canvas.save()
+        canvas.rotate(-6f, 75f, 83f)
+        card(canvas, 27f, 34f, 125f, 132f, 22f, accent, 0.13f)
+        canvas.restore()
+
+        card(canvas, 30f, 48f, 128f, 139f, 22f, accent)
+        // Distinct dark center ensures the play symbol is crisp and recognizable.
+        gradient(
+            canvas, RectF(43f, 59f, 115f, 125f), 16f,
+            deep(accent, 0.74f), deep(accent, 0.94f), false
+        )
+        triangle(canvas, 81f, 92f, 32f, light(accent, 0.92f))
+    }
+
+    // Page 2: rounded calendar with regular grid and a circular streak badge.
+    private fun drawProgressCalendar(canvas: Canvas, accent: Int) {
+        card(canvas, 26f, 29f, 131f, 136f, 22f, accent)
+        gradient(
+            canvas, RectF(27f, 30f, 130f, 66f), 19f,
+            light(accent, 0.56f), light(accent, 0.19f), false
+        )
+        // Cover the lower rounding of the header, keeping the upper corners round.
+        solid(canvas, 27f, 55f, 130f, 67f, 0f, light(accent, 0.20f))
+        gradient(canvas, RectF(45f, 20f, 55f, 52f), 5f,
+            light(accent, 0.89f), accent, false)
+        gradient(canvas, RectF(102f, 20f, 112f, 52f), 5f,
+            light(accent, 0.89f), accent, false)
+        for (row in 0..2) {
+            for (col in 0..3) {
+                val x = 41f + col * 20f
+                val y = 77f + row * 18f
+                solid(canvas, x, y, x + 13f, y + 12f, 3.3f,
+                    if (row == 1 && col == 2) light(accent, 0.70f)
+                    else deep(accent, 0.56f))
+            }
+        }
+        disc(canvas, 118f, 119f, 23f, deep(accent, 0.88f))
+        disc(canvas, 118f, 116f, 23f, light(accent, 0.14f))
+        drawFlame(canvas, 118f, 116f, 14f, light(accent, 0.95f))
+    }
+
+    // Page 3: upright video window, mountain preview and balanced controls.
+    private fun drawVideoPlayer(canvas: Canvas, accent: Int) {
+        card(canvas, 19f, 34f, 141f, 131f, 22f, accent)
+        val preview = RectF(30f, 45f, 130f, 107f)
+        drawLandscape(canvas, preview, accent)
+        // Deep oval under the translucent white play glyph.
+        disc(canvas, 80f, 77f, 23f, ColorUtils.setAlphaComponent(deep(accent, 0.84f), 135))
+        triangle(canvas, 82f, 77f, 25f, light(accent, 0.96f))
+        val lineColor = deep(accent, 0.81f)
+        solid(canvas, 32f, 118f, 129f, 124f, 3f, lineColor)
+        solid(canvas, 32f, 118f, 79f, 124f, 3f, light(accent, 0.86f))
+        disc(canvas, 79f, 121f, 7.4f, deep(accent, 0.62f))
+        disc(canvas, 79f, 119f, 6.6f, light(accent, 0.82f))
+    }
+
+    // Page 4: one symmetric cloud with a down arrow, no extra outlines.
+    private fun drawDownloads(canvas: Canvas, accent: Int) {
+        val shape = Path().apply {
+            moveTo(39f, 127f)
+            cubicTo(20f, 127f, 15f, 111f, 21f, 96f)
+            cubicTo(26f, 82f, 38f, 76f, 50f, 77f)
+            cubicTo(54f, 53f, 73f, 35f, 96f, 38f)
+            cubicTo(119f, 40f, 130f, 57f, 129f, 77f)
+            cubicTo(146f, 81f, 149f, 96f, 144f, 110f)
+            cubicTo(140f, 121f, 131f, 127f, 117f, 127f)
+            close()
+        }
+        canvas.save()
+        canvas.translate(0f, 3f)
+        fill.shader = null
+        fill.color = deep(accent, 0.90f)
+        canvas.drawPath(shape, fill)
+        canvas.restore()
+        fill.color = Color.WHITE
+        fill.shader = LinearGradient(
+            40f, 42f, 125f, 131f,
+            light(accent, 0.78f), accent, Shader.TileMode.CLAMP
+        )
+        canvas.drawPath(shape, fill)
+        fill.shader = null
+        outline.color = ColorUtils.setAlphaComponent(Color.WHITE, 68)
+        outline.strokeWidth = 0.9f
+        canvas.drawPath(shape, outline)
+        // Integrated download arrow has generous clearance around all edges.
+        solid(canvas, 75f, 69f, 85f, 105f, 5f, light(accent, 0.96f))
+        val arrow = Path().apply {
+            moveTo(59f, 100f)
+            quadTo(57f, 97f, 62f, 96f)
+            lineTo(98f, 96f)
+            quadTo(103f, 97f, 100f, 101f)
+            lineTo(83f, 118f)
+            quadTo(80f, 121f, 77f, 118f)
+            close()
+        }
+        fill.color = light(accent, 0.96f)
+        canvas.drawPath(arrow, fill)
+    }
+
+    // Page 5: a genuine eight-tooth gear and two uniform sliders.
+    private fun drawPersonalize(canvas: Canvas, accent: Int) {
+        card(canvas, 21f, 31f, 139f, 133f, 23f, accent)
+        gradient(
+            canvas, RectF(31f, 42f, 129f, 122f), 17f,
+            deep(accent, 0.65f), deep(accent, 0.86f), false
+        )
+        drawGear(canvas, 61f, 75f, 22f, light(accent, 0.88f), deep(accent, 0.98f))
+        val track = deep(accent, 0.96f)
+        val selected = light(accent, 0.57f)
+        solid(canvas, 91f, 65f, 121f, 71f, 3f, track)
+        solid(canvas, 91f, 65f, 107f, 71f, 3f, selected)
+        disc(canvas, 107f, 68f, 8f, light(accent, 0.88f))
+        solid(canvas, 91f, 91f, 121f, 97f, 3f, track)
+        solid(canvas, 91f, 91f, 116f, 97f, 3f, selected)
+        disc(canvas, 116f, 94f, 8f, light(accent, 0.88f))
+    }
+
+    private fun drawGear(canvas: Canvas, cx: Float, cy: Float, r: Float,
+                         color: Int, hole: Int) {
+        val points = 48
+        val p = Path()
+        for (i in 0 until points) {
+            val section = i % 6
+            val rad = when (section) {
+                0, 1 -> r * 0.79f
+                2, 3 -> r
+                else -> r * 0.79f
+            }
+            val angle = -PI / 2.0 + i * 2.0 * PI / points
+            val x = cx + cos(angle).toFloat() * rad
+            val y = cy + sin(angle).toFloat() * rad
+            if (i == 0) p.moveTo(x, y) else p.lineTo(x, y)
+        }
+        p.close()
+        fill.shader = null
+        fill.color = color
+        canvas.drawPath(p, fill)
+        disc(canvas, cx, cy, 8.2f, hole)
+    }
+
+    private fun drawFlame(canvas: Canvas, cx: Float, cy: Float, size: Float,
+                          color: Int) {
+        val p = Path().apply {
+            moveTo(cx + size * 0.11f, cy - size)
+            cubicTo(cx + size * 0.18f, cy - size * 0.20f,
+                cx + size * 0.75f, cy - size * 0.20f,
+                cx + size * 0.72f, cy + size * 0.32f)
+            cubicTo(cx + size * 0.70f, cy + size,
+                cx - size * 0.65f, cy + size,
+                cx - size * 0.73f, cy + size * 0.25f)
+            cubicTo(cx - size * 0.86f, cy - size * 0.27f,
+                cx - size * 0.12f, cy - size * 0.44f,
+                cx + size * 0.11f, cy - size)
+            close()
+        }
+        fill.shader = null
+        fill.color = color
+        canvas.drawPath(p, fill)
+    }
+
+    private fun drawLandscape(canvas: Canvas, rect: RectF, accent: Int) {
+        val saved = canvas.save()
+        canvas.clipPath(Path().apply { addRoundRect(rect, 12f, 12f, Path.Direction.CW) })
+        fill.color = Color.WHITE
+        fill.shader = LinearGradient(
+            rect.left, rect.top, rect.right, rect.bottom,
+            light(accent, 0.76f), light(accent, 0.19f), Shader.TileMode.CLAMP
+        )
+        canvas.drawRect(rect, fill)
+        fill.shader = null
+        disc(canvas, rect.right - rect.width() * 0.22f, rect.top + rect.height() * 0.31f,
+            rect.height() * 0.11f, light(accent, 0.86f))
+        fun hill(yFactor: Float, ampFactor: Float, color: Int) {
+            val y = rect.top + rect.height() * yFactor
+            val a = rect.height() * ampFactor
+            val p = Path().apply {
+                moveTo(rect.left, rect.bottom)
+                lineTo(rect.left, y)
+                cubicTo(rect.left + rect.width() * 0.2f, y - a,
+                    rect.left + rect.width() * 0.28f, y - a,
+                    rect.left + rect.width() * 0.45f, y)
+                cubicTo(rect.left + rect.width() * 0.66f, y + a * 0.63f,
+                    rect.left + rect.width() * 0.82f, y - a * 0.55f,
+                    rect.right, y - a * 0.1f)
+                lineTo(rect.right, rect.bottom)
+                close()
+            }
+            fill.shader = null
+            fill.color = color
+            canvas.drawPath(p, fill)
+        }
+        hill(0.58f, 0.36f, light(accent, 0.40f))
+        hill(0.78f, 0.25f, deep(accent, 0.32f))
+        hill(0.97f, 0.19f, deep(accent, 0.85f))
+        canvas.restoreToCount(saved)
     }
 }
