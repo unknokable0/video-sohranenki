@@ -1,0 +1,63 @@
+/* KADR 0.2 — tactile polish, motion, real player and library features */
+:root{--purple:#bba1ff}
+body{background:radial-gradient(ellipse 75vw 400px at 50% -310px,#49305c30,transparent),#09090e}
+.top{position:sticky;top:0;z-index:18;background:#09090edb;backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);border-bottom:1px solid #ffffff09;margin-bottom:1px}
+.logo,.top button,.bottom button,.filters button,.kadr-action,.movie,.primary,.secondary,.close,.episode{transition:background .22s ease,border-color .22s ease,color .22s ease,transform .22s cubic-bezier(.2,.8,.2,1),box-shadow .22s ease,opacity .22s}
+.logo:active,.top button:active,.bottom button:active,.movie:active,.episode:active{transform:scale(.97)}
+.primary:active,.secondary:active,.kadr-action:active{transform:scale(.965)}
+.section-heading p{line-height:1.5}
+.hero{box-shadow:0 24px 80px #0005;animation:kadr-appear .52s cubic-bezier(.23,.8,.28,1) both;isolation:isolate}
+.hero-art{animation:kadr-breathe 9s ease-in-out infinite}
+.hero-text{animation:kadr-content .62s cubic-bezier(.23,.8,.28,1) .06s both}
+.rail{scroll-snap-type:x proximity;overscroll-behavior-x:contain}
+.rail .movie{scroll-snap-align:start}
+.movie{border-radius:17px}
+.cover{box-shadow:0 12px 28px #0003}
+.movie:hover .cover,.movie:focus-visible .cover{box-shadow:0 17px 30px #0007,0 0 0 1px #a681ff80}
+.cover img{transition:transform .42s cubic-bezier(.2,.8,.2,1)}
+.movie:hover img{transform:scale(1.045)}
+.movie .tag{background:#1b152ab8}
+.page-head h1{font-weight:850;letter-spacing:-1.25px}
+.search-field{transition:box-shadow .22s,border-color .22s}
+.search-field:focus-within{border-color:#b69afe;box-shadow:0 0 0 4px #997aff18}
+.filters button:hover:not(.active){background:#2d2138}
+.details{box-shadow:0 30px 90px #000b;animation:kadr-modal .3s cubic-bezier(.2,.8,.2,1) both}
+.details-visual:before{content:"";position:absolute;z-index:1;inset:0;background:linear-gradient(180deg,#211c283d,#14131b26 55%,#17141f 99%)}
+.details-content{z-index:3}
+.episode{border-radius:9px;padding:10px 6px}
+.episode:hover{background:#272030}
+.episode-art{overflow:hidden;position:relative}
+.episode-art img{width:100%;height:100%;object-fit:cover}
+.kadr-ep-info{flex:1;min-width:0}
+.kadr-ep-info b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kadr-ep-info small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kadr-loading,.kadr-soft-empty,.kadr-search-hint{display:flex;align-items:center;gap:12px;color:#b5a7c5;font-size:13px;padding:23px 9px;min-height:80px}
+.kadr-spinner{width:21px;height:21px;border-radius:50%;border:2px solid #5b4c75;border-top-color:#c1a9fa;display:inline-block;flex-shrink:0;animation:kadr-spin .7s linear infinite}
+.kadr-extra-actions{display:flex;flex-wrap:wrap;gap:9px;margin:12px 0 16px}
+.kadr-action{display:flex;align-items:center;justify-content:center;gap:8px;background:#252033;color:#e9dff6;padding:11px 16px;border-radius:12px;border:1px solid #4e3c60;font-weight:650;font-size:13px}
+.kadr-action:hover{background:#302640;border-color:#9e80df}
+.kadr-action svg{width:17px;height:17px}
+.kadr-action-feature{background:#ab8bea;color:#1e1528;border-color:#ab8bea}
+.kadr-action-feature:hover{background:#d0baff}
+.kadr-truth{display:flex;align-items:flex-start;gap:8px;color:#bfb2ce;background:#201b2c;border:1px solid #41344e;border-radius:11px;padding:12px 14px;font-size:12px}
+.kadr-truth-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#ae90fc;margin-top:5px;flex-shrink:0}
+.kadr-accent-label{font-size:10px;color:#d8c4ff;letter-spacing:1.5px;font-weight:800;background:#39284a;border:1px solid #644b85;padding:5px 8px;border-radius:7px}
+.kadr-remote .section{margin-top:37px}
+.kadr-remote .grid{margin-top:0}
+.kadr-small{color:#afa3be;font-size:13px;line-height:1.7}
+.kadr-real-player .player-meta{flex-wrap:wrap}
+.kadr-player-frame{aspect-ratio:16/9;background:#050507;border:1px solid #524160;border-radius:18px;overflow:hidden;display:grid;place-items:center}
+.kadr-player-frame video{width:100%;height:100%;max-height:76vh;background:#030303;object-fit:contain}
+.kadr-player-loading{display:flex;flex-direction:column;gap:9px;align-items:center;text-align:center;padding:20px;color:#aa99c1}
+.kadr-player-loading strong{color:#fff;font-size:18px}
+.kadr-player-loading .kadr-spinner{width:36px;height:36px;border-width:3px;margin-bottom:6px}
+.kadr-provider-note{margin-top:20px;padding:15px 17px;border-radius:13px;background:#1c1926;color:#bbaaca;font-size:13px;border:1px solid #41344b}
+.kadr-provider-note button{background:transparent;color:#d7baff;padding:0 3px;display:inline-flex;align-items:center;gap:4px}
+.kadr-provider-note svg{width:15px;height:15px}
+.kadr-video-error{color:#ffb8bd;background:#3a202d;border:1px solid #723b4b;padding:12px 15px;border-radius:12px;font-size:13px}
+.kadr-credit{color:#b7a1df;text-decoration:none}.kadr-credit:hover{text-decoration:underline}
+.kadr-free{margin-top:34px}
+@keyframes kadr-spin{to{transform:rotate(360deg)}}@keyframes kadr-appear{from{opacity:0;transform:translateY(11px)}to{opacity:1;transform:translateY(0)}}@keyframes kadr-modal{from{opacity:0;transform:translateY(16px) scale(.986)}to{opacity:1;transform:translateY(0) scale(1)}}@keyframes kadr-content{from{opacity:0;transform:translateY(11px)}to{opacity:1;transform:translateY(0)}}@keyframes kadr-breathe{50%{transform:scale(1.045)}}
+@media(max-width:800px){.top{margin:0 -19px;padding:0 19px}.bottom{box-shadow:0 -12px 26px #0007}}
+@media(max-width:550px){.top{margin:0 -16px;padding:0 16px}.kadr-extra-actions{display:grid;grid-template-columns:1fr 1fr}.kadr-action{padding:11px 9px;font-size:11px}.kadr-action svg{width:16px;height:16px}.kadr-truth{font-size:11px;line-height:1.55}.kadr-player-loading strong{font-size:14px}.kadr-player-frame{border-radius:13px}.kadr-episode .episode-art{width:86px;height:58px}.kadr-ep-info b{font-size:13px}.kadr-ep-info small{font-size:11px}.kadr-credit{display:block;margin-top:6px}.details-content .btnrow{gap:8px}}
+@media(prefers-reduced-motion:reduce){.hero,.hero-text,.hero-art,.details,.kadr-spinner{animation:none!important}*,*:before,*:after{transition:none!important}}

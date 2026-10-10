@@ -1,0 +1,23 @@
+/* KADR 0.3 – verified watchable film lane and provider player */
+.kadr-official-section{margin-top:35px;margin-bottom:8px;padding:25px;border-radius:23px;border:1px solid #4a3656;background:linear-gradient(115deg,#221b31,#161420 77%);box-shadow:0 14px 34px #0002;animation:kadr-appear .43s ease-out both}
+.kadr-official-section .rail{gap:13px}.kadr-official-section .movie{flex-basis:165px}
+.kadr-free-label{color:#e6d4ff;background:#513771;border:1px solid #755498;border-radius:7px;font-size:10px;font-weight:850;letter-spacing:1.1px;padding:5px 9px}
+.kadr-provider-disclaimer{color:#9f94b3;font-size:12px;margin:13px 0 0;line-height:1.55}
+.kadr-source-status{display:flex;gap:9px;align-items:center;background:#242033;color:#d7c5f3;border:1px solid #4d3a62;border-radius:12px;font-size:12px;padding:11px 14px;margin:16px 0}
+.kadr-source-indicator{width:7px;height:7px;border-radius:50%;background:#c2a7fa;box-shadow:0 0 0 4px #ab90e927}
+.kadr-official-player{max-width:1100px}
+.kadr-player-heading{margin-bottom:17px}.kadr-player-heading h2{font-size:clamp(20px,3vw,31px);line-height:1.2;margin:0 0 4px;letter-spacing:-.7px}
+.kadr-source-byline{color:#c3accf;font-size:13px}
+.kadr-official-frame{background:#020203;overflow:hidden;border:1px solid #463657;box-shadow:0 20px 60px #0008}
+.kadr-official-frame iframe{display:block;width:100%;height:100%;aspect-ratio:16/9;border:0;background:#080711}
+.kadr-player-tools{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:16px}
+.kadr-player-provider{display:flex;align-items:center;gap:6px;border-radius:12px;background:#1a1623;border:1px solid #3c2d4c;padding:5px}
+.kadr-player-provider button{background:transparent;color:#ab9bbd;font-size:13px;font-weight:680;padding:8px 14px;border-radius:9px}
+.kadr-player-provider button.active{background:#ac8af1;color:#20132c}
+.kadr-player-provider button:hover:not(.active){color:#fff;background:#3a2a4c}
+.kadr-source-open{display:flex;align-items:center;gap:7px;color:#d5beff;background:#2b2138;border:1px solid #544069;border-radius:11px;padding:11px 14px;font-size:13px;font-weight:650}
+.kadr-source-open:hover{background:#392949;border-color:#9772ce}
+.kadr-source-open svg{width:17px;height:17px}
+.kadr-embed-note{color:#a49ab4;margin:15px 0;line-height:1.65;font-size:12px}
+@media(max-width:550px){.kadr-official-section{margin:19px -2px 0;padding:18px 15px;border-radius:19px}.kadr-official-section .movie{flex-basis:137px}.kadr-official-section .section-heading h2{font-size:20px}.kadr-free-label{font-size:9px;padding:4px 6px}.kadr-player-heading h2{font-size:21px}.kadr-player-tools{align-items:stretch;flex-direction:column}.kadr-player-provider{align-self:flex-start}.kadr-source-open{justify-content:center}.kadr-provider-disclaimer{font-size:11px}}
+@media(prefers-reduced-motion:reduce){.kadr-official-section{animation:none!important}}
