@@ -1257,18 +1257,43 @@ class MainActivity : AppCompatActivity() {
             )
         )
 
-        val country = TextView(this).apply {
-            text = "Выбрать страну                                  ›"
-            textSize = 15f
-            includeFontPadding = false
+        // Fixed-width vector chevron; never align an arrow using spaces.
+        val country = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(this@MainActivity.text)
-            setPadding(dp(15), 0, dp(15), 0)
+            setPadding(dp(15), 0, dp(13), 0)
             background = roundedBg(palette.surfaceAlt, 17)
             isClickable = true
             isFocusable = true
+            contentDescription = "Выбрать страну"
         }
+        val countryTitle = TextView(this).apply {
+            text = "Выбрать страну"
+            textSize = 15f
+            includeFontPadding = false
+            gravity = Gravity.CENTER_VERTICAL
+            setSingleLine(true)
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(this@MainActivity.text)
+        }
+        country.addView(
+            countryTitle,
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
+        )
+        val countryChevron = ImageView(this).apply {
+            setImageResource(R.drawable.ic_chevron_right)
+            imageTintList = ColorStateList.valueOf(this@MainActivity.text)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            contentDescription = null
+            isImportantForAccessibility = false
+        }
+        country.addView(
+            countryChevron,
+            LinearLayout.LayoutParams(dp(20), dp(20)).apply {
+                marginStart = dp(10)
+            }
+        )
         content.addView(
             country,
             LinearLayout.LayoutParams(
@@ -1373,11 +1398,12 @@ class MainActivity : AppCompatActivity() {
             val hasCountry =
                 selected.dialCode > 0 && selected.region != "ZZ"
 
-            country.text = if (hasCountry) {
-                "${selected.flag}  ${selected.name}   +${selected.dialCode}          ›"
+            countryTitle.text = if (hasCountry) {
+                "${selected.name}  +${selected.dialCode}"
             } else {
-                "Выбрать страну                                  ›"
+                "Выбрать страну"
             }
+            country.contentDescription = countryTitle.text
 
             prefixUpdating = true
             val prefixText =
@@ -1447,11 +1473,12 @@ class MainActivity : AppCompatActivity() {
                         flag = ""
                     )
 
-                    country.text = if (match != null) {
-                        "${match.flag}  ${match.name}   +${match.dialCode}          ›"
+                    countryTitle.text = if (match != null) {
+                        "${match.name}  +${match.dialCode}"
                     } else {
-                        "Выбрать страну                                  ›"
+                        "Выбрать страну"
                     }
+                    country.contentDescription = countryTitle.text
 
                     formatter = phoneUtil.getAsYouTypeFormatter(
                         match?.region ?: "ZZ"

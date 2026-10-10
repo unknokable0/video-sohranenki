@@ -181,11 +181,11 @@ jobs:
           )
           PY
 
-      - name: Assign SOHR 6.9.34 version
+      - name: Assign SOHR 6.9.35 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690034" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.34" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690035" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.35" >> "$GITHUB_ENV"
 
       - name: Verify Twitch device-code endpoint
         shell: bash
@@ -932,44 +932,27 @@ jobs:
           ]:
               if required not in onboarding:
                   raise SystemExit(f"SOHR 6.9.23 parametric onboarding regression: {required}")
+          # Five precisely drawn vector icons and a continuous frame morph.
+          # Verify the current implementation, not obsolete spline-layer names.
           for required in [
               "class SohrIntroMorphView",
-              "private data class CanonicalState(",
-              "private data class CloudState(",
-              "private data class FeedState(",
-              "private data class PlayerState(",
-              "private data class CalendarState(",
-              "private data class SettingsState(",
-              "private data class ShapeLayer(",
-              "private data class GlyphLayer(",
-              "cloudState()",
-              "feedState()",
-              "playerState()",
-              "calendarState()",
-              "settingsState()",
-              "render(",
-              "interpolate(",
-              "if (t <= 0f) return a",
-              "if (t >= 1f) return b",
-              "mixPoints(",
-              "drawPrimaryShape(",
-              "drawDepthShape(",
-              "drawBrightBox(",
-              "drawArtwork(",
-              "drawTimeline(",
-              "drawGlyph(",
-              "roundedTrianglePoints(",
-              "flamePoints(",
-              "smoothClosedPath(",
-              "circlePoints(80f, 80f, 54f)",
-              "List(16) { index ->",
-              "fill.color = Color.WHITE",
-              "roundedPanelPoints(80f, 82f, 96f, 96f)",
-              "flamePoints(80f, 83f, 38f)",
-              "minOf(width, height).toFloat() / 136f"
+              "private data class HeroFrame(",
+              "fun setPageProgress(value: Float)",
+              "fun setAnimationsEnabled(value: Boolean)",
+              "frameBetween(frames[from], frames[to], t)",
+              "canvas.saveLayerAlpha(",
+              "drawWelcome(canvas)",
+              "drawFeed(canvas, theme)",
+              "drawPlayer(canvas, theme)",
+              "drawCalendar(canvas, theme)",
+              "drawSettings(canvas, theme)",
+              "private fun landscape(",
+              "private fun triangle(",
+              "private fun smooth(value: Float)",
+              "No neon, distorted polygon morphs or timers."
           ]:
               if required not in morph_view:
-                  raise SystemExit(f"SOHR 6.9.32 bounded icon-state regression: {required}")
+                  raise SystemExit(f"SOHR 6.9.35 vector onboarding regression: {required}")
           for forbidden in [
               "Drawable",
               "ContextCompat.getDrawable",
@@ -1041,6 +1024,16 @@ jobs:
           phone_login = sohr_main.split(
               "private fun renderPhoneLogin(regions: List<PhoneCountry>)", 1
           )[1].split("\n    private data class PhoneCountry", 1)[0]
+          for required in [
+              "val countryTitle = TextView(this).apply",
+              "val countryChevron = ImageView(this).apply",
+              "R.drawable.ic_chevron_right",
+              "country.contentDescription = countryTitle.text"
+          ]:
+              if required not in phone_login:
+                  raise SystemExit(f"SOHR 6.9.35 country selector regression: {required}")
+          if "›" in phone_login:
+              raise SystemExit("SOHR 6.9.35: country selector must use a vector icon")
           for required in [
               'text = "Вход через Telegram"',
               "R.drawable.ic_auth_telegram_code",
@@ -1964,7 +1957,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.34 • исправлены форма круглой иконки, прозрачность градиентов и слоёв, плавность morph-переходов, контраст панели настроек и адаптация экрана приветствия к высоте телефона"
+            "notes": "SOHR 6.9.35 • все пять onboarding-иконок заменены на аккуратные ровные векторные изображения с мягкими градиентами без неона; непрерывная анимация формы между экранами без деформаций • на экране Telegram входа исправлена строка выбора страны: правильная фиксированная справа векторная стрелка вместо символа с пробелами"
           }
           EOF
           cat update.json
