@@ -961,7 +961,9 @@ jobs:
               "roundedTrianglePoints(",
               "flamePoints(",
               "smoothClosedPath(",
-              "circlePoints(80f, 80f, 52f)",
+              "circlePoints(80f, 80f, 54f)",
+              "List(16) { index ->",
+              "fill.color = Color.WHITE",
               "roundedPanelPoints(80f, 82f, 96f, 96f)",
               "flamePoints(80f, 83f, 38f)",
               "minOf(width, height).toFloat() / 136f"
