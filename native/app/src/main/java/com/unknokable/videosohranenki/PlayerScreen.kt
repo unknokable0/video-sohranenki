@@ -80,7 +80,8 @@ class PlayerScreen(
     private val onBack: () -> Unit,
     private val onFullscreen: (Boolean) -> Unit,
     private val onPlaybackStarted: () -> Unit,
-    private val onMiniModeChanged: ((Boolean) -> Unit)? = null
+    private val onMiniModeChanged: ((Boolean) -> Unit)? = null,
+    private val onPlaybackFailed: (() -> Unit)? = null
 ) {
     val root = LinearLayout(activity)
     val player: ExoPlayer
@@ -165,6 +166,7 @@ class PlayerScreen(
     private var qualitySelection = 0
     private var playbackCounted = false
     private var playbackRecoveryAttempts = 0
+    private var playbackFailureReported = false
     private lateinit var mediaSessionBridge: SohrMediaSessionBridge
     private var destroyed = false
     private var lastProgressPersistAt = 0L
@@ -524,11 +526,17 @@ class PlayerScreen(
     }
 
     private fun showPlaybackFailure() {
-        if (destroyed) return
+        if (destroyed || playbackFailureReported) return
+        playbackFailureReported = true
         handler.removeCallbacks(showBufferingRunnable)
         bufferingLoader.animate().cancel()
         bufferingLoader.visibility = View.GONE
         root.keepScreenOn = false
+        if (onPlaybackFailed != null) {
+            // Avoid destroying the player from within its own error callback.
+            handler.post { if (!destroyed) onPlaybackFailed.invoke() }
+            return
+        }
         Toast.makeText(
             activity,
             "Не удалось воспроизвести видео",
