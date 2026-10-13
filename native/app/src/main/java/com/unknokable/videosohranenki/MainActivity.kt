@@ -8568,7 +8568,7 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
         })
         panel.addView(TextView(this).apply {
-            text = "Открой Twitch в браузере и подтверди подключение SOHR. Если ты уже вошёл через Google, повторный ввод пароля обычно не нужен."
+            text = "Для подключения SOHR откройте Twitch в браузере и подтвердите доступ. Если вход уже выполнен через Google, пароль обычно не потребуется."
             textSize = 13f
             setTextColor(muted)
             gravity = Gravity.CENTER
@@ -8613,7 +8613,7 @@ class MainActivity : AppCompatActivity() {
             }
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)).apply { topMargin = dp(15) })
         panel.addView(TextView(this).apply {
-            text = "После подтверждения вернись в SOHR. Вход завершится автоматически."
+            text = "После подтверждения вернитесь в SOHR. Вход завершится автоматически."
             textSize = 12f
             gravity = Gravity.CENTER
             setTextColor(muted)
