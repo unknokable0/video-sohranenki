@@ -7184,7 +7184,14 @@ class MainActivity : AppCompatActivity() {
                         settings.markPlayed(item.messageId)
                         streakTracker.markWatched()
                     },
-                    onMiniModeChanged = { enabled -> handlePlayerMiniMode(enabled) }
+                    onMiniModeChanged = { enabled -> handlePlayerMiniMode(enabled) },
+                    onPlaybackFailed = {
+                        // Resolved URL can expire or return HTTP 403 only after Media3 starts.
+                        // Use the SOHR embedded player rather than leaving a broken screen.
+                        if (!isFinishing && !isDestroyed && isPlayerScreen) {
+                            openYouTubePlaybackFallback(video, returnView)
+                        }
+                    }
                 )
                 playerScreen = created
                 pendingRootSlide = 1
