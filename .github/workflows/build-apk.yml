@@ -181,11 +181,11 @@ jobs:
           )
           PY
 
-      - name: Assign SOHR 6.9.44 version
+      - name: Assign SOHR 6.9.45 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690044" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.44" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690045" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.45" >> "$GITHUB_ENV"
 
       - name: Verify Twitch device-code endpoint
         shell: bash
@@ -1996,7 +1996,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.44 • вход Twitch работает через официальный код устройства и обычный браузер без GitHub Pages 404 • восстановлены YouTube-каналы по проверенным ID, запасной встроенный плеер при недоступном потоке • исправлен экран облачного пароля"
+            "notes": "SOHR 6.9.45 • исправлен вход Twitch без GitHub Pages 404: официальный код подтверждения во внешнем браузере • «Лента» теперь загружает до 60 реальных видео из автоматически обновляемого каталога на GitHub • исправлен экран облачного пароля • добавлен резервный встроенный плеер YouTube"
           }
           EOF
           cat update.json
