@@ -65,7 +65,7 @@ object TwitchApi {
             "https://id.twitch.tv/oauth2/device",
             linkedMapOf(
                 "client_id" to clientId,
-                "scopes" to ""
+                "scopes" to "chat:read chat:edit"
             )
         )
         if (code !in 200..299) {
@@ -94,7 +94,7 @@ object TwitchApi {
                 "https://id.twitch.tv/oauth2/token",
                 linkedMapOf(
                     "client_id" to clientId,
-                    "scopes" to "",
+                    "scopes" to "chat:read chat:edit",
                     "device_code" to deviceCode,
                     "grant_type" to "urn:ietf:params:oauth:grant-type:device_code"
                 )

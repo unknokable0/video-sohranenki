@@ -1,21 +1,12 @@
-name: Publish SOHR Twitch OAuth bridge
+name: SOHR OAuth Bridge (optional)
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "docs/**"
-      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
   pages: write
   id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: true
 
 jobs:
   deploy:
@@ -25,22 +16,9 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - name: Ensure GitHub Pages is enabled
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if ! gh api "repos/${GITHUB_REPOSITORY}/pages" >/dev/null 2>&1; then
-            gh api -X POST "repos/${GITHUB_REPOSITORY}/pages" -f build_type=workflow
-          fi
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-      - name: Upload SOHR bridge pages
-        uses: actions/upload-pages-artifact@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: docs
-      - name: Deploy Pages
-        id: deployment
+      - id: deployment
         uses: actions/deploy-pages@v4
-      - name: Verify OAuth bridge is reachable
-        run: |
-          curl --retry 5 --retry-delay 2 --fail --silent --show-error "https://unknokable0.github.io/video-sohranenki/twitch-auth/" | grep -q "SOHR"

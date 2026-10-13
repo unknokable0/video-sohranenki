@@ -181,11 +181,11 @@ jobs:
           )
           PY
 
-      - name: Assign SOHR 6.9.43 version
+      - name: Assign SOHR 6.9.44 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690043" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.43" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690044" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.44" >> "$GITHUB_ENV"
 
       - name: Verify Twitch device-code endpoint
         shell: bash
@@ -1140,13 +1140,26 @@ jobs:
               raise SystemExit("SOHR 6.9.42: split YouTube audio must be retained")
           if "launchYouTubeVideo(video)" in youtube_open:
               raise SystemExit("SOHR 6.9.42: feed must not redirect to YouTube")
-          twitch_auth = sohr_main.split("private fun startTwitchLogin()", 1)[1].split(
+          twitch_login = sohr_main.split("private fun startTwitchLogin()", 1)[1].split(
               "private fun showTwitchOAuthDialog(", 1
           )[0]
-          if "openTwitchLoginInBrowser(auth)" not in twitch_auth:
-              raise SystemExit("SOHR 6.9.42: Twitch must use the external browser")
-          if "Intent.ACTION_VIEW, authUri" not in twitch_auth:
-              raise SystemExit("SOHR 6.9.42: Twitch browser Intent is missing")
+          for required in [
+              "TwitchApi.startDeviceAuthorization(clientId)",
+              "TwitchApi.pollDeviceAuthorization(clientId, auth.deviceCode)",
+              "Intent(Intent.ACTION_VIEW, uri)",
+          ]:
+              if required not in twitch_login:
+                  raise SystemExit(f"SOHR 6.9.44 Twitch device auth missing: {required}")
+          youtube_feed_source = Path(
+              "native/app/src/main/java/com/unknokable/videosohranenki/YouTubeFeed.kt"
+          ).read_text(encoding="utf-8")
+          for channel_id in ["UC5AvrWA9E3DvFyy4qjuXtNA", "UCiOjixt3AcBRPaRQEEj2S9w"]:
+              if channel_id not in youtube_feed_source:
+                  raise SystemExit(f"SOHR 6.9.44 channel missing: {channel_id}")
+          if "handleYouTubeNativeFailure(video, error, returnView)" not in sohr_main:
+              raise SystemExit("SOHR 6.9.44 YouTube fallback disconnected")
+          if "R.drawable.ic_auth_password" not in sohr_main:
+              raise SystemExit("SOHR 6.9.44 password artwork missing")
 
           twitch_live_player = Path(
               "native/app/src/main/java/com/unknokable/videosohranenki/TwitchLivePlayerScreen.kt"
@@ -1983,7 +1996,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.43 • исправлена иконка облачного пароля • YouTube-лента загружает проверенные каналы через постоянные ID и RSS, с резервной загрузкой • если нативный видеопоток недоступен, используется запасной встроенный плеер SOHR • восстановлена публикация страницы авторизации Twitch"
+            "notes": "SOHR 6.9.44 • вход Twitch работает через официальный код устройства и обычный браузер без GitHub Pages 404 • восстановлены YouTube-каналы по проверенным ID, запасной встроенный плеер при недоступном потоке • исправлен экран облачного пароля"
           }
           EOF
           cat update.json
