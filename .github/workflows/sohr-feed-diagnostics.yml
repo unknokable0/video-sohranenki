@@ -1,0 +1,38 @@
+name: SOHR YouTube feed diagnostics
+
+on:
+  push:
+    paths:
+      - ".github/workflows/sohr-feed-diagnostics.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Check public YouTube channel metadata and RSS
+        run: |
+          python3 - <<'PY'
+          import urllib.request,urllib.error,re
+          sources=[
+            ("T2x2 STREAM","https://www.youtube.com/@T2x2_stream/videos","UC5AvrWA9E3DvFyy4qjuXtNA"),
+            ("Berloga","https://www.youtube.com/@beerloga_t2x2/videos","UCiOjixt3AcBRPaRQEEj2S9w"),
+            ("Old T2x2","https://www.youtube.com/@wt2x2/videos",None),
+          ]
+          for name,url,cid in sources:
+            print("SOURCE",name,flush=True)
+            for target in [url] + ([f"https://www.youtube.com/feeds/videos.xml?channel_id={cid}"] if cid else []):
+              try:
+                req=urllib.request.Request(target,headers={"User-Agent":"Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/141 Safari/537.36","Accept-Language":"ru-RU,ru;q=0.9,en;q=0.7"})
+                with urllib.request.urlopen(req,timeout=12) as r:
+                  data=r.read(500000).decode("utf-8","replace")
+                  ids=re.findall(r'"(?:channelId|externalId|browseId)":"(UC[A-Za-z0-9_-]{22})"',data)
+                  videos=re.findall(r'<yt:videoId>([^<]+)</yt:videoId>',data)
+                  print("CHECK",target,"STATUS",r.status,"SIZE",len(data),"IDS",list(dict.fromkeys(ids))[:4],"VIDEOCOUNT",len(videos),"TITLE",data[:100].replace("\n"," "),flush=True)
+              except Exception as err:
+                print("CHECK",target,"ERROR",repr(err),flush=True)
+          PY
