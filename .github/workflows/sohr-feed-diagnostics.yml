@@ -42,3 +42,19 @@ jobs:
               except Exception as err:
                 print("CHECK",target,"ERROR",repr(err),flush=True)
           PY
+      - name: Try extracting actual video entries with yt-dlp
+        run: |
+          python3 -m pip install -q yt-dlp
+          python3 - <<'PY'
+          import json,subprocess
+          for handle in ["@T2x2_stream","@beerloga_t2x2","@wt2x2"]:
+            url=f"https://www.youtube.com/{handle}/videos"
+            try:
+              proc=subprocess.run(["yt-dlp","--flat-playlist","--playlist-end","8","--dump-single-json","--no-warnings",url],capture_output=True,text=True,timeout=55)
+              print("YTDLP",handle,"EXIT",proc.returncode,"ERR",proc.stderr[-450:],flush=True)
+              if proc.returncode==0:
+                data=json.loads(proc.stdout)
+                print("YTDLP_DATA",handle,"CHANNEL_ID",data.get("channel_id"),"ENTRIES",[(e.get("id"),e.get("title")) for e in data.get("entries",[])[:8]],flush=True)
+            except Exception as e:
+              print("YTDLP_EXCEPTION",handle,repr(e),flush=True)
+          PY
