@@ -181,11 +181,11 @@ jobs:
           )
           PY
 
-      - name: Assign SOHR 6.9.42 version
+      - name: Assign SOHR 6.9.43 version
         shell: bash
         run: |
-          echo "SOHR_BUILD_NUMBER=690042" >> "$GITHUB_ENV"
-          echo "SOHR_VERSION_NAME=6.9.42" >> "$GITHUB_ENV"
+          echo "SOHR_BUILD_NUMBER=690043" >> "$GITHUB_ENV"
+          echo "SOHR_VERSION_NAME=6.9.43" >> "$GITHUB_ENV"
 
       - name: Verify Twitch device-code endpoint
         shell: bash
@@ -1983,7 +1983,7 @@ jobs:
             "versionName": "$SOHR_VERSION_NAME",
             "downloadUrl": "https://github.com/$GITHUB_REPOSITORY/releases/download/sohr-latest/$SOHR_APK_ASSET",
             "sha256": "$SHA256",
-            "notes": "SOHR 6.9.42 • вход Twitch открывается во внешнем системном браузере с уже сохранённой сессией Google или Twitch • ролики вкладки «Лента» запускаются в нативном плеере SOHR без перехода в YouTube"
+            "notes": "SOHR 6.9.43 • исправлена иконка облачного пароля • YouTube-лента загружает проверенные каналы через постоянные ID и RSS, с резервной загрузкой • если нативный видеопоток недоступен, используется запасной встроенный плеер SOHR • восстановлена публикация страницы авторизации Twitch"
           }
           EOF
           cat update.json

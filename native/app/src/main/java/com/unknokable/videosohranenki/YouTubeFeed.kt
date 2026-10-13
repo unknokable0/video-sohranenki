@@ -66,11 +66,12 @@ data class YouTubeFeedSnapshot(
 )
 
 object YouTubeFeedRepository {
-    private data class Source(val handle: String, val url: String, val fallbackTitle: String)
+    private data class Source(val handle: String, val url: String, val fallbackTitle: String, val channelId: String)
 
+    // Stable public channel IDs, not HTML discovered on each app launch.
     private val sources = listOf(
-        Source("@wt2x2", "https://www.youtube.com/@wt2x2", "WT2X2"),
-        Source("@beerloga_t2x2", "https://www.youtube.com/@beerloga_t2x2", "Берлога T2x2")
+        Source("@T2x2_stream", "https://www.youtube.com/@T2x2_stream", "T2x2 STREAM", "UC5AvrWA9E3DvFyy4qjuXtNA"),
+        Source("@beerloga_t2x2", "https://www.youtube.com/@beerloga_t2x2", "Берлога T2x2", "UCiOjixt3AcBRPaRQEEj2S9w")
     )
 
     private data class ChannelVisual(
@@ -87,7 +88,7 @@ object YouTubeFeedRepository {
     suspend fun loadAll(): YouTubeFeedSnapshot = coroutineScope {
         val channels = sources.map { source ->
             async(Dispatchers.IO) {
-                withTimeoutOrNull(8_000L) {
+                withTimeoutOrNull(16_000L) {
                     loadChannel(source)
                 }
             }
@@ -176,63 +177,32 @@ object YouTubeFeedRepository {
 
 
     private suspend fun loadChannel(source: Source): YouTubeChannelSummary = withContext(Dispatchers.IO) {
-        val cachedId = channelIdCache[source.handle]
-        var page = ""
-        val channelId = if (!cachedId.isNullOrBlank()) {
-            cachedId
-        } else {
-            page = fetchText(source.url + "?hl=ru&gl=PL")
-            firstGroup(
-                page,
-                Regex(""""channelId":"(UC[^"]+)""""),
-                Regex(""""browseId":"(UC[^"]+)""""),
-                Regex(""""externalId":"(UC[^"]+)""""),
-                Regex("""youtube\.com/channel/(UC[A-Za-z0-9_-]+)"""),
-                Regex("""<link[^>]+rel="canonical"[^>]+href="https://www\.youtube\.com/channel/(UC[A-Za-z0-9_-]+)"""", RegexOption.IGNORE_CASE)
-            ).orEmpty().also { resolved ->
-                if (resolved.isNotBlank()) channelIdCache[source.handle] = resolved
-            }
-        }
-
-        if (channelId.isBlank()) {
-            throw IllegalStateException("Не удалось определить YouTube Channel ID для ${source.handle}")
-        }
-
+        // A YouTube consent page or failed /@handle request must not hide the channel.
+        val channelId = source.channelId
+        channelIdCache[source.handle] = channelId
         val cachedVisual = channelVisualCache[source.handle]
+        val summary = YouTubeChannelSummary(
+            channelId = channelId,
+            handle = source.handle,
+            title = cachedVisual?.title?.takeIf { it.isNotBlank() } ?: source.fallbackTitle,
+            avatarUrl = cachedVisual?.avatarUrl.orEmpty(),
+            channelUrl = source.url,
+            videos = emptyList()
+        )
 
-        val parsedTitle = if (page.isBlank()) {
-            ""
-        } else {
-            firstGroup(
-                page,
-                Regex("""<meta\s+property="og:title"\s+content="([^"]+)"""", RegexOption.IGNORE_CASE),
-                Regex("""<meta\s+content="([^"]+)"\s+property="og:title"""", RegexOption.IGNORE_CASE)
-            )?.let(::decodeHtml)?.trim().orEmpty()
-        }
-        val title =
-            parsedTitle.takeIf { it.isNotBlank() }
-                ?: cachedVisual?.title?.takeIf { it.isNotBlank() }
-                ?: source.fallbackTitle
+        val rss = runCatching {
+            fetchText("https://www.youtube.com/feeds/videos.xml?channel_id=$channelId")
+        }.getOrNull()
+        val recent = rss?.let {
+            runCatching { parseFeed(it, channelId, summary.title, source.handle) }.getOrNull()
+        }.orEmpty()
+        if (recent.isNotEmpty()) return@withContext summary.copy(videos = recent)
 
-        val parsedAvatar = if (page.isBlank()) {
-            ""
-        } else {
-            firstGroup(
-                page,
-                Regex("""<meta\s+property="og:image"\s+content="([^"]+)"""", RegexOption.IGNORE_CASE),
-                Regex("""<meta\s+content="([^"]+)"\s+property="og:image"""", RegexOption.IGNORE_CASE)
-            )?.let(::decodeHtml).orEmpty()
-        }
-        val avatar =
-            parsedAvatar.takeIf { it.isNotBlank() }
-                ?: cachedVisual?.avatarUrl.orEmpty()
-
-        channelVisualCache[source.handle] = ChannelVisual(title, avatar)
-
-        val feed = fetchText("https://www.youtube.com/feeds/videos.xml?channel_id=$channelId")
-        val videos = parseFeed(feed, channelId, title, source.handle)
-
-        YouTubeChannelSummary(channelId, source.handle, title, avatar, source.url, videos)
+        // A backup when YouTube's XML feed is inaccessible: read public /videos page.
+        val page = runCatching { fetchText(source.url + "/videos?hl=ru&gl=PL") }
+            .getOrDefault("")
+        if (page.isBlank()) return@withContext summary
+        summary.copy(videos = parseVideosPage(page, summary, 30))
     }
 
     private fun parseFeed(

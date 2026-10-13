@@ -138,7 +138,7 @@ object YouTubeFeedUi {
         if (videos.isEmpty()) {
             if (!loading) {
                 root.addView(TextView(activity).apply {
-                    text = "Новых роликов пока нет"
+                    text = "Видео пока не загрузились. Попробуйте обновить ленту."
                     textSize = 13f
                     gravity = Gravity.CENTER
                     setTextColor(palette.muted)

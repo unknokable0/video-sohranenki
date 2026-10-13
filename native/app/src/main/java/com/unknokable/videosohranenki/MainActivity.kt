@@ -2505,15 +2505,17 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
+        val isPassword = (inputType and InputType.TYPE_TEXT_VARIATION_PASSWORD) == InputType.TYPE_TEXT_VARIATION_PASSWORD
         val artwork = FrameLayout(this).apply {
             background = roundedBg(palette.surface, 28)
         }
         artwork.addView(
             ImageView(this).apply {
-                setImageResource(R.drawable.ic_auth_telegram_code)
-                imageTintList = ColorStateList.valueOf(purple)
+                setImageResource(if (isPassword) R.drawable.ic_auth_password else R.drawable.ic_auth_telegram_code)
+                // Tinting the whole vector hid the white pictogram on a plain purple circle.
+                imageTintList = null
                 scaleType = ImageView.ScaleType.CENTER_INSIDE
-                setPadding(dp(30), dp(30), dp(30), dp(30))
+                setPadding(dp(16), dp(16), dp(16), dp(16))
             },
             FrameLayout.LayoutParams(dp(112), dp(112), Gravity.CENTER)
         )
@@ -2521,7 +2523,7 @@ class MainActivity : AppCompatActivity() {
             artwork,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(190)
+                dp(if (isPassword) 166 else 190)
             ).apply { bottomMargin = dp(8) }
         )
 
@@ -2542,7 +2544,6 @@ class MainActivity : AppCompatActivity() {
             setLineSpacing(0f, 1.08f)
             setPadding(dp(12), dp(8), dp(12), dp(24))
         }
-        val isPassword = (inputType and InputType.TYPE_TEXT_VARIATION_PASSWORD) == InputType.TYPE_TEXT_VARIATION_PASSWORD
         val input = EditText(this).apply {
             this.hint = hint
             this.inputType = inputType
@@ -6968,7 +6969,7 @@ class MainActivity : AppCompatActivity() {
 
         youtubeFeedJob = lifecycleScope.launch {
             val rawSnapshot = try {
-                kotlinx.coroutines.withTimeout(10_000L) {
+                kotlinx.coroutines.withTimeout(21_000L) {
                     withContext(Dispatchers.IO) { YouTubeFeedRepository.loadAll() }
                 }
             } catch (_: Throwable) {
@@ -7194,7 +7195,7 @@ class MainActivity : AppCompatActivity() {
                 if (!isActive || isFinishing || isDestroyed) return@launch
                 playerScreen?.destroy()
                 playerScreen = null
-                showYouTubePlaybackError(video, error, returnView)
+                handleYouTubeNativeFailure(video, error, returnView)
             } finally {
                 if (youtubeResolveJob === coroutineContext[kotlinx.coroutines.Job]) {
                     youtubeResolveJob = null
@@ -7479,8 +7480,7 @@ class MainActivity : AppCompatActivity() {
         returnView: View?
     ) {
         when (error) {
-            is YouTubeAgeRestrictedException,
-            is YouTubeNetworkException ->
+            is YouTubeAgeRestrictedException ->
                 showYouTubePlaybackError(video, error, returnView)
             else ->
                 openYouTubePlaybackFallback(video, returnView)
