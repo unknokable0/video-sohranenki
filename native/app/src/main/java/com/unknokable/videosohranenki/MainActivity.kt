@@ -7130,22 +7130,76 @@ class MainActivity : AppCompatActivity() {
     private fun openYouTubeVideo(video: YouTubeFeedVideo) {
         stopInlinePreview()
 
-        val title = video.title.trim().ifBlank { "YouTube-видео" }
-        val channel = video.channelTitle.trim()
-        val sourceLine = if (channel.isBlank()) {
-            "Видео откроется в приложении YouTube."
-        } else {
-            "$channel • видео откроется в приложении YouTube."
+        if (!Regex("^[A-Za-z0-9_-]{11}$").matches(video.videoId)) {
+            showMessage("Не удалось открыть видео", "У ролика некорректный YouTube ID.")
+            return
         }
 
-        ModernDialogs.showConfirm(
-            context = this,
-            palette = palette,
-            title = "Открыть в YouTube?",
-            message = "«$title»\n\n$sourceLine\nДля возврата в SOHR достаточно обычной кнопки «Назад».",
-            confirm = "Открыть YouTube"
-        ) {
-            launchYouTubeVideo(video)
+        // Keep the exact feed/channel view: Back returns to the same place.
+        val returnView = capturePlayerReturnView()
+        youtubeResolveJob?.cancel()
+        playerReturnView = returnView
+        isPlayerScreen = true
+        fullScreen = false
+        setFullscreen(false)
+        showLoading("Подготавливаем видео…")
+
+        youtubeResolveJob = lifecycleScope.launch {
+            try {
+                val source = YouTubeNativeResolver.resolve(video)
+                if (!isActive || isFinishing || isDestroyed) return@launch
+
+                val item = video.toVideoItem().copy(
+                    durationSeconds = source.durationSeconds.takeIf { it > 0 }
+                        ?: video.durationSeconds,
+                    thumbnailUrl = source.thumbnailUrl ?: video.thumbnailUrl
+                )
+
+                playerScreen?.destroy()
+                playerScreen = null
+                youtubePlaybackScreen?.destroy()
+                youtubePlaybackScreen = null
+                twitchPlayerScreen?.destroy()
+                twitchPlayerScreen = null
+                twitchLivePlayerScreen?.destroy()
+                twitchLivePlayerScreen = null
+
+                val created = PlayerScreen(
+                    activity = this@MainActivity,
+                    item = item,
+                    mediaUrl = source.mediaUrl,
+                    secondaryAudioUrl = source.secondaryAudioUrl,
+                    previewDataSourceFactory = null,
+                    settings = settings,
+                    startPositionMs = settings.playbackPosition(item.messageId),
+                    isWatched = isVideoWatched(item.messageId),
+                    onWatchedChange = { watched, shouldBeWatched ->
+                        if (shouldBeWatched) markVideoWatched(watched.messageId)
+                        else unmarkVideoWatched(watched.messageId)
+                    },
+                    onBack = { closeCurrentPlayerScreen() },
+                    onFullscreen = { setFullscreen(it) },
+                    onPlaybackStarted = {
+                        settings.markPlayed(item.messageId)
+                        streakTracker.markWatched()
+                    },
+                    onMiniModeChanged = { enabled -> handlePlayerMiniMode(enabled) }
+                )
+                playerScreen = created
+                pendingRootSlide = 1
+                suppressNextContentAnimation = true
+                replaceRoot(created.root)
+            } catch (error: Exception) {
+                // Back cancels extraction; never reopen a player that was closed.
+                if (!isActive || isFinishing || isDestroyed) return@launch
+                playerScreen?.destroy()
+                playerScreen = null
+                showYouTubePlaybackError(video, error, returnView)
+            } finally {
+                if (youtubeResolveJob === coroutineContext[kotlinx.coroutines.Job]) {
+                    youtubeResolveJob = null
+                }
+            }
         }
     }
 
@@ -8457,7 +8511,32 @@ class MainActivity : AppCompatActivity() {
             .appendQueryParameter("force_verify", "false")
             .build()
 
-        showTwitchOAuthDialog(auth)
+        openTwitchLoginInBrowser(auth)
+    }
+
+    private fun openTwitchLoginInBrowser(authUri: Uri) {
+        // The system browser keeps Twitch/Google sessions; SOHR does not embed the login.
+        val browserIntent = Intent(Intent.ACTION_VIEW, authUri).apply {
+            addCategory(Intent.CATEGORY_BROWSABLE)
+            defaultBrowserPackage()?.let { setPackage(it) }
+        }
+        val opened = runCatching {
+            startActivity(browserIntent)
+            true
+        }.getOrDefault(false) || runCatching {
+            startActivity(Intent(Intent.ACTION_VIEW, authUri).apply {
+                addCategory(Intent.CATEGORY_BROWSABLE)
+            })
+            true
+        }.getOrDefault(false)
+
+        if (!opened) {
+            settings.twitchOauthState = null
+            showMessage(
+                "Не удалось открыть Twitch",
+                "Не найден браузер для входа. Установите браузер и попробуйте снова."
+            )
+        }
     }
 
     private fun showTwitchOAuthDialog(authUri: Uri) {

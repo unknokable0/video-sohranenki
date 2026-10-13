@@ -126,7 +126,7 @@ object YouTubeFeedUi {
             text = if (videos.isEmpty() && loading) {
                 "Собираем свежие ролики…"
             } else {
-                "Просмотр — в YouTube • список и каналы остаются в SOHR"
+                "Просмотр — в плеере SOHR"
             }
             textSize = 11.5f
             setTextColor(palette.muted)
