@@ -10,6 +10,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import org.xmlpull.v1.XmlPullParser
+import org.json.JSONObject
 import java.io.StringReader
 import java.net.HttpURLConnection
 import java.net.URL
@@ -85,7 +86,77 @@ object YouTubeFeedRepository {
     private val thumbnailCache = ConcurrentHashMap<String, String>()
     private val durationGate = Semaphore(4)
 
+    private const val CATALOG_URL =
+        "https://raw.githubusercontent.com/unknokable0/video-sohranenki/main/data/sohr_youtube_feed.json"
+
+    // A GitHub Actions job refreshes this public catalog hourly from the real
+    // channel upload pages. YouTube's official RSS endpoints have returned 404,
+    // so don't depend on them for SOHR's first screen.
+    private fun readPublicCatalog(): YouTubeFeedSnapshot? {
+        val json = JSONObject(fetchText(CATALOG_URL, 3_000, 4_000))
+        if (json.optInt("version") != 1) return null
+        val arr = json.optJSONArray("channels") ?: return null
+        val channels = mutableListOf<YouTubeChannelSummary>()
+        for (i in 0 until arr.length()) {
+            val node = arr.optJSONObject(i) ?: continue
+            val channelId = node.optString("channelId")
+            val source = sources.firstOrNull { it.channelId == channelId } ?: continue
+            val title = node.optString("title").takeIf { it.isNotBlank() } ?: source.fallbackTitle
+            val rawVideos = node.optJSONArray("videos") ?: continue
+            val videos = mutableListOf<YouTubeFeedVideo>()
+            val known = mutableSetOf<String>()
+            for (j in 0 until rawVideos.length()) {
+                val item = rawVideos.optJSONObject(j) ?: continue
+                val videoId = item.optString("videoId")
+                val videoTitle = item.optString("title").trim()
+                if (!Regex("^[A-Za-z0-9_-]{11}$").matches(videoId) ||
+                    videoTitle.isBlank() || !known.add(videoId)) continue
+                val time = item.optLong("publishedAt", 0L)
+                    .coerceIn(0L, System.currentTimeMillis() / 1000L + 86400L)
+                videos += YouTubeFeedVideo(
+                    videoId = videoId,
+                    title = videoTitle,
+                    description = item.optString("description"),
+                    publishedAt = time,
+                    thumbnailUrl = item.optString("thumbnailUrl")
+                        .takeIf { it.startsWith("https://i.ytimg.com/") }
+                        ?: sharpThumbnailUrl(videoId),
+                    channelId = channelId,
+                    channelTitle = title,
+                    handle = source.handle,
+                    publishedLabel = item.optString("publishedLabel"),
+                    publishedExact = item.optBoolean("publishedExact", false) && time > 0L,
+                    durationSeconds = item.optInt("durationSeconds", 0).coerceIn(0, 604800)
+                )
+            }
+            channels += YouTubeChannelSummary(
+                channelId = channelId,
+                handle = source.handle,
+                title = title,
+                avatarUrl = node.optString("avatarUrl"),
+                channelUrl = source.url,
+                videos = videos
+            )
+        }
+        val videos = channels.flatMap { it.videos }
+        return if (videos.isNotEmpty()) {
+            YouTubeFeedSnapshot(channels, deduplicate(videos.sortedByDescending { it.publishedAt }))
+        } else null
+    }
+
     suspend fun loadAll(): YouTubeFeedSnapshot = coroutineScope {
+        val cached = withContext(Dispatchers.IO) {
+            try {
+                readPublicCatalog()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+        }
+        if (cached != null && cached.videos.isNotEmpty()) return@coroutineScope cached
+
+        // Offline catalog or GitHub unreachable: retry original direct sources.
         val channels = sources.map { source ->
             async(Dispatchers.IO) {
                 withTimeoutOrNull(16_000L) {
@@ -609,10 +680,14 @@ object YouTubeFeedRepository {
     private fun deduplicate(input: List<YouTubeFeedVideo>): List<YouTubeFeedVideo> =
         input.distinctBy { it.videoId }
 
-    private fun fetchText(url: String): String {
+    private fun fetchText(
+        url: String,
+        connectTimeoutMs: Int = 4_500,
+        readTimeoutMs: Int = 6_500
+    ): String {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 4_500
-            readTimeout = 6_500
+            connectTimeout = connectTimeoutMs
+            readTimeout = readTimeoutMs
             instanceFollowRedirects = true
             requestMethod = "GET"
             setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/141 Mobile Safari/537.36")
