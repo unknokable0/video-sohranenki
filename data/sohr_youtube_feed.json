@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1791924774,
+  "generatedAtEpoch": 1791928097,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -9,6 +9,16 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@T2x2_stream",
       "videos": [
+        {
+          "videoId": "r3ZtnXuX9xE",
+          "title": "СЛЕПОЙ, ГЛУХОЙ И НЕМОЙ | T2x2, mazellovvv, Laufeech ИГРАЮТ В BOMBANANA!",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 6238,
+          "thumbnailUrl": "https://i.ytimg.com/vi/r3ZtnXuX9xE/hqdefault.jpg"
+        },
         {
           "videoId": "VnJK36EessQ",
           "title": "Guess the Cartoon | Big Quiz | T2X2 REACTION",
@@ -298,16 +308,6 @@
           "publishedLabel": "",
           "durationSeconds": 3354,
           "thumbnailUrl": "https://i.ytimg.com/vi/OQv7NAoP9As/hqdefault.jpg"
-        },
-        {
-          "videoId": "bt9fuR0Msog",
-          "title": "I Tried FRIED CHICKEN at Every Fast Food Place | T2X2 REACTION",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 1700,
-          "thumbnailUrl": "https://i.ytimg.com/vi/bt9fuR0Msog/hqdefault.jpg"
         }
       ]
     },
@@ -320,7 +320,7 @@
       "videos": [
         {
           "videoId": "shsShgPbpv4",
-          "title": "T2x2 СМОТРИТ: Маньяки, Которые Случайно Выбрали Не тех Жертв (Карма)",
+          "title": "T2x2 WATCHES: Maniacs Who Accidentally Picked the Wrong Victims (Karma)",
           "description": "",
           "publishedAt": 0,
           "publishedExact": false,
