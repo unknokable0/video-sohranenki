@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Refresh SOHR public YouTube feed from real channel uploads."""
-import json, subprocess, re, sys, time
+import json, subprocess, re, sys, time, html, urllib.request
 from pathlib import Path
 
 out = Path("data/sohr_youtube_feed.json")
@@ -44,8 +44,23 @@ for handle, name, cid in sources:
                 "thumbnailUrl": "https://i.ytimg.com/vi/" + vid + "/hqdefault.jpg",
             })
         if not videos: raise RuntimeError("No videos")
+        avatar = previous.get(handle, {}).get("avatarUrl", "")
+        try:
+            page_url = "https://www.youtube.com/" + handle + "/videos"
+            req = urllib.request.Request(page_url, headers={
+                "User-Agent": "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/141 Safari/537.36",
+            })
+            with urllib.request.urlopen(req, timeout=7) as response:
+                markup = response.read(250000).decode("utf-8", "replace")
+            match = re.search(r'<meta property="og:image" content="([^"]+)"', markup)
+            if match:
+                candidate = html.unescape(match.group(1))
+                if candidate.startswith(("https://yt3.googleusercontent.com/", "https://yt3.ggpht.com/")):
+                    avatar = candidate
+        except Exception:
+            pass
         channel = {"channelId": cid, "handle": handle, "title": name,
-                   "avatarUrl": "", "channelUrl": "https://www.youtube.com/" + handle,
+                   "avatarUrl": avatar, "channelUrl": "https://www.youtube.com/" + handle,
                    "videos": videos}
         successes += 1
         print(handle, len(videos), "public video IDs")
