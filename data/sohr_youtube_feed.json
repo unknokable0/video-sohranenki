@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1791917194,
+  "generatedAtEpoch": 1791921017,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -319,6 +319,16 @@
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
         {
+          "videoId": "shsShgPbpv4",
+          "title": "T2x2 СМОТРИТ: Маньяки, Которые Случайно Выбрали Не тех Жертв (Карма)",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 2984,
+          "thumbnailUrl": "https://i.ytimg.com/vi/shsShgPbpv4/hqdefault.jpg"
+        },
+        {
           "videoId": "R7B6k82hQmE",
           "title": "T2x2 WATCHES: Guess the Cartoon | Big Quiz",
           "description": "",
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 10382,
           "thumbnailUrl": "https://i.ytimg.com/vi/7VOwwkFvXUQ/hqdefault.jpg"
-        },
-        {
-          "videoId": "Czpiz-PwtJQ",
-          "title": "T2x2 WATCHES THE BEST FAILS #2",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 1337,
-          "thumbnailUrl": "https://i.ytimg.com/vi/Czpiz-PwtJQ/hqdefault.jpg"
         }
       ]
     }
