@@ -21,7 +21,8 @@ jobs:
           sources=[
             ("T2x2 STREAM","https://www.youtube.com/@T2x2_stream/videos","UC5AvrWA9E3DvFyy4qjuXtNA"),
             ("Berloga","https://www.youtube.com/@beerloga_t2x2/videos","UCiOjixt3AcBRPaRQEEj2S9w"),
-            ("Old T2x2","https://www.youtube.com/@wt2x2/videos",None),
+            ("Old T2x2","https://www.youtube.com/@wt2x2/videos","UCfPJse-3skARpxs5LaSUiWA"),
+            ("T2x2 candidate","https://www.youtube.com/@T2x2_stream/videos","UCVmzaVSjmi3TJRCMejigcyg"),
           ]
           for name,url,cid in sources:
             print("SOURCE",name,flush=True)
@@ -37,7 +38,7 @@ jobs:
                     candidates=list(dict.fromkeys(re.findall(r'UC[A-Za-z0-9_-]{22}',data)))
                     vidids=list(dict.fromkeys(re.findall(r'(?:videoId|video_id)[^A-Za-z0-9_-]{1,10}([A-Za-z0-9_-]{11})',data)))
                     title=re.search(r'<title>(.*?)</title>',data,re.S)
-                    print("DIAGNOSTIC",name,"CANDIDATES",candidates[:12],"VIDIDS",vidids[:12],"TITLE",title.group(1) if title else "-","HAS_INITIAL_DATA",("ytInitialData" in data),"HAS_HANDLE",(target.split("@")[-1].split("/")[0] in data),flush=True)
+                    print("DIAGNOSTIC",name,"CANDIDATES",candidates[:12],"VIDIDS",vidids[:12],"TITLE",title.group(1) if title else "-","HAS_INITIAL_DATA",("ytInitialData" in data),"HAS_HANDLE",(target.split("@")[-1].split("/")[0] in data),"PAGE_META",re.findall(r'<meta[^>]+(?:og:title|og:description)[^>]*>',data)[:2],"CHANNEL_RENDERER",("channelMetadataRenderer" in data),flush=True)
               except Exception as err:
                 print("CHECK",target,"ERROR",repr(err),flush=True)
           PY
