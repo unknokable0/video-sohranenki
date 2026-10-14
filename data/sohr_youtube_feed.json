@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1791993380,
+  "generatedAtEpoch": 1791996819,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -319,6 +319,16 @@
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
         {
+          "videoId": "mMxz71jms2g",
+          "title": "T2x2 СМОТРИТ: Как я стала ФУРРИ: моя история",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 2181,
+          "thumbnailUrl": "https://i.ytimg.com/vi/mMxz71jms2g/hqdefault.jpg"
+        },
+        {
           "videoId": "7eBymxJYBVM",
           "title": "T2x2 TRIES TO DEFUSE A BOMB in BOMBANANA! / MAZELLOV, LAFI",
           "description": "",
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 4650,
           "thumbnailUrl": "https://i.ytimg.com/vi/HYcWZC9J-CE/hqdefault.jpg"
-        },
-        {
-          "videoId": "pqQqnXhJLtQ",
-          "title": "T2x2 WATCH: Minecraft Live - Update 26.4 | Icy Update and New Sift Dimension",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 1876,
-          "thumbnailUrl": "https://i.ytimg.com/vi/pqQqnXhJLtQ/hqdefault.jpg"
         }
       ]
     }
