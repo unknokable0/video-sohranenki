@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1792011030,
+  "generatedAtEpoch": 1792014610,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -9,6 +9,16 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@T2x2_stream",
       "videos": [
+        {
+          "videoId": "bCIfbv-7IYs",
+          "title": "OUT ON THE HUNT | T2x2 PLAYS theHunter: Call of the Wild",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 5244,
+          "thumbnailUrl": "https://i.ytimg.com/vi/bCIfbv-7IYs/hqdefault.jpg"
+        },
         {
           "videoId": "d-EiJ5of7AQ",
           "title": "40 НОВЫХ ТОВАРОВ с Алиэкспресс, САМЫЕ КРУТЫЕ ТОВАРЫ с Aliexpress | РЕАКЦИЯ T2X2",
@@ -298,16 +308,6 @@
           "publishedLabel": "",
           "durationSeconds": 3653,
           "thumbnailUrl": "https://i.ytimg.com/vi/hqcnzvOXhy0/hqdefault.jpg"
-        },
-        {
-          "videoId": "kgQUCtIES4k",
-          "title": "YOUR DAILY DOSE OF INTERNET | T2X2 REACTION",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 1302,
-          "thumbnailUrl": "https://i.ytimg.com/vi/kgQUCtIES4k/hqdefault.jpg"
         }
       ]
     },
@@ -318,6 +318,16 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
+        {
+          "videoId": "5h1Rr6IF_jU",
+          "title": "ОХОТА НАЧИНАЕТСЯ / T2x2 ИГРАЕТ в theHunter: Call of the Wild",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 5350,
+          "thumbnailUrl": "https://i.ytimg.com/vi/5h1Rr6IF_jU/hqdefault.jpg"
+        },
         {
           "videoId": "-tY-be-lUaI",
           "title": "T2x2 WATCHES: The Dark Lore of Ural Dumplings (for real)",
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 1092,
           "thumbnailUrl": "https://i.ytimg.com/vi/JDpKSWr1kk0/hqdefault.jpg"
-        },
-        {
-          "videoId": "r9UflbLoi4c",
-          "title": "T2x2 PLAYS HELLO NEIGHBOR 2 #2",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 6927,
-          "thumbnailUrl": "https://i.ytimg.com/vi/r9UflbLoi4c/hqdefault.jpg"
         }
       ]
     }
