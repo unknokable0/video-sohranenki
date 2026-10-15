@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1792050927,
+  "generatedAtEpoch": 1792054507,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -319,6 +319,16 @@
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
         {
+          "videoId": "rrAzNtyXDFw",
+          "title": "T2x2 СМОТРИТ: 40 НОВЫХ ТОВАРОВ с Алиэкспресс, САМЫЕ КРУТЫЕ ТОВАРЫ с Aliexpress",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 2259,
+          "thumbnailUrl": "https://i.ytimg.com/vi/rrAzNtyXDFw/hqdefault.jpg"
+        },
+        {
           "videoId": "5h1Rr6IF_jU",
           "title": "THE HUNT BEGINS / T2x2 PLAYS theHunter: Call of the Wild",
           "description": "",
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 2638,
           "thumbnailUrl": "https://i.ytimg.com/vi/JXC2ZtdY9P0/hqdefault.jpg"
-        },
-        {
-          "videoId": "JDpKSWr1kk0",
-          "title": "T2x2 WATCHES: ALL SEPTEMBER MEMES",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 1092,
-          "thumbnailUrl": "https://i.ytimg.com/vi/JDpKSWr1kk0/hqdefault.jpg"
         }
       ]
     }
