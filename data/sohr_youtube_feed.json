@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1792079597,
+  "generatedAtEpoch": 1792083265,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -9,6 +9,16 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@T2x2_stream",
       "videos": [
+        {
+          "videoId": "HfGKC-cBtHk",
+          "title": "Я ПЕРЕЕЗЖАЮ! (в этот раз всё серьёзно) | РЕАКЦИЯ T2X2",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 1581,
+          "thumbnailUrl": "https://i.ytimg.com/vi/HfGKC-cBtHk/hqdefault.jpg"
+        },
         {
           "videoId": "bCIfbv-7IYs",
           "title": "OUT ON THE HUNT | T2x2 PLAYS theHunter: Call of the Wild",
@@ -298,16 +308,6 @@
           "publishedLabel": "",
           "durationSeconds": 5081,
           "thumbnailUrl": "https://i.ytimg.com/vi/uar6cuaUuJw/hqdefault.jpg"
-        },
-        {
-          "videoId": "hqcnzvOXhy0",
-          "title": "BOGDAN IS STEALING AGAIN | T2x2 PLAYS Hello Neighbor 2 #1",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 3653,
-          "thumbnailUrl": "https://i.ytimg.com/vi/hqcnzvOXhy0/hqdefault.jpg"
         }
       ]
     },
