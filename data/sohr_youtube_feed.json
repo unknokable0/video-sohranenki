@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1792090795,
+  "generatedAtEpoch": 1792093609,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -319,6 +319,16 @@
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
         {
+          "videoId": "RVBVH0skgGI",
+          "title": "T2x2 СМОТРИТ: Самый КИСЛЫЙ ЖМОТ - Гриша МАРМЕЛАДЫЧ",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 2436,
+          "thumbnailUrl": "https://i.ytimg.com/vi/RVBVH0skgGI/hqdefault.jpg"
+        },
+        {
           "videoId": "CPazPXP1nl0",
           "title": "T2x2 ИГРАЕТ в HAPPY WHEELS #2",
           "description": "",
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 1346,
           "thumbnailUrl": "https://i.ytimg.com/vi/szU-1bSJtzQ/hqdefault.jpg"
-        },
-        {
-          "videoId": "c6qLisk9HAk",
-          "title": "T2x2 PLAYS WOMAN SIMULATOR",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 4202,
-          "thumbnailUrl": "https://i.ytimg.com/vi/c6qLisk9HAk/hqdefault.jpg"
         }
       ]
     }
