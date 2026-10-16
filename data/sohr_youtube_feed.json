@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1792137246,
+  "generatedAtEpoch": 1792140833,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -319,6 +319,16 @@
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
         {
+          "videoId": "OdQYMmW4oLo",
+          "title": "T2x2 PLAYS STEAL THE EGG IN ROBLOX",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 1747,
+          "thumbnailUrl": "https://i.ytimg.com/vi/OdQYMmW4oLo/hqdefault.jpg"
+        },
+        {
           "videoId": "RVBVH0skgGI",
           "title": "T2x2 СМОТРИТ: Самый КИСЛЫЙ ЖМОТ - Гриша МАРМЕЛАДЫЧ",
           "description": "",
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 2689,
           "thumbnailUrl": "https://i.ytimg.com/vi/k0apT_hMe38/hqdefault.jpg"
-        },
-        {
-          "videoId": "szU-1bSJtzQ",
-          "title": "T2x2 УЧИТ СЕСТРУ ВОДИТЬ МАШИНУ",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 1346,
-          "thumbnailUrl": "https://i.ytimg.com/vi/szU-1bSJtzQ/hqdefault.jpg"
         }
       ]
     }
