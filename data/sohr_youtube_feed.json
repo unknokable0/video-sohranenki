@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1792251874,
+  "generatedAtEpoch": 1792255575,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -319,6 +319,16 @@
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
         {
+          "videoId": "3igq7E0fhOs",
+          "title": "T2x2 СМОТРИТ: Топ Моменты с Twitch | Купили Контейнер с Рандомными Вещами",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 2522,
+          "thumbnailUrl": "https://i.ytimg.com/vi/3igq7E0fhOs/hqdefault.jpg"
+        },
+        {
           "videoId": "OdQYMmW4oLo",
           "title": "T2x2 PLAYS STEAL THE EGG IN ROBLOX",
           "description": "",
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 1364,
           "thumbnailUrl": "https://i.ytimg.com/vi/4ljBVPF_ArQ/hqdefault.jpg"
-        },
-        {
-          "videoId": "k0apT_hMe38",
-          "title": "T2x2 WATCHES: BeamNG.Drive Real-Life Crashes #71",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 2689,
-          "thumbnailUrl": "https://i.ytimg.com/vi/k0apT_hMe38/hqdefault.jpg"
         }
       ]
     }
