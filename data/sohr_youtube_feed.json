@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1792255575,
+  "generatedAtEpoch": 1792258982,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -319,8 +319,18 @@
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
         {
+          "videoId": "cPl-KnJAKL0",
+          "title": "T2x2 СМОТРИТ: Я ЕЛ КАК ЛЮДИ от 0 до 100 ЛЕТ",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 2955,
+          "thumbnailUrl": "https://i.ytimg.com/vi/cPl-KnJAKL0/hqdefault.jpg"
+        },
+        {
           "videoId": "3igq7E0fhOs",
-          "title": "T2x2 СМОТРИТ: Топ Моменты с Twitch | Купили Контейнер с Рандомными Вещами",
+          "title": "T2x2 WATCHES: Top Twitch Moments | We Bought a Mystery Box of Random Items",
           "description": "",
           "publishedAt": 0,
           "publishedExact": false,
@@ -450,7 +460,7 @@
         },
         {
           "videoId": "GFBKlEK0W2o",
-          "title": "T2x2 WATCHES: 🔮 Blind Choice: YES or NO? How lucky are you? / EmojiCool😎",
+          "title": "T2x2 СМОТРИТ: 🔮 Слепой выбор: ДА или НЕТ? Насколько тебе повезет? / EmojiCool😎",
           "description": "",
           "publishedAt": 0,
           "publishedExact": false,
@@ -490,7 +500,7 @@
         },
         {
           "videoId": "ms1HzAUyo_U",
-          "title": "T2x2 WATCHES: MRBEAST GAMES IN RUSSIA",
+          "title": "T2x2 СМОТРИТ: ИГРЫ МИСТЕРА БИСТА В РОССИИ",
           "description": "",
           "publishedAt": 0,
           "publishedExact": false,
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 1211,
           "thumbnailUrl": "https://i.ytimg.com/vi/Zb35YE2ywb4/hqdefault.jpg"
-        },
-        {
-          "videoId": "4ljBVPF_ArQ",
-          "title": "T2x2 WATCHES: 1,000 Ants VS Challenges",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 1364,
-          "thumbnailUrl": "https://i.ytimg.com/vi/4ljBVPF_ArQ/hqdefault.jpg"
         }
       ]
     }
