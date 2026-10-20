@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1792503516,
+  "generatedAtEpoch": 1792521082,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -319,6 +319,26 @@
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
         {
+          "videoId": "9vUGPLAwPcM",
+          "title": "T2x2 СМОТРИТ: КТО ЗВОНИТ ТАК ПОЗДНО НОЧЬЮ?",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 2879,
+          "thumbnailUrl": "https://i.ytimg.com/vi/9vUGPLAwPcM/hqdefault.jpg"
+        },
+        {
+          "videoId": "SEkcAhzd3Fk",
+          "title": "T2x2 WATCHES: I HAVEN'T EATEN FOR 7 DAYS. (AND ALMOST DIE..)",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 1566,
+          "thumbnailUrl": "https://i.ytimg.com/vi/SEkcAhzd3Fk/hqdefault.jpg"
+        },
+        {
           "videoId": "hixiNuU9pac",
           "title": "T2x2 ИЩЕТ ИГОЛКУ в СТОГЕ СЕНА в Find The Needle",
           "description": "",
@@ -597,26 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 1388,
           "thumbnailUrl": "https://i.ytimg.com/vi/fZYQ7BS4RRs/hqdefault.jpg"
-        },
-        {
-          "videoId": "WQQFv2aawOA",
-          "title": "T2x2 AND ASLAN SHUKASHA TEST TEACHERS / INTUITION SHOW",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 5992,
-          "thumbnailUrl": "https://i.ytimg.com/vi/WQQFv2aawOA/hqdefault.jpg"
-        },
-        {
-          "videoId": "nFzTrgzmUK8",
-          "title": "T2x2 ПРОХОДИТ МАЙНКРАФТ СБОРКУ с АЛЬТУШКОЙ",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 7615,
-          "thumbnailUrl": "https://i.ytimg.com/vi/nFzTrgzmUK8/hqdefault.jpg"
         }
       ]
     }
