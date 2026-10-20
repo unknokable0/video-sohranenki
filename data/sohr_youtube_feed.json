@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1792521082,
+  "generatedAtEpoch": 1792534978,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -319,8 +319,18 @@
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
         {
+          "videoId": "4lsnRIe---0",
+          "title": "T2x2 PLAYS CHICKEN GUN",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 902,
+          "thumbnailUrl": "https://i.ytimg.com/vi/4lsnRIe---0/hqdefault.jpg"
+        },
+        {
           "videoId": "9vUGPLAwPcM",
-          "title": "T2x2 СМОТРИТ: КТО ЗВОНИТ ТАК ПОЗДНО НОЧЬЮ?",
+          "title": "T2x2 WATCHES: WHO IS CALLING SO LATE AT NIGHT?",
           "description": "",
           "publishedAt": 0,
           "publishedExact": false,
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 5516,
           "thumbnailUrl": "https://i.ytimg.com/vi/QhDWQ51IMNI/hqdefault.jpg"
-        },
-        {
-          "videoId": "fZYQ7BS4RRs",
-          "title": "T2x2 WATCHES: 🎉 Guess 50 CHARACTERS by their voice! Big EmojiCool Challenge! 🎤",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 1388,
-          "thumbnailUrl": "https://i.ytimg.com/vi/fZYQ7BS4RRs/hqdefault.jpg"
         }
       ]
     }
