@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1792568804,
+  "generatedAtEpoch": 1792590878,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -319,6 +319,16 @@
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
         {
+          "videoId": "KLQZFw9ztRM",
+          "title": "T2x2 WATCHES: You were given $100 million, BUT with one condition",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 1984,
+          "thumbnailUrl": "https://i.ytimg.com/vi/KLQZFw9ztRM/hqdefault.jpg"
+        },
+        {
           "videoId": "4lsnRIe---0",
           "title": "T2x2 PLAYS CHICKEN GUN",
           "description": "",
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 1584,
           "thumbnailUrl": "https://i.ytimg.com/vi/3hTkuORyj8o/hqdefault.jpg"
-        },
-        {
-          "videoId": "QhDWQ51IMNI",
-          "title": "T2x2 WATCHES: Eat Everything In The Grocery Store, Win $1,000,000",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 5516,
-          "thumbnailUrl": "https://i.ytimg.com/vi/QhDWQ51IMNI/hqdefault.jpg"
         }
       ]
     }
