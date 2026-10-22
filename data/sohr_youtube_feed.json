@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1792677182,
+  "generatedAtEpoch": 1792694219,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -9,6 +9,16 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@T2x2_stream",
       "videos": [
+        {
+          "videoId": "kAe0ii_DXow",
+          "title": "В РОССИЙСКИХ ШКОЛАХ ЗАПРЕТИЛИ ВСЁ | РЕАКЦИЯ T2X2",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 2472,
+          "thumbnailUrl": "https://i.ytimg.com/vi/kAe0ii_DXow/hqdefault.jpg"
+        },
         {
           "videoId": "j-CFnTll6kk",
           "title": "БЕСЕДА | T2x2 ИГРАЕТ В Tropico 7 Demo",
@@ -298,16 +308,6 @@
           "publishedLabel": "",
           "durationSeconds": 1284,
           "thumbnailUrl": "https://i.ytimg.com/vi/z-iNhyKvZVI/hqdefault.jpg"
-        },
-        {
-          "videoId": "SYfkYzxXkdk",
-          "title": "I Cooked YouTuber's Last Meals | T2X2 REACTION",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 1543,
-          "thumbnailUrl": "https://i.ytimg.com/vi/SYfkYzxXkdk/hqdefault.jpg"
         }
       ]
     },
@@ -318,6 +318,16 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
+        {
+          "videoId": "jx0FOu-RH7A",
+          "title": "T2x2 СМОТРИТ: ШКОЛА — ЭТО ТЮРЬМА?",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 2537,
+          "thumbnailUrl": "https://i.ytimg.com/vi/jx0FOu-RH7A/hqdefault.jpg"
+        },
         {
           "videoId": "0raCSvuxyH8",
           "title": "T2x2 WATCHES: What is it like to die from vaping?",
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 1203,
           "thumbnailUrl": "https://i.ytimg.com/vi/vCtUDZcjG2Q/hqdefault.jpg"
-        },
-        {
-          "videoId": "bqwyVIj1a3w",
-          "title": "T2x2 ИГРАЕТ в BACKROOM COMPANY / МАЗЕЛЛОВ, Laufeech",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 8666,
-          "thumbnailUrl": "https://i.ytimg.com/vi/bqwyVIj1a3w/hqdefault.jpg"
         }
       ]
     }
