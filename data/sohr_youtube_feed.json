@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1792860059,
+  "generatedAtEpoch": 1792870352,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -11,7 +11,7 @@
       "videos": [
         {
           "videoId": "VKj7KJveIFc",
-          "title": "Антитревожные новости [8 часть] | РЕАКЦИЯ T2X2",
+          "title": "Anti-Anxiety News [Part 8] | T2X2 REACTION",
           "description": "",
           "publishedAt": 0,
           "publishedExact": false,
@@ -319,8 +319,18 @@
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
         {
+          "videoId": "o4TTehR_ZPo",
+          "title": "T2x2 WATCHES: TIER LIST OF ALL WAYS TO FALL ASLEEP",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 673,
+          "thumbnailUrl": "https://i.ytimg.com/vi/o4TTehR_ZPo/hqdefault.jpg"
+        },
+        {
           "videoId": "unIPR_cZWQQ",
-          "title": "T2x2 СМОТРИТ: Я СРАВНИЛ 1$ vs 100$ РАДИОУПРАВЛЯЕМЫЕ САМОЛЕТЫ",
+          "title": "T2x2 WATCHES: I COMPARED $1 vs $100 RC PLANES",
           "description": "",
           "publishedAt": 0,
           "publishedExact": false,
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 7836,
           "thumbnailUrl": "https://i.ytimg.com/vi/ZX_Ap5UtKd4/hqdefault.jpg"
-        },
-        {
-          "videoId": "fGNMR7aTg2w",
-          "title": "T2x2 WATCHES: THEY ARE NOT REAL",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 3274,
-          "thumbnailUrl": "https://i.ytimg.com/vi/fGNMR7aTg2w/hqdefault.jpg"
         }
       ]
     }
