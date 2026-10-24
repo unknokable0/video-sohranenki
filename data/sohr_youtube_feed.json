@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1792845923,
+  "generatedAtEpoch": 1792860059,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -9,6 +9,16 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@T2x2_stream",
       "videos": [
+        {
+          "videoId": "VKj7KJveIFc",
+          "title": "Антитревожные новости [8 часть] | РЕАКЦИЯ T2X2",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 1794,
+          "thumbnailUrl": "https://i.ytimg.com/vi/VKj7KJveIFc/hqdefault.jpg"
+        },
         {
           "videoId": "HE6X0Cctdow",
           "title": "BRAIN THINKING | T2x2 PLAYS ALYSSA",
@@ -31,7 +41,7 @@
         },
         {
           "videoId": "kAe0ii_DXow",
-          "title": "В РОССИЙСКИХ ШКОЛАХ ЗАПРЕТИЛИ ВСЁ | РЕАКЦИЯ T2X2",
+          "title": "EVERYTHING IS BANNED IN RUSSIAN SCHOOLS | T2X2 REACTION",
           "description": "",
           "publishedAt": 0,
           "publishedExact": false,
@@ -298,16 +308,6 @@
           "publishedLabel": "",
           "durationSeconds": 1775,
           "thumbnailUrl": "https://i.ytimg.com/vi/isrrkZeh-w8/hqdefault.jpg"
-        },
-        {
-          "videoId": "qa7MJO9ODjE",
-          "title": "THERE'S SOMETHING WRONG WITH BOY MOMS | T2X2 REACTION",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 1120,
-          "thumbnailUrl": "https://i.ytimg.com/vi/qa7MJO9ODjE/hqdefault.jpg"
         }
       ]
     },
@@ -318,6 +318,16 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
+        {
+          "videoId": "unIPR_cZWQQ",
+          "title": "T2x2 СМОТРИТ: Я СРАВНИЛ 1$ vs 100$ РАДИОУПРАВЛЯЕМЫЕ САМОЛЕТЫ",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 1192,
+          "thumbnailUrl": "https://i.ytimg.com/vi/unIPR_cZWQQ/hqdefault.jpg"
+        },
         {
           "videoId": "raa01F4OLLs",
           "title": "T2x2 ИГРАЕТ в ХОРРОР ИГРУ - ALYSSA",
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 3274,
           "thumbnailUrl": "https://i.ytimg.com/vi/fGNMR7aTg2w/hqdefault.jpg"
-        },
-        {
-          "videoId": "ms1HzAUyo_U",
-          "title": "T2x2 WATCHES: MRBEAST GAMES IN RUSSIA",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 1125,
-          "thumbnailUrl": "https://i.ytimg.com/vi/ms1HzAUyo_U/hqdefault.jpg"
         }
       ]
     }
