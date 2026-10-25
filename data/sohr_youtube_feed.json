@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1792909062,
+  "generatedAtEpoch": 1792931841,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -9,6 +9,16 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@T2x2_stream",
       "videos": [
+        {
+          "videoId": "6ylvoB9s6l4",
+          "title": "THE END | T2x2 PLAYS ALYSSA #2",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 6970,
+          "thumbnailUrl": "https://i.ytimg.com/vi/6ylvoB9s6l4/hqdefault.jpg"
+        },
         {
           "videoId": "VKj7KJveIFc",
           "title": "Anti-Anxiety News [Part 8] | T2X2 REACTION",
@@ -298,16 +308,6 @@
           "publishedLabel": "",
           "durationSeconds": 8674,
           "thumbnailUrl": "https://i.ytimg.com/vi/DKsRZKNhVxM/hqdefault.jpg"
-        },
-        {
-          "videoId": "isrrkZeh-w8",
-          "title": "THINK YOU'RE HARD TO SCARE? | T2X2 REACTION",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 1775,
-          "thumbnailUrl": "https://i.ytimg.com/vi/isrrkZeh-w8/hqdefault.jpg"
         }
       ]
     },
@@ -318,6 +318,16 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
+        {
+          "videoId": "CZid13P-KgQ",
+          "title": "T2x2 PLAYS A HORROR GAME - ALYSSA #2",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 7150,
+          "thumbnailUrl": "https://i.ytimg.com/vi/CZid13P-KgQ/hqdefault.jpg"
+        },
         {
           "videoId": "o4TTehR_ZPo",
           "title": "T2x2 WATCHES: TIER LIST OF ALL WAYS TO FALL ASLEEP",
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 2814,
           "thumbnailUrl": "https://i.ytimg.com/vi/_vZeR_cKnKU/hqdefault.jpg"
-        },
-        {
-          "videoId": "ZX_Ap5UtKd4",
-          "title": "T2x2 ИГРАЕТ в Forever Ago",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 7836,
-          "thumbnailUrl": "https://i.ytimg.com/vi/ZX_Ap5UtKd4/hqdefault.jpg"
         }
       ]
     }
