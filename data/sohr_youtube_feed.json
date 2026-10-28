@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1793213698,
+  "generatedAtEpoch": 1793229482,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -9,6 +9,16 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@T2x2_stream",
       "videos": [
+        {
+          "videoId": "rA7TOylqyWo",
+          "title": "KATYA DIDN'T WANT THIS | T2x2 PLAYS Project Zomboid IN FIRST PERSON",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 4150,
+          "thumbnailUrl": "https://i.ytimg.com/vi/rA7TOylqyWo/hqdefault.jpg"
+        },
         {
           "videoId": "liVyNS3qWiU",
           "title": "T2x2 TRIMMED HIS BEARD",
@@ -298,16 +308,6 @@
           "publishedLabel": "",
           "durationSeconds": 1578,
           "thumbnailUrl": "https://i.ytimg.com/vi/SBU7or7PBLw/hqdefault.jpg"
-        },
-        {
-          "videoId": "gfiTXFWWkR4",
-          "title": "ВОРЧЛИВЫЙ ДЕД | T2x2 ИГРАЕТ В Forever Ago",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 7304,
-          "thumbnailUrl": "https://i.ytimg.com/vi/gfiTXFWWkR4/hqdefault.jpg"
         }
       ]
     },
@@ -318,6 +318,16 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
+        {
+          "videoId": "Kv2zWzCMfdk",
+          "title": "T2x2 SURVIVES in Project Zomboid in 3D",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 4208,
+          "thumbnailUrl": "https://i.ytimg.com/vi/Kv2zWzCMfdk/hqdefault.jpg"
+        },
         {
           "videoId": "FuPgFMIltsc",
           "title": "T2x2 WATCHES: I visited the POOREST country in the CIS... you’ll be surprised",
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 1590,
           "thumbnailUrl": "https://i.ytimg.com/vi/R7B6k82hQmE/hqdefault.jpg"
-        },
-        {
-          "videoId": "KIBKF_S5rCg",
-          "title": "T2x2 WATCHES THE BEST FAILS OF THE WEEK",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 1141,
-          "thumbnailUrl": "https://i.ytimg.com/vi/KIBKF_S5rCg/hqdefault.jpg"
         }
       ]
     }
