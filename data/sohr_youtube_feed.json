@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1793192948,
+  "generatedAtEpoch": 1793213698,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -9,6 +9,26 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@T2x2_stream",
       "videos": [
+        {
+          "videoId": "liVyNS3qWiU",
+          "title": "T2x2 TRIMMED HIS BEARD",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 883,
+          "thumbnailUrl": "https://i.ytimg.com/vi/liVyNS3qWiU/hqdefault.jpg"
+        },
+        {
+          "videoId": "-2Zgiz4weA8",
+          "title": "Who swears more: schoolchildren or auto mechanics? | T2X2 REACTION",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 968,
+          "thumbnailUrl": "https://i.ytimg.com/vi/-2Zgiz4weA8/hqdefault.jpg"
+        },
         {
           "videoId": "ZQ16TaXN-CM",
           "title": "A NEW GENERATION OF TIKTOK TRASHY PRANKERS | T2X2 REACTION",
@@ -288,26 +308,6 @@
           "publishedLabel": "",
           "durationSeconds": 7304,
           "thumbnailUrl": "https://i.ytimg.com/vi/gfiTXFWWkR4/hqdefault.jpg"
-        },
-        {
-          "videoId": "CzhX4KG2Ibg",
-          "title": "THEY ARE NOT REAL | T2X2 REACTION",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 3192,
-          "thumbnailUrl": "https://i.ytimg.com/vi/CzhX4KG2Ibg/hqdefault.jpg"
-        },
-        {
-          "videoId": "h9LasdTnmt8",
-          "title": "MRBEAST GAMES IN RUSSIA | T2X2 REACTION",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 1034,
-          "thumbnailUrl": "https://i.ytimg.com/vi/h9LasdTnmt8/hqdefault.jpg"
         }
       ]
     },
@@ -318,6 +318,16 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
+        {
+          "videoId": "FuPgFMIltsc",
+          "title": "T2x2 WATCHES: I visited the POOREST country in the CIS... you’ll be surprised",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 3148,
+          "thumbnailUrl": "https://i.ytimg.com/vi/FuPgFMIltsc/hqdefault.jpg"
+        },
         {
           "videoId": "8TYw9nV7OC0",
           "title": "T2x2 ЧИСТИТ ЛУНУ от ПЫЛИ ЗУБНОЙ ЩЕТКОЙ в Moon Sweepers / МАЗЕЛЛОВ, ДРЕЙК",
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 1141,
           "thumbnailUrl": "https://i.ytimg.com/vi/KIBKF_S5rCg/hqdefault.jpg"
-        },
-        {
-          "videoId": "0aDDs4q1CTM",
-          "title": "T2x2 REACTS: THE CREEPY SIDE OF KFC. ICEBERG",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 4062,
-          "thumbnailUrl": "https://i.ytimg.com/vi/0aDDs4q1CTM/hqdefault.jpg"
         }
       ]
     }
