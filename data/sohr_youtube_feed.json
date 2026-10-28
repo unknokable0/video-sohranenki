@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1793166774,
+  "generatedAtEpoch": 1793192948,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -319,6 +319,16 @@
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
         {
+          "videoId": "8TYw9nV7OC0",
+          "title": "T2x2 ЧИСТИТ ЛУНУ от ПЫЛИ ЗУБНОЙ ЩЕТКОЙ в Moon Sweepers / МАЗЕЛЛОВ, ДРЕЙК",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 34664,
+          "thumbnailUrl": "https://i.ytimg.com/vi/8TYw9nV7OC0/hqdefault.jpg"
+        },
+        {
           "videoId": "9jVQYnOtKXQ",
           "title": "T2x2 WATCHES: ✅How I was ARRESTED and PUT in jail ☢️ KREOSAN",
           "description": "",
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 4062,
           "thumbnailUrl": "https://i.ytimg.com/vi/0aDDs4q1CTM/hqdefault.jpg"
-        },
-        {
-          "videoId": "GFBKlEK0W2o",
-          "title": "T2x2 WATCHES: 🔮 Blind Choice: YES or NO? How lucky are you? / EmojiCool😎",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 1609,
-          "thumbnailUrl": "https://i.ytimg.com/vi/GFBKlEK0W2o/hqdefault.jpg"
         }
       ]
     }
