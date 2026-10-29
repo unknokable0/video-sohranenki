@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1793300478,
+  "generatedAtEpoch": 1793316096,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -9,6 +9,26 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@T2x2_stream",
       "videos": [
+        {
+          "videoId": "baYILNBRZ4U",
+          "title": "НЕ ВЗЯЛИ В ПАРЛАМЕНТ - ББ | T2x2 ИГРАЕТ В 1 ИЗ 8 МИЛЛИАРДОВ #2",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 4161,
+          "thumbnailUrl": "https://i.ytimg.com/vi/baYILNBRZ4U/hqdefault.jpg"
+        },
+        {
+          "videoId": "385gAQ9rAjI",
+          "title": "IPHONE DUO - AN OVERPRICED DISGRACE | T2X2 REACTION",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 1812,
+          "thumbnailUrl": "https://i.ytimg.com/vi/385gAQ9rAjI/hqdefault.jpg"
+        },
         {
           "videoId": "GwHwE07Os7o",
           "title": "Исследую самый удалённый остров на Земле (15 дней только на дорогу) | РЕАКЦИЯ T2X2",
@@ -21,7 +41,7 @@
         },
         {
           "videoId": "XLC67gVyJU4",
-          "title": "T2x2 ПРОБУЕТ АЗИАТСКИЕ СНЕКИ",
+          "title": "T2x2 TRIES ASIAN SNACKS",
           "description": "",
           "publishedAt": 0,
           "publishedExact": false,
@@ -288,26 +308,6 @@
           "publishedLabel": "",
           "durationSeconds": 2039,
           "thumbnailUrl": "https://i.ytimg.com/vi/cigjwjCj6Zg/hqdefault.jpg"
-        },
-        {
-          "videoId": "8dnbVQKmjFM",
-          "title": "Maniacs Who Accidentally Picked The Wrong Victims (Karma) | T2X2 REACTION",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 2936,
-          "thumbnailUrl": "https://i.ytimg.com/vi/8dnbVQKmjFM/hqdefault.jpg"
-        },
-        {
-          "videoId": "r3ZtnXuX9xE",
-          "title": "WE ARE MONKEYS | T2x2, mazellovvv, Laufeech PLAY BOMBANANA!",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 6238,
-          "thumbnailUrl": "https://i.ytimg.com/vi/r3ZtnXuX9xE/hqdefault.jpg"
         }
       ]
     },
@@ -330,7 +330,7 @@
         },
         {
           "videoId": "sz72d6kuPTE",
-          "title": "T2x2 ПРОБУЕТ СТРАННЫЕ АЗИАТСКИЕ СНЕКИ",
+          "title": "T2x2 TRIES WEIRD ASIAN SNACKS",
           "description": "",
           "publishedAt": 0,
           "publishedExact": false,
