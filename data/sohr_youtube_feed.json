@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1793461562,
+  "generatedAtEpoch": 1793476942,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -319,6 +319,16 @@
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
         {
+          "videoId": "aTdtmBHWB2o",
+          "title": "ХЭЛЛОУИНСКИЙ КУКИНГ T2x2",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 7913,
+          "thumbnailUrl": "https://i.ytimg.com/vi/aTdtmBHWB2o/hqdefault.jpg"
+        },
+        {
           "videoId": "tI_LIBk_p9A",
           "title": "T2x2 СМОТРИТ: Исследую самый удалённый остров на Земле (15 дней только на дорогу)",
           "description": "",
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 1625,
           "thumbnailUrl": "https://i.ytimg.com/vi/-tY-be-lUaI/hqdefault.jpg"
-        },
-        {
-          "videoId": "mMxz71jms2g",
-          "title": "T2x2 WATCHES: How I became a FURRY: my story",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 2181,
-          "thumbnailUrl": "https://i.ytimg.com/vi/mMxz71jms2g/hqdefault.jpg"
         }
       ]
     }
