@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1793719022,
+  "generatedAtEpoch": 1793740095,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -319,6 +319,16 @@
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
         {
+          "videoId": "scRYaffY0zc",
+          "title": "T2x2 СМОТРИТ: Победи Холанда, Выиграй $1,000,000",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 2861,
+          "thumbnailUrl": "https://i.ytimg.com/vi/scRYaffY0zc/hqdefault.jpg"
+        },
+        {
           "videoId": "aTdtmBHWB2o",
           "title": "ХЭЛЛОУИНСКИЙ КУКИНГ T2x2",
           "description": "",
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 5350,
           "thumbnailUrl": "https://i.ytimg.com/vi/5h1Rr6IF_jU/hqdefault.jpg"
-        },
-        {
-          "videoId": "-tY-be-lUaI",
-          "title": "T2x2 WATCHES: The Dark Lore of Ural Dumplings (for real)",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 1625,
-          "thumbnailUrl": "https://i.ytimg.com/vi/-tY-be-lUaI/hqdefault.jpg"
         }
       ]
     }
