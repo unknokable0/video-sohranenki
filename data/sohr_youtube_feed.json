@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1793861918,
+  "generatedAtEpoch": 1793892903,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -9,6 +9,16 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@T2x2_stream",
       "videos": [
+        {
+          "videoId": "CgIkxdW-Ipg",
+          "title": "ТРЕВОР ФИЛИПС ИНДАСТРИЗ | T2x2 ИГРАЕТ В Grand Theft Auto V #2",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 7429,
+          "thumbnailUrl": "https://i.ytimg.com/vi/CgIkxdW-Ipg/hqdefault.jpg"
+        },
         {
           "videoId": "crC4EXReHYI",
           "title": "I'M QUITTING SMOKING: and going through the 5 stages | T2X2 REACTION",
@@ -298,16 +308,6 @@
           "publishedLabel": "",
           "durationSeconds": 2512,
           "thumbnailUrl": "https://i.ytimg.com/vi/LAh84Dsnofg/hqdefault.jpg"
-        },
-        {
-          "videoId": "bg3dCWfQ-ts",
-          "title": "The BIGGEST SOUR MISER - Grisha MARMELADYCH | T2X2 REACTION",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 2314,
-          "thumbnailUrl": "https://i.ytimg.com/vi/bg3dCWfQ-ts/hqdefault.jpg"
         }
       ]
     },
