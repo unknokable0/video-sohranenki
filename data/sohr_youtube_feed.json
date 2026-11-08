@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1794122889,
+  "generatedAtEpoch": 1794151240,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -319,6 +319,16 @@
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
         {
+          "videoId": "A-fcusOsBqg",
+          "title": "T2x2 REACTS: THE WORST DESIGNER FAILS #317 [ZEMSTANDART]",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 1434,
+          "thumbnailUrl": "https://i.ytimg.com/vi/A-fcusOsBqg/hqdefault.jpg"
+        },
+        {
           "videoId": "UzM4y7J09ms",
           "title": "T2x2 REACTS: I found a RECIPE you shouldn't cook alone..",
           "description": "",
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 2955,
           "thumbnailUrl": "https://i.ytimg.com/vi/cPl-KnJAKL0/hqdefault.jpg"
-        },
-        {
-          "videoId": "3igq7E0fhOs",
-          "title": "T2x2 WATCHES: Top Twitch Moments | We Bought a Mystery Box of Random Items",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 2522,
-          "thumbnailUrl": "https://i.ytimg.com/vi/3igq7E0fhOs/hqdefault.jpg"
         }
       ]
     }
