@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1794211472,
+  "generatedAtEpoch": 1794250435,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -9,6 +9,16 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@T2x2_stream",
       "videos": [
+        {
+          "videoId": "dYRNgq0uchE",
+          "title": "ФИНАЛ | T2x2 ИГРАЕТ В Grand Theft Auto V #5",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 14710,
+          "thumbnailUrl": "https://i.ytimg.com/vi/dYRNgq0uchE/hqdefault.jpg"
+        },
         {
           "videoId": "n5Pmb2OAknk",
           "title": "ЗАРЫТЬ ТОПОР ВОЙНЫ | T2x2 ИГРАЕТ В Grand Theft Auto V #4",
@@ -298,16 +308,6 @@
           "publishedLabel": "",
           "durationSeconds": 1724,
           "thumbnailUrl": "https://i.ytimg.com/vi/zYdmOu2617U/hqdefault.jpg"
-        },
-        {
-          "videoId": "sWpS5XN91qQ",
-          "title": "What's It Like to Die from Vaping? | T2X2 REACTION",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 1258,
-          "thumbnailUrl": "https://i.ytimg.com/vi/sWpS5XN91qQ/hqdefault.jpg"
         }
       ]
     },
