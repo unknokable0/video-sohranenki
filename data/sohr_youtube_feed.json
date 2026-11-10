@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1794333360,
+  "generatedAtEpoch": 1794353346,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -9,6 +9,26 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@T2x2_stream",
       "videos": [
+        {
+          "videoId": "JSaXcLZqL8w",
+          "title": "10 самых НЕОБЫЧНЫХ питомцев, которых реально заводят | РЕАКЦИЯ T2X2",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 1840,
+          "thumbnailUrl": "https://i.ytimg.com/vi/JSaXcLZqL8w/hqdefault.jpg"
+        },
+        {
+          "videoId": "jjfwdYzNeDU",
+          "title": "ЧУТЬ НЕ УМЕР В ТЕМНОТЕ | T2x2 СХОДИЛ К ДИПИНСУ НА СТРИМ",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 4069,
+          "thumbnailUrl": "https://i.ytimg.com/vi/jjfwdYzNeDU/hqdefault.jpg"
+        },
         {
           "videoId": "dYRNgq0uchE",
           "title": "ФИНАЛ | T2x2 ИГРАЕТ В Grand Theft Auto V #5",
@@ -288,26 +308,6 @@
           "publishedLabel": "",
           "durationSeconds": 5046,
           "thumbnailUrl": "https://i.ytimg.com/vi/j-CFnTll6kk/hqdefault.jpg"
-        },
-        {
-          "videoId": "Kvr61iWW0Hc",
-          "title": "ENERGY DRINK CHRONICLES | How the World Got Hooked on Energy Drinks | T2X2 REACTION",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 1364,
-          "thumbnailUrl": "https://i.ytimg.com/vi/Kvr61iWW0Hc/hqdefault.jpg"
-        },
-        {
-          "videoId": "zYdmOu2617U",
-          "title": "THE FINAL STREAM 3 - Streamers VS Aliens | T2X2 REACTION",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 1724,
-          "thumbnailUrl": "https://i.ytimg.com/vi/zYdmOu2617U/hqdefault.jpg"
         }
       ]
     },
@@ -318,6 +318,16 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
+        {
+          "videoId": "qvA60R2t9kw",
+          "title": "T2x2 СМОТРИТ: 10 самых НЕОБЫЧНЫХ питомцев, которых реально заводят",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 1841,
+          "thumbnailUrl": "https://i.ytimg.com/vi/qvA60R2t9kw/hqdefault.jpg"
+        },
         {
           "videoId": "Td5Vs205Q3c",
           "title": "T2x2 ПРО СТРИМ в ПОЛНОЙ ТЕМНОТЕ у ДИПИНСА",
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 902,
           "thumbnailUrl": "https://i.ytimg.com/vi/4lsnRIe---0/hqdefault.jpg"
-        },
-        {
-          "videoId": "9vUGPLAwPcM",
-          "title": "T2x2 WATCHES: WHO IS CALLING SO LATE AT NIGHT?",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 2879,
-          "thumbnailUrl": "https://i.ytimg.com/vi/9vUGPLAwPcM/hqdefault.jpg"
         }
       ]
     }
