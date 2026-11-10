@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1794304903,
+  "generatedAtEpoch": 1794333360,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -319,6 +319,16 @@
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
         {
+          "videoId": "Td5Vs205Q3c",
+          "title": "T2x2 ПРО СТРИМ в ПОЛНОЙ ТЕМНОТЕ у ДИПИНСА",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 3363,
+          "thumbnailUrl": "https://i.ytimg.com/vi/Td5Vs205Q3c/hqdefault.jpg"
+        },
+        {
           "videoId": "Y9TsSxLGsJE",
           "title": "T2x2 WATCHES: Stop at All Costs / 4 Wild Chases",
           "description": "",
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 2879,
           "thumbnailUrl": "https://i.ytimg.com/vi/9vUGPLAwPcM/hqdefault.jpg"
-        },
-        {
-          "videoId": "SEkcAhzd3Fk",
-          "title": "T2x2 WATCHES: I HAVEN'T EATEN FOR 7 DAYS. (AND ALMOST DIE..)",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 1566,
-          "thumbnailUrl": "https://i.ytimg.com/vi/SEkcAhzd3Fk/hqdefault.jpg"
         }
       ]
     }
