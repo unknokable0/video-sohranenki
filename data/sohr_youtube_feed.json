@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1794379241,
+  "generatedAtEpoch": 1794410543,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -319,6 +319,16 @@
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
         {
+          "videoId": "bILlh1I0TQc",
+          "title": "T2x2 СМОТРИТ: АЙСБЕРГ ЖУТКИХ СТРАНИЦ ВКОНТАКТЕ 4",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 1325,
+          "thumbnailUrl": "https://i.ytimg.com/vi/bILlh1I0TQc/hqdefault.jpg"
+        },
+        {
           "videoId": "qvA60R2t9kw",
           "title": "T2x2 СМОТРИТ: 10 самых НЕОБЫЧНЫХ питомцев, которых реально заводят",
           "description": "",
@@ -330,7 +340,7 @@
         },
         {
           "videoId": "Td5Vs205Q3c",
-          "title": "T2x2 ПРО СТРИМ в ПОЛНОЙ ТЕМНОТЕ у ДИПИНСА",
+          "title": "T2x2 ABOUT THE STREAM in TOTAL DARKNESS at DIPINS'",
           "description": "",
           "publishedAt": 0,
           "publishedExact": false,
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 1984,
           "thumbnailUrl": "https://i.ytimg.com/vi/KLQZFw9ztRM/hqdefault.jpg"
-        },
-        {
-          "videoId": "4lsnRIe---0",
-          "title": "T2x2 PLAYS CHICKEN GUN",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 902,
-          "thumbnailUrl": "https://i.ytimg.com/vi/4lsnRIe---0/hqdefault.jpg"
         }
       ]
     }
