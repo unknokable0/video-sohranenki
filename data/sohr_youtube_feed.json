@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1794487959,
+  "generatedAtEpoch": 1794516849,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -319,6 +319,26 @@
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
         {
+          "videoId": "BlRVaeRkv3o",
+          "title": "T2x2 СМОТРИТ: ВЕРИТИ™ ЭТО НОВЫЙ FNAF™/ МозгоВзрыв №67 + ШОРТСЫ",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 2256,
+          "thumbnailUrl": "https://i.ytimg.com/vi/BlRVaeRkv3o/hqdefault.jpg"
+        },
+        {
+          "videoId": "77Gitv4JlWI",
+          "title": "T2x2 СМОТРИТ: Китайская кошкожена погубила NVIDIA",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 1049,
+          "thumbnailUrl": "https://i.ytimg.com/vi/77Gitv4JlWI/hqdefault.jpg"
+        },
+        {
           "videoId": "bILlh1I0TQc",
           "title": "T2x2 СМОТРИТ: АЙСБЕРГ ЖУТКИХ СТРАНИЦ ВКОНТАКТЕ 4",
           "description": "",
@@ -597,26 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 1852,
           "thumbnailUrl": "https://i.ytimg.com/vi/h0zqD6uBk_8/hqdefault.jpg"
-        },
-        {
-          "videoId": "qmFHDdRUTPM",
-          "title": "T2x2 REACTS: PUT THE PHONE AWAY – WHERE DID THE MEME COME FROM?",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 536,
-          "thumbnailUrl": "https://i.ytimg.com/vi/qmFHDdRUTPM/hqdefault.jpg"
-        },
-        {
-          "videoId": "KLQZFw9ztRM",
-          "title": "T2x2 WATCHES: You were given $100 million, BUT with one condition",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 1984,
-          "thumbnailUrl": "https://i.ytimg.com/vi/KLQZFw9ztRM/hqdefault.jpg"
         }
       ]
     }
