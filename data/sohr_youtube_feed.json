@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1794534908,
+  "generatedAtEpoch": 1794562840,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -9,6 +9,16 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@T2x2_stream",
       "videos": [
+        {
+          "videoId": "zNgJFTkrTz8",
+          "title": "ГЛАВНЫЙ ПО КАРТОШКЕ | T2x2 ИГРАЕТ В Potato Please",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 12993,
+          "thumbnailUrl": "https://i.ytimg.com/vi/zNgJFTkrTz8/hqdefault.jpg"
+        },
         {
           "videoId": "JSaXcLZqL8w",
           "title": "10 Most UNUSUAL Pets People Actually Keep | T2X2 REACTION",
@@ -298,16 +308,6 @@
           "publishedLabel": "",
           "durationSeconds": 2472,
           "thumbnailUrl": "https://i.ytimg.com/vi/kAe0ii_DXow/hqdefault.jpg"
-        },
-        {
-          "videoId": "j-CFnTll6kk",
-          "title": "CHITCHAT | T2x2 PLAYS Tropico 7 Demo",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 5046,
-          "thumbnailUrl": "https://i.ytimg.com/vi/j-CFnTll6kk/hqdefault.jpg"
         }
       ]
     },
@@ -318,6 +318,16 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
+        {
+          "videoId": "XFyTc-_zsF0",
+          "title": "T2x2 ЧИСТИТ КАРТОШКУ ЧТОБЫ ВЫЖИТЬ / Potato Please",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 13048,
+          "thumbnailUrl": "https://i.ytimg.com/vi/XFyTc-_zsF0/hqdefault.jpg"
+        },
         {
           "videoId": "BlRVaeRkv3o",
           "title": "T2x2 СМОТРИТ: ВЕРИТИ™ ЭТО НОВЫЙ FNAF™/ МозгоВзрыв №67 + ШОРТСЫ",
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 1421,
           "thumbnailUrl": "https://i.ytimg.com/vi/ZIUibK5OidY/hqdefault.jpg"
-        },
-        {
-          "videoId": "h0zqD6uBk_8",
-          "title": "T2x2 СМОТРИТ: ПОСЛЕДНИЙ СТРИМ 3: Вторжение | Бустер, Братишкин, Моргенштерн, Тоха Т2Х2, Сатир",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 1852,
-          "thumbnailUrl": "https://i.ytimg.com/vi/h0zqD6uBk_8/hqdefault.jpg"
         }
       ]
     }
