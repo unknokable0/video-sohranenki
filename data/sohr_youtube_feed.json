@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1794665733,
+  "generatedAtEpoch": 1794683786,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -9,6 +9,16 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@T2x2_stream",
       "videos": [
+        {
+          "videoId": "aF8xHKyvRyI",
+          "title": "ТУПЫЕ СТРИМЕРЫ ПРОТИВ GTA 6 | РЕАКЦИЯ T2X2",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 2286,
+          "thumbnailUrl": "https://i.ytimg.com/vi/aF8xHKyvRyI/hqdefault.jpg"
+        },
         {
           "videoId": "zNgJFTkrTz8",
           "title": "ГЛАВНЫЙ ПО КАРТОШКЕ | T2x2 ИГРАЕТ В Potato Please",
@@ -298,16 +308,6 @@
           "publishedLabel": "",
           "durationSeconds": 4192,
           "thumbnailUrl": "https://i.ytimg.com/vi/4PrxbwDaSME/hqdefault.jpg"
-        },
-        {
-          "videoId": "kAe0ii_DXow",
-          "title": "EVERYTHING IS BANNED IN RUSSIAN SCHOOLS | T2X2 REACTION",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 2472,
-          "thumbnailUrl": "https://i.ytimg.com/vi/kAe0ii_DXow/hqdefault.jpg"
         }
       ]
     },
@@ -318,6 +318,26 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
+        {
+          "videoId": "wi204lJGVUc",
+          "title": "T2x2 СМОТРИТ: 45 НОВЫХ НАХОДОК с Aliexpress, ТОВАРЫ, От Которых Ты Точно ОФИГЕЕШЬ",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 1809,
+          "thumbnailUrl": "https://i.ytimg.com/vi/wi204lJGVUc/hqdefault.jpg"
+        },
+        {
+          "videoId": "6F6GMsedIfo",
+          "title": "T2x2 СМОТРИТ: ТУПЫЕ СТРИМЕРЫ ПРОТИВ GTA 6",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 2439,
+          "thumbnailUrl": "https://i.ytimg.com/vi/6F6GMsedIfo/hqdefault.jpg"
+        },
         {
           "videoId": "XFyTc-_zsF0",
           "title": "T2x2 ЧИСТИТ КАРТОШКУ ЧТОБЫ ВЫЖИТЬ / Potato Please",
@@ -597,26 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 2537,
           "thumbnailUrl": "https://i.ytimg.com/vi/jx0FOu-RH7A/hqdefault.jpg"
-        },
-        {
-          "videoId": "0raCSvuxyH8",
-          "title": "T2x2 WATCHES: What is it like to die from vaping?",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 1323,
-          "thumbnailUrl": "https://i.ytimg.com/vi/0raCSvuxyH8/hqdefault.jpg"
-        },
-        {
-          "videoId": "ZIUibK5OidY",
-          "title": "T2x2 WATCHES: ENERGY DRINK CHRONICLES | How the World Got Hooked on Energy Drinks",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 1421,
-          "thumbnailUrl": "https://i.ytimg.com/vi/ZIUibK5OidY/hqdefault.jpg"
         }
       ]
     }
