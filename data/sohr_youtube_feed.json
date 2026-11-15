@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1794764917,
+  "generatedAtEpoch": 1794783377,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -319,6 +319,16 @@
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
         {
+          "videoId": "WwoU0SGxNGA",
+          "title": "T2x2 ОТКРЫВАЕТ КЕЙСЫ и ИГРАЕТ в CS 2",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 6094,
+          "thumbnailUrl": "https://i.ytimg.com/vi/WwoU0SGxNGA/hqdefault.jpg"
+        },
+        {
           "videoId": "SAR3CnL9HkQ",
           "title": "T2x2 СМОТРИТ: Я Воссоздал Голодные Игры В Реальной Жизни",
           "description": "",
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 1192,
           "thumbnailUrl": "https://i.ytimg.com/vi/unIPR_cZWQQ/hqdefault.jpg"
-        },
-        {
-          "videoId": "raa01F4OLLs",
-          "title": "T2x2 ИГРАЕТ в ХОРРОР ИГРУ - ALYSSA",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 6759,
-          "thumbnailUrl": "https://i.ytimg.com/vi/raa01F4OLLs/hqdefault.jpg"
         }
       ]
     }
