@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1794797387,
+  "generatedAtEpoch": 1794829193,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -10,8 +10,18 @@
       "channelUrl": "https://www.youtube.com/@T2x2_stream",
       "videos": [
         {
+          "videoId": "QXWrQ-6M81o",
+          "title": "В СОЛО | T2x2 ИГРАЕТ В Counter-Strike 2",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 5570,
+          "thumbnailUrl": "https://i.ytimg.com/vi/QXWrQ-6M81o/hqdefault.jpg"
+        },
+        {
           "videoId": "_kJGkNUJ16w",
-          "title": "ТИТАН | T2x2 ИГРАЕТ В Half Sword",
+          "title": "TITAN | T2x2 PLAYS Half Sword",
           "description": "",
           "publishedAt": 0,
           "publishedExact": false,
@@ -298,16 +308,6 @@
           "publishedLabel": "",
           "durationSeconds": 6970,
           "thumbnailUrl": "https://i.ytimg.com/vi/6ylvoB9s6l4/hqdefault.jpg"
-        },
-        {
-          "videoId": "VKj7KJveIFc",
-          "title": "Anti-Anxiety News [Part 8] | T2X2 REACTION",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 1794,
-          "thumbnailUrl": "https://i.ytimg.com/vi/VKj7KJveIFc/hqdefault.jpg"
         }
       ]
     },
