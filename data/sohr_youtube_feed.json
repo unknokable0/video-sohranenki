@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1794976239,
+  "generatedAtEpoch": 1795011181,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -31,7 +31,7 @@
         },
         {
           "videoId": "brse_ZlIBv4",
-          "title": "Я Воссоздал Голодные Игры В Реальной Жизни | РЕАКЦИЯ T2X2",
+          "title": "I Recreated The Hunger Games In Real Life | T2X2 REACTION",
           "description": "",
           "publishedAt": 0,
           "publishedExact": false,
@@ -318,6 +318,16 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
+        {
+          "videoId": "8ZC13JklFXk",
+          "title": "T2x2 ИГРАЕТ в GTA 6",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 4286,
+          "thumbnailUrl": "https://i.ytimg.com/vi/8ZC13JklFXk/hqdefault.jpg"
+        },
         {
           "videoId": "WwoU0SGxNGA",
           "title": "T2x2 ОТКРЫВАЕТ КЕЙСЫ и ИГРАЕТ в CS 2",
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 673,
           "thumbnailUrl": "https://i.ytimg.com/vi/o4TTehR_ZPo/hqdefault.jpg"
-        },
-        {
-          "videoId": "unIPR_cZWQQ",
-          "title": "T2x2 WATCHES: I COMPARED $1 vs $100 RC PLANES",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 1192,
-          "thumbnailUrl": "https://i.ytimg.com/vi/unIPR_cZWQQ/hqdefault.jpg"
         }
       ]
     }
