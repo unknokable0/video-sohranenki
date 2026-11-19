@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1795059525,
+  "generatedAtEpoch": 1795094779,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -9,6 +9,16 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@T2x2_stream",
       "videos": [
+        {
+          "videoId": "_GHM6bjtHXc",
+          "title": "ОНА ВЫШЛА | T2x2 ИГРАЕТ В Grand Theft Auto VI #1",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 22830,
+          "thumbnailUrl": "https://i.ytimg.com/vi/_GHM6bjtHXc/hqdefault.jpg"
+        },
         {
           "videoId": "QXWrQ-6M81o",
           "title": "SOLO | T2x2 PLAYS Counter-Strike 2",
@@ -298,16 +308,6 @@
           "publishedLabel": "",
           "durationSeconds": 1339,
           "thumbnailUrl": "https://i.ytimg.com/vi/ZQ16TaXN-CM/hqdefault.jpg"
-        },
-        {
-          "videoId": "6ylvoB9s6l4",
-          "title": "THE END | T2x2 PLAYS ALYSSA #2",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 6970,
-          "thumbnailUrl": "https://i.ytimg.com/vi/6ylvoB9s6l4/hqdefault.jpg"
         }
       ]
     },
@@ -318,6 +318,16 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
+        {
+          "videoId": "nV7RQNfpPsg",
+          "title": "T2x2 ИГРАЕТ в GTA 6 #2",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 16464,
+          "thumbnailUrl": "https://i.ytimg.com/vi/nV7RQNfpPsg/hqdefault.jpg"
+        },
         {
           "videoId": "8ZC13JklFXk",
           "title": "T2x2 PLAYS GTA 6",
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 7150,
           "thumbnailUrl": "https://i.ytimg.com/vi/CZid13P-KgQ/hqdefault.jpg"
-        },
-        {
-          "videoId": "o4TTehR_ZPo",
-          "title": "T2x2 WATCHES: TIER LIST OF ALL WAYS TO FALL ASLEEP",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 673,
-          "thumbnailUrl": "https://i.ytimg.com/vi/o4TTehR_ZPo/hqdefault.jpg"
         }
       ]
     }
