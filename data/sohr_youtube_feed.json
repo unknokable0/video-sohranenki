@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1795145568,
+  "generatedAtEpoch": 1795179966,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -9,6 +9,16 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@T2x2_stream",
       "videos": [
+        {
+          "videoId": "R4x97s3dUU0",
+          "title": "МУТНОЕ ДЕЛО | T2x2 ИГРАЕТ В Grand Theft Auto VI #2",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 20772,
+          "thumbnailUrl": "https://i.ytimg.com/vi/R4x97s3dUU0/hqdefault.jpg"
+        },
         {
           "videoId": "_GHM6bjtHXc",
           "title": "ОНА ВЫШЛА | T2x2 ИГРАЕТ В Grand Theft Auto VI #1",
@@ -298,16 +308,6 @@
           "publishedLabel": "",
           "durationSeconds": 968,
           "thumbnailUrl": "https://i.ytimg.com/vi/-2Zgiz4weA8/hqdefault.jpg"
-        },
-        {
-          "videoId": "ZQ16TaXN-CM",
-          "title": "A NEW GENERATION OF TIKTOK TRASHY PRANKERS | T2X2 REACTION",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 1339,
-          "thumbnailUrl": "https://i.ytimg.com/vi/ZQ16TaXN-CM/hqdefault.jpg"
         }
       ]
     },
@@ -318,6 +318,16 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
+        {
+          "videoId": "-ORDPL64KHg",
+          "title": "T2x2 ИГРАЕТ в GTA 6 #3",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 24850,
+          "thumbnailUrl": "https://i.ytimg.com/vi/-ORDPL64KHg/hqdefault.jpg"
+        },
         {
           "videoId": "nV7RQNfpPsg",
           "title": "T2x2 ИГРАЕТ в GTA 6 #2",
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 3241,
           "thumbnailUrl": "https://i.ytimg.com/vi/9jVQYnOtKXQ/hqdefault.jpg"
-        },
-        {
-          "videoId": "CZid13P-KgQ",
-          "title": "T2x2 PLAYS A HORROR GAME - ALYSSA #2",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 7150,
-          "thumbnailUrl": "https://i.ytimg.com/vi/CZid13P-KgQ/hqdefault.jpg"
         }
       ]
     }
