@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1795228272,
+  "generatedAtEpoch": 1795260024,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -9,6 +9,16 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@T2x2_stream",
       "videos": [
+        {
+          "videoId": "1DLUBnf_c2s",
+          "title": "ГРАБЕЖ | T2x2 ИГРАЕТ В Grand Theft Auto VI #3",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 20712,
+          "thumbnailUrl": "https://i.ytimg.com/vi/1DLUBnf_c2s/hqdefault.jpg"
+        },
         {
           "videoId": "R4x97s3dUU0",
           "title": "МУТНОЕ ДЕЛО | T2x2 ИГРАЕТ В Grand Theft Auto VI #2",
@@ -298,16 +308,6 @@
           "publishedLabel": "",
           "durationSeconds": 883,
           "thumbnailUrl": "https://i.ytimg.com/vi/liVyNS3qWiU/hqdefault.jpg"
-        },
-        {
-          "videoId": "-2Zgiz4weA8",
-          "title": "Who swears more: schoolchildren or auto mechanics? | T2X2 REACTION",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 968,
-          "thumbnailUrl": "https://i.ytimg.com/vi/-2Zgiz4weA8/hqdefault.jpg"
         }
       ]
     },
