@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1795364558,
+  "generatedAtEpoch": 1795386632,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -36,7 +36,7 @@
           "publishedAt": 0,
           "publishedExact": false,
           "publishedLabel": "",
-          "durationSeconds": 22830,
+          "durationSeconds": 22206,
           "thumbnailUrl": "https://i.ytimg.com/vi/_GHM6bjtHXc/hqdefault.jpg"
         },
         {
