@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1795307091,
+  "generatedAtEpoch": 1795334763,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -319,6 +319,16 @@
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
         {
+          "videoId": "gV8UBeojMG8",
+          "title": "T2x2 ИГРАЕТ в GTA 6 #4",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 30553,
+          "thumbnailUrl": "https://i.ytimg.com/vi/gV8UBeojMG8/hqdefault.jpg"
+        },
+        {
           "videoId": "-ORDPL64KHg",
           "title": "T2x2 ИГРАЕТ в GTA 6 #3",
           "description": "",
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 34664,
           "thumbnailUrl": "https://i.ytimg.com/vi/8TYw9nV7OC0/hqdefault.jpg"
-        },
-        {
-          "videoId": "9jVQYnOtKXQ",
-          "title": "T2x2 WATCHES: ✅How I was ARRESTED and SENT to prison ☢️ CREOSAN",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 3241,
-          "thumbnailUrl": "https://i.ytimg.com/vi/9jVQYnOtKXQ/hqdefault.jpg"
         }
       ]
     }
