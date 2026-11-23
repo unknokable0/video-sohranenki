@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAtEpoch": 1795405548,
+  "generatedAtEpoch": 1795445484,
   "channels": [
     {
       "channelId": "UC5AvrWA9E3DvFyy4qjuXtNA",
@@ -9,6 +9,16 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@T2x2_stream",
       "videos": [
+        {
+          "videoId": "BVI44I0j_zI",
+          "title": "НОВЫЕ СВЯЗИ | T2x2 ИГРАЕТ В Grand Theft Auto VI #4",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 20824,
+          "thumbnailUrl": "https://i.ytimg.com/vi/BVI44I0j_zI/hqdefault.jpg"
+        },
         {
           "videoId": "1DLUBnf_c2s",
           "title": "ГОРЯЧЕЕ ОГРАБЛЕНИЕ | T2x2 ИГРАЕТ В Grand Theft Auto VI #3",
@@ -298,16 +308,6 @@
           "publishedLabel": "",
           "durationSeconds": 4150,
           "thumbnailUrl": "https://i.ytimg.com/vi/rA7TOylqyWo/hqdefault.jpg"
-        },
-        {
-          "videoId": "liVyNS3qWiU",
-          "title": "T2x2 TRIMMED HIS BEARD",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 883,
-          "thumbnailUrl": "https://i.ytimg.com/vi/liVyNS3qWiU/hqdefault.jpg"
         }
       ]
     },
@@ -318,6 +318,16 @@
       "avatarUrl": "",
       "channelUrl": "https://www.youtube.com/@beerloga_t2x2",
       "videos": [
+        {
+          "videoId": "yh-SnhQ5iN4",
+          "title": "T2x2 ИГРАЕТ в GTA 6 #5",
+          "description": "",
+          "publishedAt": 0,
+          "publishedExact": false,
+          "publishedLabel": "",
+          "durationSeconds": 27100,
+          "thumbnailUrl": "https://i.ytimg.com/vi/yh-SnhQ5iN4/hqdefault.jpg"
+        },
         {
           "videoId": "gV8UBeojMG8",
           "title": "T2x2 ИГРАЕТ в GTA 6 #4",
@@ -607,16 +617,6 @@
           "publishedLabel": "",
           "durationSeconds": 3148,
           "thumbnailUrl": "https://i.ytimg.com/vi/FuPgFMIltsc/hqdefault.jpg"
-        },
-        {
-          "videoId": "8TYw9nV7OC0",
-          "title": "T2x2 ЧИСТИТ ЛУНУ от ПЫЛИ ЗУБНОЙ ЩЕТКОЙ в Moon Sweepers / МАЗЕЛЛОВ, ДРЕЙК",
-          "description": "",
-          "publishedAt": 0,
-          "publishedExact": false,
-          "publishedLabel": "",
-          "durationSeconds": 34664,
-          "thumbnailUrl": "https://i.ytimg.com/vi/8TYw9nV7OC0/hqdefault.jpg"
         }
       ]
     }
